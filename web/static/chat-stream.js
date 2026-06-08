@@ -337,6 +337,8 @@ function initWidgets(parentEl) {
     var id = container.getAttribute('data-widget-id');
     var code = widgetRegistry[id];
     if (!code) return;
+    // Escapar ${...} y backticks dentro del codigo para que la template literal exterior no los intercepte
+    code = code.replace(/\$\{/g, '\\${').replace(/`/g, '\\`');
     
     var stateStr = window.widgetStates && window.widgetStates[id] ? window.widgetStates[id] : null;
     var safeStateStr = stateStr !== null ? JSON.stringify(stateStr) : 'null';
@@ -399,7 +401,9 @@ function initWidgets(parentEl) {
               document.body.scrollHeight,
               document.body.offsetHeight
             );
-            window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
+            if (h > 20) {
+              window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
+            }
           }
           function scheduleSend() {
             sendHeight();
@@ -408,6 +412,7 @@ function initWidgets(parentEl) {
             setTimeout(sendHeight, 2000);
             requestAnimationFrame(function(){ requestAnimationFrame(sendHeight); });
           }
+          sendHeight();
           window.addEventListener('load', scheduleSend);
           if (window.ResizeObserver) {
             new ResizeObserver(sendHeight).observe(document.body);
