@@ -381,6 +381,9 @@ function initWidgets(parentEl) {
       </head>
       <body>
         <script>
+          window.onerror = function(msg, url, line, col, err) {
+            window.parent.postMessage({ type: 'widget-error', id: '${id}', message: msg, line: line, col: col }, '*');
+          };
           window.initialState = JSON.parse(${safeStateStr});
           window.saveState = function(stateObj) {
             window.parent.postMessage({
@@ -407,9 +410,6 @@ function initWidgets(parentEl) {
             range.detach();
             window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
           }
-          window.onerror = function(msg, url, line, col, err) {
-            window.parent.postMessage({ type: 'widget-error', id: '${id}', message: msg, line: line, col: col }, '*');
-          };
           sendHeight();
           setTimeout(sendHeight, 100);
           setTimeout(sendHeight, 600);
