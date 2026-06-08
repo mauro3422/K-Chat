@@ -16,7 +16,7 @@ venv/
 env/
 
 # Database
-memory/
+/memory/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
