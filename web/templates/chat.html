@@ -1,0 +1,47 @@
+<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kairos</title>
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<link rel="stylesheet" href="/static/style.css?v=5">
+<script src="/static/marked.min.js?v=5"></script>
+<script src="/static/purify.min.js?v=5"></script>
+</head><body>
+<div id="app">
+<aside id="sidebar">
+  <div class="sidebar-header">
+    <h2>Kairos</h2>
+    <a href="/" class="btn-new">+ Nueva</a>
+  </div>
+  <div id="session-list"
+       hx-get="/sidebar"
+       hx-trigger="load delay:0.1s"
+       hx-swap="innerHTML"></div>
+</aside>
+<main id="main">
+  <div class="main-header">
+    <span class="debug-toggle" onclick="toggleDebug()">&#128202; Debug</span>
+  </div>
+  <div id="messages"><div class="empty-state">Envia un mensaje para empezar</div></div>
+  <form id="chat-form">
+    <input type="text" id="msg-input" placeholder="Escribe un mensaje..." autofocus>
+    <button type="submit">Enviar</button>
+    <span id="spinner" class="htmx-indicator"></span>
+  </form>
+</main>
+<div id="debug-panel" class="debug-panel">
+  <div class="debug-header">
+    <h3>Debug</h3>
+    <span class="debug-close" onclick="toggleDebug()">&times;</span>
+  </div>
+  <div id="debug-content" class="debug-body">Envia un mensaje para ver el debug</div>
+</div>
+</div>
+<script>
+var sessionId = "{{ session_id }}";
+var defaultModel = "{{ model }}";
+</script>
+<script src="/static/session.js?v=5"></script>
+<script src="/static/debug.js?v=5"></script>
+<script src="/static/chat-stream.js?v=5"></script>
+</body></html>

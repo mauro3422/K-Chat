@@ -1,0 +1,19 @@
+{% for s in sessions %}
+{% set label = s.name if s.name else s.sid[:8] %}
+{% set meta = s.user_count ~ " msgs - " ~ s.last_str[:10] %}
+{% set active = " active" if s.sid == current else "" %}
+<div class="session-item{{ active }}" data-sid="{{ s.sid }}"
+  onclick="sessionId='{{ s.sid }}'; window.history.replaceState({sid:'{{ s.sid }}'},'', '/sessions/{{ s.sid }}');
+  fetch('/sessions/{{ s.sid }}/messages').then(r=>r.text()).then(h=>document.getElementById('main').innerHTML=h)">
+  <div class="session-main">
+    <div class="session-preview">{{ label }}</div>
+    <div class="session-actions">
+      <button class="act-rename" title="Renombrar">&#9998;</button>
+      <button class="act-delete" title="Eliminar">&#128465;</button>
+    </div>
+  </div>
+  <div class="session-meta">{{ meta }}</div>
+</div>
+{% else %}
+<div class="session-empty">Sin sesiones aun</div>
+{% endfor %}
