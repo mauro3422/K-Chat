@@ -395,15 +395,11 @@ function initWidgets(parentEl) {
         </style>
         <script>
           function sendHeight() {
-            var h = Math.max(
-              document.documentElement.scrollHeight,
-              document.documentElement.offsetHeight,
-              document.body.scrollHeight,
-              document.body.offsetHeight
-            );
-            if (h > 20) {
-              window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
-            }
+            var range = document.createRange();
+            range.selectNode(document.body);
+            var h = Math.max(1, Math.round(range.getBoundingClientRect().height));
+            range.detach();
+            window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
           }
           function scheduleSend() {
             sendHeight();
