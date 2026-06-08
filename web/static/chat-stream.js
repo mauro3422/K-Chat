@@ -391,7 +391,6 @@ function initWidgets(parentEl) {
           }
         </style>
         <script>
-          var _seq = 0;
           function sendHeight() {
             var h = Math.max(
               document.documentElement.scrollHeight,
@@ -399,8 +398,7 @@ function initWidgets(parentEl) {
               document.body.scrollHeight,
               document.body.offsetHeight
             );
-            _seq++;
-            window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h, seq: _seq }, '*');
+            window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
           }
           function scheduleSend() {
             sendHeight();
@@ -411,7 +409,7 @@ function initWidgets(parentEl) {
           }
           window.addEventListener('load', scheduleSend);
           if (window.ResizeObserver) {
-            new ResizeObserver(sendHeight).observe(document.documentElement);
+            new ResizeObserver(sendHeight).observe(document.body);
           }
         </script>
       </body>
@@ -424,16 +422,11 @@ function initWidgets(parentEl) {
   });
 }
 
-// Rastrea la última seq de resize para ignorar mensajes de iframes viejos
-var _resizeSeq = {};
 // Escuchar mensajes del iframe (cambio de tamaño y persistencia de estado)
 window.addEventListener('message', function(event) {
   if (!event.data) return;
   
   if (event.data.type === 'resize-iframe') {
-    var lastSeq = _resizeSeq[event.data.id] || 0;
-    if (event.data.seq && event.data.seq < lastSeq) return;
-    _resizeSeq[event.data.id] = event.data.seq || 0;
     var iframe = document.querySelector('[data-widget-id="' + event.data.id + '"] iframe');
     if (iframe) {
       iframe.style.height = (event.data.height + 4) + 'px';
