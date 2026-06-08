@@ -9,7 +9,7 @@ TOOL_MAP = {}
 
 _dir = os.path.dirname(__file__)
 for f in sorted(os.listdir(_dir)):
-    if not f.endswith('.py') or f.startswith('__'):
+    if not f.endswith('.py') or f.startswith('__') or f == 'runner.py':
         continue
     mod_name = f[:-3]
     try:
@@ -25,3 +25,6 @@ for f in sorted(os.listdir(_dir)):
         logger.debug("Tool cargada: %s", mod_name)
     except Exception as e:
         logger.warning("Tool %s: error al cargar (%s), ignorada", mod_name, e)
+
+from src.tools.runner import run_parallel_tools
+

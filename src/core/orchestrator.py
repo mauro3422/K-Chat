@@ -1,18 +1,20 @@
 import logging
 import json
-from src.llm import chat as llm_chat, chat_stream as llm_stream, get_default_model
-from src.tools import TOOLS, TOOL_MAP
-from src.context import build_system_prompt, USER_LANG
+import src.core
+from src.llm import get_default_model
+from src.tools import TOOLS
+from src.context import build_system_prompt
 from src.compressor import compress_history, should_compress
-from src.memory import check_should_rename
 from src.tool_runner import run_parallel_tools
 
 logger = logging.getLogger(__name__)
+
 
 def _msg_snapshot(m):
     if isinstance(m, dict):
         return {"role": m["role"], "content": (m.get("content") or "")[:500]}
     return {"role": m.role, "content": (m.content or "")[:500]}
+
 
 def chat(message_user: str, history: list = None) -> tuple[str, list]:
     """Procesa un mensaje con texto y memoria. Devuelve respuesta y historial actualizado."""
@@ -20,10 +22,11 @@ def chat(message_user: str, history: list = None) -> tuple[str, list]:
     if history is None:
         history = [build_system_prompt(model)]
     history.append({"role": "user", "content": message_user})
-    choice = llm_chat(history, model)
+    choice = src.core.llm_chat(history, model)
     response = choice.message.content
     history.append({"role": "assistant", "content": response})
     return response, history
+
 
 def chat_stream(
     message_user: str,
@@ -35,11 +38,7 @@ def chat_stream(
     phases_output: list = None,
     streaming: bool = True
 ):
-    """Igual que chat() pero yield tokens. history debe ser una lista mutable.
-       Si tagged=True, yield (tipo, token): ("reasoning", ...) o ("content", ...).
-       Si debug se pasa (dict), se llena con info de depuracion.
-       Si phases_output se pasa (list), se llena con [{reasoning, tool_ids}, ...] por fase.
-       Si streaming=False usa llm_chat síncrono (modo tests)."""
+    """Igual que chat() pero yield tokens. history debe ser una lista mutable."""
     if model is None:
         model = get_default_model()
 
@@ -97,20 +96,23 @@ def _run_tool_loop(
     tool_detail: list,
     streaming: bool = True
 ):
-    """Tool loop unificado. streaming=True usa llm_stream (producción), streaming=False usa llm_chat (tests)."""
+    """Tool loop unificado. streaming=True usa llm_stream, streaming=False usa llm_chat."""
     turn = 0
     phase_reasoning = ""
     phase_tool_ids = []
     total_reasoning = []
 
-    MAX_TOOL_TURNS = 5  # Evita loops infinitos si el modelo no resuelve sus errores
+    MAX_TOOL_TURNS = 5  # Evita loops infinitos
 
     if streaming:
         # --- Path streaming real ---
         while turn < MAX_TOOL_TURNS:
             reasoning_out = []
             tool_calls_out = []
-            stream_iter = llm_stream(history, model, reasoning_output=reasoning_out, tagged=True, tools=TOOLS, tool_calls_output=tool_calls_out, debug=debug)
+            stream_iter = src.core.llm_stream(
+                history, model, reasoning_output=reasoning_out, tagged=True,
+                tools=TOOLS, tool_calls_output=tool_calls_out, debug=debug
+            )
 
             accumulated = []
 
@@ -152,7 +154,7 @@ def _run_tool_loop(
 
                 for event in run_parallel_tools(
                     tool_calls_out, session_id, turn, history, tool_detail,
-                    used_tools, phase_tool_ids, tagged=tagged, tool_map=TOOL_MAP
+                    used_tools, phase_tool_ids, tagged=tagged, tool_map=src.core.TOOL_MAP
                 ):
                     yield event
 
@@ -179,7 +181,7 @@ def _run_tool_loop(
                 break
     else:
         # --- Path síncrono (tests) ---
-        result = llm_chat(history, model, tools=TOOLS, debug=debug)
+        result = src.core.llm_chat(history, model, tools=TOOLS, debug=debug)
         while result.finish_reason == "tool_calls":
             turn += 1
             rc = getattr(result.message, 'reasoning_content', None)
@@ -197,7 +199,7 @@ def _run_tool_loop(
 
             for event in run_parallel_tools(
                 tool_calls, session_id, turn, history, tool_detail,
-                used_tools, phase_tool_ids, tagged=tagged, tool_map=TOOL_MAP
+                used_tools, phase_tool_ids, tagged=tagged, tool_map=src.core.TOOL_MAP
             ):
                 yield event
 
@@ -209,7 +211,7 @@ def _run_tool_loop(
                 })
             phase_reasoning = ""
             phase_tool_ids = []
-            result = llm_chat(history, model, tools=TOOLS)
+            result = src.core.llm_chat(history, model, tools=TOOLS)
 
         if used_tools:
             logger.info("Usando: %s", ", ".join(used_tools))
@@ -234,7 +236,7 @@ def _run_tool_loop(
                     yield token
         else:
             reasoning_out = []
-            for item in llm_stream(history, model, reasoning_output=reasoning_out, tagged=tagged):
+            for item in src.core.llm_stream(history, model, reasoning_output=reasoning_out, tagged=tagged):
                 if tagged:
                     tipo, token = item
                     yield (tipo, token)
