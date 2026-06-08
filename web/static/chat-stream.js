@@ -383,6 +383,14 @@ function initWidgets(parentEl) {
           };
         </script>
         \${code}
+        <style>
+          /* Evitar bucles de redimensionamiento si el modelo define height: 100vh o min-height */
+          html, body {
+            height: auto !important;
+            min-height: auto !important;
+            background: transparent !important;
+          }
+        </style>
         <script>
           function sendHeight() {
             var height = document.documentElement.scrollHeight;
