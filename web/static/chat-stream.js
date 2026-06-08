@@ -392,15 +392,18 @@ function initWidgets(parentEl) {
           }
         </style>
         <script>
+          var _lastH = 150;
           function sendHeight() {
-            var height = document.documentElement.scrollHeight;
-            window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: height }, '*');
+            var h = document.documentElement.scrollHeight;
+            if (Math.abs(h - _lastH) > 1) {
+              _lastH = h;
+              window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
+            }
           }
-          window.addEventListener('load', sendHeight);
+          window.addEventListener('load', function() { sendHeight(); setTimeout(sendHeight, 80); });
           if (window.ResizeObserver) {
             new ResizeObserver(sendHeight).observe(document.body);
           }
-          document.addEventListener('click', sendHeight);
         </script>
       </body>
       </html>
