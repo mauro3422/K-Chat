@@ -1,0 +1,15 @@
+{
+  "name": "kairos",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "lint": "eslint web/static/**/*.js",
+    "lint:fix": "eslint web/static/**/*.js --fix",
+    "test:js": "node tests/test-widget-system.js",
+    "test:py": "python -m pytest tests/ -v",
+    "test": "npm run test:py && npm run test:js && npm run lint"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0"
+  }
+}

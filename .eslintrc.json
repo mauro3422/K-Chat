@@ -1,0 +1,37 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true
+  },
+  "globals": {
+    "sessionId": "readonly",
+    "defaultModel": "readonly",
+    "debugVisible": "readonly",
+    "refreshSidebar": "readonly",
+    "refreshDebug": "readonly",
+    "toggleDebug": "readonly",
+    "logUI": "readonly",
+    "logStream": "readonly",
+    "DOMPurify": "readonly",
+    "marked": "readonly",
+    "KairosUtils": "readonly",
+    "KairosWidgets": "readonly",
+    "KairosMarkdown": "readonly",
+    "KairosStream": "readonly",
+    "KairosForm": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-undef": "error",
+    "no-redeclare": "warn",
+    "eqeqeq": "warn",
+    "no-console": "off",
+    "semi": ["warn", "always"],
+    "no-extra-semi": "warn"
+  },
+  "ignorePatterns": [
+    "web/static/marked.min.js",
+    "web/static/purify.min.js",
+    "web/static/test-widgets.html"
+  ]
+}

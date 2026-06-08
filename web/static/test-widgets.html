@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Widget System Tests</title>
+<style>
+body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 20px; }
+.pass { color: #3fb950; } .fail { color: #f85149; }
+h2 { color: #58a6ff; } .summary { font-size: 1.2em; margin: 16px 0; }
+</style>
+</head>
+<body>
+<h1>Widget System Tests</h1>
+<div id="results"></div>
+<script>
+function logUI() {}
+var sessionId = 'test-session';
+</script>
+<script src="/static/modules/widget-system.js?v=2"></script>
+<script>
+var passed = 0, failed = 0, output = [];
+
+function assert(name, condition, detail) {
+  if (condition) {
+    passed++;
+    output.push('<div class="pass">PASS: ' + name + '</div>');
+  } else {
+    failed++;
+    output.push('<div class="fail">FAIL: ' + name + (detail ? ' — ' + detail : '') + '</div>');
+  }
+}
+
+function reset() {
+  var keys = Object.keys(KairosWidgets.registry);
+  keys.forEach(function(k) { delete KairosWidgets.registry[k]; });
+  var dkeys = Object.keys(KairosWidgets.debug);
+  dkeys.forEach(function(k) { delete KairosWidgets.debug[k]; });
+}
+
+// --- Test: extract() generates unique IDs ---
+reset();
+var r1 = KairosWidgets.extract('```html-widget\n<div>Widget A</div>\n```');
+var r2 = KairosWidgets.extract('```html-widget\n<div>Widget B</div>\n```');
+assert('extract: unique IDs', r1.indexOf('widget-0') >= 0 && r2.indexOf('widget-1') >= 0,
+  'got: ' + r1 + ' | ' + r2);
+assert('extract: registry has 2 entries', Object.keys(KairosWidgets.registry).length === 2);
+
+// --- Test: extract() sanitizes ?.style = ---
+reset();
+var code = '```html-widget\nel?.style.border = "1px solid red";\n```';
+KairosWidgets.extract(code);
+var stored = KairosWidgets.registry[Object.keys(KairosWidgets.registry)[0]];
+assert('extract: sanitizes ?.style', stored.indexOf('el.style.border') >= 0 && stored.indexOf('?.style') < 0,
+  'stored: ' + stored);
+
+// --- Test: extract() sanitizes ?.prop = ---
+reset();
+KairosWidgets.extract('```html-widget\nobj?.foo.bar = 42;\n```');
+var stored2 = KairosWidgets.registry[Object.keys(KairosWidgets.registry)[0]];
+assert('extract: sanitizes ?.prop', stored2.indexOf('obj.foo.bar = 42') >= 0, 'stored: ' + stored2);
+
+// --- Test: extract() preserves non-assignment optional chaining ---
+reset();
+KairosWidgets.extract('```html-widget\nif (el?.classList) { doStuff(); }\n```');
+var stored3 = KairosWidgets.registry[Object.keys(KairosWidgets.registry)[0]];
+assert('extract: preserves ?.classList (non-assignment)', stored3.indexOf('el?.classList') >= 0, 'stored: ' + stored3);
+
+// --- Test: extract() replaces block with container div ---
+reset();
+var result = KairosWidgets.extract('before\n```html-widget\n<p>hi</p>\n```\nafter');
+assert('extract: container div placeholder', result.indexOf('interactive-widget-container') >= 0);
+assert('extract: preserves surrounding text', result.indexOf('before') >= 0 && result.indexOf('after') >= 0);
+
+// --- Test: extract() handles multiple widgets in one text ---
+reset();
+var multi = KairosWidgets.extract('```html-widget\n<a/>\n```\ntext\n```html-widget\n<b/>\n```');
+assert('extract: multiple widgets', Object.keys(KairosWidgets.registry).length === 2);
+assert('extract: preserves text between widgets', multi.indexOf('text') >= 0);
+
+// --- Test: extract() handles no widgets ---
+reset();
+var noWidgets = KairosWidgets.extract('just plain markdown');
+assert('extract: no widgets returns unchanged', noWidgets === 'just plain markdown');
+
+// --- Test: buildIframeSrc() ---
+reset();
+var src = KairosWidgets.buildIframeSrc('widget-test', '<div>hello</div>', 'null');
+assert('buildIframeSrc: contains widget code', src.indexOf('<div>hello</div>') >= 0);
+assert('buildIframeSrc: contains sendHeight', src.indexOf('sendHeight') >= 0);
+assert('buildIframeSrc: contains CSS override', src.indexOf('height: auto !important') >= 0);
+assert('buildIframeSrc: contains 100vh override', src.indexOf('[style*="100vh"]') >= 0);
+assert('buildIframeSrc: contains ResizeObserver', src.indexOf('ResizeObserver') >= 0);
+assert('buildIframeSrc: contains debounce', src.indexOf('_lastSentH') >= 0);
+assert('buildIframeSrc: contains onerror', src.indexOf('window.onerror') >= 0);
+assert('buildIframeSrc: contains saveState', src.indexOf('saveState') >= 0);
+assert('buildIframeSrc: contains widget ID in messages', src.indexOf('"widget-test"') >= 0);
+
+// --- Test: buildIframeSrc() with state ---
+var srcState = KairosWidgets.buildIframeSrc('widget-s', '<p>x</p>', '"{\\"val\\":1}"');
+assert('buildIframeSrc: injects initialState', srcState.indexOf('initialState') >= 0);
+
+// --- Test: log() ---
+reset();
+KairosWidgets.log('widget-x', 'init', 'test detail');
+assert('log: creates debug entry', KairosWidgets.debug['widget-x'] !== undefined);
+assert('log: event recorded', KairosWidgets.debug['widget-x'].events.length === 1);
+assert('log: event label', KairosWidgets.debug['widget-x'].events[0].label === 'init');
+assert('log: event detail', KairosWidgets.debug['widget-x'].events[0].detail === 'test detail');
+
+KairosWidgets.log('widget-x', 'altura', '200px');
+assert('log: appends events', KairosWidgets.debug['widget-x'].events.length === 2);
+
+// --- Test: initAll() creates iframes ---
+reset();
+KairosWidgets.extract('```html-widget\n<div id="test-init">Hello</div>\n```');
+var container = document.createElement('div');
+container.innerHTML = '<div class="interactive-widget-container" data-widget-id="widget-0"></div>';
+document.body.appendChild(container);
+KairosWidgets.initAll(document.body);
+var iframe = container.querySelector('iframe');
+assert('initAll: creates iframe', iframe !== null);
+if (iframe) {
+  assert('initAll: iframe has sandbox', iframe.sandbox.contains('allow-scripts'));
+  assert('initAll: iframe starts at 1px', iframe.style.height === '1px');
+  assert('initAll: iframe has srcdoc', iframe.srcdoc.length > 0);
+  assert('initAll: container marked initialized', container.querySelector('.interactive-widget-container').dataset.initialized === '1');
+}
+document.body.removeChild(container);
+
+// --- Test: initAll() skips already initialized ---
+reset();
+KairosWidgets.extract('```html-widget\n<div>Skip</div>\n```');
+var container2 = document.createElement('div');
+container2.innerHTML = '<div class="interactive-widget-container" data-widget-id="widget-0" data-initialized="1"></div>';
+document.body.appendChild(container2);
+KairosWidgets.initAll(document.body);
+var iframe2 = container2.querySelector('iframe');
+assert('initAll: skips initialized containers', iframe2 === null);
+document.body.removeChild(container2);
+
+// --- Summary ---
+document.getElementById('results').innerHTML =
+  '<div class="summary">' + passed + ' passed, ' + failed + ' failed out of ' + (passed + failed) + '</div>' +
+  output.join('\n');
+</script>
+</body>
+</html>

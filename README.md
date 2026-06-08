@@ -3,6 +3,14 @@
 Agente personal minimalista con memoria episodica, herramientas paralelas y dashboard web.
 Sin frameworks JS, sin npm, sin gateways complejos. Cada pieza es un archivo independiente.
 
+## Vision
+
+Kairos no busca ser una copia de OpenClaw. Nace de la frustracion de configurar una plataforma grande, encontrar errores al intentar usarla para tareas reales, y querer algo mas directo: un asistente personal que pueda conversar, recordar, usar herramientas, mostrar que hizo e iterar sobre su propio proyecto junto al usuario.
+
+La meta no es tener todos los canales, plugins y capas desde el primer dia. La meta es tener primero un nucleo confiable y entendible: chat, memoria, tools, streaming, debug y capacidad de evolucionar sin pelear contra una arquitectura opaca. Los canales futuros como Telegram, webhooks o automatizaciones deben ser adaptadores alrededor del mismo nucleo, no una razon para convertir el proyecto en una plataforma pesada.
+
+Kairos puede tomar inspiracion de ideas de OpenClaw, pero con una prioridad distinta: ser un wrapper decente, estable, hackeable y bien armado para uso personal, antes que un ecosistema enorme lleno de piezas fragiles.
+
 ## Stack
 
 - **Modelos:** big-pickle (default), deepseek-v4-flash-free (fallback) — OpenCode Zen API

@@ -196,6 +196,8 @@ def chat_stream(messages: list, model: str = None, reasoning_output: list = None
     if "stream_options" not in kwargs:
         kwargs["stream_options"] = {"include_usage": True}
 
+    logger.info("Iniciando stream con modelo: %s", model)
+    
     try:
         stream = _api_call(
             model=model,
@@ -203,6 +205,7 @@ def chat_stream(messages: list, model: str = None, reasoning_output: list = None
             stream=True,
             **kwargs
         )
+        logger.info("Stream iniciado correctamente con modelo: %s", model)
     except Exception as e:
         logger.warning("Error iniciando stream con modelo %s: %s. Reintentando con switch...", model, e)
         model = _mark_and_refresh(model)
@@ -216,8 +219,12 @@ def chat_stream(messages: list, model: str = None, reasoning_output: list = None
         )
 
     _tool_map = {}
+    chunk_count = 0
+    has_content = False
+    has_reasoning = False
 
     for chunk in stream:
+        chunk_count += 1
         # Extraer tokens si vienen en el chunk
         usage = getattr(chunk, 'usage', None)
         if usage and isinstance(debug, dict):
@@ -226,11 +233,13 @@ def chat_stream(messages: list, model: str = None, reasoning_output: list = None
             debug["total_tokens"] = usage.total_tokens
 
         if not getattr(chunk, 'choices', None):
+            logger.debug("Chunk %d sin choices", chunk_count)
             continue
 
         delta = chunk.choices[0].delta
         r = getattr(delta, 'reasoning_content', None) or getattr(delta, 'reasoning', None) if delta else None
         if r:
+            has_reasoning = True
             if reasoning_output is not None:
                 reasoning_output.append(r)
             if tagged:
@@ -282,7 +291,16 @@ def chat_stream(messages: list, model: str = None, reasoning_output: list = None
 
         content = delta.content if delta else None
         if content:
+            has_content = True
             if tagged:
                 yield ("content", content)
             else:
                 yield content
+
+    # Log final del stream
+    if chunk_count == 0:
+        logger.warning("Stream vacío: no se recibieron chunks del modelo %s", model)
+    elif not has_content and not has_reasoning:
+        logger.warning("Stream con %d chunks pero sin contenido ni reasoning del modelo %s", chunk_count, model)
+    else:
+        logger.info("Stream completado: %d chunks, has_content=%s, has_reasoning=%s", chunk_count, has_content, has_reasoning)

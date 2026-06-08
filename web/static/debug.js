@@ -67,7 +67,8 @@ function copyText(el) {
 }
 
 function copyWidgetLog(el) {
-  if (typeof widgetDebug === 'undefined') { el.textContent = '[]'; return; }
+  if (typeof KairosWidgets === 'undefined') { el.textContent = '[]'; return; }
+  var widgetDebug = KairosWidgets.debug;
   var lines = [];
   for (var wid in widgetDebug) {
     var w = widgetDebug[wid];
@@ -84,7 +85,7 @@ function copyWidgetLog(el) {
   navigator.clipboard.writeText(lines.join('\n')).then(function() {
     el.textContent = 'copiado';
     setTimeout(function(){ el.textContent = 'copy'; }, 1500);
-  }).catch(function(){ el.textContent = 'error'; });
+  }).catch(function() { el.textContent = 'error'; });
 }
 
 function refreshDebug() {
@@ -101,18 +102,52 @@ function refreshDebug() {
     h += '<details class="db-section" open><summary>Stream</summary><span class="db-copy" onclick="copyStreamLog(this)">copy</span><div id="stream-log" class="sl-container"></div></details>';
     h += '<details class="db-section"><summary>UI</summary><span class="db-copy" onclick="copyUILog(this)">copy</span><div id="ui-log" class="sl-container"></div></details>';
     h += '<details class="db-section" open><summary>Widgets</summary><span class="db-copy" onclick="copyWidgetLog(this)">copy</span><div id="widget-log" class="sl-container"></div></details>';
+    h += '<details class="db-section"><summary>Backend Logs</summary><span class="db-copy" onclick="copyBackendLogs(this)">copy</span><div id="backend-log" class="sl-container">Cargando...</div></details>';
     dc.innerHTML = h;
     renderStreamLog();
     renderUILog();
     refreshWidgetInfo();
+    refreshBackendLogs();
   }).catch(function(e) { if(dc) dc.textContent = 'Error: ' + e; });
 }
 
-function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function refreshBackendLogs() {
+  var el = document.getElementById('backend-log');
+  if (!el) return;
+  fetch('/debug/backend-logs').then(function(r) { return r.json(); }).then(function(data) {
+    var logs = data.logs || [];
+    el.innerHTML = logs.map(function(log) {
+      var ts = new Date(log.ts * 1000).toISOString().slice(11, 23);
+      var levelClass = 'sl-info';
+      if (log.level === 'ERROR') levelClass = 'sl-error';
+      else if (log.level === 'WARNING') levelClass = 'sl-warning';
+      return '<div class="sl-item ' + levelClass + '"><span class="sl-ts">' + ts + '</span><span class="sl-tag">' + log.level + '</span><span class="sl-data">' + escHtml(log.message) + '</span></div>';
+    }).join('');
+  }).catch(function(e) {
+    el.innerHTML = '<div class="sl-item sl-error">Error cargando logs: ' + escHtml(e.message) + '</div>';
+  });
+}
+
+function copyBackendLogs(el) {
+  fetch('/debug/backend-logs').then(function(r) { return r.json(); }).then(function(data) {
+    var logs = data.logs || [];
+    var txt = logs.map(function(log) {
+      var ts = new Date(log.ts * 1000).toISOString().slice(11, 23);
+      return ts + ' ' + log.level + ' ' + log.message;
+    }).join('\n');
+    navigator.clipboard.writeText(txt).then(function() {
+      el.textContent = 'copiado';
+      setTimeout(function(){ el.textContent = 'copy'; }, 1500);
+    }).catch(function(){ el.textContent = 'error'; });
+  }).catch(function() { el.textContent = 'error'; });
+}
+
+function escHtml(s) { return KairosUtils.escHtml(s); }
 
 function refreshWidgetInfo() {
   var el = document.getElementById('widget-log');
-  if (!el || typeof widgetDebug === 'undefined') return;
+  if (!el || typeof KairosWidgets === 'undefined') return;
+  var widgetDebug = KairosWidgets.debug;
   if (Object.keys(widgetDebug).length === 0) {
     el.innerHTML = '<div class="sl-item">(sin widgets aun)</div>';
     return;
@@ -141,7 +176,7 @@ function refreshWidgetInfo() {
 var _origLogUI = logUI;
 logUI = function(label, detail) {
   _origLogUI(label, detail);
-  if (typeof widgetDebug !== 'undefined' && label.indexOf('[W]') === 0) {
+  if (typeof KairosWidgets !== 'undefined' && label.indexOf('[W]') === 0) {
     setTimeout(refreshWidgetInfo, 50);
   }
 };

@@ -4,10 +4,8 @@ function refreshSidebar() {
   });
 }
 
-function esc() { var m = document.getElementById('messages'); if(m) m.scrollTop = m.scrollHeight; }
-
 document.addEventListener('htmx:afterSwap', function() {
-  esc();
+  KairosUtils.esc();
   if (typeof debugVisible !== 'undefined' && debugVisible) { toggleDebug(); }
 });
 

@@ -36,7 +36,7 @@ def test_session_messages_empty():
     assert response.status_code == 200
     assert "Envia un mensaje para empezar" in response.text
 
-@patch("web.server.chat_stream")
+@patch("web.routers.chat.chat_stream")
 def test_chat_streaming(mock_chat_stream):
     """Verify that /chat streaming returns NDJSON lines."""
     # Mocking chat_stream to yield reasoning and content tokens

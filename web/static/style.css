@@ -82,6 +82,8 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; c
 .sl-item.sl-content { color: #e6edf3; }
 .sl-item.sl-tool-call { background: #1f6feb11; color: #58a6ff; }
 .sl-item.sl-error { background: #da363311; color: #ff6b6b; }
+.sl-item.sl-warning { background: #f39c1211; color: #f39c12; }
+.sl-item.sl-info { background: #58a6ff11; color: #58a6ff; }
 .wi-block { margin: 6px 0; padding: 6px; background: #0d1117; border-radius: 4px; font-size: 10px; }
 .wi-block strong { color: #58a6ff; margin-right: 8px; }
 .sl-idx { color: #484f58; text-align: right; }
@@ -211,5 +213,29 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; c
 .interactive-widget-iframe:hover {
   border-color: #58a6ff !important;
   box-shadow: 0 6px 16px rgba(56, 139, 253, 0.1);
+}
+
+.widget-placeholder {
+  width: 100%;
+  height: 200px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.widget-loading {
+  color: #8b949e;
+  font-size: 14px;
+  font-weight: 500;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
