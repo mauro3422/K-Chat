@@ -27,6 +27,9 @@ memory/
 htmlcov/
 coverage.xml
 
+# Node
+node_modules/
+
 # IDEs and OS
 .vscode/
 .idea/
