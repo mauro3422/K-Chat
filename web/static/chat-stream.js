@@ -6,18 +6,40 @@ window.escHtml = function(s) { return KairosUtils.escHtml(s); };
 KairosWidgets.startMessageHandler();
 KairosForm.init();
 
-document.addEventListener('DOMContentLoaded', KairosMarkdown.renderAll);
+window.loadSession = function(sid) {
+  sessionId = sid;
+  window.history.replaceState({sid: sid}, '', '/sessions/' + sid);
+  
+  if (window.KairosWidgets && typeof KairosWidgets.reset === 'function') {
+    KairosWidgets.reset();
+  }
+  
+  fetch('/sessions/' + sid + '/messages')
+    .then(function(r) { return r.text(); })
+    .then(function(h) {
+      var main = document.getElementById('main');
+      if (main) {
+        main.innerHTML = h;
+        
+        var meta = document.getElementById('messages-metadata');
+        if (meta) {
+          try {
+            window.widgetStates = JSON.parse(meta.getAttribute('data-widget-states') || '{}');
+          } catch(e) {
+            console.error('Error parsing widgetStates metadata:', e);
+            window.widgetStates = {};
+          }
+        } else {
+          window.widgetStates = {};
+        }
+        
+        KairosMarkdown.renderAll();
+      }
+    });
+};
 
 document.addEventListener('DOMContentLoaded', function() {
   if (window.location.pathname.startsWith('/sessions/')) {
-    fetch('/sessions/' + sessionId + '/messages')
-      .then(function(r) { return r.text(); })
-      .then(function(h) {
-        var main = document.getElementById('main');
-        if (main) {
-          main.innerHTML = h;
-          KairosMarkdown.renderAll();
-        }
-      });
+    window.loadSession(sessionId);
   }
 });

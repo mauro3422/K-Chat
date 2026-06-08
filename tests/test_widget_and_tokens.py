@@ -44,11 +44,11 @@ def test_widget_endpoint_and_injection():
     assert post_resp.status_code == 200
     assert post_resp.json() == {"status": "ok"}
     
-    # GET session messages and verify window.widgetStates is injected in the HTML response
+    # GET session messages and verify data-widget-states is injected in the HTML response
     get_resp = client.get(f"/sessions/{session_id}/messages")
     assert get_resp.status_code == 200
-    assert "window.widgetStates" in get_resp.text
-    # Verify the state data string is part of the injected script tag
+    assert "data-widget-states" in get_resp.text
+    # Verify the state data string is part of the metadata element
     assert widget_id in get_resp.text
     # The JSON string inside get_resp.text is escaped/formatted
     assert "[1, 2, 3]" in get_resp.text

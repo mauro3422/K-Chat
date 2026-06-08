@@ -3,8 +3,7 @@
 {% set meta = s.user_count ~ " msgs - " ~ s.last_str[:10] %}
 {% set active = " active" if s.sid == current else "" %}
 <div class="session-item{{ active }}" data-sid="{{ s.sid }}"
-  onclick="sessionId='{{ s.sid }}'; window.history.replaceState({sid:'{{ s.sid }}'},'', '/sessions/{{ s.sid }}');
-  fetch('/sessions/{{ s.sid }}/messages').then(r=>r.text()).then(h=>document.getElementById('main').innerHTML=h)">
+  onclick="loadSession('{{ s.sid }}')">
   <div class="session-main">
     <div class="session-preview">{{ label }}</div>
     <div class="session-actions">

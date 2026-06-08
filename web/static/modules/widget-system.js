@@ -164,10 +164,17 @@ var KairosWidgets = (function() {
     });
   }
 
+  function reset() {
+    registry = {};
+    index = 0;
+    log('system', 'reset', 'registro de widgets y contador reseteados');
+  }
+
   return {
     extract: extract,
     initAll: initAll,
     log: log,
+    reset: reset,
     startMessageHandler: startMessageHandler,
     buildIframeSrc: buildIframeSrc,
     get registry() { return registry; },

@@ -69,5 +69,10 @@ assert('log event detail', KairosWidgets.debug['w-x'].events[0].detail === 'deta
 KairosWidgets.log('w-x', 'altura', '200px');
 assert('log appends', KairosWidgets.debug['w-x'].events.length === 2);
 
+// Test reset
+KairosWidgets.reset();
+assert('reset registry', Object.keys(KairosWidgets.registry).length === 0);
+assert('reset index', KairosWidgets.index === 0);
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed > 0 ? 1 : 0);

@@ -10,6 +10,7 @@ from src.memory import get_sessions
 from web.ui_utils import _match_tools_to_msgs, _render_msg_with_phases
 from src.memory import get_session_messages, get_tool_history, get_widget_states
 import json
+import html
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
@@ -96,7 +97,7 @@ async def session_messages(session_id: str):
     widget_regex = re.compile(r'```html-widget\s*\n([\s\S]*?)\n```')
     
     parts = [
-        f'<script>window.widgetStates = {widget_states_json};</script>',
+        f'<div id="messages-metadata" data-widget-states="{html.escape(widget_states_json)}" style="display:none;"></div>',
         '<div class="main-header">',
         '<span class="debug-toggle" onclick="toggleDebug()">&#128202; Debug</span>',
         '</div>',
@@ -132,11 +133,6 @@ async def session_messages(session_id: str):
         '</form>'
     )
     
-    # Agregar script con el registry de widgets
-    if widget_registry:
-        widget_registry_json = json.dumps(widget_registry, ensure_ascii=False)
-        parts.insert(1, f'<script>if(window.KairosWidgets){{var r={widget_registry_json};for(var id in r){{window.KairosWidgets.registry[id]=r[id];}}}}</script>')
-
     return HTMLResponse("\n".join(parts))
 
 

@@ -49,6 +49,7 @@ assert('KairosUtils.initGlobalErrorHandlers existe', typeof KairosUtils.initGlob
 assert('KairosWidgets.extract existe', typeof KairosWidgets.extract === 'function');
 assert('KairosWidgets.initAll existe', typeof KairosWidgets.initAll === 'function');
 assert('KairosWidgets.log existe', typeof KairosWidgets.log === 'function');
+assert('KairosWidgets.reset existe', typeof KairosWidgets.reset === 'function');
 assert('KairosWidgets.startMessageHandler existe', typeof KairosWidgets.startMessageHandler === 'function');
 assert('KairosWidgets.buildIframeSrc existe', typeof KairosWidgets.buildIframeSrc === 'function');
 
