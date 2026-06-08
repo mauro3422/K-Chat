@@ -50,7 +50,7 @@ var KairosMarkdown = (function() {
         console.log('[KairosMarkdown] Contains html-widget:', decoded.indexOf('html-widget') >= 0);
         
         var parsed = parse(decoded);
-        var sanitized = DOMPurify.sanitize(parsed, purifyConfig);
+        var sanitized = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsed, purifyConfig) : parsed;
         el.innerHTML = sanitized;
         
         console.log('[KairosMarkdown] After sanitize, iframes:', el.querySelectorAll('iframe').length);

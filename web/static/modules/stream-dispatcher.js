@@ -126,13 +126,15 @@ var KairosStream = (function() {
       var beforeIncomplete = remaining.substring(0, remaining.length - incompleteWidget[0].length);
       var html = '';
       if (beforeIncomplete) {
-        html += DOMPurify.sanitize(KairosMarkdown.parse(beforeIncomplete));
+        var parsedBefore = KairosMarkdown.parse(beforeIncomplete);
+        html += (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsedBefore) : parsedBefore;
       }
       html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteWidget[0]) + '</code></pre>';
       progressDiv.innerHTML = html;
     } else if (remaining) {
       // Mostrar markdown normal
-      progressDiv.innerHTML = DOMPurify.sanitize(KairosMarkdown.parse(remaining));
+      var parsedRemaining = KairosMarkdown.parse(remaining);
+      progressDiv.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsedRemaining) : parsedRemaining;
     } else {
       progressDiv.innerHTML = '';
     }

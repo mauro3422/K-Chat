@@ -110,3 +110,26 @@ def test_token_estimation_and_compression():
         {"role": "user", "content": "A" * 25000} # ~6250 tokens
     ]
     assert should_compress(large_history) is True
+
+
+def test_widget_injection_xss_safety():
+    """Verify that malicious XSS scripts in widget states are safely escaped in metadata."""
+    init_db()
+    session_id = "test-session-xss"
+    widget_id = "widget-exploit"
+    malicious_state = '{"payload": "<script>alert(1)</script>"}'
+    
+    # POST malicious state
+    post_resp = client.post(
+        f"/sessions/{session_id}/widgets/{widget_id}/state",
+        json={"state": malicious_state}
+    )
+    assert post_resp.status_code == 200
+    
+    # GET session messages and verify it is HTML escaped
+    get_resp = client.get(f"/sessions/{session_id}/messages")
+    assert get_resp.status_code == 200
+    # The raw <script> tag should NOT be present in the HTML response
+    assert "<script>alert(1)</script>" not in get_resp.text
+    # Instead, it should be escaped
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in get_resp.text
