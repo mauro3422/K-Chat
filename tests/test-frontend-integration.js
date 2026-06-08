@@ -31,6 +31,7 @@ eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/utils.js', 'ut
 eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/widget-system.js', 'utf8'));
 eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/markdown-renderer.js', 'utf8'));
 eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/stream-dispatcher.js', 'utf8'));
+eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/stream-renderer.js', 'utf8'));
 eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/chat-form.js', 'utf8'));
 
 var passed = 0, failed = 0;
