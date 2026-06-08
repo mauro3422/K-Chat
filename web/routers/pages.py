@@ -41,8 +41,7 @@ async def favicon():
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     models = get_available_model_ids()
-    resp = templates.TemplateResponse("chat.html", {
-        "request": request,
+    resp = templates.TemplateResponse(request, "chat.html", {
         "session_id": str(uuid.uuid4()),
         "model": get_default_model(),
         "models": models
@@ -54,8 +53,7 @@ async def home(request: Request):
 @router.get("/sessions/{session_id}", response_class=HTMLResponse)
 async def session_page(request: Request, session_id: str):
     models = get_available_model_ids()
-    resp = templates.TemplateResponse("chat.html", {
-        "request": request,
+    resp = templates.TemplateResponse(request, "chat.html", {
         "session_id": session_id,
         "model": get_default_model(),
         "models": models
@@ -79,7 +77,7 @@ async def sidebar(request: Request):
             "user_count": user_count,
             "name": name,
         })
-    return templates.TemplateResponse("sidebar.html", {"request": request, "sessions": sessions, "current": current})
+    return templates.TemplateResponse(request, "sidebar.html", {"sessions": sessions, "current": current})
 
 
 @router.get("/sessions/{session_id}/messages", response_class=HTMLResponse)
