@@ -391,7 +391,7 @@ function initWidgets(parentEl) {
           }
         </style>
         <script>
-          var _lastH = 0;
+          var _seq = 0;
           function sendHeight() {
             var h = Math.max(
               document.documentElement.scrollHeight,
@@ -399,15 +399,14 @@ function initWidgets(parentEl) {
               document.body.scrollHeight,
               document.body.offsetHeight
             );
-            if (Math.abs(h - _lastH) > 1) {
-              _lastH = h;
-              window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
-            }
+            _seq++;
+            window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h, seq: _seq }, '*');
           }
           function scheduleSend() {
             sendHeight();
             setTimeout(sendHeight, 100);
             setTimeout(sendHeight, 600);
+            setTimeout(sendHeight, 2000);
             requestAnimationFrame(function(){ requestAnimationFrame(sendHeight); });
           }
           window.addEventListener('load', scheduleSend);
@@ -425,11 +424,16 @@ function initWidgets(parentEl) {
   });
 }
 
+// Rastrea la última seq de resize para ignorar mensajes de iframes viejos
+var _resizeSeq = {};
 // Escuchar mensajes del iframe (cambio de tamaño y persistencia de estado)
 window.addEventListener('message', function(event) {
   if (!event.data) return;
   
   if (event.data.type === 'resize-iframe') {
+    var lastSeq = _resizeSeq[event.data.id] || 0;
+    if (event.data.seq && event.data.seq < lastSeq) return;
+    _resizeSeq[event.data.id] = event.data.seq || 0;
     var iframe = document.querySelector('[data-widget-id="' + event.data.id + '"] iframe');
     if (iframe) {
       iframe.style.height = (event.data.height + 4) + 'px';
