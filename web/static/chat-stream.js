@@ -406,13 +406,9 @@ function initWidgets(parentEl) {
       </html>
     `;
     
+    iframe.srcdoc = docContent;
     container.appendChild(iframe);
     container.dataset.initialized = '1';
-    
-    var doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(docContent);
-    doc.close();
   });
 }
 
