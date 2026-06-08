@@ -409,10 +409,8 @@ function initWidgets(parentEl) {
           function sendHeight() {
             var range = document.createRange();
             range.selectNode(document.body);
-            var rangeH = Math.round(range.getBoundingClientRect().height);
+            var h = Math.max(1, Math.round(range.getBoundingClientRect().height));
             range.detach();
-            var scrollH = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
-            var h = Math.max(1, Math.round(Math.max(rangeH, scrollH)));
             window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
           }
           sendHeight();
