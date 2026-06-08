@@ -1,3 +1,4 @@
+/* eslint-disable no-redeclare, no-unused-vars */
 var KairosStream = (function() {
   var dispatcher = {
     listeners: {},

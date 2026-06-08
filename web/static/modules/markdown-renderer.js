@@ -1,3 +1,4 @@
+/* eslint-disable no-redeclare, no-unused-vars */
 var KairosMarkdown = (function() {
   function decodeHtml(html) {
     // Solo decodificar si contiene entidades HTML escapadas

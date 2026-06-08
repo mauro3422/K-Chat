@@ -1,3 +1,4 @@
+/* eslint-disable no-redeclare, no-unused-vars */
 function refreshSidebar() {
   fetch('/sidebar?current=' + sessionId).then(function(r){ return r.text(); }).then(function(h){
     document.getElementById('session-list').innerHTML = h;

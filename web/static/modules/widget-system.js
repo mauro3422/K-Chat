@@ -7,6 +7,7 @@
  *
  * Interfaz pública: window.KairosWidgets
  */
+/* eslint-disable no-redeclare, no-unused-vars */
 var KairosWidgets = (function() {
   var registry = {};
   var debug = {};

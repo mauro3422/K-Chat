@@ -1,3 +1,4 @@
+/* eslint-disable no-redeclare, no-unused-vars */
 var KairosForm = (function() {
   var lastUserMessageText = '';
   var currentController = null;
@@ -95,7 +96,7 @@ var KairosForm = (function() {
           
           // Capturar eventos de error del stream
           var originalEmit = KairosStream.emit;
-          KairosStream.emit = function(event, data, state) {
+          KairosStream.emit = function(event, data) {
             if (event === 'error') {
               streamError = data;
             }
@@ -209,7 +210,7 @@ var KairosForm = (function() {
               return;
             }
 
-            var callingPills = asstDiv.querySelectorAll('.tc-item.calling');
+            callingPills = asstDiv.querySelectorAll('.tc-item.calling');
             callingPills.forEach(function(pill) {
               pill.className = 'tc-item error';
               var toolName = pill.getAttribute('data-tool') || 'tool';

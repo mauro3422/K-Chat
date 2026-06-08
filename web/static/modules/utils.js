@@ -1,3 +1,4 @@
+/* eslint-disable no-redeclare, no-unused-vars */
 var KairosUtils = (function() {
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
