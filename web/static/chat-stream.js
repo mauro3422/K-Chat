@@ -338,8 +338,8 @@ function initWidgets(parentEl) {
     var code = widgetRegistry[id];
     if (!code) return;
     
-    var stateStr = window.widgetStates && window.widgetStates[id] ? window.widgetStates[id] : '{}';
-    var safeStateStr = JSON.stringify(stateStr);
+    var stateStr = window.widgetStates && window.widgetStates[id] ? window.widgetStates[id] : null;
+    var safeStateStr = stateStr !== null ? JSON.stringify(stateStr) : 'null';
     
     var iframe = document.createElement('iframe');
     iframe.className = 'interactive-widget-iframe';
