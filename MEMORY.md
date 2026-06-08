@@ -1,4 +1,18 @@
 # MEMORY.md
 
 User: 
-System: mauro
+System: ebo
+
+## Memories
+- **bug:duplicacion-tools**: Bug detectado: la UI muestra y registra calls duplicados de tools. Al invocar get_tool_history dos veces, apareció un tercer entry fantasma (get_tool_history limit 20 a las 06:07:23) que no fue solicitado. Sospecha: duplicación en el registro de tools del sistema, un call queda "colgado/activo" y otro entrega el resultado correctamente. Requiere más testing para replicar con otras tools.
+- **checkpoint:test-memoria-2026-06-08**: Sesión de prueba de tools de memoria y save. Checkpoint confirmado: el usuario probó guardado de memoria, entendió el flujo y dejó instrucción explícita de usar los guardados como referencia para armar/actualizar MEMORY.md.
+- **checkpoint:ui-estado-visual-combinaciones**: Complemento del checkpoint visual. La UI mantiene estado de forma progresiva y acumulativa. Combinaciones posibles del flujo visual:
+- **checkpoint:ui-visual-estable-2026-06-08**: Checkpoint visual confirmado. La UI muestra correctamente el flujo: razonamiento → pill → razonamiento-pill → mensaje-razonamiento-pill-mensaje. No se detectan bugs visuales, el renderizado es estable y coherente. Sistema de estado visual OK.
+- **instruccion:memory-como-referencia**: Los guardados en memoria (save_memory) se usan como referencia directa para ir armando y actualizando MEMORY.md. Cada vez que se guarde algo clave (checkpoint, logro, hallazgo, instrucción), eso alimenta el archivo MEMORY.md. Es un enfoque de construcción progresiva del memory file a partir de los saves.
+- **observacion:persistencia-chat**: El usuario observó que a veces los fixes no se reflejan en el chat actual, obligando a iniciar uno nuevo. Sin embargo, en esta sesión parece estar funcionando correctamente. Preferencia: mantener un solo chat de prueba para evitar perder contexto y memoria acumulada.
+- **progreso:hito-fundacion-estable**: Hito alcanzado el 2026-06-08. El sistema ya tiene una base sólida y estable compuesta por: (1) UI visual funcional con flujo completo (razonamiento→pill→razonamiento-pill→mensaje), sin bugs de renderizado, (2) Sistema de memoria funcional con saves persistentes, (3) Capacidad de búsqueda web en paralelo sin errores. El usuario celebró explícitamente este logro. Esta fundación permite construir funcionalidades más complejas encima sin miedo a que se rompa lo básico.
+- **progreso:metodologia**: El usuario quiere que durante la conversación detecte implícitamente logros, metas cumplidas, o cuando está analizando algo, y guarde ese estado/progreso en memoria. Es como un roadmap interno. Usar las oraciones/metas/logros como referencia para saber qué guardar constantemente.
+- **renderizado:markdown**: ✅ Markdown funciona correctamente. Se probó con encabezados, énfasis, código con syntax highlight, listas anidadas, tablas, citas, checkboxes, tachado, emojis y HTML embebido. Todo renderiza bien.
+- **stress-test:protocol**: During testing, whenever something relevant happens — an achievement, an error, a finding — save it immediately to MEMORY.md using save_memory. Don't wait for anything to finish.
+- **ultima-iteracion**: 2026-06-08 13:05 | Stress test exitoso: 6 búsquedas web en paralelo (2 batches de 3). Todas respondieron sin errores ni timeouts. Temas: IA 2026, Bitcoin, iPhone 17, Messi, cambio climático, películas taquilleras. Sistema estable con carga paralela.
+- **user:identidad**: Usuario planificador, con tendencia a la ansiedad y a pensar en arquitectura a futuro. Le gusta diseñar sistemas con anticipación. Prefiere claridad y organización. Responde bien al humor y a la tranquilidad.

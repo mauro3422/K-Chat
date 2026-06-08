@@ -37,7 +37,7 @@ def test_no_tools(mock_chat):
     from src.core import chat_stream
 
     history = [{"role": "system", "content": "test"}]
-    tokens = list(chat_stream("Hola!", history, model="test-model", tagged=True))
+    tokens = list(chat_stream("Hola!", history, model="test-model", tagged=True, streaming=False))
     contents = [t for t in tokens if t[0] == "content"]
     full = "".join(t[1] for t in contents)
     assert "¡Hola!" in full
@@ -66,7 +66,7 @@ def test_tool_call_then_response(mock_chat):
     history = [{"role": "system", "content": "test"}]
     debug = {}
     with patch("src.core.TOOL_MAP", {"web_search": lambda **kw: "ok result"}):
-        tokens = list(chat_stream("Busca algo", history, model="test-model", tagged=True, debug=debug))
+        tokens = list(chat_stream("Busca algo", history, model="test-model", tagged=True, debug=debug, streaming=False))
 
     types_seen = [t[0] for t in tokens]
     assert "reasoning" in types_seen
@@ -109,7 +109,7 @@ def test_tool_error(mock_chat):
     history = [{"role": "system", "content": "test"}]
     # We need to mock the TOOL_MAP to raise
     with patch("src.core.TOOL_MAP", {"web_search": failing_run}):
-        tokens = list(chat_stream("test", history, model="test-model", tagged=True))
+        tokens = list(chat_stream("test", history, model="test-model", tagged=True, streaming=False))
 
     tcs = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     assert any(t["status"] == "error" for t in tcs)
@@ -135,7 +135,7 @@ def test_session_id_propagates_to_tools(mock_chat):
 
     history = [{"role": "system", "content": "test"}]
     with patch("src.core.TOOL_MAP", {"web_search": tracking_tool}):
-        list(chat_stream("test", history, model="test-model", session_id="ses-123", tagged=True))
+        list(chat_stream("test", history, model="test-model", session_id="ses-123", tagged=True, streaming=False))
 
     assert captured.get("session_id") == "ses-123"
 
@@ -165,7 +165,7 @@ def test_multiple_tool_calls_same_turn(mock_chat):
 
     history = [{"role": "system", "content": "test"}]
     with patch("src.core.TOOL_MAP", {"web_search": tracking_tool}):
-        tokens = list(chat_stream("test", history, model="test-model", session_id="ses-1", tagged=True))
+        tokens = list(chat_stream("test", history, model="test-model", session_id="ses-1", tagged=True, streaming=False))
 
     tcs = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     calling = [t for t in tcs if t["status"] == "calling"]
@@ -201,7 +201,7 @@ def test_mixed_tool_results(mock_chat):
 
     history = [{"role": "system", "content": "test"}]
     with patch("src.core.TOOL_MAP", {"web_search": flip_flop}):
-        tokens = list(chat_stream("test", history, model="test-model", session_id="ses-2", tagged=True))
+        tokens = list(chat_stream("test", history, model="test-model", session_id="ses-2", tagged=True, streaming=False))
 
     tcs = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     errors = [t for t in tcs if t["status"] == "error"]
@@ -227,7 +227,7 @@ def test_tool_result_truncation(mock_chat):
 
     history = [{"role": "system", "content": "test"}]
     with patch("src.core.TOOL_MAP", {"web_search": lambda **kw: long_result}):
-        tokens = list(chat_stream("test", history, model="test-model", session_id="ses-3", tagged=True))
+        tokens = list(chat_stream("test", history, model="test-model", session_id="ses-3", tagged=True, streaming=False))
 
     # Check history has truncated tool result
     tool_msgs = [m for m in history if m["role"] == "tool"]
@@ -242,7 +242,7 @@ def test_empty_message(mock_chat):
 
     mock_chat.return_value = make_choice(content="OK")
     history = [{"role": "system", "content": "test"}]
-    tokens = list(chat_stream("", history, model="test-model", tagged=True))
+    tokens = list(chat_stream("", history, model="test-model", tagged=True, streaming=False))
     contents = [t[1] for t in tokens if t[0] == "content"]
     assert any("OK" in c for c in contents)
 

@@ -21,19 +21,25 @@ Sin frameworks JS, sin npm, sin gateways complejos. Cada pieza es un archivo ind
 │   ├── core.py             → Orquestador: contexto, tool loop, history compressor
 │   ├── llm.py              → API OpenCode Zen (chat + streaming + detección modelos)
 │   ├── memory.py           → SQLite con sesiones, mensajes, tools, debug_info
+│   ├── compressor.py       → Compresión del historial de chat por IA
+│   ├── context.py          → Carga y ensamblado de directivas de sistema
+│   ├── tool_runner.py      → Ejecución paralela de herramientas
+│   ├── background_tasks.py → Tareas en segundo plano de FastAPI (ej. renombrar sesiones)
 │   └── tools/
 │       ├── __init__.py     → Auto-loader de tools (importlib)
 │       ├── web_search.py   → Búsqueda web DuckDuckGo
-│       └── get_tool_history.py → El modelo consulta su historial de tools
+│       ├── get_tool_history.py → El modelo consulta su historial de tools
+│       └── save_memory.py  → Guardar datos importantes en memoria persistente
 ├── web/
 │   ├── server.py           → FastAPI (streaming NDJSON, sidebar, debug)
+│   ├── ui_utils.py         → Utilidades de interfaz (formateador de tablas SQL, etc.)
 │   ├── templates/chat.html → Jinja2 template
 │   └── static/
 │       ├── style.css       → Tema oscuro, layout responsive, debug panel
 │       ├── session.js      → Sidebar interactiva (rename, delete, navegación)
 │       ├── debug.js        → Panel de depuración en vivo
 │       └── chat-stream.js  → Streaming NDJSON, razonamiento por fases, tool pills
-├── tests/                  → 23 tests (memory CRUD, tool loop, streaming, SESSION_ID)
+├── tests/                  → 63 tests (CRUD, streaming, paralelismo, fallback, integración)
 └── memory/                 → Base de datos SQLite
 ```
 

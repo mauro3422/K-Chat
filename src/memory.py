@@ -6,11 +6,13 @@ from config import MEMORY_DB_PATH
 
 
 def get_conn():
-    os.makedirs(os.path.dirname(MEMORY_DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(MEMORY_DB_PATH)
+    db_path = os.getenv('MEMORY_DB_PATH', MEMORY_DB_PATH)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
+
 
 
 def init_db():
@@ -69,6 +71,9 @@ def init_db():
                 updated_at TEXT NOT NULL
             )
         ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages (session_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls (session_id)")
+
         conn.commit()
     finally:
         conn.close()
@@ -198,6 +203,22 @@ def rename_session(session_id: str, name: str):
         cursor = conn.cursor()
         cursor.execute("UPDATE sessions SET name = ? WHERE session_id = ?", (name, session_id))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def check_should_rename(session_id: str) -> bool:
+    """Retorna True si el nombre de la sesión está vacío y tiene exactamente 1 mensaje de usuario."""
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sessions WHERE session_id = ?", (session_id,))
+        row = cursor.fetchone()
+        if row and (row[0] == '' or row[0] is None):
+            cursor.execute("SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user'", (session_id,))
+            count = cursor.fetchone()[0]
+            return count == 1
+        return False
     finally:
         conn.close()
 

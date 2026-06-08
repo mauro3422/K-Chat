@@ -1,23 +1,43 @@
-import os, sys, uuid, json
+import os, sys, uuid, json, html
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response
+from fastapi import FastAPI, Request, Form, BackgroundTasks, HTTPException
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 
 from src.core import chat_stream, build_system_prompt, get_default_model
+from src.background_tasks import auto_rename_session
+from web.ui_utils import _match_tools_to_msgs, _render_msg_with_phases
 from src.memory import init_db, get_sessions, get_session_messages, get_tool_history
-from src.memory import ensure_session, rename_session, delete_session, save_debug_info, get_debug_info
+from src.memory import ensure_session, rename_session, delete_session, save_debug_info, get_debug_info, check_should_rename
 from src.memory import save_message as db_save_message
 
 app = FastAPI()
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 templates.env.cache = None  # no cache
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+
+@app.exception_handler(404)
+async def not_found(request: Request, exc):
+    return HTMLResponse("<h1>404 - No encontrado</h1><a href='/'>Volver</a>", status_code=404)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc):
+    return JSONResponse({"error": "Datos inválidos", "detail": str(exc)}, status_code=422)
+
+
+@app.exception_handler(Exception)
+async def server_error(request: Request, exc):
+    logger = logging.getLogger(__name__)
+    logger.error("Error interno en %s: %s", request.url.path, exc)
+    return HTMLResponse("<h1>500 - Error interno</h1><p>Ocurrió un error inesperado.</p>", status_code=500)
 
 _NOCACHE_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
@@ -42,16 +62,47 @@ def rebuild_history(session_id: str, model: str) -> list:
     return history
 
 
+@app.get("/favicon.ico")
+async def favicon():
+    return FileResponse(Path(__file__).parent / "static" / "logo.png")
+
+
+def get_available_model_ids() -> list:
+    from src.llm import get_verified_models, PRIORITY
+    try:
+        free_ids = get_verified_models()
+    except Exception:
+        free_ids = ["deepseek-v4-flash-free"]
+    
+    models = list(PRIORITY)
+    for fid in free_ids:
+        if fid not in models:
+            models.append(fid)
+    return models
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    resp = templates.TemplateResponse("chat.html", {"request": request, "session_id": str(uuid.uuid4()), "model": get_default_model()})
+    models = get_available_model_ids()
+    resp = templates.TemplateResponse("chat.html", {
+        "request": request,
+        "session_id": str(uuid.uuid4()),
+        "model": get_default_model(),
+        "models": models
+    })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp
 
 
 @app.get("/sessions/{session_id}", response_class=HTMLResponse)
 async def session_page(request: Request, session_id: str):
-    resp = templates.TemplateResponse("chat.html", {"request": request, "session_id": session_id, "model": get_default_model()})
+    models = get_available_model_ids()
+    resp = templates.TemplateResponse("chat.html", {
+        "request": request,
+        "session_id": session_id,
+        "model": get_default_model(),
+        "models": models
+    })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp
 
@@ -72,79 +123,6 @@ async def sidebar(request: Request):
             "name": name,
         })
     return templates.TemplateResponse("sidebar.html", {"request": request, "sessions": sessions, "current": current})
-
-
-def _match_tools_to_msgs(msgs, all_tools):
-    """Asocia tool_calls a mensajes assistant por orden cronológico (single-pass)."""
-    msg_tools = {}
-    sorted_tools = sorted(all_tools, key=lambda t: t[3])
-    assistant_indices = [i for i, (r, *_) in enumerate(msgs) if r == "assistant"]
-    tool_ptr = 0
-    for msg_idx in assistant_indices:
-        _, _, _, ts, _, _ = msgs[msg_idx]
-        matched = []
-        while tool_ptr < len(sorted_tools):
-            t = sorted_tools[tool_ptr]
-            if t[3] <= ts:
-                matched.append(t)
-                tool_ptr += 1
-            else:
-                break
-        msg_tools[ts] = matched
-    return msg_tools
-
-
-import html as _html
-
-def _render_msg_with_phases(role, content, reasoning, matched_tools, ts=None, phases=None):
-    parts = []
-    label = "Tu" if role == "user" else "Kairos"
-    parts.append(f'<div class="msg {role}">')
-    parts.append(f'<div class="msg-label">{label}</div>')
-
-    if role == "assistant" and phases:
-        tools_by_turn = {}
-        for t in matched_tools:
-            name, inp, status, t_ts, turn = t
-            tools_by_turn.setdefault(turn, []).append((name, status))
-        for idx, phase in enumerate(phases):
-            r_text = phase.get("reasoning", "")
-            if r_text:
-                parts.append(
-                    '<details class="reasoning" open>'
-                    '<summary>Razonamiento</summary>'
-                    f'<div class="rt">{_html.escape(r_text)}</div>'
-                    '</details>'
-                )
-            turn_tools = tools_by_turn.pop(idx + 1, [])
-            if turn_tools:
-                parts.append('<div class="tool-calls">')
-                for name, status in turn_tools:
-                    icon = "&#10003;" if status == "ok" else "&#10007;"
-                    cls = "tc-item " + status
-                    parts.append(f'<span class="{cls}">{icon} {_html.escape(name)}</span>')
-                parts.append('</div>')
-    else:
-        if reasoning:
-            parts.append(
-                '<details class="reasoning" open>'
-                '<summary>Razonamiento</summary>'
-                f'<div class="rt">{_html.escape(reasoning)}</div>'
-                '</details>'
-            )
-        if role == "assistant" and matched_tools:
-            parts.append('<div class="tool-calls">')
-            for name, inp, status, t_ts, turn in matched_tools:
-                icon = "&#10003;" if status == "ok" else "&#10007;"
-                cls = "tc-item " + status
-                parts.append(f'<span class="{cls}">{icon} {_html.escape(name)}</span>')
-            parts.append('</div>')
-
-    body_cls = 'msg-body md-content' if role == 'assistant' else 'msg-body'
-    parts.append(f'<div class="{body_cls}">{_html.escape(content)}</div>')
-    parts.append(f'<div class="msg-ts">{str(ts)[:16]}</div>')
-    parts.append('</div>')
-    return "\n".join(parts)
 
 
 @app.get("/sessions/{session_id}/messages", response_class=HTMLResponse)
@@ -183,14 +161,21 @@ async def session_messages(session_id: str):
 
 
 @app.post("/chat/{session_id}")
-async def chat(session_id: str, message: str = Form(...), model: str = ""):
+async def chat(session_id: str, background_tasks: BackgroundTasks, message: str = Form(...), model: str = ""):
+    if not session_id or not session_id.strip():
+        raise HTTPException(400, "session_id inválido")
     if not message.strip():
         return ""
     if not model:
         model = get_default_model()
 
     ensure_session(session_id)
-    history = rebuild_history(session_id, model)
+    try:
+        history = rebuild_history(session_id, model)
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error("Error reconstruyendo historial para %s: %s", session_id, e)
+        raise HTTPException(500, "Error al cargar historial")
 
     def generate():
         full_reasoning = ""
@@ -209,6 +194,7 @@ async def chat(session_id: str, message: str = Form(...), model: str = ""):
         if not debug_info.get("phases"):
             debug_info["phases"] = phases_json
         save_debug_info(session_id, debug_info)
+        background_tasks.add_task(auto_rename_session, session_id, message, model)
 
     return StreamingResponse(generate(), media_type="application/x-ndjson")
 
