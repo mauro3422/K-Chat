@@ -392,17 +392,28 @@ function initWidgets(parentEl) {
           }
         </style>
         <script>
-          var _lastH = 150;
+          var _lastH = 0;
           function sendHeight() {
-            var h = document.documentElement.scrollHeight;
+            var h = Math.max(
+              document.documentElement.scrollHeight,
+              document.documentElement.offsetHeight,
+              document.body.scrollHeight,
+              document.body.offsetHeight
+            );
             if (Math.abs(h - _lastH) > 1) {
               _lastH = h;
               window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
             }
           }
-          window.addEventListener('load', function() { sendHeight(); setTimeout(sendHeight, 80); });
+          function scheduleSend() {
+            sendHeight();
+            setTimeout(sendHeight, 100);
+            setTimeout(sendHeight, 600);
+            requestAnimationFrame(function(){ requestAnimationFrame(sendHeight); });
+          }
+          window.addEventListener('load', scheduleSend);
           if (window.ResizeObserver) {
-            new ResizeObserver(sendHeight).observe(document.body);
+            new ResizeObserver(sendHeight).observe(document.documentElement);
           }
         </script>
       </body>
