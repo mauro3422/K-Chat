@@ -400,8 +400,10 @@ function initWidgets(parentEl) {
           html, body {
             height: auto !important;
             min-height: auto !important;
-            overflow: hidden !important;
+            overflow: visible !important;
+            scrollbar-width: none;
           }
+          html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
         </style>
         <script>
           function sendHeight() {
