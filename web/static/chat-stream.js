@@ -303,6 +303,12 @@ document.addEventListener('submit', function(e) {
 });
 
 var widgetRegistry = {};
+var widgetDebug = {};
+function logWidget(id, label, detail) {
+  widgetDebug[id] = widgetDebug[id] || { events: [] };
+  widgetDebug[id].events.push({ t: Date.now(), label: label, detail: String(detail || '').substring(0, 200) });
+  try { logUI('[W] ' + id, label + ' ' + String(detail || '').substring(0, 120)); } catch(e) {}
+}
 
 function parseMarkdown(text) {
   if (typeof marked === 'undefined') return text;
@@ -337,6 +343,8 @@ function initWidgets(parentEl) {
     var id = container.getAttribute('data-widget-id');
     var code = widgetRegistry[id];
     if (!code) return;
+    
+    logWidget(id, 'init', 'code=' + code.length + 'b padre=' + (parentEl.className || parentEl.id || '?'));
     
     var stateStr = window.widgetStates && window.widgetStates[id] ? window.widgetStates[id] : null;
     var safeStateStr = stateStr !== null ? JSON.stringify(stateStr) : 'null';
@@ -421,6 +429,8 @@ function initWidgets(parentEl) {
     iframe.srcdoc = docContent;
     container.appendChild(iframe);
     container.dataset.initialized = '1';
+    var parentScroll = container.parentElement ? (container.parentElement.scrollHeight > container.parentElement.clientHeight ? 'SCROLL' : 'no-scroll') : '?';
+    logWidget(id, 'montado', 'padre-scroll=' + parentScroll + ' contenedor-h=' + container.offsetHeight + 'px');
   });
 }
 
@@ -432,6 +442,7 @@ window.addEventListener('message', function(event) {
     var iframe = document.querySelector('[data-widget-id="' + event.data.id + '"] iframe');
     if (iframe) {
       iframe.style.height = (event.data.height + 4) + 'px';
+      logWidget(event.data.id, 'altura', event.data.height + 'px -> ' + (event.data.height + 4) + 'px');
     }
   } else if (event.data.type === 'save-widget-state') {
     window.widgetStates = window.widgetStates || {};
@@ -443,6 +454,7 @@ window.addEventListener('message', function(event) {
     });
   } else if (event.data.type === 'widget-error') {
     console.error('[Widget ' + event.data.id + '] ' + event.data.message + ' (linea ' + event.data.line + ')');
+    logWidget(event.data.id, 'ERROR', event.data.message + ' L:' + event.data.line);
   }
 });
 

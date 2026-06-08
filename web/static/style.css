@@ -81,6 +81,9 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; c
 .sl-item.sl-reasoning { color: #8b949e; }
 .sl-item.sl-content { color: #e6edf3; }
 .sl-item.sl-tool-call { background: #1f6feb11; color: #58a6ff; }
+.sl-item.sl-error { background: #da363311; color: #ff6b6b; }
+.wi-block { margin: 6px 0; padding: 6px; background: #0d1117; border-radius: 4px; font-size: 10px; }
+.wi-block strong { color: #58a6ff; margin-right: 8px; }
 .sl-idx { color: #484f58; text-align: right; }
 .sl-ts { color: #484f58; }
 .sl-tag { font-weight: 600; padding: 0 3px; border-radius: 2px; background: #21262d; text-align: center; text-transform: uppercase; font-size: 9px; }
