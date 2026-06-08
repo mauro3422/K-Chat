@@ -388,7 +388,6 @@ function initWidgets(parentEl) {
           html, body {
             height: auto !important;
             min-height: auto !important;
-            background: transparent !important;
           }
         </style>
         <script>
