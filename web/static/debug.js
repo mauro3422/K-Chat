@@ -66,6 +66,27 @@ function copyText(el) {
   }).catch(function(){ el.textContent = 'error'; });
 }
 
+function copyWidgetLog(el) {
+  if (typeof widgetDebug === 'undefined') { el.textContent = '[]'; return; }
+  var lines = [];
+  for (var wid in widgetDebug) {
+    var w = widgetDebug[wid];
+    lines.push('--- ' + wid + ' ---');
+    var container = document.querySelector('[data-widget-id="' + wid + '"]');
+    var iframe = container ? container.querySelector('iframe') : null;
+    var curH = iframe ? iframe.offsetHeight + 'px' : '-';
+    lines.push('iframe=' + curH);
+    (w.events || []).forEach(function(e) {
+      var ts = new Date(e.t).toISOString().slice(11,23);
+      lines.push(ts + ' ' + e.label + ' ' + e.detail);
+    });
+  }
+  navigator.clipboard.writeText(lines.join('\n')).then(function() {
+    el.textContent = 'copiado';
+    setTimeout(function(){ el.textContent = 'copy'; }, 1500);
+  }).catch(function(){ el.textContent = 'error'; });
+}
+
 function refreshDebug() {
   var dc = document.getElementById('debug-content');
   if (!dc) return;
@@ -79,7 +100,7 @@ function refreshDebug() {
     h += '<details class="db-section"><summary>History (' + ((d.history_before||[]).length) + ')</summary><span class="db-copy" onclick="copyText(this)">copy</span><pre class="db-pre">' + escHtml(JSON.stringify(d.history_before || [], null, 2)) + '</pre></details>';
     h += '<details class="db-section" open><summary>Stream</summary><span class="db-copy" onclick="copyStreamLog(this)">copy</span><div id="stream-log" class="sl-container"></div></details>';
     h += '<details class="db-section"><summary>UI</summary><span class="db-copy" onclick="copyUILog(this)">copy</span><div id="ui-log" class="sl-container"></div></details>';
-    h += '<details class="db-section" open><summary>Widgets</summary><div id="widget-log" class="sl-container"></div></details>';
+    h += '<details class="db-section" open><summary>Widgets</summary><span class="db-copy" onclick="copyWidgetLog(this)">copy</span><div id="widget-log" class="sl-container"></div></details>';
     dc.innerHTML = h;
     renderStreamLog();
     renderUILog();
