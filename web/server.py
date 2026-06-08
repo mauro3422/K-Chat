@@ -16,6 +16,7 @@ from web.ui_utils import _match_tools_to_msgs, _render_msg_with_phases
 from src.memory import init_db, get_sessions, get_session_messages, get_tool_history
 from src.memory import ensure_session, rename_session, delete_session, save_debug_info, get_debug_info, check_should_rename
 from src.memory import save_message as db_save_message
+from src.memory import save_widget_state, get_widget_states
 
 app = FastAPI()
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -130,7 +131,10 @@ async def session_messages(session_id: str):
     msgs = get_session_messages(session_id)
     all_tools = get_tool_history(session_id, 100)
     msg_tool_map = _match_tools_to_msgs(msgs, all_tools)
+    widget_states = get_widget_states(session_id)
+    widget_states_json = json.dumps(widget_states, ensure_ascii=False)
     parts = [
+        f'<script>window.widgetStates = {widget_states_json};</script>',
         '<div class="main-header">',
         '<span class="debug-toggle" onclick="toggleDebug()">&#128202; Debug</span>',
         '</div>',
@@ -190,7 +194,14 @@ async def chat(session_id: str, background_tasks: BackgroundTasks, message: str 
             yield json.dumps({"t": tipo, "d": token}) + "\n"
         phases_json = json.dumps(phases_output, ensure_ascii=False)
         db_save_message(session_id, "user", message, model)
-        db_save_message(session_id, "assistant", full_content, model, reasoning=full_reasoning, phases=phases_json)
+        pt = debug_info.get("prompt_tokens", 0)
+        ct = debug_info.get("completion_tokens", 0)
+        tt = debug_info.get("total_tokens", 0)
+        db_save_message(
+            session_id, "assistant", full_content, model,
+            reasoning=full_reasoning, phases=phases_json,
+            prompt_tokens=pt, completion_tokens=ct, total_tokens=tt
+        )
         if not debug_info.get("phases"):
             debug_info["phases"] = phases_json
         save_debug_info(session_id, debug_info)
@@ -215,6 +226,13 @@ async def delete(session_id: str):
 async def debug_info(session_id: str):
     d = get_debug_info(session_id)
     return JSONResponse(d)
+
+
+@app.post("/sessions/{session_id}/widgets/{widget_id}/state")
+async def set_widget_state(session_id: str, widget_id: str, payload: dict):
+    state = payload.get("state", "{}")
+    save_widget_state(session_id, widget_id, state)
+    return {"status": "ok"}
 
 
 @app.get("/new-session")

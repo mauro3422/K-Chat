@@ -71,6 +71,27 @@ def init_db():
                 updated_at TEXT NOT NULL
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS widget_states (
+                session_id TEXT NOT NULL,
+                widget_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (session_id, widget_id)
+            )
+        ''')
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN prompt_tokens INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN completion_tokens INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE messages ADD COLUMN total_tokens INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages (session_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls (session_id)")
 
@@ -79,14 +100,41 @@ def init_db():
         conn.close()
 
 
-def save_message(session_id, role, content, model=None, reasoning="", phases="[]"):
+def save_widget_state(session_id: str, widget_id: str, state: str) -> None:
     conn = get_conn()
     try:
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO messages (session_id, role, content, model, reasoning, phases, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (session_id, role, content, model, reasoning, phases, datetime.now().isoformat()))
+            INSERT INTO widget_states (session_id, widget_id, state, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(session_id, widget_id) DO UPDATE SET
+                state = excluded.state,
+                updated_at = excluded.updated_at
+        ''', (session_id, widget_id, state, datetime.now().isoformat()))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_widget_states(session_id: str) -> dict:
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('SELECT widget_id, state FROM widget_states WHERE session_id = ?', (session_id,))
+        rows = cursor.fetchall()
+        return {row[0]: row[1] for row in rows}
+    finally:
+        conn.close()
+
+
+def save_message(session_id, role, content, model=None, reasoning="", phases="[]", prompt_tokens=0, completion_tokens=0, total_tokens=0):
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO messages (session_id, role, content, model, reasoning, phases, prompt_tokens, completion_tokens, total_tokens, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (session_id, role, content, model, reasoning, phases, prompt_tokens, completion_tokens, total_tokens, datetime.now().isoformat()))
         conn.commit()
     finally:
         conn.close()

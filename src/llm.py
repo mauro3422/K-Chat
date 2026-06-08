@@ -145,6 +145,7 @@ def get_default_model():
 
 
 def chat(messages: list, model: str = None, **kwargs):
+    debug = kwargs.pop("debug", None)
     if model is None:
         model = get_default_model()
     if model in _failed_models:
@@ -156,6 +157,10 @@ def chat(messages: list, model: str = None, **kwargs):
             messages=messages,
             **kwargs
         )
+        if response and isinstance(debug, dict) and getattr(response, "usage", None):
+            debug["prompt_tokens"] = response.usage.prompt_tokens
+            debug["completion_tokens"] = response.usage.completion_tokens
+            debug["total_tokens"] = response.usage.total_tokens
         return response.choices[0]
     except Exception as e:
         logger.warning("Error con modelo %s: %s. Reintentando con switch de modelo...", model, e)
@@ -167,6 +172,10 @@ def chat(messages: list, model: str = None, **kwargs):
             messages=messages,
             **kwargs
         )
+        if response and isinstance(debug, dict) and getattr(response, "usage", None):
+            debug["prompt_tokens"] = response.usage.prompt_tokens
+            debug["completion_tokens"] = response.usage.completion_tokens
+            debug["total_tokens"] = response.usage.total_tokens
         return response.choices[0]
 
 
@@ -174,14 +183,18 @@ def chat_stream(messages: list, model: str = None, reasoning_output: list = None
     """Igual que chat() pero devuelve tokens de a uno (generator).
        Si reasoning_output se pasa (lista mutable), se llena con tokens de razonamiento.
        Si tool_calls_output se pasa (lista mutable), se llena con objetos SimpleNamespace
-         con .id, .function.name, .function.arguments extraídos del stream (sin sync fallback).
+       con .id, .function.name, .function.arguments extraídos del stream (sin sync fallback).
        Si tagged=True, yield (tipo, token): ("reasoning", text) o ("content", text).
        kwargs se pasan a create(), ej: tools=TOOLS."""
+    debug = kwargs.pop("debug", None)
     if model is None:
         model = get_default_model()
     if model in _failed_models:
         model = _switch_model(model)
         _update_system_prompt(messages, model)
+
+    if "stream_options" not in kwargs:
+        kwargs["stream_options"] = {"include_usage": True}
 
     try:
         stream = _api_call(
@@ -205,6 +218,16 @@ def chat_stream(messages: list, model: str = None, reasoning_output: list = None
     _tool_map = {}
 
     for chunk in stream:
+        # Extraer tokens si vienen en el chunk
+        usage = getattr(chunk, 'usage', None)
+        if usage and isinstance(debug, dict):
+            debug["prompt_tokens"] = usage.prompt_tokens
+            debug["completion_tokens"] = usage.completion_tokens
+            debug["total_tokens"] = usage.total_tokens
+
+        if not getattr(chunk, 'choices', None):
+            continue
+
         delta = chunk.choices[0].delta
         r = getattr(delta, 'reasoning_content', None) or getattr(delta, 'reasoning', None) if delta else None
         if r:

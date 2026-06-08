@@ -3,7 +3,7 @@ import json
 from src.llm import chat as llm_chat, chat_stream as llm_stream, get_default_model
 from src.tools import TOOLS, TOOL_MAP
 from src.context import build_system_prompt, USER_LANG
-from src.compressor import compress_history, MAX_HISTORY
+from src.compressor import compress_history, should_compress
 from src.memory import check_should_rename
 from src.tool_runner import run_parallel_tools
 
@@ -79,7 +79,7 @@ def chat_stream(
         debug["history_before"] = [_msg_snapshot(m) for m in history]
         debug["phases"] = json.dumps(phases_output) if phases_output else "[]"
 
-    if len(history) > MAX_HISTORY:
+    if should_compress(history):
         try:
             compress_history(history, model)
         except Exception as e:
@@ -110,7 +110,7 @@ def _run_tool_loop(
         while turn < MAX_TOOL_TURNS:
             reasoning_out = []
             tool_calls_out = []
-            stream_iter = llm_stream(history, model, reasoning_output=reasoning_out, tagged=True, tools=TOOLS, tool_calls_output=tool_calls_out)
+            stream_iter = llm_stream(history, model, reasoning_output=reasoning_out, tagged=True, tools=TOOLS, tool_calls_output=tool_calls_out, debug=debug)
 
             accumulated = []
 
@@ -179,7 +179,7 @@ def _run_tool_loop(
                 break
     else:
         # --- Path síncrono (tests) ---
-        result = llm_chat(history, model, tools=TOOLS)
+        result = llm_chat(history, model, tools=TOOLS, debug=debug)
         while result.finish_reason == "tool_calls":
             turn += 1
             rc = getattr(result.message, 'reasoning_content', None)

@@ -1,4 +1,5 @@
 var lastUserMessageText = '';
+window.widgetStates = window.widgetStates || {};
 
 window.retryLastMessage = function() {
   var lastAsstMsg = document.querySelector('.msg.assistant:last-child');
@@ -337,6 +338,9 @@ function initWidgets(parentEl) {
     var code = widgetRegistry[id];
     if (!code) return;
     
+    var stateStr = window.widgetStates && window.widgetStates[id] ? window.widgetStates[id] : '{}';
+    var safeStateStr = JSON.stringify(stateStr);
+    
     var iframe = document.createElement('iframe');
     iframe.className = 'interactive-widget-iframe';
     iframe.sandbox = 'allow-scripts';
@@ -368,6 +372,16 @@ function initWidgets(parentEl) {
         </style>
       </head>
       <body>
+        <script>
+          window.initialState = JSON.parse(${safeStateStr});
+          window.saveState = function(stateObj) {
+            window.parent.postMessage({
+              type: 'save-widget-state',
+              id: '${id}',
+              state: typeof stateObj === 'string' ? stateObj : JSON.stringify(stateObj)
+            }, '*');
+          };
+        </script>
         \${code}
         <script>
           function sendHeight() {
@@ -394,13 +408,23 @@ function initWidgets(parentEl) {
   });
 }
 
-// Escuchar mensaje del iframe para cambiar de tamaño
+// Escuchar mensajes del iframe (cambio de tamaño y persistencia de estado)
 window.addEventListener('message', function(event) {
-  if (event.data && event.data.type === 'resize-iframe') {
+  if (!event.data) return;
+  
+  if (event.data.type === 'resize-iframe') {
     var iframe = document.querySelector('[data-widget-id="' + event.data.id + '"] iframe');
     if (iframe) {
       iframe.style.height = (event.data.height + 4) + 'px';
     }
+  } else if (event.data.type === 'save-widget-state') {
+    window.widgetStates = window.widgetStates || {};
+    window.widgetStates[event.data.id] = event.data.state;
+    fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(event.data.id) + '/state', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ state: event.data.state })
+    });
   }
 });
 

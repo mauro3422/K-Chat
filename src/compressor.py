@@ -5,6 +5,29 @@ logger = logging.getLogger(__name__)
 
 MAX_HISTORY = 40
 KEEP_RECENT = 15
+MAX_ESTIMATED_TOKENS = 6000
+
+
+def estimate_tokens(text: str) -> int:
+    """Estimación conservadora del número de tokens (1 token aprox. 4 caracteres)."""
+    if not text:
+        return 0
+    return len(text) // 4
+
+
+def should_compress(history: list) -> bool:
+    """Decide si se debe comprimir el historial según la longitud de mensajes o el volumen de tokens."""
+    if len(history) > MAX_HISTORY:
+        return True
+    
+    # Calcular los tokens aproximados en todo el historial
+    total_tokens = 0
+    for msg in history:
+        content = msg.get("content") or ""
+        reasoning = msg.get("reasoning") or ""
+        total_tokens += estimate_tokens(content) + estimate_tokens(reasoning)
+        
+    return total_tokens > MAX_ESTIMATED_TOKENS
 
 
 def compress_history(history: list, model: str) -> None:
