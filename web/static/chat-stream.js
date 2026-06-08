@@ -352,6 +352,7 @@ function initWidgets(parentEl) {
     var iframe = document.createElement('iframe');
     iframe.className = 'interactive-widget-iframe';
     iframe.sandbox = 'allow-scripts';
+    iframe.scrolling = 'no';
     iframe.style.width = '100%';
     iframe.style.height = '150px';
     iframe.style.border = 'none';
@@ -396,11 +397,10 @@ function initWidgets(parentEl) {
         </script>
         ${code}
         <style>
-          /* Evitar bucles de redimensionamiento si el modelo define height: 100vh o min-height */
           html, body {
             height: auto !important;
             min-height: auto !important;
-            overflow: visible !important;
+            overflow: hidden !important;
           }
         </style>
         <script>
