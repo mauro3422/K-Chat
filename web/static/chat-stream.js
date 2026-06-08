@@ -382,7 +382,7 @@ function initWidgets(parentEl) {
             }, '*');
           };
         </script>
-        \${code}
+        ${code}
         <style>
           /* Evitar bucles de redimensionamiento si el modelo define height: 100vh o min-height */
           html, body {
@@ -394,7 +394,7 @@ function initWidgets(parentEl) {
         <script>
           function sendHeight() {
             var height = document.documentElement.scrollHeight;
-            window.parent.postMessage({ type: 'resize-iframe', id: '\${id}', height: height }, '*');
+            window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: height }, '*');
           }
           window.addEventListener('load', sendHeight);
           if (window.ResizeObserver) {
