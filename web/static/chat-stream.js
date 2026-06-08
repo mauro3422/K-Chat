@@ -401,15 +401,14 @@ function initWidgets(parentEl) {
             range.detach();
             window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
           }
-          function scheduleSend() {
-            sendHeight();
-            setTimeout(sendHeight, 100);
-            setTimeout(sendHeight, 600);
-            setTimeout(sendHeight, 2000);
-            requestAnimationFrame(function(){ requestAnimationFrame(sendHeight); });
-          }
           sendHeight();
-          window.addEventListener('load', scheduleSend);
+          setTimeout(sendHeight, 100);
+          setTimeout(sendHeight, 600);
+          setTimeout(sendHeight, 2000);
+          window.addEventListener('load', function() {
+            sendHeight();
+            requestAnimationFrame(function(){ requestAnimationFrame(sendHeight); });
+          });
           if (window.ResizeObserver) {
             new ResizeObserver(sendHeight).observe(document.body);
           }
