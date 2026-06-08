@@ -337,8 +337,6 @@ function initWidgets(parentEl) {
     var id = container.getAttribute('data-widget-id');
     var code = widgetRegistry[id];
     if (!code) return;
-    // Escapar ${...} y backticks dentro del codigo para que la template literal exterior no los intercepte
-    code = code.replace(/\$\{/g, '\\${').replace(/`/g, '\\`');
     
     var stateStr = window.widgetStates && window.widgetStates[id] ? window.widgetStates[id] : null;
     var safeStateStr = stateStr !== null ? JSON.stringify(stateStr) : 'null';
@@ -401,6 +399,9 @@ function initWidgets(parentEl) {
             range.detach();
             window.parent.postMessage({ type: 'resize-iframe', id: '${id}', height: h }, '*');
           }
+          window.onerror = function(msg, url, line, col, err) {
+            window.parent.postMessage({ type: 'widget-error', id: '${id}', message: msg, line: line, col: col }, '*');
+          };
           sendHeight();
           setTimeout(sendHeight, 100);
           setTimeout(sendHeight, 600);
@@ -440,6 +441,8 @@ window.addEventListener('message', function(event) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ state: event.data.state })
     });
+  } else if (event.data.type === 'widget-error') {
+    console.error('[Widget ' + event.data.id + '] ' + event.data.message + ' (linea ' + event.data.line + ')');
   }
 });
 
