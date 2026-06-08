@@ -92,7 +92,6 @@ function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
 function refreshWidgetInfo() {
   var el = document.getElementById('widget-log');
   if (!el || typeof widgetDebug === 'undefined') return;
-  el.innerHTML = widgetSectionHtml ? '' : '';
   if (Object.keys(widgetDebug).length === 0) {
     el.innerHTML = '<div class="sl-item">(sin widgets aun)</div>';
     return;
