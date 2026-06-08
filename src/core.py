@@ -145,4 +145,4 @@ def chat_stream(
         try:
             compress_history(history, model)
         except Exception as e:
-            print(f"[Warn] compress_history falló, historial no comprimido: {e}")
+            logger.warning("compress_history falló, historial no comprimido: %s", e)

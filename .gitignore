@@ -36,11 +36,6 @@ coverage.xml
 .DS_Store
 Thumbs.db
 
-# Dead code (refactored into core.py)
-src/compressor.py
-src/context.py
-src/tool_runner.py
-
 # Test files (not part of the app)
 web/static/md-test.html
 
