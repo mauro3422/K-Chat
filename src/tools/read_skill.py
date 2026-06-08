@@ -20,7 +20,7 @@ DEFINITION = {
 }
 
 
-def run(name: str) -> str:
+def run(name: str, _session_id: str = None) -> str:
     """Lee y retorna el contenido de una habilidad desde la carpeta skills/."""
     # Sanitizar el nombre para evitar directory traversal
     safe_name = "".join(c for c in name if c.isalnum() or c in ("-", "_")).lower()
