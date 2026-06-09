@@ -37,6 +37,11 @@
     }
     
     var phaseIdx = Math.max(0, state.reasoningEls.length - 1);
+    
+    // Inicializar de forma segura widgetMap para la fase actual
+    state.widgetMap = state.widgetMap || [];
+    state.widgetMap[phaseIdx] = state.widgetMap[phaseIdx] || {};
+    
     while (state.bodyDivs.length <= phaseIdx) {
       var newBody = document.createElement('div');
       newBody.className = 'msg-body md-content';
@@ -51,9 +56,9 @@
       }
       state.bodyDivs.push(newBody);
       state.contentTexts.push('');
-      state.widgetMap = state.widgetMap || [];
       state.widgetMap[phaseIdx] = state.widgetMap[phaseIdx] || {};
     }
+    
     if (!state.contentTexts[phaseIdx]) logUI('body_start', token.substring(0, 60));
     state.contentTexts[phaseIdx] += token;
     
@@ -73,17 +78,28 @@
     
     var bodyDiv = state.bodyDivs[phaseIdx];
     var widgetMap = state.widgetMap[phaseIdx];
-    var existingWidgets = bodyDiv.querySelectorAll('.interactive-widget-container');
     
-    // Detectar si hay un widget incompleto (aún no se cerró el ```)
-    var lastMatch = matches.length > 0 ? matches[matches.length - 1] : null;
-    var remaining = fullText.substring(lastMatch ? lastMatch.end : 0);
-    var incompleteWidget = remaining.match(/```html-widget\s*\n([\s\S]*)$/);
+    // Limpiar cualquier elemento residual antiguo que no sea un segmento de texto o un contenedor de widget
+    var children = Array.prototype.slice.call(bodyDiv.children);
+    for (var c = 0; c < children.length; c++) {
+      var child = children[c];
+      if (!child.classList.contains('msg-text-segment') && !child.classList.contains('interactive-widget-container')) {
+        bodyDiv.removeChild(child);
+      }
+    }
     
-    // Si hay widgets nuevos completos, agregarlos
-    if (matches.length > existingWidgets.length) {
-      for (var i = existingWidgets.length; i < matches.length; i++) {
-        var m = matches[i];
+    var expectedCount = matches.length * 2 + 1;
+    
+    // Sincronizar la cantidad de elementos hijos alternando TextSegment y WidgetContainer
+    while (bodyDiv.children.length < expectedCount) {
+      var newIdx = bodyDiv.children.length;
+      if (newIdx % 2 === 0) {
+        var txtSeg = document.createElement('div');
+        txtSeg.className = 'msg-text-segment';
+        bodyDiv.appendChild(txtSeg);
+      } else {
+        var widgetIdx = Math.floor(newIdx / 2);
+        var m = matches[widgetIdx];
         var widgetId = 'widget-' + KairosWidgets.index++;
         KairosWidgets.registry[widgetId] = m.code;
         widgetMap[m.index] = widgetId;
@@ -95,36 +111,49 @@
         
         logUI('widget_added', widgetId + ' code=' + m.code.length + 'b');
       }
+    }
+    
+    while (bodyDiv.children.length > expectedCount) {
+      bodyDiv.removeChild(bodyDiv.lastChild);
+    }
+    
+    // Actualizar el contenido de cada segmento de texto si ha cambiado
+    for (var i = 0; i <= matches.length; i++) {
+      var start = i === 0 ? 0 : matches[i - 1].end;
+      var end = i === matches.length ? fullText.length : matches[i].index;
+      var segmentText = fullText.substring(start, end);
       
-      // Inicializar solo los widgets nuevos (initAll respeta el flag data-initialized)
-      KairosWidgets.initAll(bodyDiv);
-    }
-    
-    // Actualizar el progreso
-    var progressDiv = bodyDiv.querySelector('.stream-progress');
-    if (!progressDiv) {
-      progressDiv = document.createElement('div');
-      progressDiv.className = 'stream-progress';
-      bodyDiv.appendChild(progressDiv);
-    }
-    
-    if (incompleteWidget) {
-      // Mostrar código en progreso con opacidad 0.6
-      var beforeIncomplete = remaining.substring(0, remaining.length - incompleteWidget[0].length);
-      var html = '';
-      if (beforeIncomplete) {
-        var parsedBefore = KairosMarkdown.parse(beforeIncomplete);
-        html += (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsedBefore) : parsedBefore;
+      var targetSeg = bodyDiv.children[i * 2];
+      if (!targetSeg) continue;
+      
+      var incompleteWidget = null;
+      if (i === matches.length) {
+        incompleteWidget = segmentText.match(/```html-widget\s*\n([\s\S]*)$/);
       }
-      html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteWidget[0]) + '</code></pre>';
-      progressDiv.innerHTML = html;
-    } else if (remaining) {
-      // Mostrar markdown normal
-      var parsedRemaining = KairosMarkdown.parse(remaining);
-      progressDiv.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsedRemaining) : parsedRemaining;
-    } else {
-      progressDiv.innerHTML = '';
+      
+      var cacheKey = segmentText;
+      if (targetSeg.dataset.rawText === cacheKey) {
+        continue;
+      }
+      targetSeg.dataset.rawText = cacheKey;
+      
+      if (incompleteWidget) {
+        var beforeIncomplete = segmentText.substring(0, segmentText.length - incompleteWidget[0].length);
+        var html = '';
+        if (beforeIncomplete) {
+          var parsedBefore = KairosMarkdown.parse(beforeIncomplete);
+          html += (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsedBefore) : parsedBefore;
+        }
+        html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteWidget[0]) + '</code></pre>';
+        targetSeg.innerHTML = html;
+      } else {
+        var parsedText = KairosMarkdown.parse(segmentText);
+        targetSeg.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsedText) : parsedText;
+      }
     }
+    
+    // Inicializar los widgets nuevos
+    KairosWidgets.initAll(bodyDiv);
   });
 
   KairosStream.on('tool_call', function(dataStr, state) {
