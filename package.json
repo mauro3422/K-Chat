@@ -5,7 +5,7 @@
   "scripts": {
     "lint": "eslint web/static/**/*.js",
     "lint:fix": "eslint web/static/**/*.js --fix",
-    "test:js": "node tests/test-widget-system.js",
+    "test:js": "node tests/test-widget-system.js && node tests/test-stream-renderer.js",
     "test:py": "python -m pytest tests/ -v",
     "test": "npm run test:py && npm run test:js && npm run lint"
   },
