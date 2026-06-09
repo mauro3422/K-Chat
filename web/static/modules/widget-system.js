@@ -13,6 +13,16 @@ var KairosWidgets = (function() {
   var debug = {};
   var index = 0;
 
+  function fnv1a_32(str) {
+    var utf8 = unescape(encodeURIComponent(str));
+    var h = 2166136261;
+    for (var i = 0; i < utf8.length; i++) {
+      h = h ^ utf8.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return ('00000000' + h.toString(16)).slice(-8);
+  }
+
   function log(id, label, detail) {
     debug[id] = debug[id] || { events: [] };
     debug[id].events.push({
@@ -63,7 +73,11 @@ var KairosWidgets = (function() {
   var widgetObserver = null;
 
   function createIframe(container, id, code) {
-    var stateStr = window.widgetStates && window.widgetStates[id] ? window.widgetStates[id] : null;
+    var hashId = 'widget-' + fnv1a_32(code);
+    var stateStr = null;
+    if (window.widgetStates) {
+      stateStr = window.widgetStates[hashId] || window.widgetStates[id] || null;
+    }
     var safeStateStr = stateStr !== null ? JSON.stringify(stateStr) : 'null';
 
     // Agregar placeholder visual mientras carga
@@ -151,9 +165,11 @@ var KairosWidgets = (function() {
           log(event.data.id, 'altura', event.data.height + 'px -> ' + (event.data.height + 4) + 'px');
         }
       } else if (event.data.type === 'save-widget-state') {
+        var code = registry[event.data.id];
+        var hashId = code ? 'widget-' + fnv1a_32(code) : event.data.id;
         window.widgetStates = window.widgetStates || {};
-        window.widgetStates[event.data.id] = event.data.state;
-        fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(event.data.id) + '/state', {
+        window.widgetStates[hashId] = event.data.state;
+        fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(hashId) + '/state', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ state: event.data.state })
