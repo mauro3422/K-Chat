@@ -12,6 +12,7 @@ router = APIRouter()
 
 class WidgetStatePayload(BaseModel):
     state: str = "{}"
+    codeEntries: dict[str, str] | None = None
 
 
 class SaveWidgetPayload(BaseModel):
@@ -23,6 +24,10 @@ class SaveWidgetPayload(BaseModel):
 def set_widget_state(session_id: str, widget_id: str, payload: WidgetStatePayload) -> dict[str, str]:
     widget_id = sanitize_widget_id(widget_id)
     save_widget_state(session_id, widget_id, payload.state)
+    # Persist widget code entries so they survive page refresh
+    if payload.codeEntries:
+        for code_key, code_value in payload.codeEntries.items():
+            save_widget_state(session_id, code_key, code_value)
     return {"status": "ok"}
 
 

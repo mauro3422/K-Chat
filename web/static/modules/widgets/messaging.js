@@ -42,10 +42,15 @@ export function startMessageHandler() {
             var hashId = code ? 'widget-' + fnv1a_32(code) : event.data.id;
             window.widgetStates = window.widgetStates || {};
             window.widgetStates[hashId] = event.data.state;
+            // Also persist any _code_ entries (widget code cache)
+            var codeEntries = {};
+            Object.keys(window.widgetStates).forEach(function(k) {
+                if (k.indexOf('_code_') === 0) codeEntries[k] = window.widgetStates[k];
+            });
             fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(hashId) + '/state', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ state: event.data.state })
+                body: JSON.stringify({ state: event.data.state, codeEntries: codeEntries })
             }).catch(function(err) { console.error('Widget state save failed:', err); });
         } else if (event.data.type === 'widget-error') {
             console.error('[Widget ' + event.data.id + '] ' + event.data.message + ' (linea ' + event.data.line + ')');
