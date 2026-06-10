@@ -1,6 +1,6 @@
 """Session operations."""
 
-from src.memory.repositories import SessionRepository
+from src.memory.repos import SessionRepository
 from src.api._repos import _get_repo
 
 

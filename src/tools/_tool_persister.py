@@ -1,6 +1,6 @@
 import json
 from typing import Any
-from src.memory.repositories import MessageRepository, ToolCallRepository
+from src.memory.repos import MessageRepository, ToolCallRepository
 
 _message_repo: MessageRepository | None = None
 _tool_call_repo: ToolCallRepository | None = None

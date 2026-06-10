@@ -8,8 +8,6 @@ from typing import Any
 from urllib.parse import urlparse
 import httpx
 from httpx import ConnectError, HTTPStatusError, RequestError, TimeoutException
-from lxml import html as lxml_html
-
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) Kairos/1.0"
@@ -62,6 +60,8 @@ def _looks_binary(url: str, content_type: str) -> bool:
 
 
 def _extract_text(html_content: str) -> tuple[str, str]:
+    from lxml import html as lxml_html
+
     doc = lxml_html.fromstring(html_content)
     title = doc.findtext(".//title", "").strip()
 

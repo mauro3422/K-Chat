@@ -1,0 +1,67 @@
+import json
+from unittest.mock import MagicMock, patch
+
+from src.tools._tool_parser import _parse_tool_call, _get_required_params
+
+
+def _make_tc(name, arguments, tc_id="call_test_1"):
+    tc = MagicMock()
+    tc.id = tc_id
+    tc.function.name = name
+    tc.function.arguments = arguments if isinstance(arguments, str) else json.dumps(arguments)
+    return tc
+
+
+TOOL_MAP = {"web_search": MagicMock(), "save_memory": MagicMock()}
+
+
+def test_parse_tool_call_valid():
+    tc = _make_tc("web_search", {"query": "test"})
+    name, args, error = _parse_tool_call(tc, TOOL_MAP)
+    assert name == "web_search"
+    assert args == {"query": "test"}
+    assert error is None
+
+
+def test_parse_tool_call_corrupt_json():
+    tc = _make_tc("web_search", "not-json{")
+    name, args, error = _parse_tool_call(tc, TOOL_MAP)
+    assert name == "web_search"
+    assert args == {}
+    assert error is None
+
+
+def test_parse_tool_call_empty_name():
+    tc = _make_tc("", {"query": "test"})
+    name, args, error = _parse_tool_call(tc, TOOL_MAP)
+    assert name == ""
+    assert error is not None
+    assert "does not exist" in error
+
+
+def test_parse_tool_call_execute_action_wrapping():
+    tc = _make_tc("execute_action", {
+        "action_name": "web_search",
+        "arguments": {"query": "clima"}
+    })
+    name, args, error = _parse_tool_call(tc, TOOL_MAP)
+    assert name == "web_search"
+    assert args == {"query": "clima"}
+    assert error is None
+
+
+def test_get_required_params_existing_tool():
+    with patch("src.tools.TOOLS", [{
+        "function": {
+            "name": "web_search",
+            "parameters": {"required": ["query"]}
+        }
+    }]):
+        result = _get_required_params("web_search")
+        assert result == ["query"]
+
+
+def test_get_required_params_non_existing_tool():
+    with patch("src.tools.TOOLS", [{"function": {"name": "web_search"}}]):
+        result = _get_required_params("nonexistent_tool")
+        assert result == []

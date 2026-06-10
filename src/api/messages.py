@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from src.memory.repositories import MessageRecord, MessageRepository
+from src.memory.repos import MessageRecord, MessageRepository
 from src.api._repos import _get_repo
 
 

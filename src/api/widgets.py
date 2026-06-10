@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from src.memory.repositories import WidgetStateRepository, SavedWidgetRepository
+from src.memory.repos import WidgetStateRepository, SavedWidgetRepository
 from src.tools._widget_helpers import sanitize_widget_id  # noqa: F401 — re-exported for web/routers
 from src.api._repos import _get_repo
 

@@ -16,18 +16,9 @@ DEFINITION = {
     }
 }
 
-_tool_call_repo = None
-
-
-def _get_tool_call_repo():
-    global _tool_call_repo
-    if _tool_call_repo is None:
-        from src.memory.repositories import ToolCallRepository
-        _tool_call_repo = ToolCallRepository()
-    return _tool_call_repo
-
 
 def run(limit: int = 5, _session_id: str | None = None) -> str:
+    from src.tools._tool_persister import _get_tool_call_repo
     if not _session_id:
         return "No active session."
     try:

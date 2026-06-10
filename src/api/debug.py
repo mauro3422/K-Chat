@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from src.memory.repositories import DebugRepository
+from src.memory.repos import DebugRepository
 from src.api._repos import _get_repo
 
 

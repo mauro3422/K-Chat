@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.memory.repositories import (
     MessageRecord,
@@ -56,8 +56,8 @@ class TestMessageRecord:
 
 class TestMessageRepository:
     @patch("src.memory.repos.base.get_conn")
-    def test_save(self, mock_get_conn):
-        mock_conn = MagicMock()
+    def test_save(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_get_conn.return_value = mock_conn
         repo = MessageRepository()
 
@@ -72,8 +72,8 @@ class TestMessageRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_save_with_none_content(self, mock_get_conn):
-        mock_conn = MagicMock()
+    def test_save_with_none_content(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_get_conn.return_value = mock_conn
         repo = MessageRepository()
 
@@ -83,8 +83,8 @@ class TestMessageRepository:
         assert args[0][1][2] == ""
 
     @patch("src.memory.repos.base.get_conn")
-    def test_save_record(self, mock_get_conn):
-        mock_conn = MagicMock()
+    def test_save_record(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_get_conn.return_value = mock_conn
         repo = MessageRepository()
 
@@ -104,10 +104,8 @@ class TestMessageRepository:
         assert args[0][1][3] == "m1"
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_session_messages(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_session_messages(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchall.return_value = [
             ("user", "hi", "m1", "2024-01-01", "", "[]", None, None)
         ]
@@ -124,10 +122,8 @@ class TestMessageRepository:
 
 class TestSessionRepository:
     @patch("src.memory.repos.base.get_conn")
-    def test_ensure_creates_when_missing(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_ensure_creates_when_missing(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = None
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
@@ -138,10 +134,8 @@ class TestSessionRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_ensure_skips_when_exists(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_ensure_skips_when_exists(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = (1,)
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
@@ -152,8 +146,8 @@ class TestSessionRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_rename(self, mock_get_conn):
-        mock_conn = MagicMock()
+    def test_rename(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
 
@@ -164,8 +158,8 @@ class TestSessionRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_delete(self, mock_get_conn):
-        mock_conn = MagicMock()
+    def test_delete(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
 
@@ -175,10 +169,8 @@ class TestSessionRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_all(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_all(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchall.return_value = [("sess_1", "t1", "t2", 5, 2, "My Session")]
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
@@ -190,10 +182,8 @@ class TestSessionRepository:
         assert result == [("sess_1", "t1", "t2", 5, 2, "My Session")]
 
     @patch("src.memory.repos.base.get_conn")
-    def test_check_should_rename_empty_name_one_message(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_check_should_rename_empty_name_one_message(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.side_effect = [("",), (1,)]
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
@@ -201,10 +191,8 @@ class TestSessionRepository:
         assert repo.check_should_rename("sess_1") is True
 
     @patch("src.memory.repos.base.get_conn")
-    def test_check_should_rename_none_name(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_check_should_rename_none_name(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.side_effect = [(None,), (1,)]
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
@@ -212,10 +200,8 @@ class TestSessionRepository:
         assert repo.check_should_rename("sess_1") is True
 
     @patch("src.memory.repos.base.get_conn")
-    def test_check_should_rename_already_named(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_check_should_rename_already_named(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = ("My Session",)
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
@@ -226,8 +212,8 @@ class TestSessionRepository:
 
 class TestToolCallRepository:
     @patch("src.memory.repos.base.get_conn")
-    def test_log(self, mock_get_conn):
-        mock_conn = MagicMock()
+    def test_log(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_get_conn.return_value = mock_conn
         repo = ToolCallRepository()
 
@@ -239,10 +225,8 @@ class TestToolCallRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_history(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_history(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchall.return_value = [
             ("get_weather", '{"city":"NYC"}', "success", "2024-01-01", 1)
         ]
@@ -258,8 +242,8 @@ class TestToolCallRepository:
 
 class TestWidgetStateRepository:
     @patch("src.memory.repos.base.get_conn")
-    def test_save_state(self, mock_get_conn):
-        mock_conn = MagicMock()
+    def test_save_state(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_get_conn.return_value = mock_conn
         repo = WidgetStateRepository()
 
@@ -269,10 +253,8 @@ class TestWidgetStateRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_states(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_states(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchall.return_value = [("w1", '{"x":1}'), ("w2", '{"y":2}')]
         mock_get_conn.return_value = mock_conn
         repo = WidgetStateRepository()
@@ -284,8 +266,8 @@ class TestWidgetStateRepository:
 
 class TestDebugRepository:
     @patch("src.memory.repos.base.get_conn")
-    def test_save_info(self, mock_get_conn):
-        mock_conn = MagicMock()
+    def test_save_info(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_get_conn.return_value = mock_conn
         repo = DebugRepository()
 
@@ -297,10 +279,8 @@ class TestDebugRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_info_found(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_info_found(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = ("m1", "thinking", "sys prompt", "[]", "[]")
         mock_get_conn.return_value = mock_conn
         repo = DebugRepository()
@@ -316,10 +296,8 @@ class TestDebugRepository:
         }
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_info_missing(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_info_missing(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = None
         mock_get_conn.return_value = mock_conn
         repo = DebugRepository()
@@ -329,10 +307,8 @@ class TestDebugRepository:
         assert result == {}
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_info_parses_json(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_info_parses_json(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = (
             "m1", "", "", '[{"name":"test"}]', '[{"role":"user"}]'
         )
@@ -347,10 +323,8 @@ class TestDebugRepository:
 
 class TestSavedWidgetRepository:
     @patch("src.memory.repos.base.get_conn")
-    def test_save_new_widget(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_save_new_widget(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = (1,)
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
@@ -362,10 +336,8 @@ class TestSavedWidgetRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_save_existing_widget_increments_version(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_save_existing_widget_increments_version(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = (4,)
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
@@ -376,10 +348,8 @@ class TestSavedWidgetRepository:
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_found(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_found(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = ("code v1", 1, "desc", "2024-01-01")
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
@@ -395,10 +365,8 @@ class TestSavedWidgetRepository:
         }
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_missing(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_missing(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = None
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
@@ -408,10 +376,8 @@ class TestSavedWidgetRepository:
         assert result is None
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_versions(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_versions(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchall.return_value = [(2, "desc2", "t2"), (1, "desc1", "t1")]
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
@@ -424,10 +390,8 @@ class TestSavedWidgetRepository:
         ]
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_by_version_found(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_by_version_found(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = ("code v2", "desc2", "t2")
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
@@ -443,10 +407,8 @@ class TestSavedWidgetRepository:
         }
 
     @patch("src.memory.repos.base.get_conn")
-    def test_get_by_version_missing(self, mock_get_conn):
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+    def test_get_by_version_missing(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         mock_cursor.fetchone.return_value = None
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
@@ -466,8 +428,8 @@ class TestGetRepos:
         assert isinstance(repos.debug, DebugRepository)
         assert isinstance(repos.saved_widgets, SavedWidgetRepository)
 
-    def test_get_repos_passes_connection(self):
-        mock_conn = MagicMock()
+    def test_get_repos_passes_connection(self, mock_conn):
+        mock_conn, mock_cursor = mock_conn
         repos = get_repos(mock_conn)
         assert repos.messages._conn is mock_conn
         assert repos.sessions._conn is mock_conn

@@ -1,6 +1,6 @@
 import logging
 from src.llm.client import chat as llm_chat
-from src.memory.repositories import SessionRepository
+from src.memory.repos import SessionRepository
 
 _repo: SessionRepository | None = None
 

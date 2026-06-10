@@ -1,5 +1,5 @@
 from typing import Any
-from src.memory.repositories import MessageRepository
+from src.memory.repos import MessageRepository
 from src.context import build_system_prompt
 from src.core.history_parser import _parse_rows, _sanitize_messages
 

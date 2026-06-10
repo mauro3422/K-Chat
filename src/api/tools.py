@@ -1,6 +1,6 @@
 """Tool history operations."""
 
-from src.memory.repositories import ToolCallRepository
+from src.memory.repos import ToolCallRepository
 from src.api._repos import _get_repo
 
 
