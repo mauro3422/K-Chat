@@ -1,4 +1,6 @@
-# Kairos - Roadmap
+# Roadmap — K-Chat (Kairos)
+
+> Current version: **v0.0.17** (2026-06-11)
 
 ## Philosophy
 
@@ -8,33 +10,131 @@ Kairos is not trying to be a copy of OpenClaw. It is born from the frustration o
 
 The goal is to build a reliable core first: chat, memory, tools, streaming, debug, and the ability to evolve without fighting an opaque architecture. Future channels like Telegram, webhooks, or nightly tasks should be adapters around the same core, not a reason to turn the project into a bloated platform.
 
-## Completed
+## Completado
 
-- **Core**: `config.py` → `src/llm/` → `src/memory/` → `src/core/`
-- **Tools pipeline**: auto-load with `importlib`, parallel execution with `ThreadPoolExecutor`, history compressor
-- **Dashboard web**: FastAPI + vanilla JS, streaming NDJSON, reasoning by phases, tool pills, sidebar, debug panel
-- **Visual persistence post-refresh**: `turn` in `tool_calls`, `phases` JSON in `messages`, interleaved reasoning/tools in history
-- **Base quality**: WAL mode, `try/finally`, logging, types, no bare `except:`
-- **Tool `save_memory`**: concurrent and robust persistence of user data to `MEMORY.md`
-- **Interactive widgets**: safe rendering of live HTML/JS in chat via sandboxed iframes with auto-resize and event capture
-- **Widget system official**: DB persistence, versioning (v1→v2→...), toolbar with edit/reset/history
-- **Auto-generated TOOLS.md**: linked to `TOOL_DEFINITIONS`, regenerates on startup
-- **URL fetch tool**: `fetch_url` with SSRF protection, text extraction, retry logic
-- **Unified prompt language**: all system files in English, response in user's language
-- **Self-awareness rules**: identity and model awareness in system prompt + AGENTS.md
-- **Context cleanup**: no duplicate rules between meta block and AGENTS.md
+### v0.0.1 — Core funcional
+- [x] Chat funcional vía CLI y web
+- [x] SQLite como motor de persistencia
+- [x] Sistema de herramientas con auto-descubrimiento via `importlib`
+- [x] Herramientas iniciales: `fetch_url`, `read_file`, `write_file`, `web_search`
+- [x] Streaming básico de respuestas del LLM
+- [x] Sistema de sesiones con UUID
+- [x] Configuración vía `.env`
 
-## Next
+### v0.0.2 — Arquitectura Lego + Widgets
+- [x] Arquitectura Lego: módulos independientes sin acoplamiento
+- [x] Streaming real con NDJSON
+- [x] Fallback resiliente para modelos caídos
+- [x] Sistema de Widgets con DB versionada
+- [x] UI Dashboard: sidebar, sesiones, fases colapsables
+- [x] Tool `save_memory`, `read_skill`, ciclo de vida de widgets
+- [x] Compresor de historial (>40 msgs / >6k tokens)
+- [x] Auto-rename de sesiones vía LLM
+
+### v0.0.3 — API Facade + Repository Pattern
+- [x] API Facade: single entry point con 15+ funciones públicas
+- [x] Repository Pattern: `_BaseRepository` + 6 repositorios tipados
+- [x] Thread safety con `threading.Lock`
+- [x] 9 migraciones idempotentes de esquema
+- [x] 233 tests, linting ruff + pyright
+
+### v0.0.4 — Seguridad completa
+- [x] Content-Security-Policy headers
+- [x] SSRF validation en redirect chain de `fetch_url`
+- [x] Path traversal guard
+- [x] XSS escaping en frontend
+- [x] Rate limiter por sesión y HTTP
+- [x] Migración 010: índices + FK constraints + cascada real
+- [x] Pydantic models, error format unificado
+- [x] Provider Pattern, ToolLoopContext, DI container
+- [x] 431 tests, logging estructurado, dead code eliminado
+
+### v0.0.5 — Auditoría de salud + refactor repos
+- [x] Auditoría de salud: 9 áreas, 43 hallazgos
+- [x] Extracción de repositorios a `src/memory/repos/` (8 archivos)
+- [x] Shim de retrocompatibilidad
+- [x] Formato de tools unificado `[OK]`/`[ERROR]`
+- [x] TOOLS.md auto-generado desde `TOOL_DEFINITIONS`
+
+### v0.0.6 — Linting limpio
+- [x] Ruff 71→0, Pyright 16→0
+- [x] Refactors: `tool_loop.py`, `api.py`, `chat-form.js`, `toolbar.js`
+- [x] 45 tests JS nuevos (session, debug, chat-stream)
+- [x] Cobertura: 431 Python + 110 JS tests
+
+### v0.0.7 — Refactor mayor de arquitectura
+- [x] `context.py` → package, `history.py` → 3 módulos, `runner.py` → 4 módulos
+- [x] DatabaseEngine Protocol + SQLiteEngine
+- [x] Provider injection con `LLM_PROVIDER` env
+- [x] Ciclos tools↔api y toolbar↔iframe rotos
+- [x] Frontend: stream-renderer dividido en 3 handlers independientes
+
+### v0.0.8 — Vitest + Type hints
+- [x] Migración a Vitest como test runner JS
+- [x] Type hints completos en todos los módulos Python
+- [x] Error boundaries en routers web
+- [x] API contract tests
+- [x] `docs/API_REFERENCE.md` auto-generada
+
+### v0.0.9 — Playwright E2E + limpieza
+- [x] Playwright E2E setup con Chromium
+- [x] -1420 líneas de dead code eliminadas
+- [x] `src/memory/repositories.py` shim reducido a 3 líneas
+
+### v0.0.10 — Frontend split
+- [x] `chat-form.js` dividido en submission + input-handler
+- [x] `toolbar.js` dividido en UI + session-actions
+- [x] Session error handling con mensajes user-friendly
+
+### v0.0.11 — API split
+- [x] `api.py` split en 10 módulos (`src/api/` package)
+- [x] E2E expansion: +11 specs Playwright
+
+### v0.0.12 — Dependency Injection
+- [x] `_Container` dataclass centraliza dependencias
+- [x] Circular imports resueltos vía DI container
+
+### v0.0.13 — ES Modules + Vite
+- [x] 24 archivos JS migrados a ES modules
+- [x] Vite configurado con proxy a FastAPI y HMR
+- [x] Module map barrel exports
+
+### v0.0.14 — Seguridad + Docker
+- [x] XSS sanitización en innerHTML
+- [x] Debug endpoint con token/header
+- [x] Dockerfile multi-stage + docker-compose.yml
+- [x] CI pipeline: lint + test + typecheck + build
+- [x] Health check endpoint `GET /health`
+
+### v0.0.15 — Tests + DRY
+- [x] 30 tests nuevos (edge cases repositorios)
+- [x] DRY refactor: `_shared.py` con helpers compartidos
+- [x] Lazy lxml en `fetch_url.py`
+
+### v0.0.16-0.0.17 — Refactors + infraestructura
+- [x] LLM Layer refactor: `providers.py`, `model_state.py`, shim backwards-compat
+- [x] Frontend refactor: `stream-fetcher.js`, `stream-retry-coordinator.js`
+- [x] Memory refactor: `delete_by_session()`, atomicidad con cursor
+- [x] Tools DRY: `resolve_and_validate_path()` unificado
+- [x] Dockerfile multi-stage con healthcheck
+- [x] `.pre-commit-config.yaml` (ruff, eslint, hooks)
+- [x] CI: Ruff + Pyright en workflow
+- [x] requirements.txt con versiones pinneadas
+- [x] 30 tests nuevos: tool_parser, rate_limiter, history_parser, etc.
+
+## Próximas features
 
 | Priority | Area | What |
 |----------|------|------|
-| 1 | **Core stability** | Harden streaming, errors, memory, tools, and tests before adding complexity |
-| 2 | **Nocturnal agent** | Daily synthesis of sessions into `MEMORY.md` |
-| 3 | **Telegram bot** | `bot.py` as adapter to `core.chat_stream()`, without duplicating logic |
-| 4 | **Linux + polish** | Portability, systemd, Dockerfile, setup.py |
-| 5 | **Widget events to AI** | Widgets sending user actions back to the AI as injected context |
-| 6 | **Memory search** | `memory_search` + `list_memories` tools for querying MEMORY.md |
-| 7 | **Code execution** | `run_code` tool for safe Python execution |
+| 1 | **memory_search + list_memories** | Tools para consultar `MEMORY.md` de forma semántica |
+| 2 | **Nocturnal Agent** | Síntesis diaria de sesiones en `MEMORY.md` |
+| 3 | **Widget Events → AI** | Widgets enviando acciones del usuario de vuelta al AI como contexto inyectado |
+| 4 | **Scheduled Tasks** | Tareas programadas (cron-like) para automatizaciones |
+| 5 | **Session Export** | Exportar sesiones a Markdown o JSON |
+| 6 | **Cross-Session Topic Tracer** | Rastreo de temas a través de múltiples sesiones |
+| 7 | **Proactive Insights** | Insights proactivos basados en patrones de uso |
+| 8 | **run_code** | Ejecución segura de Python con sandboxing |
+| 9 | **Telegram Bot** | `bot.py` como adapter a `core.chat_stream()` |
 
 ## Architecture Decisions
 
@@ -46,9 +146,10 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 | Stream | Sync generator | Async complex |
 | Config | `.env` + Markdown | Large YAML |
 | Tools | `importlib` auto-registry | Manual registration |
-| Frontend | Vanilla JS | React / Vue / Svelte |
+| Frontend | Vanilla JS + Vite | React / Vue / Svelte |
 | Serialization | NDJSON | SSE |
 | Growth | Channels as adapters | Heavy gateway from day one |
+| DI | `_Container` dataclass | Framework injection |
 
 ## Guiding Principle
 

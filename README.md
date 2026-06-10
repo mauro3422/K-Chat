@@ -1,7 +1,7 @@
-# Kairos
+# Kairos (K-Chat)
 
-Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
-No JS frameworks, no complex gateways. Each piece is an independent file.
+> **v0.0.17** — Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
+> No JS frameworks, no complex gateways. Each piece is an independent file.
 
 ## Vision
 
@@ -111,6 +111,7 @@ The model can call multiple tools in a single iteration. They execute in paralle
 - Sidebar with sessions (rename, delete, navigate)
 - History with reasoning and tools preserved after F5
 - Live Debug panel: model, reasoning, tools, system prompt, stream log, UI log
+- ES modules + Vite (HMR, production build)
 
 ### Episodic memory
 Each tool call is logged with timestamp, input, status, and phase number. Reasoning phases are saved as JSON to reconstruct the visual sequence after refresh.
@@ -125,6 +126,21 @@ When the conversation exceeds 40 messages or ~6k tokens, old messages are summar
 - Inline widgets rendered in sandboxed iframes
 - Official widgets: versioned, persisted in DB, toolbar with edit/history/reset
 - `[Widget: id]` tag auto-renders from database
+
+### Security
+- Content-Security-Policy headers on all HTTP responses
+- SSRF validation on `fetch_url` redirect chain
+- Path traversal guard with `realpath` + `commonpath`
+- XSS escaping in frontend (innerHTML → textContent fallback)
+- Rate limiter per session (tools) and per IP (HTTP)
+- Debug endpoint requires `X-Debug-Token` header or `TESTING=1`
+
+### Architecture
+- API Facade pattern: single entry point for all DB operations
+- Repository Pattern with typed CRUD operations
+- DI container for circular import resolution
+- DatabaseEngine Protocol for future multi-DB support
+- Provider injection via `LLM_PROVIDER` env var
 
 ## Startup
 
@@ -161,6 +177,10 @@ npx vitest run
 npx playwright test
 ```
 
+## License
+
+Este proyecto no tiene licencia pública definida. Todos los derechos reservados.
+
 ## Add a tool
 
 Create a file in `src/tools/` with `DEFINITION` + `run()`. It registers automatically.
@@ -185,7 +205,7 @@ Each piece is independent and replaceable:
 - Tools → loose files in `src/tools/`
 - Context → markdown files in root
 - Memory → pure SQLite, no ORM
-- Frontend → HTML + CSS + JS vanilla, no build step
+- Frontend → HTML + CSS + JS vanilla + Vite, no heavy frameworks
 
 What doesn't work gets replaced, not patched.
 
