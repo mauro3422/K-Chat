@@ -7,9 +7,11 @@
     "lint:fix": "eslint web/static/**/*.js --fix",
     "test:js": "vitest run",
     "test:py": "python -m pytest tests/ -v",
-    "test": "npm run test:py && npm run test:js && npm run lint"
+    "test:e2e": "npx playwright test",
+    "test": "npm run test:py && npm run test:js && npm run test:e2e && npm run lint"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "eslint": "^8.57.0",
     "vitest": "^4.1.8"
   }

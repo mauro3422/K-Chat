@@ -50,3 +50,7 @@ scratch/
 
 # Logs
 *.log
+
+# Playwright
+test-results/
+playwright-report/
