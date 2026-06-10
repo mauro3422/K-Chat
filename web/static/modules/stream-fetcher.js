@@ -15,8 +15,8 @@ export function executeStreamFetch(params) {
 
   return fetch('/chat/' + sessionId + '?model=' + encodeURIComponent(defaultModel), {
     method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: 'message=' + encodeURIComponent(text),
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({message: text}),
     signal: controller.signal
   }).then(function(resp) {
     if (resp.status === 401) {
