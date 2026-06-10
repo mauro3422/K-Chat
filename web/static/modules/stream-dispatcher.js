@@ -15,6 +15,11 @@ function emit(event, data, state) {
   }
 }
 
+function off(event, cb) {
+  if (!listeners[event]) return;
+  listeners[event] = listeners[event].filter(fn => fn !== cb);
+}
+
 on('reasoning', function(token) { logStream('reasoning', token); });
 on('content', function(token) { logStream('content', token); });
 on('tool_call', function(dataStr) { logStream('tool_call', dataStr); });
@@ -24,4 +29,4 @@ on('error', function(errorData) {
   KairosUtils.showToast(errorData.message, 'error');
 });
 
-export const KairosStream = { on, emit };
+export const KairosStream = { on, emit, off };

@@ -38,6 +38,16 @@ jobs:
       - name: Run Python tests
         run: python -m pytest tests/ -v
 
+      - name: Lint with Ruff
+        run: |
+          pip install ruff
+          ruff check src/ web/ tests/
+
+      - name: Type check with Pyright
+        run: |
+          pip install pyright
+          pyright src/
+
       - name: Run JS tests
         run: |
           node tests/test-widget-system.js

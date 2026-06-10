@@ -133,13 +133,23 @@ export function registerContentHandler() {
           var html = '';
           if (beforeIncomplete) {
             var parsedBefore = KairosMarkdown.parse(beforeIncomplete);
-            html += (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsedBefore) : parsedBefore;
+            if (typeof DOMPurify !== 'undefined') {
+              html += DOMPurify.sanitize(parsedBefore);
+            } else {
+              html += beforeIncomplete;
+              console.warn('DOMPurify not loaded, rendering as plain text');
+            }
           }
           html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteWidget[0]) + '</code></pre>';
           targetSeg.innerHTML = html;
         } else {
           var parsedText = KairosMarkdown.parse(segmentText);
-          targetSeg.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsedText) : parsedText;
+          if (typeof DOMPurify !== 'undefined') {
+            targetSeg.innerHTML = DOMPurify.sanitize(parsedText);
+          } else {
+            targetSeg.textContent = segmentText;
+            console.warn('DOMPurify not loaded, rendering as plain text');
+          }
         }
       }
       
