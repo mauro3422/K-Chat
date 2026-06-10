@@ -81,7 +81,7 @@ export function buildIframeSrc(id, code, stateStr) {
         'input,button,select,textarea { font-family:inherit; color-scheme:dark; }\n' +
         '</style>\n</head>\n<body>\n' +
         '<script>\n' +
-        'var _origin=window.location.origin;\n' +
+        'var _origin=window.location.origin==="null"?"*":window.location.origin;\n' +
         'window.onerror=function(msg,url,line,col,err){window.parent.postMessage({type:"widget-error",id:"' + id + '",message:msg,line:line,col:col},_origin);};\n' +
         'window.initialState=JSON.parse(' + stateStr + ');\n' +
         'window.saveState=function(stateObj){window.parent.postMessage({type:"save-widget-state",id:"' + id + '",state:typeof stateObj==="string"?stateObj:JSON.stringify(stateObj)},_origin);};\n' +
