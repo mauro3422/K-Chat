@@ -59,3 +59,4 @@ function renderAll() {
 }
 
 export const KairosMarkdown = { parse, renderAll };
+window.KairosMarkdown = KairosMarkdown;

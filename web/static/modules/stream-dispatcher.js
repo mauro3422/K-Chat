@@ -30,3 +30,4 @@ on('error', function(errorData) {
 });
 
 export const KairosStream = { on, emit, off };
+window.KairosStream = KairosStream;

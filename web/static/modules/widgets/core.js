@@ -74,3 +74,4 @@ export const KairosWidgets = {
     extract,
     reset
 };
+window.KairosWidgets = KairosWidgets;

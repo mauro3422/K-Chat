@@ -42,3 +42,4 @@ function showToast(message, type) {
 }
 
 export const KairosUtils = { escHtml, scrollToBottom, initGlobalErrorHandlers, showToast };
+window.KairosUtils = KairosUtils;
