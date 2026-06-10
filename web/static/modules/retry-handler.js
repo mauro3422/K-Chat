@@ -54,3 +54,4 @@ export const RetryHandler = {
   getMaxRetries,
   getStreamTimeout
 };
+window.RetryHandler = RetryHandler;
