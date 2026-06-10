@@ -1,17 +1,32 @@
 import logging
 
+import pytest
+
 from web.logging import BackendLogHandler, get_backend_logs
 
 
-def _reset_buffer():
-    """Reset the shared buffer for test isolation."""
-    import web.logging as wl
-    wl._backend_log_buffer.clear()
+@pytest.fixture(autouse=True)
+def _isolate_logging():
+    """Reset the shared log buffer and restore the global logging threshold.
+
+    Some tests call ``logging.disable(logging.CRITICAL)`` which sets
+    ``logging.root.manager.disable`` to CRITICAL, globally suppressing
+    all records below that level.  That persists across tests because
+    nobody restores it, so INFO messages never reach the
+    ``BackendLogHandler``.  We snapshot and restore the disable threshold
+    here to guarantee every test starts with a clean logging state.
+    """
+    from web.logging import _reset_buffer
+    saved_disable = logging.root.manager.disable
+    logging.root.manager.disable = 0
+    _reset_buffer()
+    yield
+    _reset_buffer()
+    logging.root.manager.disable = saved_disable
 
 
 def test_handler_captures_records():
     """BackendLogHandler captures a log record and get_backend_logs returns it."""
-    _reset_buffer()
     logger = logging.getLogger("kairos.test-capture")
     logger.setLevel(logging.DEBUG)
 
@@ -28,7 +43,6 @@ def test_handler_captures_records():
 
 def test_get_backend_logs_returns_copy():
     """get_backend_logs returns a copy, not the original mutable list."""
-    _reset_buffer()
     logger = logging.getLogger("kairos.test-copy")
     logger.setLevel(logging.DEBUG)
 
@@ -41,7 +55,6 @@ def test_get_backend_logs_returns_copy():
 
 def test_ring_buffer_overflow():
     """When the buffer exceeds _max_backend_logs, oldest records are dropped."""
-    _reset_buffer()
     import web.logging as wl
     original_max = wl._max_backend_logs
     wl._max_backend_logs = 5

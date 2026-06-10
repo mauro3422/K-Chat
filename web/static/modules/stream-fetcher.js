@@ -1,4 +1,4 @@
-/* global logUI */
+/* global StreamErrorHandler */
 
 export function executeStreamFetch(params) {
   var sessionId = params.sessionId;
@@ -69,6 +69,6 @@ export function executeStreamFetch(params) {
   })
   .catch(function(err) {
     console.error('Chat request failed:', err);
-    if (streamErrorHandler) streamErrorHandler.handler('error', {type: 'network', message: 'Connection failed'});
+    if (StreamErrorHandler) StreamErrorHandler.handler('error', {type: 'network', message: 'Connection failed'});
   });
 }

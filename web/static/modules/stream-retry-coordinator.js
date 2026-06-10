@@ -1,4 +1,4 @@
-/* global RetryHandler, StreamErrorHandler, KairosUtils */
+/* global RetryHandler, StreamErrorHandler */
 
 export function attemptRetry(params) {
   var asstDiv = params.asstDiv;

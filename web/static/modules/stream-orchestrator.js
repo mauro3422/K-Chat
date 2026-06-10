@@ -1,7 +1,7 @@
-/* global logUI, refreshSidebar, refreshDebug, debugVisible */
+/* global StreamErrorHandler, RetryHandler */
 
 import { executeStreamFetch } from './stream-fetcher.js';
-import { attemptRetry, handleRetryFinalization } from './stream-retry-coordinator.js';
+import { attemptRetry } from './stream-retry-coordinator.js';
 
 export const StreamOrchestrator = {
 
@@ -112,7 +112,7 @@ export const StreamOrchestrator = {
         return;
       }
 
-      var hasSuccessfulTools = asstDiv.querySelectorAll('.tc-item.ok').length > 0;
+      hasSuccessfulTools = asstDiv.querySelectorAll('.tc-item.ok').length > 0;
       if (attemptRetry({
         asstDiv: asstDiv,
         form: form,
@@ -140,7 +140,7 @@ export const StreamOrchestrator = {
       logUI('reasoning_done', state.reasoningEls.length + ' fases');
     }
 
-    var hasSuccessfulTools = asstDiv.querySelectorAll('.tc-item.ok').length > 0;
+    hasSuccessfulTools = asstDiv.querySelectorAll('.tc-item.ok').length > 0;
     if (!hasContent) {
       if (attemptRetry({
         asstDiv: asstDiv,

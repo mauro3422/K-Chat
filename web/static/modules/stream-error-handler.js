@@ -1,5 +1,3 @@
-/* global KairosUtils, logUI */
-
 export function markPillAsError(pill) {
   pill.className = 'tc-item error';
   var toolName = pill.getAttribute('data-tool') || 'tool';

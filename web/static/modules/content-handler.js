@@ -1,5 +1,3 @@
-/* global logUI */
-
 export function registerContentHandler() {
   if (typeof KairosStream === 'undefined') return;
 

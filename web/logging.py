@@ -5,6 +5,11 @@ _backend_log_buffer = []
 _max_backend_logs = 100
 
 
+def _reset_buffer():
+    """Clear the shared log buffer. Used for test isolation."""
+    _backend_log_buffer.clear()
+
+
 class BackendLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         global _backend_log_buffer
