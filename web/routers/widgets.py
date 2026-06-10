@@ -28,7 +28,7 @@ def set_widget_state(session_id: str, widget_id: str, payload: WidgetStatePayloa
 
 @router.get("/sessions/{session_id}/widgets/{widget_id}/code")
 def get_widget_code(session_id: str, widget_id: str) -> Any:
-    widget = db_get_widget(session_id, widget_id)
+    widget = db_get_widget(widget_id)
     if not widget:
         raise HTTPException(status_code=404, detail="Widget no encontrado.")
     return widget
@@ -36,13 +36,13 @@ def get_widget_code(session_id: str, widget_id: str) -> Any:
 
 @router.get("/sessions/{session_id}/widgets/{widget_id}/versions")
 def get_widget_versions(session_id: str, widget_id: str) -> dict[str, Any]:
-    versions = db_get_widget_versions(session_id, widget_id)
+    versions = db_get_widget_versions(widget_id)
     return {"versions": versions}
 
 
 @router.get("/sessions/{session_id}/widgets/{widget_id}/versions/{version}/code")
 def get_widget_version_code(session_id: str, widget_id: str, version: int) -> Any:
-    widget = db_get_widget_by_version(session_id, widget_id, version)
+    widget = db_get_widget_by_version(widget_id, version)
     if not widget:
         raise HTTPException(status_code=404, detail="Versión del widget no encontrada.")
     return widget

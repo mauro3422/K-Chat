@@ -40,7 +40,7 @@ def run(widget_id: str, _session_id: str | None = None) -> str:
     _session_id, clean_id = result
 
     try:
-        widget = _get_saved_widget_repo().get(_session_id, clean_id)
+        widget = _get_saved_widget_repo().get(clean_id)
         if not widget:
             return f"[ERROR] The widget '{clean_id}' does not exist or has not been officially saved in this session."
         

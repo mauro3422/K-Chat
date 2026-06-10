@@ -26,7 +26,7 @@ def test_db_operations_saved_widgets():
     assert res1["status"] == "saved"
 
     # Get Active (V1)
-    w = db_get_widget(session_id, widget_id)
+    w = db_get_widget(widget_id)
     assert w is not None
     assert w["version"] == 1
     assert w["code"] == code_v1
@@ -37,19 +37,19 @@ def test_db_operations_saved_widgets():
     assert res2["version"] == 2
 
     # Get Active (V2)
-    w_active = db_get_widget(session_id, widget_id)
+    w_active = db_get_widget(widget_id)
     assert w_active["version"] == 2
     assert w_active["code"] == code_v2
 
     # Get versions list
-    versions = db_get_widget_versions(session_id, widget_id)
+    versions = db_get_widget_versions(widget_id)
     assert len(versions) == 2
     assert versions[0]["version"] == 2
     assert versions[0]["description"] == "v2 desc"
     assert versions[1]["version"] == 1
 
     # Get specific version
-    w_v1 = db_get_widget_by_version(session_id, widget_id, 1)
+    w_v1 = db_get_widget_by_version(widget_id, 1)
     assert w_v1 is not None
     assert w_v1["code"] == code_v1
 
@@ -137,7 +137,7 @@ def test_widget_portability_across_sessions():
     assert res1["version"] == 1
 
     # 2. Get from session B (it should retrieve it globally)
-    w_in_b = db_get_widget(session_b, widget_id)
+    w_in_b = db_get_widget(widget_id)
     assert w_in_b is not None
     assert w_in_b["version"] == 1
     assert w_in_b["code"] == code_v1
@@ -147,12 +147,12 @@ def test_widget_portability_across_sessions():
     assert res2["version"] == 2
 
     # 4. Get active from session A (should be V2)
-    w_in_a = db_get_widget(session_a, widget_id)
+    w_in_a = db_get_widget(widget_id)
     assert w_in_a["version"] == 2
     assert w_in_a["code"] == code_v2
 
     # 5. Get versions list from session A
-    versions = db_get_widget_versions(session_a, widget_id)
+    versions = db_get_widget_versions(widget_id)
     assert len(versions) == 2
     assert versions[0]["version"] == 2
     assert versions[1]["version"] == 1

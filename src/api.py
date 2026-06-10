@@ -145,23 +145,22 @@ def db_save_widget(
     return _get_repo(SavedWidgetRepository, "saved_widget").save(session_id, widget_id, code, description)
 
 
-def db_get_widget(session_id: str, widget_id: str) -> dict[str, Any] | None:
+def db_get_widget(widget_id: str) -> dict[str, Any] | None:
     """Retorna la versión activa (más reciente) de un widget."""
-    return _get_repo(SavedWidgetRepository, "saved_widget").get(session_id, widget_id)
+    return _get_repo(SavedWidgetRepository, "saved_widget").get(widget_id)
 
 
-def db_get_widget_versions(session_id: str, widget_id: str) -> list[dict[str, Any]]:
+def db_get_widget_versions(widget_id: str) -> list[dict[str, Any]]:
     """Retorna todas las versiones históricas de un widget."""
-    return _get_repo(SavedWidgetRepository, "saved_widget").get_versions(session_id, widget_id)
+    return _get_repo(SavedWidgetRepository, "saved_widget").get_versions(widget_id)
 
 
 def db_get_widget_by_version(
-    session_id: str,
     widget_id: str,
     version: int,
 ) -> dict[str, Any] | None:
     """Retorna el código de una versión específica de un widget."""
-    return _get_repo(SavedWidgetRepository, "saved_widget").get_by_version(session_id, widget_id, version)
+    return _get_repo(SavedWidgetRepository, "saved_widget").get_by_version(widget_id, version)
 
 
 # === Chat ===

@@ -1,0 +1,105 @@
+/**
+ * Kairos Widgets — Toolbar Core
+ *
+ * Creación del toolbar UI y helpers de botones.
+ */
+window.KairosWidgets = (function(api) {
+
+    api.createToolbar = function(container, id, key, code, hashId) {
+        var oldToolbar = container.querySelector('.widget-toolbar');
+        if (oldToolbar) return;
+
+        var toolbar = document.createElement('div');
+        toolbar.className = 'widget-toolbar';
+        toolbar.style.display = 'flex';
+        toolbar.style.justifyContent = 'space-between';
+        toolbar.style.alignItems = 'center';
+        toolbar.style.background = '#10141b';
+        toolbar.style.border = '1px solid #30363d';
+        toolbar.style.borderBottom = 'none';
+        toolbar.style.borderRadius = '8px 8px 0 0';
+        toolbar.style.padding = '6px 12px';
+        toolbar.style.fontSize = '11px';
+        toolbar.style.fontFamily = 'monospace';
+        toolbar.style.color = '#00ff99';
+
+        var leftSide = document.createElement('div');
+        leftSide.className = 'widget-toolbar-left';
+        var leftSpan = document.createElement('span');
+        leftSpan.textContent = key ? '🛸 WIDGET: ' + key.toUpperCase() : '🧪 WIDGET TEMPORAL';
+        leftSide.appendChild(leftSpan);
+        toolbar.appendChild(leftSide);
+
+        if (key) {
+            fetchVersionLabel(key, leftSide);
+        }
+
+        var rightSide = document.createElement('div');
+        rightSide.className = 'widget-toolbar-right';
+        rightSide.style.display = 'flex';
+        rightSide.style.gap = '8px';
+
+        if (key) {
+            var btnEdit = api.createToolbarButton({
+                label: 'EDITAR',
+                border: '1px solid #00ff99',
+                color: '#00ff99',
+                onClick: function onEditClick() {
+                    api.openEditor(container, id, key, code);
+                }
+            });
+            rightSide.appendChild(btnEdit);
+
+            var btnHist = api.createToolbarButton({
+                label: 'HISTORIAL',
+                border: '1px solid #00ffff',
+                color: '#00ffff',
+                onClick: function onHistoryClick() {
+                    api.toggleHistoryList(container, id, key);
+                }
+            });
+            rightSide.appendChild(btnHist);
+        }
+
+        var btnReset = api.createToolbarButton({
+            label: 'RESET',
+            border: '1px solid #ff3366',
+            color: '#ff3366',
+            onClick: function onResetClick() {
+                if (confirm('¿Reiniciar estado del widget?')) {
+                    window.widgetStates = window.widgetStates || {};
+                    window.widgetStates[hashId] = null;
+                    fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(hashId) + '/state', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: '{}' })
+                    }).then(function onResetResponse() {
+                        var iframe = container.querySelector('iframe');
+                        if (iframe) {
+                            iframe.srcdoc = api.buildIframeSrc(id, api._registry[id] || code, 'null');
+                        }
+                    });
+                }
+            }
+        });
+        rightSide.appendChild(btnReset);
+
+        toolbar.appendChild(rightSide);
+        container.insertBefore(toolbar, container.firstChild);
+    };
+
+    function fetchVersionLabel(key, leftSide) {
+        fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(key) + '/code')
+            .then(function parseVersionResponse(r) { return r.json(); })
+            .then(function appendVersionLabel(data) {
+                var vSpan = document.createElement('span');
+                vSpan.className = 'widget-v-label';
+                vSpan.style.color = '#00ffff';
+                vSpan.style.marginLeft = '8px';
+                vSpan.textContent = '[V' + data.version + ']';
+                leftSide.appendChild(vSpan);
+            }).catch(function ignoreVersionError(){});
+    }
+
+    return api;
+})(window.KairosWidgets || {});

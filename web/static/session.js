@@ -4,7 +4,7 @@ var KairosSession = (function() {
 function refreshSidebar() {
   fetch('/sidebar?current=' + sessionId).then(function(r){ return r.text(); }).then(function(h){
     document.getElementById('session-list').innerHTML = h;
-  });
+  }).catch(function(err) { console.error('Sidebar refresh failed:', err); });
 }
 
 function confirmRename(item, sid) {
@@ -17,7 +17,7 @@ function confirmRename(item, sid) {
     body:'name='+encodeURIComponent(name)}).then(function() {
     item.querySelector('.session-preview').textContent = name;
     restoreActions(item);
-  });
+  }).catch(function(err) { console.error('Rename failed:', err); });
 }
 
 function cancelEdit(item) {
@@ -89,7 +89,7 @@ document.addEventListener('click', function(e) {
     fetch('/sessions/' + sid + '/delete', {method:'POST'}).then(function() {
       if (sessionId === sid) { window.location.href = '/'; }
       else { item.remove(); }
-    });
+    }).catch(function(err) { console.error('Delete failed:', err); });
     return;
   }
 

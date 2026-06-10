@@ -384,7 +384,7 @@ class TestSavedWidgetRepository:
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 
-        result = repo.get("sess_1", "widget_1")
+        result = repo.get("widget_1")
 
         assert result == {
             "widget_id": "widget_1",
@@ -403,7 +403,7 @@ class TestSavedWidgetRepository:
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 
-        result = repo.get("sess_1", "widget_ghost")
+        result = repo.get("widget_ghost")
 
         assert result is None
 
@@ -416,7 +416,7 @@ class TestSavedWidgetRepository:
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 
-        result = repo.get_versions("sess_1", "widget_1")
+        result = repo.get_versions("widget_1")
 
         assert result == [
             {"version": 2, "description": "desc2", "created_at": "t2"},
@@ -432,7 +432,7 @@ class TestSavedWidgetRepository:
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 
-        result = repo.get_by_version("sess_1", "widget_1", 2)
+        result = repo.get_by_version("widget_1", 2)
 
         assert result == {
             "widget_id": "widget_1",
@@ -451,7 +451,7 @@ class TestSavedWidgetRepository:
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 
-        result = repo.get_by_version("sess_1", "widget_1", 99)
+        result = repo.get_by_version("widget_1", 99)
 
         assert result is None
 

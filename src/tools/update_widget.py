@@ -48,7 +48,7 @@ def run(widget_id: str, code: str, description: str = "", _session_id: str | Non
     _session_id, clean_id = result
 
     try:
-        existing = _get_saved_widget_repo().get(_session_id, clean_id)
+        existing = _get_saved_widget_repo().get(clean_id)
         if not existing:
             return f"[ERROR] The widget '{clean_id}' does not exist as an official widget in this session. Use 'save_widget' first to consolidate it."
 

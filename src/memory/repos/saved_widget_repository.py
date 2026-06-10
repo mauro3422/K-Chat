@@ -35,7 +35,7 @@ class SavedWidgetRepository(_BaseRepository):
             ''', (session_id, widget_id, code, next_version, description, now, now))
         return {"widget_id": widget_id, "version": next_version, "status": "saved"}
 
-    def get(self, session_id: str, widget_id: str) -> dict[str, Any] | None:
+    def get(self, widget_id: str) -> dict[str, Any] | None:
         """Get the active version of a widget."""
         try:
             conn = self._get_conn()
@@ -58,7 +58,7 @@ class SavedWidgetRepository(_BaseRepository):
             logger.exception("Failed to get widget %s", widget_id)
             return None
 
-    def get_versions(self, session_id: str, widget_id: str) -> list[dict[str, Any]]:
+    def get_versions(self, widget_id: str) -> list[dict[str, Any]]:
         """Get all versions of a widget."""
         try:
             conn = self._get_conn()
@@ -80,7 +80,7 @@ class SavedWidgetRepository(_BaseRepository):
             logger.exception("Failed to get versions for widget %s", widget_id)
             return []
 
-    def get_by_version(self, session_id: str, widget_id: str, version: int) -> dict[str, Any] | None:
+    def get_by_version(self, widget_id: str, version: int) -> dict[str, Any] | None:
         """Get a specific version of a widget."""
         try:
             conn = self._get_conn()
