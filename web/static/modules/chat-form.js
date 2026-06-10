@@ -83,3 +83,4 @@ export const KairosForm = {
   retry: retryLastMessage,
   reset: resetForm
 };
+window.KairosForm = KairosForm;

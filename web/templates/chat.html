@@ -49,6 +49,8 @@
 <script>
 var sessionId = "{{ session_id }}";
 var defaultModel = "{{ model }}";
+// Placeholder until chat-stream.js module loads
+window.loadSession = function() { console.log('Loading session...'); };
 // Recuperar el modelo guardado del usuario en localStorage
 if (localStorage.getItem('selected_model')) {
   defaultModel = localStorage.getItem('selected_model');
