@@ -1,7 +1,6 @@
 import os
 from typing import Any
-from src.paths import CONTEXT_DIR
-from src.tools._path_helpers import validate_path as _validate_path
+from src.tools._path_helpers import resolve_and_validate_path
 
 DEFINITION: dict[str, Any] = {
     "type": "function",
@@ -68,29 +67,20 @@ def _paginate_and_format(path: str, lines: list[str], start_line: int, end_line:
 
 
 def run(path: str, start_line: int = 1, end_line: int | None = None, _session_id: str | None = None) -> str:
-    expanded_path = os.path.expanduser(path)
-    if not os.path.isabs(expanded_path):
-        expanded_path = os.path.abspath(os.path.join(CONTEXT_DIR, expanded_path))
-    
-    expanded_path = os.path.realpath(expanded_path)
-    err = _validate_path(path, expanded_path)
+    resolved, err = resolve_and_validate_path(path)
     if err:
         return err
-    
-    if not os.path.exists(expanded_path):
+
+    if not os.path.exists(resolved):
         return f"[ERROR] The file '{path}' does not exist."
-    
-    if os.path.isdir(expanded_path):
+
+    if os.path.isdir(resolved):
         return f"[ERROR] '{path}' is a directory, not a file."
-        
+
     try:
-        resolved_path = os.path.realpath(expanded_path)
-        err = _validate_path(path, resolved_path)
-        if err:
-            return err
-        with open(resolved_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(resolved, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
-        
+
         return _paginate_and_format(path, lines, start_line, end_line)
     except Exception:
         return f"[ERROR] Could not read the file '{path}'."

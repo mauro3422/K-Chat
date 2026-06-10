@@ -31,17 +31,16 @@ class TestVerifyModel:
 
 class TestGetModels:
     @patch("src.llm.manager.models.set_cached_models")
-    @patch("src.llm.manager.models._provider.list_models")
     @patch("src.llm.manager.models.get_cached_models_safe")
     def test_fetches_from_api_when_cache_empty(
-        self, mock_get_cache, mock_list, mock_set_cache
+        self, mock_get_cache, mock_set_cache
     ):
+        mock_provider = MagicMock()
+        mock_provider.list_models.return_value = ["model1", "model2"]
         mock_get_cache.side_effect = [None, ["model1", "model2"]]
-        mock_list.return_value = ["model1", "model2"]
-
-        result = get_models()
-
-        mock_list.assert_called_once()
+        with patch("src.llm.manager.models._get_provider", return_value=mock_provider):
+            result = get_models()
+        mock_provider.list_models.assert_called_once()
         mock_set_cache.assert_called_once_with(["model1", "model2"])
         assert result == ["model1", "model2"]
 
@@ -54,35 +53,33 @@ class TestGetModels:
         assert result == ["cached1", "cached2"]
 
     @patch("src.llm.manager.models.set_cached_models")
-    @patch("src.llm.manager.models._provider.list_models")
     @patch("src.llm.manager.models.get_cached_models_safe")
-    def test_forces_refresh(self, mock_get_cache, mock_list, mock_set_cache):
+    def test_forces_refresh(self, mock_get_cache, mock_set_cache):
+        mock_provider = MagicMock()
+        mock_provider.list_models.return_value = ["fresh1"]
         mock_get_cache.side_effect = [["cached"], ["fresh1"]]
-        mock_list.return_value = ["fresh1"]
-
-        result = get_models(force_refresh=True)
-
-        mock_list.assert_called_once()
+        with patch("src.llm.manager.models._get_provider", return_value=mock_provider):
+            result = get_models(force_refresh=True)
+        mock_provider.list_models.assert_called_once()
         assert result == ["fresh1"]
 
-    @patch("src.llm.manager.models._provider.list_models")
     @patch("src.llm.manager.models.get_cached_models_safe")
-    def test_fallback_to_cache_on_api_error(self, mock_get_cache, mock_list):
+    def test_fallback_to_cache_on_api_error(self, mock_get_cache):
+        mock_provider = MagicMock()
+        mock_provider.list_models.side_effect = Exception("API down")
         mock_get_cache.side_effect = [None, ["old_cache"]]
-        mock_list.side_effect = Exception("API down")
-
-        result = get_models()
-
+        with patch("src.llm.manager.models._get_provider", return_value=mock_provider):
+            result = get_models()
         assert result == ["old_cache"]
 
-    @patch("src.llm.manager.models._provider.list_models")
     @patch("src.llm.manager.models.get_cached_models_safe")
-    def test_raises_when_no_cache_and_api_fails(self, mock_get_cache, mock_list):
+    def test_raises_when_no_cache_and_api_fails(self, mock_get_cache):
+        mock_provider = MagicMock()
+        mock_provider.list_models.side_effect = Exception("API down")
         mock_get_cache.return_value = None
-        mock_list.side_effect = Exception("API down")
-
-        with pytest.raises(Exception, match="API down"):
-            get_models()
+        with patch("src.llm.manager.models._get_provider", return_value=mock_provider):
+            with pytest.raises(Exception, match="API down"):
+                get_models()
 
 
 class TestGetFreeModels:

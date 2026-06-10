@@ -3,6 +3,11 @@ from datetime import datetime
 from typing import Any
 
 from src.memory.repos.base import _BaseRepository
+from src.memory.repos.debug_repository import DebugRepository
+from src.memory.repos.message_repository import MessageRepository
+from src.memory.repos.saved_widget_repository import SavedWidgetRepository
+from src.memory.repos.tool_call_repository import ToolCallRepository
+from src.memory.repos.widget_state_repository import WidgetStateRepository
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +33,19 @@ class SessionRepository(_BaseRepository):
 
     def delete(self, session_id: str) -> None:
         """Delete a session and all its associated data."""
-        with self._transaction() as conn:
+        conn = self._get_conn()
+        try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
-            cursor.execute("DELETE FROM tool_calls WHERE session_id = ?", (session_id,))
-            cursor.execute("DELETE FROM debug_info WHERE session_id = ?", (session_id,))
-            cursor.execute("DELETE FROM widget_states WHERE session_id = ?", (session_id,))
-            cursor.execute("DELETE FROM saved_widgets WHERE session_id = ?", (session_id,))
-            cursor.execute("DELETE FROM widget_versions WHERE session_id = ?", (session_id,))
+            MessageRepository(self._conn).delete_by_session(session_id, cursor)
+            ToolCallRepository(self._conn).delete_by_session(session_id, cursor)
+            DebugRepository(self._conn).delete_by_session(session_id, cursor)
+            WidgetStateRepository(self._conn).delete_by_session(session_id, cursor)
+            SavedWidgetRepository(self._conn).delete_by_session(session_id, cursor)
             cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     def get_all(self, limit: int = 50) -> list[tuple[Any, ...]]:
         """Return all sessions with summary data."""

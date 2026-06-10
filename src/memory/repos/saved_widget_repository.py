@@ -35,6 +35,17 @@ class SavedWidgetRepository(_BaseRepository):
             ''', (session_id, widget_id, code, next_version, description, now, now))
         return {"widget_id": widget_id, "version": next_version, "status": "saved"}
 
+    def delete_by_session(self, session_id: str, cursor: Any = None) -> None:
+        """Delete saved widgets and versions for a session. Pass cursor for atomic orchestration."""
+        if cursor is not None:
+            cursor.execute("DELETE FROM widget_versions WHERE widget_id IN (SELECT widget_id FROM saved_widgets WHERE session_id = ?)", (session_id,))
+            cursor.execute("DELETE FROM saved_widgets WHERE session_id = ?", (session_id,))
+        else:
+            with self._transaction() as conn:
+                cur = conn.cursor()
+                cur.execute("DELETE FROM widget_versions WHERE widget_id IN (SELECT widget_id FROM saved_widgets WHERE session_id = ?)", (session_id,))
+                cur.execute("DELETE FROM saved_widgets WHERE session_id = ?", (session_id,))
+
     def get(self, widget_id: str) -> dict[str, Any] | None:
         """Get the active version of a widget."""
         try:

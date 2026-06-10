@@ -22,6 +22,29 @@ def _resolve_model(messages: list[dict[str, Any]], model: str | None, build_prom
     return model
 
 
+def _extract_debug_usage(response: Any, debug: dict[str, Any] | None) -> None:
+    if response and isinstance(debug, dict) and getattr(response, "usage", None):
+        debug["prompt_tokens"] = response.usage.prompt_tokens
+        debug["completion_tokens"] = response.usage.completion_tokens
+        debug["total_tokens"] = response.usage.total_tokens
+
+
+def _with_fallback(
+    model: str,
+    messages: list[dict[str, Any]],
+    build_prompt_fn: Callable | None,
+    fn: Callable[[str], Any],
+) -> Any:
+    try:
+        return fn(model)
+    except Exception as e:
+        logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
+        next_model = manager._mark_and_refresh(model)
+        _update_system_prompt(messages, next_model, build_prompt_fn)
+        logger.info("Switching model to: %s", next_model)
+        return fn(next_model)
+
+
 def _try_stream(model: str, messages: list[dict[str, Any]], **kwargs: Any) -> Any:
     if "stream_options" not in kwargs:
         kwargs["stream_options"] = {"include_usage": True}
@@ -90,32 +113,14 @@ def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_
     if models.is_model_failed(model):
         model = models._switch_model(model)
         _update_system_prompt(messages, model, build_prompt_fn)
-    try:
-        response = models._api_call(
-            model=model,
-            messages=messages,
-            **kwargs
-        )
-        if response and isinstance(debug, dict) and getattr(response, "usage", None):
-            debug["prompt_tokens"] = response.usage.prompt_tokens
-            debug["completion_tokens"] = response.usage.completion_tokens
-            debug["total_tokens"] = response.usage.total_tokens
+
+    def _call(m: str) -> Any:
+        response = models._api_call(model=m, messages=messages, **kwargs)
+        _extract_debug_usage(response, debug)
         return response.choices[0]
-    except Exception as e:
-        logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
-        next_model = manager._mark_and_refresh(model)
-        _update_system_prompt(messages, next_model, build_prompt_fn)
-        logger.info("Switching model to: %s", next_model)
-        response = models._api_call(
-            model=next_model,
-            messages=messages,
-            **kwargs
-        )
-        if response and isinstance(debug, dict) and getattr(response, "usage", None):
-            debug["prompt_tokens"] = response.usage.prompt_tokens
-            debug["completion_tokens"] = response.usage.completion_tokens
-            debug["total_tokens"] = response.usage.total_tokens
-        return response.choices[0]
+
+    return _with_fallback(model, messages, build_prompt_fn, _call)
+
 
 def _process_chunks(
     stream: Any,

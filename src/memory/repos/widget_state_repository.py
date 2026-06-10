@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from typing import Any
 
 from src.memory.repos.base import _BaseRepository
 
@@ -19,6 +20,15 @@ class WidgetStateRepository(_BaseRepository):
                     state = excluded.state,
                     updated_at = excluded.updated_at
             ''', (session_id, widget_id, state, datetime.now().isoformat()))
+
+    def delete_by_session(self, session_id: str, cursor: Any = None) -> None:
+        """Delete all widget states for a session. Pass cursor for atomic orchestration."""
+        if cursor is not None:
+            cursor.execute("DELETE FROM widget_states WHERE session_id = ?", (session_id,))
+        else:
+            with self._transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM widget_states WHERE session_id = ?", (session_id,))
 
     def get_states(self, session_id: str) -> dict[str, str]:
         """Retrieve all widget states for a session."""

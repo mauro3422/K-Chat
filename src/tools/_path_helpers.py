@@ -14,3 +14,12 @@ def validate_path(path: str, expanded: str) -> str | None:
             return None
 
     return f"[ERROR] Access denied. The path '{path}' is outside the allowed directories."
+
+
+def resolve_and_validate_path(path: str) -> tuple[str, str | None]:
+    expanded = os.path.expanduser(path)
+    if not os.path.isabs(expanded):
+        expanded = os.path.abspath(os.path.join(CONTEXT_DIR, expanded))
+    resolved = os.path.realpath(expanded)
+    err = validate_path(path, resolved)
+    return resolved, err

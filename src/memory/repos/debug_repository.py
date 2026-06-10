@@ -27,6 +27,15 @@ class DebugRepository(_BaseRepository):
                 datetime.now().isoformat()
             ))
 
+    def delete_by_session(self, session_id: str, cursor: Any = None) -> None:
+        """Delete debug info for a session. Pass cursor for atomic orchestration."""
+        if cursor is not None:
+            cursor.execute("DELETE FROM debug_info WHERE session_id = ?", (session_id,))
+        else:
+            with self._transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM debug_info WHERE session_id = ?", (session_id,))
+
     def get_info(self, session_id: str) -> dict[str, Any]:
         """Retrieve debug info for a session."""
         try:
