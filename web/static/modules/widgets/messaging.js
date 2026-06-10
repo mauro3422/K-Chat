@@ -53,3 +53,5 @@ export function startMessageHandler() {
         }
     });
 }
+window.KairosWidgets = window.KairosWidgets || {};
+window.KairosWidgets.startMessageHandler = startMessageHandler;
