@@ -39,6 +39,10 @@ export function extract(text) {
         var id = 'widget-' + nextIndex();
         code = code.replace(/\?\.([\w.]+)\s*=(?!=)/g, '.$1 =');
         _registry[id] = code;
+        // Cache widget code in session state so it persists across refreshes
+        if (key && code && window.widgetStates) {
+            window.widgetStates['_code_' + key] = code;
+        }
         if (key) {
             return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
         }

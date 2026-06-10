@@ -49,21 +49,33 @@ export function createIframe(container, id, code) {
     }
 
     if (!code && key) {
-        log(id, 'fetch-init', 'key=' + key);
-        fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(key) + '/code')
-            .then(function(r) {
-                if (!r.ok) throw new Error("No encontrado");
-                return r.json();
-            })
-            .then(function(data) {
-                log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
-                KairosWidgets._registry[id] = data.code;
-                mountIframe(data.code);
-            })
-            .catch(function(err) {
-                log(id, 'fetch-error', err.message);
-                placeholder.innerHTML = '<div class="widget-error" style="color: #ff6b6b; padding: 16px; background: #161b22; border-radius: 8px; border-left: 3px solid #ff6b6b;"><strong>Widget "' + KairosUtils.escHtml(key) + '" no encontrado</strong><br><span style="color: #8b949e; font-size: 13px;">Este widget fue creado en una sesión anterior pero no se guardó oficialmente.<br>Para persistirlo, usá <code>save_widget</code> en el chat.</span></div>';
-            });
+        // Check session cache first (widget code persisted from previous render)
+        var cachedCode = window.widgetStates && window.widgetStates['_code_' + key];
+        if (cachedCode) {
+            log(id, 'cache-hit', 'key=' + key + ' code=' + cachedCode.length + 'b');
+            KairosWidgets._registry[id] = cachedCode;
+            mountIframe(cachedCode);
+        } else {
+            log(id, 'fetch-init', 'key=' + key);
+            fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(key) + '/code')
+                .then(function(r) {
+                    if (!r.ok) throw new Error("No encontrado");
+                    return r.json();
+                })
+                .then(function(data) {
+                    log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
+                    KairosWidgets._registry[id] = data.code;
+                    // Cache for future refreshes
+                    if (window.widgetStates) {
+                        window.widgetStates['_code_' + key] = data.code;
+                    }
+                    mountIframe(data.code);
+                })
+                .catch(function(err) {
+                    log(id, 'fetch-error', err.message);
+                    placeholder.innerHTML = '<div class="widget-error" style="color: #ff6b6b; padding: 16px; background: #161b22; border-radius: 8px; border-left: 3px solid #ff6b6b;"><strong>Widget "' + KairosUtils.escHtml(key) + '" no encontrado</strong><br><span style="color: #8b949e; font-size: 13px;">Este widget fue creado en una sesión anterior pero no se guardó oficialmente.<br>Para persistirlo, usá <code>save_widget</code> en el chat.</span></div>';
+                });
+        }
     } else {
         mountIframe(code);
     }
