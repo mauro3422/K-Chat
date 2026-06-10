@@ -6,6 +6,7 @@ from typing import Any
 from src.core import chat_stream as _chat_stream, get_default_model as _get_default_model
 from src.llm import get_verified_models as _get_verified_models
 from src.background_tasks import auto_rename_session as _auto_rename_session
+from src.compressor import compress_history, should_compress
 
 
 def get_default_model() -> str:
@@ -34,6 +35,7 @@ def chat_stream(
         session_id=session_id, tagged=tagged,
         debug=debug, phases_output=phases_output,
         streaming=streaming,
+        compress_fn=compress_history, should_compress_fn=should_compress,
     )
 
 

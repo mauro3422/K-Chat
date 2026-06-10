@@ -1,6 +1,6 @@
 import json
 import logging
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -57,31 +57,32 @@ def test_save_debug_info_truncates_content():
 # _compress_if_needed tests
 # ---------------------------------------------------------------------------
 
-@patch("src.core.orchestrator.should_compress", return_value=False)
-@patch("src.core.orchestrator.compress_history")
-def test_compress_if_needed_below_threshold(mock_compress, mock_should):
+def test_compress_if_needed_below_threshold():
     from src.core.orchestrator import _compress_if_needed
     history = [{"role": "user", "content": "hello"}]
-    _compress_if_needed(history, "test-model")
+    mock_should = MagicMock(return_value=False)
+    mock_compress = MagicMock()
+    _compress_if_needed(history, "test-model", compress_fn=mock_compress, should_compress_fn=mock_should)
     mock_should.assert_called_once_with(history)
     mock_compress.assert_not_called()
 
 
-@patch("src.core.orchestrator.should_compress", return_value=True)
-@patch("src.core.orchestrator.compress_history")
-def test_compress_if_needed_above_threshold(mock_compress, mock_should):
+def test_compress_if_needed_above_threshold():
     from src.core.orchestrator import _compress_if_needed
     history = [{"role": "user", "content": "hello"}]
-    _compress_if_needed(history, "test-model")
+    mock_should = MagicMock(return_value=True)
+    mock_compress = MagicMock()
+    _compress_if_needed(history, "test-model", compress_fn=mock_compress, should_compress_fn=mock_should)
     mock_compress.assert_called_once_with(history, "test-model")
 
 
-@patch("src.core.orchestrator.should_compress", return_value=True)
-@patch("src.core.orchestrator.compress_history", side_effect=ValueError("compress failed"))
-def test_compress_if_needed_error(mock_compress, mock_should, caplog):
+def test_compress_if_needed_error(caplog):
     from src.core.orchestrator import _compress_if_needed
+    mock_should = MagicMock(return_value=True)
+    mock_compress = MagicMock(side_effect=ValueError("compress failed"))
     with caplog.at_level(logging.WARNING):
-        _compress_if_needed([{"role": "user", "content": "hello"}], "test-model")
+        _compress_if_needed([{"role": "user", "content": "hello"}], "test-model",
+                            compress_fn=mock_compress, should_compress_fn=mock_should)
     assert "compress_history failed" in caplog.text
 
 

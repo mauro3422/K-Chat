@@ -1,12 +1,11 @@
 import logging
 import json
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
 
 from src.llm import get_default_model
 from src.context import build_system_prompt
-from src.compressor import compress_history, should_compress
 from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
 from src.core import _deps
@@ -30,10 +29,17 @@ def _save_debug_info(debug: dict[str, Any] | None, history: list[dict[str, Any]]
         debug["phases"] = json.dumps(phases_output) if phases_output else "[]"
 
 
-def _compress_if_needed(history: list[dict[str, Any]], model: str) -> None:
-    if should_compress(history):
+def _compress_if_needed(
+    history: list[dict[str, Any]],
+    model: str,
+    compress_fn: Callable[[list[dict[str, Any]], str], None] | None = None,
+    should_compress_fn: Callable[[list[dict[str, Any]]], bool] | None = None,
+) -> None:
+    _should = should_compress_fn or (lambda h: False)
+    _compress = compress_fn or (lambda h, m: None)
+    if _should(history):
         try:
-            compress_history(history, model)
+            _compress(history, model)
         except Exception as e:
             logger.warning("compress_history failed, history not compressed: %s", e)
 
@@ -46,7 +52,9 @@ def chat_stream(
     tagged: bool = False,
     debug: dict[str, Any] | None = None,
     phases_output: list[dict[str, Any]] | None = None,
-    streaming: bool = True
+    streaming: bool = True,
+    compress_fn: Callable[[list[dict[str, Any]], str], None] | None = None,
+    should_compress_fn: Callable[[list[dict[str, Any]]], bool] | None = None,
 ) -> Generator[Any, None, None]:
     """Same as chat() but yields tokens. history must be a mutable list."""
     if model is None:
@@ -86,4 +94,4 @@ def chat_stream(
         yield event
 
     _save_debug_info(debug, history, phases_output)
-    _compress_if_needed(history, model)
+    _compress_if_needed(history, model, compress_fn, should_compress_fn)
