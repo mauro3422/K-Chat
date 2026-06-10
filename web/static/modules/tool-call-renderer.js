@@ -1,3 +1,5 @@
+/* global logUI */
+
 export function registerToolCallRenderer() {
   if (typeof KairosStream === 'undefined') return;
 

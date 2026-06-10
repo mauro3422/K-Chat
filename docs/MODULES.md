@@ -262,18 +262,13 @@ support/
 
 ## `src/memory/repositories.py`
 
-**Responsibility:** All DB CRUD operations in 6 classes.
+**Responsibility:** Shim de retrocompatibilidad — re-exports from `src/memory/repos/` (6 repos individuales).
 
 **Public Interface:**
-- `class _BaseRepository` — `_conn`, `_transaction()` context manager with rollback
-- `class MessageRepository` — `save()`, `save_record()`, `get_session_messages()`, `delete_session_messages()`
-- `class SessionRepository` — `ensure()`, `rename()`, `delete()`, `get_all()`, `check_should_rename()`
-- `class ToolCallRepository` — `log()`, `get_history()`, `delete_session_tool_calls()`
-- `class WidgetStateRepository` — `save_state()`, `get_states()`, `delete_session_widget_states()`
-- `class SavedWidgetRepository` — `save()`, `get()`, `get_versions()`, `get_by_version()`
-- `class DebugRepository` — `save_info()`, `get_info()`, `delete_session_debug()`
+- `from .repos import *` — backward-compat shim
+- Each repo lives in its own file under `src/memory/repos/`: `message_repository.py`, `session_repository.py`, `tool_call_repository.py`, `widget_state_repository.py`, `saved_widget_repository.py`, `debug_repository.py`
 
-**Depends on:** `src.memory.database`
+**Depends on:** `src.memory.repos.*`
 
 ---
 
@@ -290,7 +285,7 @@ support/
 
 ---
 
-## `src/context.py`
+## `src/context/` (package)
 
 **Responsibility:** System prompt assembly and context file management.
 
@@ -330,7 +325,6 @@ support/
 - `GET /sessions/{session_id}` — existing chat page
 - `GET /sidebar` — session list for sidebar
 - `GET /sessions/{session_id}/messages` — message list via `message_renderer`
-- `GET /new-session` — generates UUID
 
 **Depends on:** `src.api`, `web.services.message_renderer`, `web.ui_utils`
 

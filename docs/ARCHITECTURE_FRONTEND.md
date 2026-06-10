@@ -20,7 +20,6 @@
 | `content-handler.js` | Listener de `content`: acumula tokens, detecta widgets (`html-widget`/`[Widget:]`), re-renderiza markdown por fase. |
 | `reasoning-handler.js` | Listener de `reasoning`: crea `<details>` colapsable por fase de razonamiento, acumula tokens. |
 | `tool-call-renderer.js` | Listener de `tool_call`: renderiza pills de herramientas (calling → ok/error) agrupadas por fase. |
-| `stream-renderer.js` | Stub vacío (placeholder futuro). |
 
 ## 2. Sistema de streaming: Flujo token → DOM
 
@@ -113,7 +112,7 @@ KairosStream.off('content', callback);
 
 - **Globals implícitos**: `logStream`, `logUI`, `sessionId` se usan sin import. Si algún módulo se carga solo, falla silenciosamente. Deberían importarse explícitamente.
 - **`content-handler.js` re-renderiza markdown en cada token** (con cache `rawText`). En respuestas largas, el coste acumulado puede ser significativo. Un debounce o throttling ayudaría.
-- **`stream-renderer.js` es un stub vacío**: debería eliminarse o completarse.
+- **`stream-renderer.js` fue eliminado**: su lógica se distribuyó en `content-handler.js`, `reasoning-handler.js`, `tool-call-renderer.js`.
 - **Nombres inconsistentes**: `KairosStream` (dispatcher), `KairosForm`, `KairosMarkdown` vs `StreamOrchestrator`, `StreamErrorHandler` — mitad con prefijo `Kairos`, mitad sin él.
 - **`chat-form.js`** tiene acoplamiento directo al DOM (`document.getElementById`). Podría inyectarse el DOM o usar un patrón más desacoplado.
 - **Retry state es singleton global**: si el usuario abriera múltiples chats (futuro), los reintentos colisionarían.

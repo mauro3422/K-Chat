@@ -1,3 +1,5 @@
+/* global logUI, refreshSidebar, refreshDebug, debugVisible */
+
 import { executeStreamFetch } from './stream-fetcher.js';
 import { attemptRetry, handleRetryFinalization } from './stream-retry-coordinator.js';
 

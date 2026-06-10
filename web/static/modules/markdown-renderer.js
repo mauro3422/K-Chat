@@ -1,3 +1,4 @@
+/* global KairosWidgets */
 /* eslint-disable no-redeclare, no-unused-vars */
 
 function decodeHtml(html) {

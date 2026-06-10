@@ -380,3 +380,34 @@ Todas las versiones de Kairos.
 - `src/tools/__init__.py`: exports reordenados alfabéticamente
 - 4 docstrings redundantes eliminados de `src/memory/repos/base.py`
 - CSS: `.tc-item` selectores consolidados (era 3 reglas, ahora 1)
+
+---
+
+## [v0.0.16] — 2026-06-11
+
+### Agregado
+- CHANGELOG.md: v0.0.8-v0.0.15 documentadas
+- README.md: actualizado a v0.0.15, src/api/ package, Docker
+- docs/ARCHITECTURE.md: actualizado con estructura actual
+
+### Corregido
+- N+1 transaction fix en _tool_persister.py
+- 8 dead code items eliminados
+- 3 fetches con .catch() agregados
+- clipboard pattern unificado en debug.js
+- script tags con defer en chat.html
+
+## [v0.0.17] — 2026-06-11
+
+### Agregado
+- src/llm/models.py split → providers.py + model_state.py
+- client.py: dedup retry logic con _with_fallback()
+- stream-orchestrator.js split → stream-fetcher.js + stream-retry-coordinator.js
+- SessionRepository.delete() refactor con delete_by_session()
+- resolve_and_validate_path() en _path_helpers.py
+- ESLint: parserOptions.sourceType: "module"
+
+### Corregido
+- getStreamTimeout() bug: retorna 30000ms en vez de null
+- 3 fetches con .catch() agregados
+- clipboard pattern unificado en debug.js

@@ -1,3 +1,5 @@
+/* global logUI */
+
 export function executeStreamFetch(params) {
   var sessionId = params.sessionId;
   var defaultModel = params.defaultModel;
@@ -64,5 +66,9 @@ export function executeStreamFetch(params) {
     }
 
     return readLoop();
+  })
+  .catch(function(err) {
+    console.error('Chat request failed:', err);
+    if (streamErrorHandler) streamErrorHandler.handler('error', {type: 'network', message: 'Connection failed'});
   });
 }

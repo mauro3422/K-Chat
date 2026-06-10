@@ -1,3 +1,5 @@
+/* global RetryHandler, StreamErrorHandler, KairosUtils */
+
 export function attemptRetry(params) {
   var asstDiv = params.asstDiv;
   var form = params.form;

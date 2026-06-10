@@ -1,3 +1,5 @@
+/* global logUI */
+
 export function registerReasoningHandler() {
   if (typeof KairosStream === 'undefined') return;
 

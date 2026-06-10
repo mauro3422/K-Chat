@@ -40,7 +40,8 @@ export function loadSession(sid) {
 
         KairosMarkdown.renderAll();
       }
-    });
+    })
+    .catch(function(err) { console.error('Failed to load messages:', err); });
 }
 
 window.loadSession = loadSession;

@@ -1,3 +1,5 @@
+/* global KairosUtils, logUI */
+
 var retryState = { count: 0, maxRetries: 3, streamTimeout: null };
 
 function delay(ms) {

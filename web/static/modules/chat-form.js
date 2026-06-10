@@ -1,3 +1,5 @@
+/* global StreamOrchestrator, RetryHandler, KairosUtils */
+
 var lastUserMessageText = '';
 var currentController = null;
 
