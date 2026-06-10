@@ -62,7 +62,7 @@ export function createIframe(container, id, code) {
             })
             .catch(function(err) {
                 log(id, 'fetch-error', err.message);
-                placeholder.innerHTML = '<div class="widget-error" style="color: #ff3366; padding: 12px; background: #161b22; border-radius: 8px;">Error cargando widget oficial "' + KairosUtils.escHtml(key) + '": ' + KairosUtils.escHtml(err.message) + '</div>';
+                placeholder.innerHTML = '<div class="widget-error" style="color: #ff6b6b; padding: 16px; background: #161b22; border-radius: 8px; border-left: 3px solid #ff6b6b;"><strong>Widget "' + KairosUtils.escHtml(key) + '" no encontrado</strong><br><span style="color: #8b949e; font-size: 13px;">Este widget fue creado en una sesión anterior pero no se guardó oficialmente.<br>Para persistirlo, usá <code>save_widget</code> en el chat.</span></div>';
             });
     } else {
         mountIframe(code);
