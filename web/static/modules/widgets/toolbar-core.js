@@ -82,7 +82,7 @@ export function createToolbar(container, id, key, code, hashId) {
                     if (iframe) {
                         iframe.srcdoc = buildIframeSrc(id, KairosWidgets._registry[id] || code, 'null');
                     }
-                });
+                }).catch(function(err) { console.error('Widget reset failed:', err); });
             }
         }
     });

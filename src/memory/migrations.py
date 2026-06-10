@@ -207,11 +207,3 @@ MIGRATIONS = (
     _migration_008_add_token_counts,
     _migration_009_add_indexes,
 )
-
-
-def run_migrations(conn: Any, engine: Any = None) -> None:
-    if engine is None:
-        from src.memory.sqlite_engine import SQLiteEngine
-        engine = SQLiteEngine()
-    for migration in MIGRATIONS:
-        migration(conn, engine)

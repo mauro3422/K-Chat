@@ -26,7 +26,17 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 ├── SOUL.md / MEMORY.md     → Personality and user data (auto-created)
 ├── AGENTS.md / TOOLS.md    → Agent rules and tool guide (auto-generated)
 ├── src/
-│   ├── api.py              → Facade for all DB operations
+│   ├── api/                → Facade package for all DB operations
+│   │   ├── __init__.py     → Public API (19+ functions)
+│   │   ├── messages.py     → Message CRUD
+│   │   ├── sessions.py     → Session management
+│   │   ├── widgets.py      → Widget persistence
+│   │   ├── debug.py        → Debug info
+│   │   ├── tools.py        → Tool history
+│   │   ├── rebuild.py      → History reconstruction
+│   │   ├── filter.py       → UI message filtering
+│   │   ├── stream.py       → Chat streaming
+│   │   └── repos.py        → Repository singletons
 │   ├── core/
 │   │   ├── orchestrator.py → Chat loop, streaming, tool phases, compression
 │   │   ├── tool_loop.py    → Sync + streaming tool execution loops
@@ -77,7 +87,7 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   │   └── debug.py        → Debug info, backend logs
 │   ├── templates/          → Jinja2 templates
 │   └── static/             → CSS, JS modules (chat, session, debug, widgets)
-├── tests/                  → 50+ test files (Python + JS)
+├── tests/                  → 470 Python + 76 Vitest + 13 E2E tests
 ├── docs/
 │   ├── ARCHITECTURE.md     → System architecture and data flow
 │   ├── MODULES.md          → Module responsibilities and interfaces
@@ -87,6 +97,9 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 ```
 
 ## Features
+
+### 10 Tools
+`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`. Auto-registered via `importlib` filesystem scan.
 
 ### Streaming with visual phases
 Each interaction is shown in sequenced phases: reasoning → tools → reasoning → tools → final response. Tools are shown as pills with spinner (calling) and checkmark (ok).
@@ -124,10 +137,28 @@ python web/server.py
 # → http://127.0.0.1:8000
 ```
 
+### Docker
+
+```bash
+# Build and run
+docker compose up --build
+
+# Or build manually
+docker build -t kairos .
+docker run -p 8000:8000 -v ./memory:/app/memory kairos
+```
+
 ## Tests
 
 ```bash
+# Python (unit + integration)
 python -m pytest tests -v
+
+# JS (Vitest)
+npx vitest run
+
+# E2E (Playwright)
+npx playwright test
 ```
 
 ## Add a tool

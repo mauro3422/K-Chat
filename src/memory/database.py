@@ -30,9 +30,7 @@ def get_engine() -> DatabaseEngine | None:
     return _engine
 
 
-def set_engine(engine: DatabaseEngine) -> None:
-    global _engine
-    _engine = engine
+
 
 
 class PooledConnection:

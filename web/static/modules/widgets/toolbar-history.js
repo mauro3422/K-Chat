@@ -76,7 +76,7 @@ export function toggleHistoryList(container, id, key) {
                                     label.textContent = '[V' + v.version + ']';
                                 }
                                 historyDiv.parentNode.removeChild(historyDiv);
-                            });
+                            }).catch(function(err) { console.error('Version load failed:', err); });
                     };
                     historyDiv.appendChild(item);
                 });

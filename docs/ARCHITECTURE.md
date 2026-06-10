@@ -14,7 +14,7 @@ The system is organized in layers with clear boundaries:
            │                              │
            ▼                              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  API Facade (src/api.py)                                   │
+│  API Facade (src/api/)                                      │
 │  Single entry point for all web routers.                   │
 │  Lazy repository singletons, all DB ops through this.      │
 └──────────┬──────────────────────────────┬───────────────────┘
@@ -111,9 +111,10 @@ User input → src/cli.py → core.chat_sync.chat()
 
 ## Module Responsibilities
 
-### `src/api.py` — Public Facade
-- Single entry point for web routers. All DB ops through this.
+### `src/api/` — Public Facade Package
+- `__init__.py`: Single entry point for web routers. All DB ops through this.
 - 19+ public functions: `get_repos()`, `save_message()`, `rebuild_history()`, `get_sessions()`, `rename_session()`, `delete_session()`, `get_session_messages()`, `filter_messages_for_ui()`, `match_tools_to_msgs()`, `save_widget_state()`, `db_save_widget()`, `db_get_widget()`, `db_get_widget_versions()`, `db_get_widget_by_version()`, `save_debug_info()`, `get_debug_info()`, `get_tool_history()`, `chat_stream()`.
+- Sub-modules: `messages.py`, `sessions.py`, `widgets.py`, `debug.py`, `tools.py`, `rebuild.py`, `filter.py`, `stream.py`, `repos.py`.
 - Lazy repository singletons via `_get_repo()` with name-based caching.
 
 ### `src/core/orchestrator.py` — The Brain
@@ -173,7 +174,6 @@ User input → src/cli.py → core.chat_sync.chat()
 
 ### `src/memory/` — Persistence Layer
 - `database.py`: SQLite connection factory (WAL mode, busy timeout). `PooledConnection` wrapper (no-op close). `init_db()` with `PRAGMA foreign_keys = ON`. `DatabaseEngine` Protocol for swappable backends. `get_engine()` / `set_engine()` for engine injection.
-- `engine.py`: `DatabaseEngine` Protocol definition — `connect()`, `execute()`, `commit()`, `rollback()`, `close()`.
 - `sqlite_engine.py`: `SQLiteEngine` — default SQLite implementation of `DatabaseEngine` with WAL mode and busy timeout.
 - `repos/`: 6 repository classes in separate files, all inheriting from `_BaseRepository`.
   - `base.py`: `_BaseRepository` with `_get_conn()` and `_transaction()` context manager (commit on success, rollback on exception, uses engine if available).
@@ -202,6 +202,7 @@ User input → src/cli.py → core.chat_sync.chat()
 - `routers/sessions.py`: Rename and delete endpoints.
 - `routers/widgets.py`: Widget API with `WidgetStatePayload` and `SaveWidgetPayload` Pydantic models.
 - `routers/debug.py`: Debug info and backend log buffering. `_local_only` guard (respects `TESTING` env var).
+- `routers/health.py`: `GET /health` — returns DB status, LLM provider status, uptime, and system info.
 - `services/chat_stream.py`: `build_stream_generator()` — returns NDJSON generator closure, token accumulation, background auto-rename.
 - `services/message_persister.py`: `save_assistant_message()` — persists assistant message and debug info to DB.
 - `services/stream_error_classifier.py`: `classify_error(error_msg)` — classifies error into type + user-friendly message (rate_limit, timeout, network, model, unknown).
@@ -213,8 +214,11 @@ User input → src/cli.py → core.chat_sync.chat()
 - `reasoning-handler.js`: Handles `reasoning` events — creates `<details class="reasoning">` elements per phase, accumulates thinking text.
 - `content-handler.js`: Handles `content` events — manages per-phase body divs, detects inline widgets (`html-widget` code blocks + `[Widget: key]` tags), renders markdown via `KairosMarkdown`, initializes widgets via `KairosWidgets`.
 - `tool-call-renderer.js`: Handles `tool_call` events — creates `.tool-calls` divs with `.tc-item` spans showing spinner (calling), ✓ (ok), or ✗ (error) per tool.
-- `stream-renderer.js`: Main stream rendering orchestrator.
-- `chat-form.js`: Chat form submission and input handling.
+- `stream-orchestrator.js`: Main stream rendering orchestrator. Wires `KairosStream` to handler modules and manages phase transitions.
+- `chat-form.js`: Chat form submission and input handling (simplified — input logic moved to `input-handler.js`).
+- `input-handler.js`: Input token counting, keyboard shortcuts (Enter to send, Shift+Enter for newline), and input state management.
+- `toolbar.js`: Toolbar UI buttons (simplified — session actions moved to `session-actions.js`).
+- `session-actions.js`: Session rename, delete, and navigation logic.
 - `markdown-renderer.js`: `KairosMarkdown.parse()` — markdown to HTML conversion.
 - `utils.js`: `KairosUtils.escHtml()`, `logUI()`, `logStream()`, `showToast()`.
 - `retry-handler.js`: Retry logic for failed streams.

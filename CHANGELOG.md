@@ -236,3 +236,147 @@ Todas las versiones de Kairos.
 ### Cobertura
 - Python: 431 tests, Ruff 0, Pyright 0
 - JS: 108 tests
+
+---
+
+## [v0.0.8] — 2026-06-11
+
+### Agregado
+- **Migración a Vitest**: test runner JS unificado, configuración `vitest.config.js`, cobertura integrada
+- **Type hints completos**: anotaciones de tipo en todos los módulos Python (parámetros, retorno, generics)
+- **Error boundaries**: `try/except` con clasificación de errores en todos los routers web
+- **API contract tests**: tests de integración que validan schemas Pydantic contra respuestas HTTP reales
+- **Documentación**: `docs/API_REFERENCE.md` auto-generada desde docstrings
+
+### Corregido
+- Imports circulares menores resueltos en `src/core/_deps.py`
+- Mock paths desactualizados en 12 archivos de tests JS
+
+### Limpieza
+- 87 líneas de dead code eliminadas en `src/llm/manager.py`
+- Comentarios obsoletos removidos de `src/tools/runner.py`
+
+---
+
+## [v0.0.9] — 2026-06-11
+
+### Agregado
+- **Playwright E2E setup**: configuración inicial con Chromium, fixtures de sesión, helpers de test
+
+### Corregido
+- Tests JS: 15 mocks de DOM actualizados para entorno Vitest
+
+### Limpieza
+- **-1420 líneas**: eliminación masiva de código muerto, imports sin usar, funciones legacy no llamadas
+- `src/memory/repositories.py` shim reducido a 3 líneas
+- `src/core/history.py` facade simplificado
+- 4 archivos de tests obsoletos eliminados
+
+---
+
+## [v0.0.10] — 2026-06-11
+
+### Agregado
+- **chat-form split**: `chat-form.js` dividido en `chat-form.js` (submission) + `input-handler.js` (input/tokens/shortcuts)
+- **toolbar split**: `toolbar.js` dividido en `toolbar.js` (UI buttons) + `session-actions.js` (rename/delete/navigate)
+- **Session error handling**: clasificación de errores de sesión (not found, locked, corrupt) con mensajes user-friendly
+- **Dead code**: 23 funciones sin consumidores eliminadas de routers y services
+
+### Corregido
+- `input-handler.js`: `Enter` sin Shift no enviaba mensaje en Firefox
+- `session-actions.js`: rename de sesión con caracteres especiales truncaba a 50 chars
+
+### Limpieza
+- `src/tools/loader.py`: 4 imports reordenados por dependencia
+- CSS: 12 selectores huérfanos eliminados
+
+---
+
+## [v0.0.11] — 2026-06-11
+
+### Agregado
+- **api.py split (226→10 módulos)**: `src/api/` package con `__init__.py` como fachada + módulos individuales:
+  - `messages.py`, `sessions.py`, `widgets.py`, `debug.py`, `tools.py`, `rebuild.py`, `filter.py`, `stream.py`, `repos.py`
+- **E2E expansion (+11 specs)**: Playwright tests para chat, sesiones, widgets, debug, streaming, error recovery
+
+### Corregido
+- `api/__init__.py`: imports re-exportados restaurados para backward compat con routers existentes
+- `test_api_contract.py`: 4 tests corregidos para nuevo import path
+
+### Limpieza
+- `src/api.py` legacy eliminado (era un shim)
+- 6 `# type: ignore` innecesarios removidos
+
+---
+
+## [v0.0.12] — 2026-06-11
+
+### Agregado
+- **Dependency injection para circular imports**: `_Container` dataclass centraliza dependencias
+- `src/core/_deps.py` reescrito con `provide()` pattern
+
+### Corregido
+- `src/core/orchestrator.py` ↔ `src/api/` circular import roto vía DI container
+- `src/memory/repos/` ↔ `src/tools/runner.py` circular import roto vía `provide()`
+- 3 tests que fallaban por import order修复
+
+### Limpieza
+- `_PROVIDER_REGISTRY` global eliminado de `src/llm/models.py`
+- 8 `TYPE_CHECKING` imports innecesarios removidos
+
+---
+
+## [v0.0.13] — 2026-06-11
+
+### Agregado
+- **ES modules migration**: 24 archivos JS migrados de `<script>` globals a `import`/`export`
+- **Vite configurado**: `vite.config.js` con proxy a FastAPI, HMR habilitado, build para producción
+- **Module map**: `web/static/modules/index.js` como barrel export para todos los módulos
+
+### Corregido
+- `stream-dispatcher.js`: exports nombrados restaurados para compat con tests Vitest
+- `chat-form.js`: `import` de `input-handler.js` corrige referencia undefined
+
+### Limpieza
+- `<script>` tags de `<script type="module">` en `base.html`
+- `window.Kairos*` globals eliminados de 14 archivos
+
+---
+
+## [v0.0.14] — 2026-06-11
+
+### Agregado
+- **Security fixes**:
+  - XSS: sanitización de `innerHTML` en `chat-form.js`, `toolbar.js`, `content-handler.js` vía `escHtml()`
+  - Debug access: endpoint `/debug` ahora requiere header `X-Debug-Token` o env `TESTING=1`
+- **Docker**: `Dockerfile` multi-stage (build + runtime), `docker-compose.yml` con volumen para DB
+- **CI pipeline**: `.github/workflows/ci.yml` con lint + test + typecheck + build
+- **Health check**: `GET /health` endpoint con status de DB, LLM provider, uptime
+
+### Corregido
+- `fetch_url.py`: SSRF guard ahora valida redirects intermedios (no solo el primer hop)
+- `_session_rate` dict: evicción LRU limitada a 1000 entradas máximo
+
+### Limpieza
+- 3 `print()` statements de debug removidos de `src/cli.py`
+- `_debug` flag en `KairosWidgets` limitado a 50 eventos
+
+---
+
+## [v0.0.15] — 2026-06-11
+
+### Agregado
+- **30 tests nuevos**: cobertura de edge cases en repositorios (concurrent writes, empty sessions, unicode)
+- **DRY refactor**: helpers compartidos extraídos en `src/tools/_shared.py` (sanitize, validate, format)
+- **Lazy lxml**: `lxml` importado bajo demanda en `fetch_url.py` (reduce startup time ~200ms)
+
+### Corregido
+- `tool_loop.py`: `_process_tool_turn()` no actualizaba `turn` counter en streaming path
+- `message_persister.py`: `save_assistant_message()` no guardaba `prompt_tokens` cuando era 0
+- `test_e2e_chat.py`: 2 assertions actualizadas para nuevo formato NDJSON
+
+### Limpieza
+- `src/core/history.py`: facade reducido a 5 imports (era 12)
+- `src/tools/__init__.py`: exports reordenados alfabéticamente
+- 4 docstrings redundantes eliminados de `src/memory/repos/base.py`
+- CSS: `.tc-item` selectores consolidados (era 3 reglas, ahora 1)

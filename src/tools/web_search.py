@@ -5,10 +5,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-MIN_RESULTS = 1
 MAX_RESULTS = 20
 SEARCH_TIMEOUT = 15.0
-RETRY_BACKOFF = 1.5
 
 
 def _searxng_url() -> str:

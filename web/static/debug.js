@@ -46,27 +46,18 @@ function toggleDebug() {
 
 function copyStreamLog(el) {
   var txt = streamEvents.map(function(e){ return e.id + ' ' + e.at + ' ' + e.t + ' ' + e.d; }).join('\n');
-  navigator.clipboard.writeText(txt).then(function() {
-    el.textContent = 'copiado';
-    setTimeout(function(){ el.textContent = 'copy'; }, 1500);
-  }).catch(function(){ el.textContent = 'error'; });
+  copyToClipboard(txt, el);
 }
 
 function copyUILog(el) {
   var txt = uiEvents.map(function(e){ return e.id + ' ' + e.at + ' ' + e.label + ' ' + e.detail; }).join('\n');
-  navigator.clipboard.writeText(txt).then(function() {
-    el.textContent = 'copiado';
-    setTimeout(function(){ el.textContent = 'copy'; }, 1500);
-  }).catch(function(){ el.textContent = 'error'; });
+  copyToClipboard(txt, el);
 }
 
 function copyText(el) {
   var pre = el.parentElement.querySelector('pre');
   if (!pre) { el.textContent = '[]'; return; }
-  navigator.clipboard.writeText(pre.textContent).then(function() {
-    el.textContent = 'copiado';
-    setTimeout(function(){ el.textContent = 'copy'; }, 1500);
-  }).catch(function(){ el.textContent = 'error'; });
+  copyToClipboard(pre.textContent, el);
 }
 
 function copyWidgetLog(el) {
@@ -85,10 +76,7 @@ function copyWidgetLog(el) {
       lines.push(ts + ' ' + e.label + ' ' + e.detail);
     });
   }
-  navigator.clipboard.writeText(lines.join('\n')).then(function() {
-    el.textContent = 'copiado';
-    setTimeout(function(){ el.textContent = 'copy'; }, 1500);
-  }).catch(function() { el.textContent = 'error'; });
+  copyToClipboard(lines.join('\n'), el);
 }
 
 function refreshDebug() {
@@ -138,11 +126,17 @@ function copyBackendLogs(el) {
       var ts = new Date(log.ts * 1000).toISOString().slice(11, 23);
       return ts + ' ' + log.level + ' ' + log.message;
     }).join('\n');
-    navigator.clipboard.writeText(txt).then(function() {
-      el.textContent = 'copiado';
-      setTimeout(function(){ el.textContent = 'copy'; }, 1500);
-    }).catch(function(){ el.textContent = 'error'; });
+    copyToClipboard(txt, el);
   }).catch(function() { el.textContent = 'error'; });
+}
+
+function copyToClipboard(text, el) {
+  navigator.clipboard.writeText(text).then(function() {
+    el.textContent = 'copiado';
+    setTimeout(function() { el.textContent = 'copy'; }, 1500);
+  }).catch(function() {
+    el.textContent = 'error';
+  });
 }
 
 function escHtml(s) { return KairosUtils.escHtml(s); }

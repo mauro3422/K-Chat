@@ -1,9 +1,6 @@
 """Lazy repository registry."""
 
-from typing import Any, TypeVar
-
-
-T = TypeVar("T")
+from typing import Any
 
 _repos: dict[str, Any] = {}
 

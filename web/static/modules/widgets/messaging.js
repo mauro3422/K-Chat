@@ -46,7 +46,7 @@ export function startMessageHandler() {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ state: event.data.state })
-            });
+            }).catch(function(err) { console.error('Widget state save failed:', err); });
         } else if (event.data.type === 'widget-error') {
             console.error('[Widget ' + event.data.id + '] ' + event.data.message + ' (linea ' + event.data.line + ')');
             log(event.data.id, 'ERROR', event.data.message + ' L:' + event.data.line);
