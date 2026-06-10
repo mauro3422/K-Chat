@@ -4,19 +4,18 @@
  * Expone window.KairosWidgets con la interfaz original.
  * Ensambla core + iframe-builder + toolbar + iframe + messaging.
  */
-window.KairosWidgets = (function(api) {
-    api.startMessageHandler();
+import { KairosWidgets, extract, log, reset, nextIndex } from './core.js';
+import { buildIframeSrc, createIframe } from './iframe-builder.js';
+import { createToolbar } from './toolbar-core.js';
+import { initAll } from './iframe.js';
+import { startMessageHandler } from './messaging.js';
 
-    return {
-        extract: api.extract,
-        initAll: api.initAll,
-        log: api.log,
-        reset: api.reset,
-        startMessageHandler: api.startMessageHandler,
-        buildIframeSrc: api.buildIframeSrc,
-        nextIndex: api.nextIndex,
-        get registry() { return api._registry; },
-        get debug() { return api._debug; },
-        get index() { return api._index; }
-    };
-})(window.KairosWidgets || {});
+startMessageHandler();
+
+export { KairosWidgets, extract, initAll, log, reset, startMessageHandler, buildIframeSrc, nextIndex };
+export { createIframe };
+export { createToolbar };
+
+export const registry = KairosWidgets._registry;
+export const debug = KairosWidgets._debug;
+export const index = KairosWidgets._index;

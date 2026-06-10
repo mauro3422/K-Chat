@@ -1,4 +1,4 @@
-(function() {
+export function registerReasoningHandler() {
   if (typeof KairosStream === 'undefined') return;
 
   KairosStream.on('reasoning', function(token, state) {
@@ -30,4 +30,6 @@
       console.error('Reasoning handler error:', e);
     }
   });
-})();
+}
+
+registerReasoningHandler();

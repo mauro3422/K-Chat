@@ -1,4 +1,4 @@
-(function() {
+export function registerContentHandler() {
   if (typeof KairosStream === 'undefined') return;
 
   KairosStream.on('content', function(token, state) {
@@ -148,4 +148,6 @@
       console.error('Content handler error:', e);
     }
   });
-})();
+}
+
+registerContentHandler();

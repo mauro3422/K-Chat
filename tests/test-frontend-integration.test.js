@@ -18,17 +18,17 @@ global.DOMPurify = { sanitize: (s) => s };
 global.marked = { parse: (s) => s };
 
 const widgetsDir = new URL('../web/static/modules/widgets/', import.meta.url).pathname;
-await import(`file://${widgetsDir}/core.js`);
-await import(`file://${widgetsDir}/iframe-builder.js`);
+const coreModule = await import(`file://${widgetsDir}/core.js`);
+const KairosWidgets = coreModule.KairosWidgets;
+const iframeBuilderModule = await import(`file://${widgetsDir}/iframe-builder.js`);
+const iframeModule = await import(`file://${widgetsDir}/iframe.js`);
+const messagingModule = await import(`file://${widgetsDir}/messaging.js`);
 await import(`file://${widgetsDir}/toolbar.js`);
-await import(`file://${widgetsDir}/iframe.js`);
-await import(`file://${widgetsDir}/messaging.js`);
 await import(`file://${widgetsDir}/index.js`);
 await import('../web/static/modules/markdown-renderer.js');
 await import('../web/static/modules/stream-dispatcher.js');
 await import('../web/static/modules/content-handler.js');
 await import('../web/static/modules/chat-form.js');
-const KairosWidgets = global.window.KairosWidgets;
 
 describe('Frontend Integration', () => {
   test('KairosWidgets tiene extract', () => {
@@ -36,7 +36,7 @@ describe('Frontend Integration', () => {
   });
 
   test('KairosWidgets tiene initAll', () => {
-    expect(typeof KairosWidgets.initAll).toBe('function');
+    expect(typeof iframeModule.initAll).toBe('function');
   });
 
   test('KairosWidgets tiene log', () => {
@@ -48,11 +48,11 @@ describe('Frontend Integration', () => {
   });
 
   test('KairosWidgets tiene startMessageHandler', () => {
-    expect(typeof KairosWidgets.startMessageHandler).toBe('function');
+    expect(typeof messagingModule.startMessageHandler).toBe('function');
   });
 
   test('KairosWidgets tiene buildIframeSrc', () => {
-    expect(typeof KairosWidgets.buildIframeSrc).toBe('function');
+    expect(typeof iframeBuilderModule.buildIframeSrc).toBe('function');
   });
 
   test('KairosMarkdown tiene parse', () => {

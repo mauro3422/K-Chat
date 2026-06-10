@@ -1,61 +1,56 @@
-/* eslint-disable no-redeclare, no-unused-vars */
-var RetryHandler = (function() {
-  var retryCount = 0;
-  var MAX_RETRIES = 2;
-  var STREAM_TIMEOUT = 60000;
+var retryState = { count: 0, maxRetries: 3, streamTimeout: null };
 
-  function delay(ms) {
-    return new Promise(function(resolve) { setTimeout(resolve, ms); });
-  }
+function delay(ms) {
+  return new Promise(function(resolve) { setTimeout(resolve, ms); });
+}
 
-  function showRetryNotice(attempt, reason) {
-    KairosUtils.showToast('Reintentando... (' + attempt + '/' + MAX_RETRIES + ') - ' + reason, 'warning');
-    logUI('stream_retry', 'intento ' + attempt + '/' + MAX_RETRIES + ' - ' + reason);
-  }
+function showRetryNotice(attempt, reason) {
+  KairosUtils.showToast('Reintentando... (' + attempt + '/' + retryState.maxRetries + ') - ' + reason, 'warning');
+  logUI('stream_retry', 'intento ' + attempt + '/' + retryState.maxRetries + ' - ' + reason);
+}
 
-  function scheduleRetry(form, input, asstDiv, lastUserMessageText, reason) {
-    retryCount++;
-    showRetryNotice(retryCount, reason);
-    asstDiv.remove();
-    input.value = lastUserMessageText;
-    return delay(2000 * retryCount).then(function doScheduledSubmit() {
-      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-    });
-  }
+export function scheduleRetry(form, input, asstDiv, lastUserMessageText, reason) {
+  retryState.count++;
+  showRetryNotice(retryState.count, reason);
+  asstDiv.remove();
+  input.value = lastUserMessageText;
+  return delay(2000 * retryState.count).then(function doScheduledSubmit() {
+    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  });
+}
 
-  function shouldRetry(hasContent, hasSuccessfulTools) {
-    return retryCount < MAX_RETRIES && !hasContent && !hasSuccessfulTools;
-  }
+export function shouldRetry(hasContent, hasSuccessfulTools) {
+  return retryState.count < retryState.maxRetries && !hasContent && !hasSuccessfulTools;
+}
 
-  function incrementRetry() {
-    retryCount++;
-  }
+export function incrementRetry() {
+  retryState.count++;
+}
 
-  function resetRetryCount() {
-    retryCount = 0;
-  }
+export function resetRetryCount() {
+  retryState.count = 0;
+}
 
-  function getRetryCount() {
-    return retryCount;
-  }
+export function getRetryCount() {
+  return retryState.count;
+}
 
-  function getMaxRetries() {
-    return MAX_RETRIES;
-  }
+export function getMaxRetries() {
+  return retryState.maxRetries;
+}
 
-  function getStreamTimeout() {
-    return STREAM_TIMEOUT;
-  }
+export function getStreamTimeout() {
+  return retryState.streamTimeout;
+}
 
-  return {
-    delay: delay,
-    showRetryNotice: showRetryNotice,
-    scheduleRetry: scheduleRetry,
-    shouldRetry: shouldRetry,
-    incrementRetry: incrementRetry,
-    resetRetryCount: resetRetryCount,
-    getRetryCount: getRetryCount,
-    getMaxRetries: getMaxRetries,
-    getStreamTimeout: getStreamTimeout
-  };
-})();
+export const RetryHandler = {
+  delay,
+  showRetryNotice,
+  scheduleRetry,
+  shouldRetry,
+  incrementRetry,
+  resetRetryCount,
+  getRetryCount,
+  getMaxRetries,
+  getStreamTimeout
+};

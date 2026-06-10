@@ -1,10 +1,8 @@
-(function() {
+export function initStreamRenderer() {
   if (typeof KairosStream === 'undefined') {
-    console.error('KairosStream is not defined. Cannot initialize stream renderer.');
+    console.error('KairosStream not defined');
     return;
   }
-  // Handlers auto-register via KairosStream.on() in:
-  // - reasoning-handler.js
-  // - content-handler.js
-  // - tool-call-renderer.js
-})();
+}
+
+initStreamRenderer();

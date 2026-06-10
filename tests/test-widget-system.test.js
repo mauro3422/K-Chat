@@ -8,13 +8,14 @@ global.sessionId = 'test';
 global.fetch = () => Promise.resolve();
 
 const widgetsDir = new URL('../web/static/modules/widgets/', import.meta.url).pathname;
-await import(`file://${widgetsDir}/core.js`);
-await import(`file://${widgetsDir}/iframe-builder.js`);
+const coreModule = await import(`file://${widgetsDir}/core.js`);
+const KairosWidgets = coreModule.KairosWidgets;
+const iframeBuilder = await import(`file://${widgetsDir}/iframe-builder.js`);
+const buildIframeSrc = iframeBuilder.buildIframeSrc;
 await import(`file://${widgetsDir}/toolbar.js`);
 await import(`file://${widgetsDir}/iframe.js`);
 await import(`file://${widgetsDir}/messaging.js`);
 await import(`file://${widgetsDir}/index.js`);
-const KairosWidgets = global.window.KairosWidgets;
 
 describe('Widget System', () => {
   test('extract genera IDs únicos', () => {
@@ -60,7 +61,7 @@ describe('Widget System', () => {
   });
 
   test('buildIframeSrc has required elements', () => {
-    const src = KairosWidgets.buildIframeSrc('w-test', '<p>hi</p>', 'null');
+    const src = buildIframeSrc('w-test', '<p>hi</p>', 'null');
     expect(src).toContain('<p>hi</p>');
     expect(src).toContain('sendHeight');
     expect(src).toContain('ResizeObserver');

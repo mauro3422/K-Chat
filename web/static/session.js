@@ -1,5 +1,4 @@
 /* eslint-disable no-redeclare, no-unused-vars */
-var KairosSession = (function() {
 
 function refreshSidebar() {
   fetch('/sidebar?current=' + sessionId).then(function(r){ return r.text(); }).then(function(h){
@@ -33,9 +32,7 @@ function restoreActions(item) {
     '<button class="act-delete" title="Eliminar">&#128465;</button>';
 }
 
-return { refreshSidebar: refreshSidebar, confirmRename: confirmRename, cancelEdit: cancelEdit, restoreActions: restoreActions };
-
-})();
+export const KairosSession = { refreshSidebar, confirmRename, cancelEdit, restoreActions };
 
 // Backwards-compatible globals for HTML onclick handlers
 window.KairosSession = KairosSession;

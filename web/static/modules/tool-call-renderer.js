@@ -1,4 +1,4 @@
-(function() {
+export function registerToolCallRenderer() {
   if (typeof KairosStream === 'undefined') return;
 
   KairosStream.on('tool_call', function(dataStr, state) {
@@ -76,4 +76,6 @@
       console.error('Tool call renderer error:', e);
     }
   });
-})();
+}
+
+registerToolCallRenderer();

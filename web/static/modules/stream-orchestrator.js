@@ -1,7 +1,6 @@
-/* eslint-disable no-redeclare, no-unused-vars */
-var StreamOrchestrator = (function() {
+export const StreamOrchestrator = {
 
-  async function startStream(params) {
+  async startStream(params) {
     var text = params.text;
     var form = params.form;
     var input = params.input;
@@ -170,7 +169,4 @@ var StreamOrchestrator = (function() {
     KairosUtils.scrollToBottom();
   }
 
-  return {
-    startStream: startStream
-  };
-})();
+};
