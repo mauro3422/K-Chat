@@ -39,3 +39,5 @@ export function getWidgetObserver() {
 export function setWidgetObserver(observer) {
     _widgetObserver = observer;
 }
+window.KairosWidgets = window.KairosWidgets || {};
+window.KairosWidgets.initAll = initAll;
