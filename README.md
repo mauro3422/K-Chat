@@ -1,79 +1,119 @@
 # Kairos
 
-Agente personal minimalista con memoria episodica, herramientas paralelas y dashboard web.
-Sin frameworks JS, sin npm, sin gateways complejos. Cada pieza es un archivo independiente.
+Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
+No JS frameworks, no complex gateways. Each piece is an independent file.
 
 ## Vision
 
-Kairos no busca ser una copia de OpenClaw. Nace de la frustracion de configurar una plataforma grande, encontrar errores al intentar usarla para tareas reales, y querer algo mas directo: un asistente personal que pueda conversar, recordar, usar herramientas, mostrar que hizo e iterar sobre su propio proyecto junto al usuario.
+Kairos is not trying to be a copy of OpenClaw. It is born from the frustration of configuring a large platform, finding errors when trying to use it for real tasks, and wanting something more direct: a personal assistant that can chat, remember, use tools, show what it did, and iterate on its own project alongside the user.
 
-La meta no es tener todos los canales, plugins y capas desde el primer dia. La meta es tener primero un nucleo confiable y entendible: chat, memoria, tools, streaming, debug y capacidad de evolucionar sin pelear contra una arquitectura opaca. Los canales futuros como Telegram, webhooks o automatizaciones deben ser adaptadores alrededor del mismo nucleo, no una razon para convertir el proyecto en una plataforma pesada.
+The goal is not to have all channels, plugins, and layers from day one. The goal is to have a reliable and understandable core first: chat, memory, tools, streaming, debug, and the ability to evolve without fighting an opaque architecture. Future channels like Telegram, webhooks, or automations should be adapters around the same core, not a reason to turn the project into a bloated platform.
 
-Kairos puede tomar inspiracion de ideas de OpenClaw, pero con una prioridad distinta: ser un wrapper decente, estable, hackeable y bien armado para uso personal, antes que un ecosistema enorme lleno de piezas fragiles.
+Kairos can take inspiration from OpenClaw ideas, but with a different priority: be a decent, stable, hackable, and well-built wrapper for a personal assistant, before becoming a huge ecosystem full of fragile pieces.
 
 ## Stack
 
-- **Modelos:** big-pickle (default), deepseek-v4-flash-free (fallback) — OpenCode Zen API
-- **Chat:** CLI + Web dashboard (FastAPI + HTMX + Jinja2)
-- **Memoria:** SQLite persistente (sesiones, mensajes con razonamiento, tool_calls con fases, debug_info)
-- **Contexto:** SOUL.md + MEMORY.md + AGENTS.md + TOOLS.md (auto-creados y auto-generados)
-- **Frontend:** Sin build step, sin bundles, sin npm. HTML + CSS + JS vanilla (~500 líneas total)
+- **Models:** big-pickle (default), deepseek-v4-flash-free (fallback) — OpenCode Zen API
+- **Chat:** CLI + Web dashboard (FastAPI + vanilla JS + Jinja2)
+- **Memory:** SQLite persistent (sessions, messages with reasoning, tool_calls with phases, debug_info)
+- **Context:** SOUL.md + MEMORY.md + AGENTS.md + TOOLS.md (auto-created and auto-generated)
+- **Frontend:** No build step, no bundles. HTML + CSS + JS vanilla (~2,000 lines total)
 
-## Estructura
+## Structure
 
 ```
-├── config.py               → Lee .env, valida keys
-├── SOUL.md / MEMORY.md     → Personalidad y datos del usuario (auto-creados)
-├── AGENTS.md / TOOLS.md    → Reglas del agente y guía de tools (auto-generados)
+├── config.py               → Reads .env, validates keys
+├── SOUL.md / MEMORY.md     → Personality and user data (auto-created)
+├── AGENTS.md / TOOLS.md    → Agent rules and tool guide (auto-generated)
 ├── src/
-│   ├── core.py             → Orquestador: contexto, tool loop, history compressor
-│   ├── llm.py              → API OpenCode Zen (chat + streaming + detección modelos)
-│   ├── memory.py           → SQLite con sesiones, mensajes, tools, debug_info
-│   ├── compressor.py       → Compresión del historial de chat por IA
-│   ├── context.py          → Carga y ensamblado de directivas de sistema
-│   ├── tool_runner.py      → Ejecución paralela de herramientas
-│   ├── background_tasks.py → Tareas en segundo plano de FastAPI (ej. renombrar sesiones)
-│   └── tools/
-│       ├── __init__.py     → Auto-loader de tools (importlib)
-│       ├── web_search.py   → Búsqueda web DuckDuckGo
-│       ├── get_tool_history.py → El modelo consulta su historial de tools
-│       └── save_memory.py  → Guardar datos importantes en memoria persistente
+│   ├── api.py              → Facade for all DB operations
+│   ├── core/
+│   │   ├── orchestrator.py → Chat loop, streaming, tool phases, compression
+│   │   ├── tool_loop.py    → Sync + streaming tool execution loops
+│   │   ├── chat_sync.py    → Non-streaming chat helper
+│   │   └── history.py      → History reconstruction and UI filtering
+│   ├── llm/
+│   │   ├── protocol.py     → LLMProvider protocol definition
+│   │   ├── openai_provider.py → OpenAI-compatible provider
+│   │   ├── models.py       → API client, retry, model switching
+│   │   ├── client.py       → chat() and chat_stream()
+│   │   └── manager.py      → Model discovery, verification, selection
+│   ├── memory/
+│   │   ├── database.py     → SQLite connection + schema init
+│   │   ├── repositories.py → CRUD repositories (messages, sessions, tools, widgets, debug)
+│   │   └── migrations.py   → Schema migration functions
+│   ├── tools/
+│   │   ├── __init__.py     → Module exports
+│   │   ├── loader.py       → Auto-loader (TOOL_MAP, TOOL_DEFINITIONS)
+│   │   ├── runner.py       → Parallel tool execution
+│   │   ├── web_search.py   → Web search via API
+│   │   ├── fetch_url.py    → Fetch and extract web page content
+│   │   ├── save_memory.py  → Persist data to MEMORY.md
+│   │   ├── read_file.py    → Read project files
+│   │   ├── write_file.py   → Write project files
+│   │   ├── read_skill.py   → Load skills from skills/
+│   │   ├── get_tool_history.py → Query tool usage
+│   │   ├── save_widget.py  → Save widget to DB
+│   │   ├── get_widget_code.py → Retrieve widget code
+│   │   └── update_widget.py → Update widget version
+│   ├── context.py          → System prompt builder, context loader
+│   ├── compressor.py       → History compression via LLM
+│   ├── background_tasks.py → Auto-rename sessions
+│   ├── cli.py              → CLI entry point
+│   ├── handler_cli.py      → CLI commands (/model, /clear, /help)
+│   └── paths.py            → Path resolution utilities
 ├── web/
-│   ├── server.py           → FastAPI (streaming NDJSON, sidebar, debug)
-│   ├── ui_utils.py         → Utilidades de interfaz (formateador de tablas SQL, etc.)
-│   ├── templates/chat.html → Jinja2 template
-│   └── static/
-│       ├── style.css       → Tema oscuro, layout responsive, debug panel
-│       ├── session.js      → Sidebar interactiva (rename, delete, navegación)
-│       ├── debug.js        → Panel de depuración en vivo
-│       └── chat-stream.js  → Streaming NDJSON, razonamiento por fases, tool pills
-├── tests/                  → 63 tests (CRUD, streaming, paralelismo, fallback, integración)
-└── memory/                 → Base de datos SQLite
+│   ├── server.py           → FastAPI app
+│   ├── logging.py          → Backend log handler + ring buffer
+│   ├── ui_utils.py         → HTML message renderer
+│   ├── services/
+│   │   ├── chat_stream.py  → Stream generator for web endpoint
+│   │   └── message_renderer.py → Session message HTML renderer
+│   ├── routers/
+│   │   ├── chat.py         → Streaming POST endpoint
+│   │   ├── pages.py        → HTML pages, sidebar, messages
+│   │   ├── sessions.py     → Rename, delete
+│   │   ├── widgets.py      → Widget API
+│   │   └── debug.py        → Debug info, backend logs
+│   ├── templates/          → Jinja2 templates
+│   └── static/             → CSS, JS modules (chat, session, debug, widgets)
+├── tests/                  → 50+ test files (Python + JS)
+├── docs/
+│   ├── ARCHITECTURE.md     → System architecture and data flow
+│   ├── MODULES.md          → Module responsibilities and interfaces
+│   └── HEALTH.md           → Known issues and refactoring candidates
+├── skills/                 → Skill definitions for specialized tasks
+└── memory/                 → SQLite database
 ```
 
-## Funcionalidades
+## Features
 
-### Streaming con fases visuales
-Cada interacción se muestra en fases secuenciadas: razonamiento → tools → razonamiento → tools → respuesta final. Las tools se muestran como pills con spinner (calling) y checkmark (ok).
+### Streaming with visual phases
+Each interaction is shown in sequenced phases: reasoning → tools → reasoning → tools → final response. Tools are shown as pills with spinner (calling) and checkmark (ok).
 
-### Tools paralelas
-El modelo puede llamar múltiples tools en una sola iteración. Se ejecutan en paralelo vía `ThreadPoolExecutor`. Los resultados llegan a medida que se completan.
+### Parallel tools
+The model can call multiple tools in a single iteration. They execute in parallel via `ThreadPoolExecutor`. Results arrive as they complete.
 
-### Dashboard web
-- Sidebar con sesiones (renombrar, eliminar, navegar)
-- Histórico con razonamiento y tools preservado post-F5
-- Panel Debug en vivo: modelo, razonamiento, tools, system prompt, stream log, UI log
+### Web dashboard
+- Sidebar with sessions (rename, delete, navigate)
+- History with reasoning and tools preserved after F5
+- Live Debug panel: model, reasoning, tools, system prompt, stream log, UI log
 
-### Memoria episódica
-Cada tool call se loguea con timestamp, input, status y número de fase. Las fases de razonamiento se guardan como JSON para reconstruir la secuencia visual post-refresh.
+### Episodic memory
+Each tool call is logged with timestamp, input, status, and phase number. Reasoning phases are saved as JSON to reconstruct the visual sequence after refresh.
 
-### Contexto dinámico
-SOUL.md, MEMORY.md, AGENTS.md se auto-crean al primer arranque. TOOLS.md se auto-genera desde el registry de tools. `get_tool_history` permite al modelo consultar su propio historial.
+### Dynamic context
+SOUL.md, MEMORY.md, AGENTS.md are auto-created on first boot. TOOLS.md is auto-generated from the tool registry. `get_tool_history` lets the model query its own tool usage.
 
 ### History compressor
-Cuando la conversación supera 40 mensajes, resume los antiguos vía LLM.
+When the conversation exceeds 40 messages or ~6k tokens, old messages are summarized via LLM.
 
-## Arranque
+### Widget system
+- Inline widgets rendered in sandboxed iframes
+- Official widgets: versioned, persisted in DB, toolbar with edit/history/reset
+- `[Widget: id]` tag auto-renders from database
+
+## Startup
 
 ```bash
 # CLI
@@ -90,30 +130,37 @@ python web/server.py
 python -m pytest tests -v
 ```
 
-## Agregar una tool
+## Add a tool
 
-Crear un archivo en `src/tools/` con `DEFINITION` + `run()`. Se registra automáticamente.
+Create a file in `src/tools/` with `DEFINITION` + `run()`. It registers automatically.
 
 ```python
 DEFINITION = {
     "type": "function",
     "function": {
-        "name": "mi_tool",
-        "description": "Qué hace",
+        "name": "my_tool",
+        "description": "What it does",
         "parameters": {"type": "object", "properties": {...}}
     }
 }
 
 def run(**kwargs) -> str:
-    return "resultado"
+    return "result"
 ```
 
-## Filosofía — "Legos"
+## Philosophy — "Legos"
 
-Cada pieza es independiente y reemplazable:
-- Tools → archivos sueltos en `src/tools/`
-- Contexto → archivos markdown en la raíz
-- Memoria → SQLite puro, sin ORM
-- Frontend → HTML + CSS + JS vanilla, sin build step
+Each piece is independent and replaceable:
+- Tools → loose files in `src/tools/`
+- Context → markdown files in root
+- Memory → pure SQLite, no ORM
+- Frontend → HTML + CSS + JS vanilla, no build step
 
-Lo que no sirve se reemplaza, no se parchea.
+What doesn't work gets replaced, not patched.
+
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — System architecture, data flow, persistence model
+- [docs/MODULES.md](docs/MODULES.md) — Module responsibilities, public interfaces, dependency map
+- [docs/HEALTH.md](docs/HEALTH.md) — Known issues and refactoring candidates
+- [ROADMAP.md](ROADMAP.md) — Completed features and next priorities

@@ -1,31 +1,33 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 from src.llm import models
 
 logger = logging.getLogger(__name__)
 
 def verify_model(model_id: str) -> bool:
-    """Prueba si un modelo responde correctamente enviando un mensaje ultracorto."""
+    """Tests if a model responds correctly by sending an ultra-short message."""
     try:
         models._api_call(
             model=model_id,
-            messages=[{"role": "user", "content": "hola"}],
+            messages=[{"role": "user", "content": "hi"}],
             max_tokens=2,
             timeout=2.0
         )
         return True
     except Exception as e:
-        logger.warning("Modelo %s no pasó la verificación: %s", model_id, e)
+        logger.warning("Model %s failed verification: %s", model_id, e)
         return False
 
-def get_verified_models(force_refresh: bool = False) -> list:
-    """Devuelve la lista de modelos gratuitos que están activos y funcionando."""
-    if models._verified_models is None or force_refresh:
+def get_verified_models(force_refresh: bool = False) -> list[str]:
+    """Returns the list of free models that are active and working."""
+    cached = models.get_verified_models_safe()
+    if cached is None or force_refresh:
         try:
             free_models = get_free_models(force_refresh=force_refresh)
-            verified = []
+            verified: list[str] = []
 
-            def check(model_id: str):
+            def check(model_id: str) -> str | None:
                 if verify_model(model_id):
                     return model_id
                 return None
@@ -35,54 +37,53 @@ def get_verified_models(force_refresh: bool = False) -> list:
                 for res in results:
                     if res:
                         verified.append(res)
-            models._verified_models = verified
+            models.set_verified_models(verified)
         except Exception as e:
-            logger.error("Error verificando modelos: %s", e)
-            if models._verified_models is not None:
-                return models._verified_models
-            models._verified_models = [models.FALLBACK_MODEL]
-    return models._verified_models
+            logger.error("Error verifying models: %s", e)
+            cached = models.get_verified_models_safe()
+            if cached is not None:
+                return cached
+            models.set_verified_models([models.FALLBACK_MODEL])
+    return models.get_verified_models_safe() or []
 
-def get_models(force_refresh: bool = False):
-    """Devuelve todos los modelos disponibles desde la API (con caché en memoria)."""
-    if models._cached_models is None or force_refresh:
+def get_models(force_refresh: bool = False) -> list[Any]:
+    """Returns all available models from the API (with in-memory cache)."""
+    cached = models.get_cached_models_safe()
+    if cached is None or force_refresh:
         try:
-            models._cached_models = list(models.client.models.list())
+            result = list(models._get_provider().list_models())
+            models.set_cached_models(result)
         except Exception as e:
-            logger.error("Error al obtener modelos de la API: %s", e)
-            if models._cached_models is not None:
-                return models._cached_models
-            raise e
-    return models._cached_models
+            logger.error("Error fetching models from API: %s", e)
+            cached = models.get_cached_models_safe()
+            if cached is not None:
+                return cached
+            raise
+    return models.get_cached_models_safe() or []
 
-def get_free_models(force_refresh: bool = False):
-    """Devuelve solo los modelos gratuitos (IDs que terminan en -free)."""
+def get_free_models(force_refresh: bool = False) -> list[Any]:
+    """Returns only free models (IDs ending in -free)."""
     all_models = get_models(force_refresh=force_refresh)
     return [model for model in all_models if model.id.endswith("-free")]
 
-def get_paid_models(force_refresh: bool = False):
-    """Devuelve los modelos de pago."""
-    all_models = get_models(force_refresh=force_refresh)
-    return [model for model in all_models if not model.id.endswith("-free")]
-
-def get_default_model():
-    """Elige el primer modelo de PRIORITY que esté disponible y no haya fallado. Si la API no responde, usa el fallback."""
+def get_default_model() -> str:
+    """Selects the first model from PRIORITY that is available and has not failed. If the API does not respond, uses the fallback."""
     try:
         free_ids = [m.id for m in get_free_models()]
         for modelo in models.PRIORITY:
-            if modelo not in models._failed_models:
+            if not models.is_model_failed(modelo):
                 if modelo in free_ids or modelo == "big-pickle":
                     return modelo
     except Exception as e:
-        logger.warning("Error obteniendo modelos: %s", e)
+        logger.warning("Error getting models: %s", e)
     return models.FALLBACK_MODEL
 
 def _mark_and_refresh(model: str) -> str:
-    """Marca modelo como fallido, refresca lista verificada y devuelve el modelo alternativo."""
+    """Marks model as failed, refreshes verified list, and returns the alternative model."""
     try:
         get_verified_models(force_refresh=True)
     except Exception:
-        pass
-    models._failed_models.add(model)
+        logger.exception("Failed to refresh verified models")
+    models.mark_model_failed(model)
     next_model = models._switch_model(model)
     return next_model

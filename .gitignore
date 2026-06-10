@@ -47,3 +47,6 @@ TOOLS.md
 
 # Scratch scripts
 scratch/
+
+# Logs
+*.log

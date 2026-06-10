@@ -27,40 +27,32 @@ var KairosMarkdown = (function() {
     if (typeof marked === 'undefined') return;
     
     var containers = document.querySelectorAll('.md-content');
-    console.log('[KairosMarkdown] renderAll: found', containers.length, 'containers');
     
-    // Configurar DOMPurify para permitir iframes de widgets
+    // Configurar DOMPurify para permitir iframes de widgets y atributos de versión
     var purifyConfig = {
       ADD_TAGS: ['iframe'],
-      ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'srcdoc', 'sandbox']
+      ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'srcdoc', 'sandbox', 'data-widget-id', 'data-widget-key']
     };
+    if (typeof DOMPurify !== 'undefined') {
+      DOMPurify.setConfig(purifyConfig);
+    }
     
     containers.forEach(function(el) {
       if (el.dataset.rendered) {
-        console.log('[KairosMarkdown] Skipping already rendered container');
         return;
       }
       
       var raw = el.textContent;
-      console.log('[KairosMarkdown] Processing container, raw length:', raw.length);
       
       if (raw.trim()) {
-        // Decodificar HTML escapado del servidor si es necesario
         var decoded = decodeHtml(raw);
-        console.log('[KairosMarkdown] Decoded length:', decoded.length);
-        console.log('[KairosMarkdown] Contains html-widget:', decoded.indexOf('html-widget') >= 0);
         
         var parsed = parse(decoded);
         var sanitized = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsed, purifyConfig) : parsed;
         el.innerHTML = sanitized;
         
-        console.log('[KairosMarkdown] After sanitize, iframes:', el.querySelectorAll('iframe').length);
-        console.log('[KairosMarkdown] After sanitize, widget containers:', el.querySelectorAll('.interactive-widget-container').length);
-        
         // Forzar inicialización inmediata (no usar lazy loading al cargar sesión existente)
         KairosWidgets.initAll(el, true);
-        
-        console.log('[KairosMarkdown] Rendered and initialized widgets');
       }
       el.dataset.rendered = '1';
     });

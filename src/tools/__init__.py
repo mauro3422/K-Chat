@@ -1,30 +1,27 @@
-import os
-import logging
-import importlib
+from src.tools.loader import TOOL_MAP as TOOL_MAP, TOOL_DEFINITIONS
+from src.tools.runner import run_parallel_tools as run_parallel_tools
 
-logger = logging.getLogger(__name__)
-
-TOOLS = []
-TOOL_MAP = {}
-
-_dir = os.path.dirname(__file__)
-for f in sorted(os.listdir(_dir)):
-    if not f.endswith('.py') or f.startswith('__') or f == 'runner.py':
-        continue
-    mod_name = f[:-3]
-    try:
-        mod = importlib.import_module(f'src.tools.{mod_name}')
-        if not hasattr(mod, 'DEFINITION'):
-            logger.warning("Tool %s: no exporta DEFINITION, ignorada", mod_name)
-            continue
-        if not hasattr(mod, 'run'):
-            logger.warning("Tool %s: no exporta run(), ignorada", mod_name)
-            continue
-        TOOLS.append(mod.DEFINITION)
-        TOOL_MAP[mod.DEFINITION['function']['name']] = mod.run
-        logger.debug("Tool cargada: %s", mod_name)
-    except Exception as e:
-        logger.warning("Tool %s: error al cargar (%s), ignorada", mod_name, e)
-
-from src.tools.runner import run_parallel_tools
-
+# Built once at import time, immutable after — thread-safe by single-threaded import
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_action",
+            "description": "Executes a specialized system action (web search, file read/write, persistent memory, etc.).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action_name": {
+                        "type": "string",
+                        "description": "The name of the action to execute. Valid actions: " + ', '.join(f"'{k}'" for k in sorted(TOOL_DEFINITIONS.keys())) + "."
+                    },
+                    "arguments": {
+                        "type": "object",
+                        "description": "The arguments for the specified action as a key-value dictionary (e.g. {'query': 'weather'} for web_search or {'path': 'README.md'} for read_file)."
+                    }
+                },
+                "required": ["action_name", "arguments"]
+            }
+        }
+    }
+]

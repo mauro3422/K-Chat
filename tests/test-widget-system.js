@@ -4,7 +4,14 @@ global.logUI = () => {};
 global.sessionId = 'test';
 global.fetch = () => Promise.resolve();
 
-eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/widget-system.js','utf8'));
+var widgetsDir = require('path').join(__dirname, '../web/static/modules/widgets');
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'core.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'iframe-builder.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'toolbar.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'iframe.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'messaging.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'index.js'), 'utf8'));
+var KairosWidgets = global.window.KairosWidgets;
 
 var passed = 0, failed = 0;
 function assert(name, cond, detail) {
@@ -36,10 +43,12 @@ assert('preserves ?.classList', KairosWidgets.registry[k4[3]].indexOf('el?.class
 var plain = KairosWidgets.extract('just text');
 assert('no widgets unchanged', plain === 'just text');
 
-// Test extract: container div placeholder
-var r5 = KairosWidgets.extract('before\n```html-widget\n<p>hi</p>\n```\nafter');
-assert('container div placeholder', r5.indexOf('interactive-widget-container') >= 0);
-assert('preserves surrounding text', r5.indexOf('before') >= 0 && r5.indexOf('after') >= 0);
+// Test extract: unclosed widget block
+var rUnclosed = KairosWidgets.extract('before\n```html-widget\n<p>hi</p>\nsome content');
+var registryKeys = Object.keys(KairosWidgets.registry);
+var lastKey = registryKeys[registryKeys.length - 1];
+assert('unclosed widget container placeholder', rUnclosed.indexOf('interactive-widget-container') >= 0);
+assert('unclosed widget registers correct code', KairosWidgets.registry[lastKey].indexOf('<p>hi</p>') >= 0);
 
 // Test extract: multiple widgets
 var multi = KairosWidgets.extract('```html-widget\n<a/>\n```\ntext\n```html-widget\n<b/>\n```');

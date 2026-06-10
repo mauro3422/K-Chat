@@ -43,5 +43,8 @@ jobs:
           node tests/test-widget-system.js
           node tests/test-frontend-integration.js
 
+      - name: Run JS stress test
+        run: node tests/test-stress-stream-abort.js
+
       - name: Lint JS
         run: npx eslint web/static/**/*.js

@@ -4,7 +4,7 @@ var KairosUtils = (function() {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  function esc() {
+  function scrollToBottom() {
     var el = document.getElementById('messages');
     if (el) el.scrollTop = el.scrollHeight;
   }
@@ -43,7 +43,7 @@ var KairosUtils = (function() {
 
   return {
     escHtml: escHtml,
-    esc: esc,
+    scrollToBottom: scrollToBottom,
     initGlobalErrorHandlers: initGlobalErrorHandlers,
     showToast: showToast
   };

@@ -1,18 +1,95 @@
 import logging
 import json
 from types import SimpleNamespace
-from typing import Generator
+from collections.abc import Callable, Generator
+from typing import Any
 from src.llm import models, manager
 
 logger = logging.getLogger(__name__)
 
-def chat(messages: list, model: str = None, **kwargs):
+
+def _update_system_prompt(messages: list[dict[str, Any]], model: str, build_prompt_fn: Callable | None = None) -> None:
+    if build_prompt_fn and messages and isinstance(messages[0], dict) and messages[0].get("role") == "system":
+        messages[0] = build_prompt_fn(model)
+
+
+def _resolve_model(messages: list[dict[str, Any]], model: str | None, build_prompt_fn: Callable | None = None) -> str:
+    if model is None:
+        model = manager.get_default_model()
+    if models.is_model_failed(model):
+        model = models._switch_model(model)
+        _update_system_prompt(messages, model, build_prompt_fn)
+    return model
+
+
+def _try_stream(model: str, messages: list[dict[str, Any]], **kwargs: Any) -> Any:
+    if "stream_options" not in kwargs:
+        kwargs["stream_options"] = {"include_usage": True}
+    try:
+        s = models._api_call(model=model, messages=messages, stream=True, **kwargs)
+        logger.info("Stream started successfully with model: %s", model)
+        return s
+    except Exception as e:
+        logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)
+        model = manager._mark_and_refresh(model)
+        _update_system_prompt(messages, model, None)
+        logger.info("Switching stream to: %s", model)
+        return models._api_call(model=model, messages=messages, stream=True, **kwargs)
+
+
+def _process_tool_delta(delta: Any, tool_map: dict[int, Any], reasoning_output: list[str] | None, tool_calls_output: list[Any] | None, tagged: bool) -> Generator[tuple[str, str], None, None]:
+    if not delta or not delta.tool_calls:
+        return
+    for tc in delta.tool_calls:
+        raw_idx = getattr(tc, 'index', None)
+        idx = 0 if raw_idx is None else raw_idx
+        fn = tc.function if tc.function else None
+        logger.debug(
+            "LLM_STREAM chunk idx=%r id=%r fn_name=%r fn_args=%r",
+            raw_idx, getattr(tc, 'id', None),
+            getattr(fn, 'name', None) if fn else None,
+            getattr(fn, 'arguments', None) if fn else None
+        )
+        if idx not in tool_map:
+            tool_map[idx] = SimpleNamespace(
+                id=tc.id or "",
+                function=SimpleNamespace(name="", arguments="")
+            )
+        if tc.id:
+            tool_map[idx].id = tc.id
+        if fn:
+            if fn.name:
+                if not fn.name.startswith('$'):
+                    tool_map[idx].function.name = fn.name
+                if reasoning_output is not None:
+                    reasoning_output.append(f"[llama a {fn.name}]")
+            if fn.arguments:
+                tool_map[idx].function.arguments += fn.arguments
+                if tagged:
+                    yield ("tool_call", json.dumps({
+                        "name": "_stream_args", "idx": idx,
+                        "args": tool_map[idx].function.arguments,
+                        "status": "partial"
+                    }))
+        if tool_calls_output is not None:
+            tool_calls_output[:] = [v for _, v in sorted(tool_map.items())]
+
+
+def _update_debug_usage(chunk: Any, debug: dict[str, Any] | None) -> None:
+    usage = getattr(chunk, 'usage', None)
+    if usage and isinstance(debug, dict):
+        debug["prompt_tokens"] = usage.prompt_tokens
+        debug["completion_tokens"] = usage.completion_tokens
+        debug["total_tokens"] = usage.total_tokens
+
+
+def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_fn: Callable | None = None, **kwargs: Any) -> Any:
     debug = kwargs.pop("debug", None)
     if model is None:
         model = manager.get_default_model()
-    if model in models._failed_models:
+    if models.is_model_failed(model):
         model = models._switch_model(model)
-        models._update_system_prompt(messages, model)
+        _update_system_prompt(messages, model, build_prompt_fn)
     try:
         response = models._api_call(
             model=model,
@@ -25,10 +102,10 @@ def chat(messages: list, model: str = None, **kwargs):
             debug["total_tokens"] = response.usage.total_tokens
         return response.choices[0]
     except Exception as e:
-        logger.warning("Error con modelo %s: %s. Reintentando con switch de modelo...", model, e)
+        logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
         next_model = manager._mark_and_refresh(model)
-        models._update_system_prompt(messages, next_model)
-        logger.info("Realizando switch de modelo a: %s", next_model)
+        _update_system_prompt(messages, next_model, build_prompt_fn)
+        logger.info("Switching model to: %s", next_model)
         response = models._api_call(
             model=next_model,
             messages=messages,
@@ -40,52 +117,21 @@ def chat(messages: list, model: str = None, **kwargs):
             debug["total_tokens"] = response.usage.total_tokens
         return response.choices[0]
 
-def chat_stream(messages: list, model: str = None, reasoning_output: list = None, tagged: bool = False, tool_calls_output: list = None, **kwargs) -> Generator:
-    """Igual que chat() pero devuelve tokens de a uno (generator)."""
-    debug = kwargs.pop("debug", None)
-    if model is None:
-        model = manager.get_default_model()
-    if model in models._failed_models:
-        model = models._switch_model(model)
-        models._update_system_prompt(messages, model)
-
-    if "stream_options" not in kwargs:
-        kwargs["stream_options"] = {"include_usage": True}
-
-    logger.info("Iniciando stream con modelo: %s", model)
-    
-    try:
-        stream = models._api_call(
-            model=model,
-            messages=messages,
-            stream=True,
-            **kwargs
-        )
-        logger.info("Stream iniciado correctamente con modelo: %s", model)
-    except Exception as e:
-        logger.warning("Error iniciando stream con modelo %s: %s. Reintentando con switch...", model, e)
-        model = manager._mark_and_refresh(model)
-        models._update_system_prompt(messages, model)
-        logger.info("Realizando switch de stream a: %s", model)
-        stream = models._api_call(
-            model=model,
-            messages=messages,
-            stream=True,
-            **kwargs
-        )
-
-    _tool_map = {}
+def _process_chunks(
+    stream: Any,
+    reasoning_output: list[str] | None,
+    tool_calls_output: list[Any] | None,
+    tagged: bool,
+    debug: dict[str, Any] | None,
+) -> Generator[Any, None, tuple[int, bool, bool]]:
+    _tool_map: dict[int, Any] = {}
     chunk_count = 0
     has_content = False
     has_reasoning = False
 
     for chunk in stream:
         chunk_count += 1
-        usage = getattr(chunk, 'usage', None)
-        if usage and isinstance(debug, dict):
-            debug["prompt_tokens"] = usage.prompt_tokens
-            debug["completion_tokens"] = usage.completion_tokens
-            debug["total_tokens"] = usage.total_tokens
+        _update_debug_usage(chunk, debug)
 
         if not getattr(chunk, 'choices', None):
             logger.debug("Chunk %d sin choices", chunk_count)
@@ -99,46 +145,8 @@ def chat_stream(messages: list, model: str = None, reasoning_output: list = None
                 reasoning_output.append(r)
             if tagged:
                 yield ("reasoning", r)
-        
-        if delta and delta.tool_calls:
-            for tc in delta.tool_calls:
-                raw_idx = getattr(tc, 'index', None)
-                idx = 0 if raw_idx is None else raw_idx
-                fn = tc.function if tc.function else None
-                logger.debug(
-                    "LLM_STREAM chunk idx=%r id=%r fn_name=%r fn_args=%r",
-                    raw_idx, getattr(tc, 'id', None),
-                    getattr(fn, 'name', None) if fn else None,
-                    getattr(fn, 'arguments', None) if fn else None
-                )
 
-                if idx not in _tool_map:
-                    _tool_map[idx] = SimpleNamespace(
-                        id=tc.id or "",
-                        function=SimpleNamespace(name="", arguments="")
-                    )
-
-                if tc.id:
-                    _tool_map[idx].id = tc.id
-
-                if fn:
-                    if fn.name:
-                        if not fn.name.startswith('$'):
-                            _tool_map[idx].function.name = fn.name
-                        if reasoning_output is not None:
-                            reasoning_output.append(f"[llama a {fn.name}]")
-                    if fn.arguments:
-                        _tool_map[idx].function.arguments += fn.arguments
-                        if tagged:
-                            yield ("tool_call", json.dumps({
-                                "name": "_stream_args",
-                                "idx": idx,
-                                "args": _tool_map[idx].function.arguments,
-                                "status": "partial"
-                            }))
-
-                if tool_calls_output is not None:
-                    tool_calls_output[:] = [v for _, v in sorted(_tool_map.items())]
+        yield from _process_tool_delta(delta, _tool_map, reasoning_output, tool_calls_output, tagged)
 
         content = delta.content if delta else None
         if content:
@@ -148,9 +156,29 @@ def chat_stream(messages: list, model: str = None, reasoning_output: list = None
             else:
                 yield content
 
+    return chunk_count, has_content, has_reasoning
+
+
+def chat_stream(
+    messages: list[dict[str, Any]],
+    model: str | None = None,
+    build_prompt_fn: Callable | None = None,
+    reasoning_output: list[str] | None = None,
+    tagged: bool = False,
+    tool_calls_output: list[Any] | None = None,
+    **kwargs: Any
+) -> Generator[Any, None, None]:
+    debug = kwargs.pop("debug", None)
+    model = _resolve_model(messages, model, build_prompt_fn)
+    stream = _try_stream(model, messages, **kwargs)
+
+    chunk_count, has_content, has_reasoning = yield from _process_chunks(
+        stream, reasoning_output, tool_calls_output, tagged, debug,
+    )
+
     if chunk_count == 0:
-        logger.warning("Stream vacío: no se recibieron chunks del modelo %s", model)
+        logger.warning("Empty stream: no chunks received from model %s", model)
     elif not has_content and not has_reasoning:
-        logger.warning("Stream con %d chunks pero sin contenido ni reasoning del modelo %s", chunk_count, model)
+        logger.warning("Stream with %d chunks but no content or reasoning from model %s", chunk_count, model)
     else:
-        logger.info("Stream completado: %d chunks, has_content=%s, has_reasoning=%s", chunk_count, has_content, has_reasoning)
+        logger.info("Stream completed: %d chunks, has_content=%s, has_reasoning=%s", chunk_count, has_content, has_reasoning)

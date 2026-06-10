@@ -1,7 +1,7 @@
 import os
 import logging
 import threading
-from src.context import CONTEXT_DIR
+from src.paths import CONTEXT_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -11,17 +11,17 @@ DEFINITION = {
     "type": "function",
     "function": {
         "name": "save_memory",
-        "description": "Persiste datos e información clave del usuario o sistema en MEMORY.md para recordarlos en futuras sesiones.",
+        "description": "Persists key user or system data to MEMORY.md so it can be recalled in future sessions.",
         "parameters": {
             "type": "object",
             "properties": {
                 "key": {
                     "type": "string",
-                    "description": "La categoría o clave de la información (ej. 'Nombre', 'Preferencia', 'Tecnología', 'Proyecto')"
+                    "description": "The category or key of the information (e.g. 'Name', 'Preference', 'Technology', 'Project')."
                 },
                 "value": {
                     "type": "string",
-                    "description": "El valor o detalle a guardar. Si se pasa vacío, se elimina esta clave de la memoria."
+                    "description": "The value or detail to save. If passed empty, this key is removed from memory."
                 }
             },
             "required": ["key", "value"]
@@ -38,25 +38,64 @@ _HEADER_TEMPLATE = [
 ]
 
 
-def _ensure_header(header_lines: list) -> list:
-    """Garantiza que header_lines contenga # MEMORY.md, User:, System:."""
-    has_title = any(l.strip().startswith("# MEMORY.md") for l in header_lines)
-    has_user = any(l.strip().startswith("User:") for l in header_lines)
-    has_system = any(l.strip().startswith("System:") for l in header_lines)
+def _ensure_header(header_lines: list[str]) -> list[str]:
+    """Ensure header_lines contains # MEMORY.md, User:, System:."""
+    has_title = any(line.strip().startswith("# MEMORY.md") for line in header_lines)
+    has_user = any(line.strip().startswith("User:") for line in header_lines)
+    has_system = any(line.strip().startswith("System:") for line in header_lines)
 
     if has_title and has_user and has_system:
         return header_lines
 
-    logger.warning("MEMORY.md corrupto o sin header — reparando estructura")
+    logger.warning("MEMORY.md corrupt or missing header — repairing structure")
     out = list(_HEADER_TEMPLATE)
-    for l in header_lines:
-        s = l.strip()
+    for line in header_lines:
+        s = line.strip()
         if s and not s.startswith("# MEMORY.md") and not s.startswith("User:") and not s.startswith("System:"):
-            out.append(l)
+            out.append(line)
     return out
 
 
-def run(key: str, value: str, _session_id: str = None) -> str:
+def _apply_memory_operation(key: str, value: str, memories: dict[str, str]) -> str:
+    key_clean = key.strip()
+    value_clean = value.strip()
+
+    if not key_clean:
+        return "[ERROR] The key cannot be empty."
+
+    if value_clean:
+        memories[key_clean] = value_clean
+        action_msg = f"saved key '{key_clean}' with value '{value_clean}'"
+    else:
+        if key_clean in memories:
+            del memories[key_clean]
+            action_msg = f"deleted key '{key_clean}'"
+        else:
+            action_msg = f"key '{key_clean}' did not exist in memory"
+    return action_msg
+
+
+def _write_memory_file(filepath: str, header_lines: list[str], memories: dict[str, str]) -> str | None:
+    new_lines = list(header_lines)
+
+    while new_lines and new_lines[-1].strip() == "":
+        new_lines.pop()
+    new_lines.append("\n")
+    new_lines.append("## Memories\n")
+
+    for k, v in sorted(memories.items()):
+        new_lines.append(f"- **{k}**: {v}\n")
+
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except Exception:
+        logger.exception("Failed to write to MEMORY.md")
+        return "[ERROR] Could not write to MEMORY.md."
+    return None
+
+
+def run(key: str, value: str, _session_id: str | None = None) -> str:
     filepath = os.path.join(CONTEXT_DIR, "MEMORY.md")
 
     with _save_lock:
@@ -67,8 +106,8 @@ def run(key: str, value: str, _session_id: str = None) -> str:
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
                     lines = f.readlines()
-            except Exception as e:
-                return f"[ERROR]: No se pudo leer MEMORY.md: {e}"
+            except Exception:
+                return "[ERROR] Could not read MEMORY.md."
         else:
             lines = list(_HEADER_TEMPLATE)
 
@@ -87,36 +126,12 @@ def run(key: str, value: str, _session_id: str = None) -> str:
 
         header_lines = _ensure_header(header_lines)
 
-        key_clean = key.strip()
-        value_clean = value.strip()
+        action_msg = _apply_memory_operation(key, value, memories)
+        if action_msg.startswith("[ERROR]"):
+            return action_msg
 
-        if not key_clean:
-            return "[ERROR]: La clave ('key') no puede estar vacía."
+        err = _write_memory_file(filepath, header_lines, memories)
+        if err:
+            return err
 
-        if value_clean:
-            memories[key_clean] = value_clean
-            action_msg = f"guardada la clave '{key_clean}' con el valor '{value_clean}'"
-        else:
-            if key_clean in memories:
-                del memories[key_clean]
-                action_msg = f"eliminada la clave '{key_clean}'"
-            else:
-                action_msg = f"la clave '{key_clean}' no existía en memoria"
-
-        new_lines = list(header_lines)
-
-        while new_lines and new_lines[-1].strip() == "":
-            new_lines.pop()
-        new_lines.append("\n")
-        new_lines.append("## Memories\n")
-
-        for k, v in sorted(memories.items()):
-            new_lines.append(f"- **{k}**: {v}\n")
-
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.writelines(new_lines)
-        except Exception as e:
-            return f"[ERROR]: No se pudo escribir en MEMORY.md: {e}"
-
-    return f"Éxito: Se ha {action_msg} en MEMORY.md."
+    return f"[OK] {action_msg} in MEMORY.md."

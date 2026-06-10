@@ -4,6 +4,12 @@ Permite al agente generar interfaces interactivas visuales (como calculadoras, p
 
 ## Formato de Salida
 Para generar un widget, debes escribir un bloque de código Markdown utilizando la etiqueta de lenguaje `html-widget`.
+
+* **Widgets Temporales (Borrador)**: Escribe la etiqueta de bloque simple `html-widget`. Se usará como borrador y no activará controles de versión ni edición. Nota: El botón de guardado manual ha sido removido de la UI; debes usar la acción `save_widget` cuando consideres oportuno consolidar y promover un widget.
+* **Widgets Oficiales (Versionados)**: Agrega el nombre único del widget en minúsculas y sin espacios al lado de la etiqueta de lenguaje, por ejemplo: `html-widget calculadora` o `html-widget notas`. Esto activa de inmediato el versionado, el editor in-situ y el historial de cambios en la interfaz (permitiendo que el usuario edite y guarde nuevas versiones manualmente).
+* **Invocar/Cargar Widgets Guardados**: Si el widget ya ha sido guardado oficialmente en el sistema (lo sabes por tu memoria o usando `get_widget_code`), **NUNCA** vuelvas a imprimir todo su código fuente en tu respuesta de chat. En su lugar, simplemente escribe el tag inline `[Widget: nombre-del-widget]` en tu texto (ej: `Aquí tenés el widget: [Widget: notas-rapidas]`). El sistema detectará esta llamada en tiempo real durante el streaming, recuperará el código de forma asíncrona de la base de datos global y renderizará el widget al instante sin saturar el chat de código repetitivo ni inducir errores de sintaxis.
+
+
 Todo el contenido de este bloque debe ser código HTML, CSS y JavaScript autocontenido. No debes agregar explicaciones de texto dentro del bloque de código.
 
 Ejemplo de bloque:

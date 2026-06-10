@@ -1,5 +1,7 @@
 window.widgetStates = window.widgetStates || {};
 
+// sessionId is set by chat.html template as a global var before this script loads
+
 window.retryLastMessage = function() { KairosForm.retry(); };
 window.escHtml = function(s) { return KairosUtils.escHtml(s); };
 
@@ -12,6 +14,9 @@ window.loadSession = function(sid) {
   
   if (window.KairosWidgets && typeof KairosWidgets.reset === 'function') {
     KairosWidgets.reset();
+  }
+  if (window.KairosForm && typeof KairosForm.reset === 'function') {
+    KairosForm.reset();
   }
   
   fetch('/sessions/' + sid + '/messages')

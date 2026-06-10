@@ -1,16 +1,16 @@
+import logging
 import sys
-import uuid
-from src.core import chat_stream
-from src.memory import init_db, save_message
+from src.api import chat_stream, get_default_model, init_db, generate_session_id, save_message
 from src.handler_cli import handle_command
-from src.core import get_default_model
+
+logger = logging.getLogger(__name__)
 SALIR = ("salir", "exit", "quit", "/salir", "/exit", "chau", "bye")
 
-def main():
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+def main() -> None:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')  # type: ignore[attr-defined]
     model= get_default_model()
     init_db()
-    session_id = str(uuid.uuid4())
+    session_id = generate_session_id()
     print("Kairos CLI")
     print("Escribí 'salir' para terminar.\n")
 
@@ -49,7 +49,7 @@ def main():
             save_message(session_id, "user", entry, "kairos")
             save_message(session_id, "assistant", respuesta, "kairos")
         except Exception as e:
-            print(f"\nError: {e}\n")
+            logger.error("Error en chat_stream: %s", e)
 
 if __name__ == "__main__":
     main()

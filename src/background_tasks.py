@@ -1,18 +1,27 @@
 import logging
-from src.llm import chat as llm_chat
-from src.memory import rename_session, check_should_rename
+from src.llm.client import chat as llm_chat
+from src.memory.repositories import SessionRepository
+
+_repo: SessionRepository | None = None
+
+
+def _get_repo() -> SessionRepository:
+    global _repo
+    if _repo is None:
+        _repo = SessionRepository()
+    return _repo
 
 logger = logging.getLogger(__name__)
 
-def auto_rename_session(session_id: str, first_message: str, model: str):
-    """Genera título automático para la sesión si aún no tiene nombre."""
-    if not check_should_rename(session_id):
+def auto_rename_session(session_id: str, first_message: str, model: str) -> None:
+    """Generates an automatic title for the session if it has no name yet."""
+    if not _get_repo().check_should_rename(session_id):
         return
     prompt = (
-        "Genera un título muy corto, directo y descriptivo de 3 a 5 palabras para un chat "
-        "que empieza con el siguiente mensaje. No uses comillas, ni introducciones, responde "
-        "únicamente con el título en español.\n\n"
-        f"Mensaje: {first_message}"
+        "Generate a very short, direct, and descriptive title of 3 to 5 words for a chat "
+        "that starts with the following message. Do not use quotes or introductions, respond "
+        "only with the title.\n\n"
+        f"Message: {first_message}"
     )
     try:
         r = llm_chat(
@@ -21,6 +30,6 @@ def auto_rename_session(session_id: str, first_message: str, model: str):
         )
         title = (r.message.content or "").strip().replace('"', '').replace("'", "")[:50]
         if title:
-            rename_session(session_id, title)
+            _get_repo().rename(session_id, title)
     except Exception as e:
-        logger.warning("Error generando título automático de sesión: %s", e)
+        logger.warning("Error generating automatic session title: %s", e)

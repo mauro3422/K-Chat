@@ -1,6 +1,7 @@
-from src.llm import get_default_model
+from typing import Any
+from src.api import get_default_model
 
-def handle_command(entry: str, history: list) -> str | None:
+def handle_command(entry: str, history: list[dict[str, Any]]) -> str | None:
     """Procesa comandos /. Devuelve un modelo nuevo si se cambió, None si no."""
     parts = entry.strip().split()
     cmd = parts[0].lower()
@@ -27,4 +28,3 @@ def handle_command(entry: str, history: list) -> str | None:
         return None
 
     print(f"Comando desconocido: {cmd}. Usá /help")
-    return None

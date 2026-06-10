@@ -191,6 +191,10 @@ var KairosDebug = (function() {
   };
 })();
 
+// Backwards-compatible window aliases for inline onclick handlers in dynamic HTML.
+// These reference functions from the KairosDebug module but must remain global
+// because onclick="toggleDebug()" / onclick="copyText(this)" etc. are injected
+// as innerHTML strings (see refreshDebug).
 window.logStream = KairosDebug.logStream;
 window.logUI = KairosDebug.logUI;
 window.toggleDebug = KairosDebug.toggleDebug;

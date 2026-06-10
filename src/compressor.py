@@ -1,5 +1,5 @@
 import logging
-from src.llm import chat as llm_chat
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ def estimate_tokens(text: str) -> int:
     return len(text) // 4
 
 
-def should_compress(history: list) -> bool:
+def should_compress(history: list[dict[str, Any]]) -> bool:
     """Decide si se debe comprimir el historial según la longitud de mensajes o el volumen de tokens."""
     if len(history) > MAX_HISTORY:
         return True
@@ -30,7 +30,7 @@ def should_compress(history: list) -> bool:
     return total_tokens > MAX_ESTIMATED_TOKENS
 
 
-def compress_history(history: list, model: str) -> None:
+def compress_history(history: list[dict[str, Any]], model: str) -> None:
     keep = KEEP_RECENT
     to_compress = history[1:-keep]
     if not to_compress:
@@ -40,12 +40,13 @@ def compress_history(history: list, model: str) -> None:
         f"{m['role']}: {(m.get('content') or '')[:300]}" for m in to_compress
     )
     try:
+        from src.llm.client import chat as llm_chat
         r = llm_chat(
-            [{"role": "user", "content": f"Resumi esta conversacion en 2-3 lineas, solo hechos clave:\n\n{text}"}],
+            [{"role": "user", "content": f"Summarize this conversation in 2-3 lines, key facts only:\n\n{text}"}],
             model
         )
         summary = (r.message.content or "").strip()
         if summary:
             history[:] = [history[0], {"role": "system", "content": f"[Resumen: {summary}]"}] + recent
     except Exception as e:
-        logger.warning("compress_history falló: %s", e)
+        logger.warning("compress_history failed: %s", e)

@@ -2,6 +2,7 @@
 global.logUI = () => {};
 global.KairosWidgets = {
   index: 0,
+  nextIndex: function() { return this.index++; },
   registry: {},
   initAll: () => {}
 };
@@ -115,7 +116,7 @@ global.KairosStream = {
 };
 
 // Load stream-renderer.js
-eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/stream-renderer.js', 'utf8'));
+eval(require('fs').readFileSync(require('path').join(__dirname, '../web/static/modules/content-handler.js'), 'utf8'));
 
 let passed = 0, failed = 0;
 function assert(name, cond, detail) {

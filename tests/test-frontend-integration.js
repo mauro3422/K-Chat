@@ -27,12 +27,19 @@ global.fetch = () => Promise.resolve({ body: { getReader: () => ({ read: () => P
 global.DOMPurify = { sanitize: (s) => s };
 global.marked = { parse: (s) => s };
 
-eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/utils.js', 'utf8'));
-eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/widget-system.js', 'utf8'));
-eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/markdown-renderer.js', 'utf8'));
-eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/stream-dispatcher.js', 'utf8'));
-eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/stream-renderer.js', 'utf8'));
-eval(require('fs').readFileSync('C:/Dev/Kairos/web/static/modules/chat-form.js', 'utf8'));
+eval(require('fs').readFileSync(require('path').join(__dirname, '../web/static/modules/utils.js'), 'utf8'));
+var widgetsDir = require('path').join(__dirname, '../web/static/modules/widgets');
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'core.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'iframe-builder.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'toolbar.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'iframe.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'messaging.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(widgetsDir, 'index.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(__dirname, '../web/static/modules/markdown-renderer.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(__dirname, '../web/static/modules/stream-dispatcher.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(__dirname, '../web/static/modules/stream-renderer.js'), 'utf8'));
+eval(require('fs').readFileSync(require('path').join(__dirname, '../web/static/modules/chat-form.js'), 'utf8'));
+var KairosWidgets = global.window.KairosWidgets;
 
 var passed = 0, failed = 0;
 function assert(name, cond, detail) {
@@ -42,7 +49,7 @@ function assert(name, cond, detail) {
 
 // Test 1: KairosUtils existe y tiene métodos
 assert('KairosUtils.escHtml existe', typeof KairosUtils.escHtml === 'function');
-assert('KairosUtils.esc existe', typeof KairosUtils.esc === 'function');
+  assert('KairosUtils.scrollToBottom existe', typeof KairosUtils.scrollToBottom === 'function');
 assert('KairosUtils.showToast existe', typeof KairosUtils.showToast === 'function');
 assert('KairosUtils.initGlobalErrorHandlers existe', typeof KairosUtils.initGlobalErrorHandlers === 'function');
 

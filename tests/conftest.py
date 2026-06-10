@@ -1,32 +1,59 @@
 import os
-import tempfile
-import pytest
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.memory import init_db
+# Set a temp DB path BEFORE any module that imports config.py is loaded.
+# This ensures test DB isolation regardless of .env settings.
+os.environ["MEMORY_DB_PATH"] = "/tmp/kairos_test.db"
+os.environ["OPENCODE_ZEN_API_KEY"] = "test-key-for-tests"
+os.environ["SEARXNG_AUTO_START"] = "false"
+os.environ["TESTING"] = "true"
+
+import json
+import tempfile
+from unittest.mock import MagicMock
+
+import pytest
+
+from src.memory.database import init_db
+
+
+@pytest.fixture
+def make_choice():
+    """Build a mock ChatCompletion Choice."""
+    def _make(content=None, finish_reason="stop", tool_calls=None, reasoning_content=None):
+        msg = MagicMock()
+        msg.content = content
+        msg.reasoning_content = reasoning_content
+        if tool_calls:
+            tcs = []
+            for tc in tool_calls:
+                mock_tc = MagicMock()
+                mock_tc.id = tc.get("id", "call_1")
+                mock_tc.function.name = tc["name"]
+                mock_tc.function.arguments = json.dumps(tc.get("args", {}))
+                tcs.append(mock_tc)
+            msg.tool_calls = tcs
+        else:
+            msg.tool_calls = None
+        choice = MagicMock()
+        choice.message = msg
+        choice.finish_reason = finish_reason
+        return choice
+    return _make
+
 
 @pytest.fixture(autouse=True)
 def setup_test_db(monkeypatch):
-    """Fixture para crear y limpiar una base de datos SQLite aislada y limpia para cada test."""
     temp_dir = tempfile.mkdtemp()
     db_path = os.path.join(temp_dir, "test.db")
     monkeypatch.setenv("MEMORY_DB_PATH", db_path)
-    
-    # Inicializar la base de datos para este test específico
+
     init_db()
-    
+
     yield db_path
-    
-    # Limpieza del archivo de base de datos y su directorio temporal
-    try:
-        import sqlite3
-        # Cerrar conexiones SQLite activas en este hilo (si las hubiera en cache/pool)
-        # para evitar problemas de bloqueo en Windows
-    except ImportError:
-        pass
-    
+
     try:
         if os.path.exists(db_path):
             os.remove(db_path)

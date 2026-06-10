@@ -1,64 +1,11 @@
 /* eslint-disable no-redeclare, no-unused-vars */
+var KairosSession = (function() {
+
 function refreshSidebar() {
   fetch('/sidebar?current=' + sessionId).then(function(r){ return r.text(); }).then(function(h){
     document.getElementById('session-list').innerHTML = h;
   });
 }
-
-document.addEventListener('htmx:afterSwap', function() {
-  KairosUtils.esc();
-  if (typeof debugVisible !== 'undefined' && debugVisible) { toggleDebug(); }
-});
-
-document.addEventListener('click', function(e) {
-  var item = e.target.closest('.session-item');
-  if (!item) return;
-  var sid = item.dataset.sid;
-
-  if (e.target.classList.contains('act-rename')) {
-    var preview = item.querySelector('.session-preview');
-    item.dataset.origName = preview.textContent;
-    preview.innerHTML = '<input class="si" type="text" value="' + item.dataset.origName.replace(/"/g,'&quot;') + '">';
-    item.querySelector('.session-actions').innerHTML =
-      '<button class="act-confirm act-ok" title="Guardar">&#10003;</button>' +
-      '<button class="act-cancel" title="Cancelar">&#10005;</button>';
-    var inp = preview.querySelector('.si');
-    inp.focus(); inp.select();
-    inp.onkeydown = function(ev) {
-      if (ev.key === 'Enter') { confirmRename(item, sid); }
-      if (ev.key === 'Escape') { cancelEdit(item); }
-    };
-    return;
-  }
-
-  if (e.target.classList.contains('act-delete')) {
-    item.dataset.origHTML = item.outerHTML;
-    item.querySelector('.session-preview').textContent = 'Eliminar?';
-    item.querySelector('.session-actions').innerHTML =
-      '<button class="act-confirm act-del" title="Confirmar">&#10003;</button>' +
-      '<button class="act-cancel" title="Cancelar">&#10005;</button>';
-    return;
-  }
-
-  if (e.target.classList.contains('act-cancel')) {
-    if (item.dataset.origHTML) { item.outerHTML = item.dataset.origHTML; }
-    else { cancelEdit(item); }
-    return;
-  }
-
-  if (e.target.classList.contains('act-confirm') && item.querySelector('.act-del')) {
-    fetch('/sessions/' + sid + '/delete', {method:'POST'}).then(function() {
-      if (sessionId === sid) { window.location.href = '/'; }
-      else { item.remove(); }
-    });
-    return;
-  }
-
-  if (e.target.classList.contains('act-confirm') && item.querySelector('.act-ok')) {
-    confirmRename(item, sid);
-    return;
-  }
-});
 
 function confirmRename(item, sid) {
   var inp = item.querySelector('.si');
@@ -85,5 +32,71 @@ function restoreActions(item) {
     '<button class="act-rename" title="Renombrar">&#9998;</button>' +
     '<button class="act-delete" title="Eliminar">&#128465;</button>';
 }
+
+return { refreshSidebar: refreshSidebar, confirmRename: confirmRename, cancelEdit: cancelEdit, restoreActions: restoreActions };
+
+})();
+
+// Backwards-compatible globals for HTML onclick handlers
+window.KairosSession = KairosSession;
+window.refreshSidebar = KairosSession.refreshSidebar;
+window.confirmRename = KairosSession.confirmRename;
+window.cancelEdit = KairosSession.cancelEdit;
+window.restoreActions = KairosSession.restoreActions;
+
+document.addEventListener('htmx:afterSwap', function() {
+  KairosUtils.scrollToBottom();
+  if (typeof debugVisible !== 'undefined' && debugVisible) { toggleDebug(); }
+});
+
+document.addEventListener('click', function(e) {
+  var item = e.target.closest('.session-item');
+  if (!item) return;
+  var sid = item.dataset.sid;
+
+  if (e.target.classList.contains('act-rename')) {
+    var preview = item.querySelector('.session-preview');
+    item.dataset.origName = preview.textContent;
+    preview.innerHTML = '<input class="si" type="text" value="' + item.dataset.origName.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '">';
+    item.querySelector('.session-actions').innerHTML =
+      '<button class="act-confirm act-ok" title="Guardar">&#10003;</button>' +
+      '<button class="act-cancel" title="Cancelar">&#10005;</button>';
+    var inp = preview.querySelector('.si');
+    inp.focus(); inp.select();
+    inp.onkeydown = function(ev) {
+      if (ev.key === 'Enter') { KairosSession.confirmRename(item, sid); }
+      if (ev.key === 'Escape') { KairosSession.cancelEdit(item); }
+    };
+    return;
+  }
+
+  if (e.target.classList.contains('act-delete')) {
+    item.dataset.origHTML = item.outerHTML;
+    item.querySelector('.session-preview').textContent = 'Eliminar?';
+    item.querySelector('.session-actions').innerHTML =
+      '<button class="act-confirm act-del" title="Confirmar">&#10003;</button>' +
+      '<button class="act-cancel" title="Cancelar">&#10005;</button>';
+    return;
+  }
+
+  if (e.target.classList.contains('act-cancel')) {
+    if (item.dataset.origHTML) { item.outerHTML = item.dataset.origHTML; }
+    else { KairosSession.cancelEdit(item); }
+    return;
+  }
+
+  if (e.target.classList.contains('act-confirm') && item.querySelector('.act-del')) {
+    fetch('/sessions/' + sid + '/delete', {method:'POST'}).then(function() {
+      if (sessionId === sid) { window.location.href = '/'; }
+      else { item.remove(); }
+    });
+    return;
+  }
+
+  if (e.target.classList.contains('act-confirm') && item.querySelector('.act-ok')) {
+    KairosSession.confirmRename(item, sid);
+    return;
+  }
+});
 
 window.onpopstate = function(e) { if (e.state && e.state.sid) { sessionId = e.state.sid; } };

@@ -1,82 +1,16 @@
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Generator
+from typing import Any
+from src.tools._rate_limiter import _check_rate_limit
+from src.tools._tool_parser import _parse_tool_call
+from src.tools._tool_persister import _persist_tool_results
 
 logger = logging.getLogger(__name__)
-from src.memory import log_tool_call
 
 
-def _get_required_params(tool_name: str) -> list:
-    """Obtiene los parámetros requeridos de un tool desde su DEFINITION."""
-    import src.tools
-    for t in src.tools.TOOLS:
-        if t.get("function", {}).get("name") == tool_name:
-            return t.get("function", {}).get("parameters", {}).get("required", [])
-    return []
-
-
-def run_parallel_tools(
-    tool_calls: list,
-    session_id: str,
-    turn: int,
-    history: list,
-    tool_detail: list,
-    used_tools: list,
-    phase_tool_ids: list,
-    tagged: bool = False,
-    tool_map: dict = None
-):
-    """Ejecuta un lote de tool_calls en paralelo y yielding eventos de streaming si tagged=True."""
-    import src.tools
-    if tool_map is None:
-        tool_map = src.tools.TOOL_MAP
-
-    tcs_info = []
-    for tc in tool_calls:
-        name = tc.function.name
-        raw_args = tc.function.arguments
-        logger.debug("tool_runner RECV: name=%r id=%r arguments=%r", name, tc.id, raw_args)
-        try:
-            args = json.loads(raw_args) if raw_args else {}
-        except (json.JSONDecodeError, TypeError) as e:
-            logger.warning("tool_runner: JSON inválido en tool_call '%s' (%s): repr=%r error=%s", name, tc.id, raw_args, e)
-            args = {}
-        # Validar si el tool es válido y existe en el mapa
-        if not name or name.startswith("$") or name not in tool_map:
-            tool_result = f"[ERROR]: El tool '{name}' no existe o no es válido."
-            status = "error"
-            if tagged:
-                yield ("tool_call", json.dumps({"id": tc.id, "name": name or "unknown", "status": "calling"}))
-                yield ("tool_call", json.dumps({"id": tc.id, "name": name or "unknown", "status": status}))
-            if session_id:
-                log_tool_call(session_id, name or "unknown", json.dumps(args, ensure_ascii=False), status, turn=turn)
-            history.append({"role": "tool", "content": tool_result, "tool_call_id": tc.id})
-            tool_detail.append({"name": name or "unknown", "args": args, "status": status, "result_truncated": tool_result[:300]})
-            continue
-
-        if name not in used_tools:
-            used_tools.append(name)
-
-        required = _get_required_params(name)
-        missing = [p for p in required if p not in args or not str(args[p]).strip()]
-        if missing:
-            tool_result = f"[ERROR en {name}]: Faltan parámetros requeridos: {', '.join(missing)}. Debes proporcionar todos los parámetros obligatorios."
-            status = "error"
-            if tagged:
-                yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": "calling"}))
-                yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": status}))
-            if session_id:
-                log_tool_call(session_id, name, json.dumps(args, ensure_ascii=False), status, turn=turn)
-            history.append({"role": "tool", "content": tool_result, "tool_call_id": tc.id})
-            tool_detail.append({"name": name, "args": args, "status": status, "result_truncated": tool_result[:300]})
-            continue
-
-        tcs_info.append((tc, name, args))
-        if tagged:
-            yield ("tool_call", json.dumps({"id": tc.id, "name": name, "args": args, "status": "calling"}))
-            phase_tool_ids.append(tc.id)
-
-    results = {}
+def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]]) -> Generator[Any, None, None]:
     with ThreadPoolExecutor(max_workers=max(1, len(tcs_info))) as pool:
         futs = {}
         for tc, name, args in tcs_info:
@@ -85,24 +19,86 @@ def run_parallel_tools(
             tc, name = futs[fut]
             try:
                 tool_result = fut.result()
-                status = "ok"
-            except Exception as e:
-                tool_result = f"[ERROR en {name}]: {e}"
+                status = "error" if tool_result and tool_result.startswith("[ERROR]") else "ok"
+            except Exception:
+                logger.exception("Tool execution failed for '%s'", name)
+                tool_result = f"[ERROR en {name}]: Error interno al ejecutar el tool."
                 status = "error"
-            if len(tool_result) > 2000:
-                tool_result = tool_result[:2000] + "\n...[truncado]"
+            if len(tool_result) > 30000:
+                tool_result = tool_result[:30000] + "\n...[truncado]"
             results[tc.id] = (tool_result, status)
             if tagged:
                 yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": status}))
 
-    for tc, name, args in tcs_info:
-        tool_result, status = results[tc.id]
-        tool_detail.append({
-            "name": name,
-            "args": args,
-            "status": status,
-            "result_truncated": tool_result[:300]
-        })
-        if session_id:
-            log_tool_call(session_id, name, json.dumps(args, ensure_ascii=False), status, turn=turn)
-        history.append({"role": "tool", "content": tool_result, "tool_call_id": tc.id})
+
+def _prepare_tool_calls(
+    tool_calls: list[Any],
+    tool_map: dict[str, Any],
+    session_id: str,
+    turn: int,
+    history: list[dict[str, Any]],
+    tool_detail: list[dict[str, Any]],
+    used_tools: list[str],
+    tagged: bool,
+    phase_tool_ids: list[str],
+) -> Generator[Any, None, list[tuple[Any, str, dict[str, Any]]]]:
+    tcs_info: list[tuple[Any, str, dict[str, Any]]] = []
+    for tc in tool_calls:
+        name, args, error = _parse_tool_call(tc, tool_map)
+        if error:
+            if tagged:
+                yield ("tool_call", json.dumps({"id": tc.id, "name": name or "unknown", "status": "calling"}))
+                yield ("tool_call", json.dumps({"id": tc.id, "name": name or "unknown", "status": "error"}))
+            if session_id:
+                from src.tools._tool_persister import _get_tool_call_repo
+                _get_tool_call_repo().log(session_id, name or "unknown", json.dumps(args, ensure_ascii=False), "error", turn=turn)
+            history.append({"role": "tool", "content": error, "tool_call_id": tc.id})
+            tool_detail.append({"name": name or "unknown", "args": args, "status": "error", "result_truncated": error[:300]})
+            continue
+
+        if name not in used_tools:
+            used_tools.append(name)
+        tcs_info.append((tc, name, args))
+        if tagged:
+            yield ("tool_call", json.dumps({"id": tc.id, "name": name, "args": args, "status": "calling"}))
+            phase_tool_ids.append(tc.id)
+    return tcs_info
+
+
+def run_parallel_tools(
+    tool_calls: list[Any],
+    session_id: str,
+    turn: int,
+    history: list[dict[str, Any]],
+    tool_detail: list[dict[str, Any]],
+    used_tools: list[str],
+    phase_tool_ids: list[str],
+    tagged: bool = False,
+    tool_map: dict[str, Any] | None = None
+) -> Generator[Any, None, None]:
+    import src.tools
+    if tool_map is None:
+        tool_map = src.tools.TOOL_MAP
+
+    tcs_info = yield from _prepare_tool_calls(
+        tool_calls, tool_map, session_id, turn, history, tool_detail, used_tools, tagged, phase_tool_ids,
+    )
+
+    results: dict[str, tuple[str, str]] = {}
+
+    ok, msg = _check_rate_limit(session_id)
+    if not ok:
+        for tc, name, args in tcs_info:
+            if tagged:
+                yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": "calling"}))
+                yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": "error"}))
+            if session_id:
+                from src.tools._tool_persister import _get_tool_call_repo
+                _get_tool_call_repo().log(session_id, name, json.dumps(args, ensure_ascii=False), "error", turn=turn)
+            history.append({"role": "tool", "content": msg, "tool_call_id": tc.id})
+            tool_detail.append({"name": name, "args": args, "status": "error", "result_truncated": msg[:300]})
+        return
+
+    yield from _execute_tool_batch(tcs_info, tool_map, session_id, tagged, results)
+
+    _persist_tool_results(tcs_info, results, session_id, turn, history, tool_detail)
