@@ -11,7 +11,7 @@ from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
 from src.core import _deps
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def generate_session_id() -> str:
@@ -75,8 +75,8 @@ def chat_stream(
     if debug is not None:
         debug["history_before"] = [_msg_snapshot(m) for m in history]
 
-    used_tools = []
-    tool_detail = []
+    used_tools: list[str] = []
+    tool_detail: list[dict[str, Any]] = []
 
     loop_fn = run_tool_loop_streaming if streaming else run_tool_loop_sync
     for event in loop_fn(

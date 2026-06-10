@@ -1,25 +1,26 @@
 import logging
 import sys
+from typing import Any
 from src.api import chat_stream, get_default_model, init_db, generate_session_id, save_message
 from src.handler_cli import handle_command
 
-logger = logging.getLogger(__name__)
-SALIR = ("salir", "exit", "quit", "/salir", "/exit", "chau", "bye")
+logger: logging.Logger = logging.getLogger(__name__)
+SALIR: tuple[str, ...] = ("salir", "exit", "quit", "/salir", "/exit", "chau", "bye")
 
 def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')  # type: ignore[attr-defined]
-    model= get_default_model()
+    model: str = get_default_model()
     init_db()
-    session_id = generate_session_id()
+    session_id: str = generate_session_id()
     print("Kairos CLI")
     print("Escribí 'salir' para terminar.\n")
 
-    history = []
+    history: list[dict[str, Any]] = []
 
 
     while True:
         try:
-            entry = input("Tu> ").strip()
+            entry: str = input("Tu> ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nChau.")
             break
@@ -31,13 +32,13 @@ def main() -> None:
             print("Chau.")
             break
         if entry.startswith("/"):
-            new=handle_command(entry, history)
+            new: str | None = handle_command(entry, history)
             if new:
                 model = new
             continue
         try:
-            respuesta = ""
-            primero = True
+            respuesta: str = ""
+            primero: bool = True
             for token in chat_stream(entry, history, model, session_id=session_id):
                 if primero:
                     print("Kairos> ", end="", flush=True)

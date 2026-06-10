@@ -7,7 +7,7 @@ from src.tools._rate_limiter import _check_rate_limit
 from src.tools._tool_parser import _parse_tool_call
 from src.tools._tool_persister import _persist_tool_results
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]]) -> Generator[Any, None, None]:

@@ -1,8 +1,9 @@
 import os
+from typing import Any
 from src.paths import CONTEXT_DIR
 from src.tools._path_helpers import validate_path as _validate_path
 
-DEFINITION = {
+DEFINITION: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "read_file",

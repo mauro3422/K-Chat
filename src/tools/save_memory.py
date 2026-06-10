@@ -1,13 +1,14 @@
 import os
 import logging
 import threading
+from typing import Any
 from src.paths import CONTEXT_DIR
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
-_save_lock = threading.Lock()
+_save_lock: threading.Lock = threading.Lock()
 
-DEFINITION = {
+DEFINITION: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "save_memory",
@@ -29,7 +30,7 @@ DEFINITION = {
     }
 }
 
-_HEADER_TEMPLATE = [
+_HEADER_TEMPLATE: list[str] = [
     "# MEMORY.md\n",
     "\n",
     "User: \n",

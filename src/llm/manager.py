@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from src.llm import models
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 def verify_model(model_id: str) -> bool:
     """Tests if a model responds correctly by sending an ultra-short message."""

@@ -3,9 +3,9 @@ import time
 from collections import defaultdict
 
 _session_rate: dict[str, list[float]] = defaultdict(list)
-_rate_lock = threading.Lock()
-_RATE_MAX = 30
-_RATE_WINDOW = 10.0
+_rate_lock: threading.Lock = threading.Lock()
+_RATE_MAX: int = 30
+_RATE_WINDOW: float = 10.0
 
 
 def _check_rate_limit(session_id: str) -> tuple[bool, str]:

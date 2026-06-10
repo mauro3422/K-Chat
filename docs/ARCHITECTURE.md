@@ -54,33 +54,48 @@ User → Form POST → web/routers/chat.py → web/services/chat_stream.py
                                             │
                           ┌─────────────────┴─────────────────┐
                           │  rebuild_history(session_id)      │
+                          │    └→ history_rebuilder.py        │
+                          │       └→ history_parser.py        │
                           │  save_message(user message)       │
                           │  orchestrator.chat_stream()       │
                           └─────────────────┬─────────────────┘
                                             │
                           ┌─────────────────┴─────────────────┐
                           │  build_system_prompt(model)       │
-                          │  _deps.llm_stream()                │
-                          │  for chunk in stream:              │
-                          │    _process_chunks()               │
-                          │    if tool_calls:                  │
-                          │      runner.run_parallel_tools()   │
-                          │      _process_tool_delta()         │
-                          │    yield chunk                     │
+                          │    └→ context/builder.py          │
+                          │       └→ context/files.py         │
+                          │       └→ context/templates.py     │
+                          │  _deps.llm_stream()               │
+                          │  for chunk in stream:             │
+                          │    _process_chunks()              │
+                          │    if tool_calls:                 │
+                          │      runner.run_parallel_tools()  │
+                          │        └→ _tool_parser.py         │
+                          │        └→ _rate_limiter.py        │
+                          │        └→ _tool_persister.py      │
+                          │      _process_tool_delta()        │
+                          │    yield chunk                    │
                           └─────────────────┬─────────────────┘
                                             │
                           ┌─────────────────┴─────────────────┐
-                          │  save_assistant_message()          │
-                          │  auto_rename_session()             │
-                          │  yield ("content", tokens...)      │
-                          │  save_message(phases=JSON)         │
+                          │  message_persister.py             │
+                          │    └→ save_assistant_message()    │
+                          │       └→ save_message()           │
+                          │       └→ save_debug_info()        │
+                          │  auto_rename_session()            │
+                          │  yield ("content", tokens...)     │
+                          │  save_message(phases=JSON)        │
                           └─────────────────┬─────────────────┘
                                             │
                      ┌──────────────────────┴──────────────────┐
-                     │  NDJSON → browser JS reads stream       │
-                     │  reasoning → <details> per phase        │
-                     │  tool_call → pills with spinner/✓       │
-                     │  content → msg-body token by token      │
+                     │  NDJSON → stream-dispatcher.js          │
+                     │    └→ reasoning-handler.js              │
+                     │       → <details class="reasoning">     │
+                     │    └→ tool-call-renderer.js             │
+                     │       → .tc-item pills (spinner/✓/✗)    │
+                     │    └→ content-handler.js                │
+                     │       → .msg-body token by token        │
+                     │       → widget detection + init         │
                      └─────────────────────────────────────────┘
 ```
 
@@ -99,7 +114,7 @@ User input → src/cli.py → core.chat_sync.chat()
 ### `src/api.py` — Public Facade
 - Single entry point for web routers. All DB ops through this.
 - 19+ public functions: `get_repos()`, `save_message()`, `rebuild_history()`, `get_sessions()`, `rename_session()`, `delete_session()`, `get_session_messages()`, `filter_messages_for_ui()`, `match_tools_to_msgs()`, `save_widget_state()`, `db_save_widget()`, `db_get_widget()`, `db_get_widget_versions()`, `db_get_widget_by_version()`, `save_debug_info()`, `get_debug_info()`, `get_tool_history()`, `chat_stream()`.
-- Lazy repository singletons via `_get_message_repo()`, `_get_session_repo()`, etc.
+- Lazy repository singletons via `_get_repo()` with name-based caching.
 
 ### `src/core/orchestrator.py` — The Brain
 - `chat_stream()`: Main streaming generator. Manages the full lifecycle of a conversation turn (84 lines).
@@ -115,10 +130,20 @@ User input → src/cli.py → core.chat_sync.chat()
 - `_process_llm_stream()`: Reads LLM stream, yields content/reasoning/tool_calls.
 - `_yield_stream_fallback()`: Fallback when streaming fails.
 
-### `src/core/history.py` — History Reconstruction
-- `rebuild_history()`: Reconstructs a conversation from the DB for the LLM, sanitizing tool_calls and tool responses.
-- `filter_messages_for_ui()`: Filters DB rows for UI display (removes intermediate assistant/tool messages, keeps the final one per turn).
-- `match_tools_to_msgs()`: Associates tool calls chronologically with assistant messages for rendering.
+### `src/core/history.py` — History Facade (Re-exports)
+- Re-exports all functions from `history_parser`, `history_rebuilder`, and `history_ui` for backwards compatibility.
+- Lazy singleton for `MessageRepository`.
+
+### `src/core/history_parser.py` — DB Row Parser
+- `_parse_rows(rows)`: Converts raw DB rows into structured message dicts with timestamps, tool_calls, and reasoning.
+- `_sanitize_messages(raw_msgs)`: Filters out orphan tool responses and empty assistant messages without valid tool calls.
+
+### `src/core/history_rebuilder.py` — LLM History Reconstruction
+- `rebuild_history(session_id, model)`: Reconstructs a conversation from the DB for the LLM, prepending system prompt and sanitizing tool_calls/tool responses.
+
+### `src/core/history_ui.py` — UI Message Filtering
+- `filter_messages_for_ui(raw_msgs)`: Filters DB rows for UI display (removes tool messages, keeps final assistant per turn).
+- `match_tools_to_msgs(msgs, all_tools)`: Associates tool calls chronologically with assistant messages for rendering.
 
 ### `src/core/chat_sync.py` — CLI Chat
 - `chat()`: Synchronous wrapper. Calls `llm_chat(history, model, tools=TOOLS)`, returns response content.
@@ -130,7 +155,7 @@ User input → src/cli.py → core.chat_sync.chat()
 ### `src/llm/` — Model Abstraction
 - `protocol.py`: `LLMProvider` runtime-checkable Protocol. Defines `chat()`, `chat_stream()`, `list_models()`.
 - `openai_provider.py`: `OpenAIProvider` — OpenAI/OpenCode SDK wrapper. Lazy `_get_provider()` singleton.
-- `models.py`: Model registry, `PRIORITY`/`FALLBACK_MODEL` constants, `_api_call()` with retry, `_switch_model()`, `register_provider()`.
+- `models.py`: Model registry, `PRIORITY`/`FALLBACK_MODEL` constants, `_api_call()` with retry, `_switch_model()`, `_PROVIDER_REGISTRY` dict and `register_provider()` function for dynamic provider registration.
 - `client.py`: `chat()` and `chat_stream()` with error handling, tool delta processing, debug usage tracking.
 - `manager.py`: Model discovery, verification (`verify_model`), priority selection, free/paid filtering.
 - `__init__.py`: Module facade exposing unified interface.
@@ -138,20 +163,36 @@ User input → src/cli.py → core.chat_sync.chat()
 ### `src/tools/` — Tool System
 - `__init__.py`: Auto-loader via `importlib`. Exports `TOOLS` (schema for LLM), `TOOL_MAP` (execution), `TOOL_DEFINITIONS` (metadata).
 - `loader.py`: Filesystem scan + dynamic imports at module load. Populates `TOOL_MAP` and `TOOL_DEFINITIONS`.
-- `runner.py`: `run_parallel_tools()` — executes tool calls via `ThreadPoolExecutor`, yields streaming events. Per-session rate limiter (`_session_rate` with LRU eviction, `_rate_lock`).
+- `runner.py`: `run_parallel_tools()` — executes tool calls via `ThreadPoolExecutor`, yields streaming events. Delegates to `_rate_limiter`, `_tool_parser`, `_tool_persister`.
+- `_rate_limiter.py`: `_check_rate_limit(session_id)` — per-session rate limiting (30 calls / 10s window, LRU eviction with `_session_rate` dict and `_rate_lock` threading.Lock).
+- `_tool_parser.py`: `_parse_tool_call(tc, tool_map)` — extracts (name, args, error) from tool call objects, unwraps `execute_action`, validates required parameters.
+- `_tool_persister.py`: `_persist_tool_result()` and `_persist_tool_results()` — saves tool call logs and tool response messages to DB.
 - `_path_helpers.py`: `validate_path()` — path traversal guard using `os.path.realpath` + `commonpath`.
 - `_widget_helpers.py`: `sanitize_widget_id()`, `validate_widget_args()`.
 - Individual tools (10): Each exports `DEFINITION` (dict) + `run(**kwargs)`. New tool = new file.
 
 ### `src/memory/` — Persistence Layer
-- `database.py`: SQLite connection factory (WAL mode, busy timeout). `PooledConnection` wrapper (no-op close). `init_db()` with `PRAGMA foreign_keys = ON`.
-- `repositories.py`: 6 repository classes (`MessageRepository`, `SessionRepository`, `ToolCallRepository`, `WidgetStateRepository`, `DebugRepository`, `SavedWidgetRepository`) inheriting from `_BaseRepository`. All methods wrapped in `_transaction()` context manager with rollback on exception.
+- `database.py`: SQLite connection factory (WAL mode, busy timeout). `PooledConnection` wrapper (no-op close). `init_db()` with `PRAGMA foreign_keys = ON`. `DatabaseEngine` Protocol for swappable backends. `get_engine()` / `set_engine()` for engine injection.
+- `engine.py`: `DatabaseEngine` Protocol definition — `connect()`, `execute()`, `commit()`, `rollback()`, `close()`.
+- `sqlite_engine.py`: `SQLiteEngine` — default SQLite implementation of `DatabaseEngine` with WAL mode and busy timeout.
+- `repos/`: 6 repository classes in separate files, all inheriting from `_BaseRepository`.
+  - `base.py`: `_BaseRepository` with `_get_conn()` and `_transaction()` context manager (commit on success, rollback on exception, uses engine if available).
+  - `message_repository.py`: `MessageRepository` + `MessageRecord` dataclass.
+  - `session_repository.py`: `SessionRepository` — ensure, rename, delete, get_all, check_should_rename.
+  - `tool_call_repository.py`: `ToolCallRepository` — log, get_history, delete_session_tool_calls.
+  - `widget_state_repository.py`: `WidgetStateRepository` — save_state, get_states, delete_session_widget_states.
+  - `debug_repository.py`: `DebugRepository` — save_info, get_info, delete_session_debug.
+  - `saved_widget_repository.py`: `SavedWidgetRepository` — save, get, get_versions, get_by_version.
+  - `__init__.py`: `Repositories` dataclass + `get_repos(conn)` factory function.
+- `repositories.py`: Legacy re-exports from `repos/` for backwards compatibility.
 - `migrations.py`: 9 migration functions from `_migration_001_initial_schema` to `_migration_009_add_indexes`. Idempotent via `IF NOT EXISTS` and `try/except OperationalError`.
 
-### `src/context.py` — Context Assembly
-- `build_system_prompt()`: Assembles the system message from SOUL.md + AGENTS.md + MEMORY.md + dynamic meta block.
-- `load_context()`: Loads markdown files, auto-creates them if missing.
-- `_build_tools_md()`: Generates TOOLS.md from `TOOL_DEFINITIONS` dynamically (lazy import of `src.tools`).
+### `src/context/` — Context Assembly (Package)
+- `__init__.py`: Re-exports `load_context`, `build_system_prompt`, `_build_tools_md`, `_ensure_file`, `_read_file`.
+- `builder.py`: `build_system_prompt(model)` — assembles system message from SOUL.md + AGENTS.md + MEMORY.md + dynamic meta block. `load_context()` — loads markdown files, auto-creates them if missing.
+- `files.py`: `_ensure_file(path, template)` — creates file from template if missing. `_read_file(path)` — reads file content.
+- `templates.py`: `TEMPLATES` dict with default content for SOUL.md, MEMORY.md, AGENTS.md.
+- `tools_docs.py`: `_build_tools_md()` — generates TOOLS.md from `TOOL_DEFINITIONS` dynamically (lazy import of `src.tools`).
 
 ### `web/` — Web Dashboard
 - `server.py`: FastAPI app, static files, exception handlers (unified `{"detail": ...}` JSON format), rate limiter middleware, CSP middleware, no-cache middleware.
@@ -161,9 +202,23 @@ User input → src/cli.py → core.chat_sync.chat()
 - `routers/sessions.py`: Rename and delete endpoints.
 - `routers/widgets.py`: Widget API with `WidgetStatePayload` and `SaveWidgetPayload` Pydantic models.
 - `routers/debug.py`: Debug info and backend log buffering. `_local_only` guard (respects `TESTING` env var).
-- `services/chat_stream.py`: NDJSON stream generator, `_classify_error()`, token accumulation, background auto-rename.
+- `services/chat_stream.py`: `build_stream_generator()` — returns NDJSON generator closure, token accumulation, background auto-rename.
+- `services/message_persister.py`: `save_assistant_message()` — persists assistant message and debug info to DB.
+- `services/stream_error_classifier.py`: `classify_error(error_msg)` — classifies error into type + user-friendly message (rate_limit, timeout, network, model, unknown).
 - `services/message_renderer.py`: `render_session_messages()` — full HTML message list with widgets, tool matching, XSS escaping.
 - `ui_utils.py`: HTML rendering of individual messages with reasoning, phases, and tool pills. `render_msg_with_phases()`.
+
+### `web/static/modules/` — Frontend Streaming Modules (Vanilla JS)
+- `stream-dispatcher.js`: `KairosStream` — event emitter with `on()` / `emit()`. Central dispatcher for reasoning, content, tool_call, error events.
+- `reasoning-handler.js`: Handles `reasoning` events — creates `<details class="reasoning">` elements per phase, accumulates thinking text.
+- `content-handler.js`: Handles `content` events — manages per-phase body divs, detects inline widgets (`html-widget` code blocks + `[Widget: key]` tags), renders markdown via `KairosMarkdown`, initializes widgets via `KairosWidgets`.
+- `tool-call-renderer.js`: Handles `tool_call` events — creates `.tool-calls` divs with `.tc-item` spans showing spinner (calling), ✓ (ok), or ✗ (error) per tool.
+- `stream-renderer.js`: Main stream rendering orchestrator.
+- `chat-form.js`: Chat form submission and input handling.
+- `markdown-renderer.js`: `KairosMarkdown.parse()` — markdown to HTML conversion.
+- `utils.js`: `KairosUtils.escHtml()`, `logUI()`, `logStream()`, `showToast()`.
+- `retry-handler.js`: Retry logic for failed streams.
+- `stream-error-handler.js`: Frontend error display logic.
 
 ## Wire Format
 
@@ -223,15 +278,21 @@ Widgets are self-contained HTML/CSS/JS snippets rendered in sandboxed iframes.
 |----------|--------|-------------|
 | Runtime | Python pure | TypeScript |
 | LLM client | OpenAI SDK | httpx direct |
-| Provider model | Protocol + registry | Hardcoded switch |
+| Provider model | Protocol + registry (`_PROVIDER_REGISTRY` + `register_provider()`) | Hardcoded switch |
+| DB engine | `DatabaseEngine` Protocol + `SQLiteEngine` default | Hardcoded SQLite calls |
 | Memory | SQLite native + Markdown | sqlite-vec / external |
 | Stream | Sync generator | Async complex |
 | Config | `.env` + Markdown | YAML large |
 | Tools | `importlib` auto-registry | Manual registration |
-| DB repos | `_BaseRepository` + 6 subclasses | One god class |
+| Tool internals | Split: `_rate_limiter.py`, `_tool_parser.py`, `_tool_persister.py` | Monolithic runner |
+| DB repos | `_BaseRepository` + 6 subclasses in `repos/` package | One god class |
 | DB transactions | `_transaction()` context manager with rollback | Bare commit() |
+| History | Split: `history_parser.py`, `history_rebuilder.py`, `history_ui.py` | Single history.py |
+| Context | Package with `builder.py`, `files.py`, `templates.py`, `tools_docs.py` | Single context.py |
+| Web services | Split: `chat_stream.py`, `message_persister.py`, `stream_error_classifier.py` | Monolithic service |
+| Frontend | Vanilla JS modules (no build) with event dispatcher | React / Vue |
+| Stream events | `KairosStream` event emitter → handler modules | Inline JS |
 | Rate limiting | Tool-level (30/10s per session) + HTTP (60/min per IP) | Single layer |
-| Frontend | Vanilla JS (no build) | React / Vue |
 | Serialization | NDJSON | SSE |
 | Error format | Unified `{"detail": "..."}` JSON | Mixed HTML/JSON |
 | Validation | Pydantic models for web routers | Raw `dict[str, Any]` |

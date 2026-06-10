@@ -1,18 +1,19 @@
 import os
 import logging
 import importlib
+from typing import Any, Callable
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 # Filled once at module load time by single-threaded import, never mutated after — thread-safe
-TOOL_MAP = {}
-TOOL_DEFINITIONS = {}
+TOOL_MAP: dict[str, Callable[..., str]] = {}
+TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {}
 
-_dir = os.path.dirname(__file__)
+_dir: str = os.path.dirname(__file__)
 for f in sorted(os.listdir(_dir)):
     if not f.endswith('.py') or f.startswith('__') or f == 'runner.py':
         continue
-    mod_name = f[:-3]
+    mod_name: str = f[:-3]
     try:
         mod = importlib.import_module(f'src.tools.{mod_name}')
         if not hasattr(mod, 'DEFINITION'):
@@ -21,7 +22,7 @@ for f in sorted(os.listdir(_dir)):
         if not hasattr(mod, 'run'):
             logger.warning("Tool %s: does not export run(), ignored", mod_name)
             continue
-        tool_name = mod.DEFINITION['function']['name']
+        tool_name: str = mod.DEFINITION['function']['name']
         TOOL_MAP[tool_name] = mod.run
         TOOL_DEFINITIONS[tool_name] = mod.DEFINITION
         logger.debug("Tool loaded into internal map: %s", mod_name)

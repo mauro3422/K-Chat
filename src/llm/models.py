@@ -6,12 +6,12 @@ from typing import Any
 from src.llm.protocol import LLMProvider
 from src.llm.openai_provider import OpenAIProvider
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
-_models_lock = threading.Lock()
+_models_lock: threading.Lock = threading.Lock()
 
-_MAX_RETRIES = 1
-_RETRY_DELAY = 0.5
+_MAX_RETRIES: int = 1
+_RETRY_DELAY: float = 0.5
 
 
 _PROVIDER_REGISTRY: dict[str, type[LLMProvider]] = {}
@@ -33,11 +33,11 @@ def _get_provider() -> LLMProvider:
         _provider = cls()
     return _provider
 
-PRIORITY = ["big-pickle", "deepseek-v4-flash-free"]
-FALLBACK_MODEL = "deepseek-v4-flash-free"
+PRIORITY: list[str] = ["big-pickle", "deepseek-v4-flash-free"]
+FALLBACK_MODEL: str = "deepseek-v4-flash-free"
 
-_cached_models = None
-_verified_models = None
+_cached_models: list[Any] | None = None
+_verified_models: list[str] | None = None
 _failed_models: set[str] = set()
 
 
