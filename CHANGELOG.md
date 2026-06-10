@@ -187,6 +187,44 @@ Todas las versiones de Kairos.
 
 ---
 
+## [v0.0.18] — 2026-06-11
+
+### Agregado
+- Documentación de arquitectura completa (8 archivos)
+- CHANGELOG: v0.0.8-v0.0.17 documentadas
+- ROADMAP: completado v0.0.1-v0.0.17
+
+---
+
+## [v0.0.19] — 2026-06-11
+
+### Corregido
+- ESLint: /* global */ en 10 módulos JS
+- CHANGELOG: v0.0.16 y v0.0.17 agregadas
+- fetch .catch() en chat-stream.js y stream-fetcher.js
+
+---
+
+## [v0.0.20] — 2026-06-11
+
+### Corregido
+- ESLint 0 errores (38 fixes)
+- Circular import tool_loop→api eliminado (save_message en _deps.py)
+- Flaky test_web_logging.py fix (fixture autouse)
+- CHANGELOG v0.0.18-v0.0.20
+
+---
+
+## [v0.0.21] — 2026-06-11
+
+### Corregido
+- history.py: import logging eliminado (no usado)
+- loader.py: filtro `_` corregido para excluir helpers
+- CHANGELOG: v0.0.18-v0.0.21 documentadas
+- README: versión actualizada a v0.0.21
+
+---
+
 ## [v0.0.6] — 2026-06-11
 
 ### Agregado

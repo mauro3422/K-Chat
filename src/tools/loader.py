@@ -11,7 +11,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {}
 
 _dir: str = os.path.dirname(__file__)
 for f in sorted(os.listdir(_dir)):
-    if not f.endswith('.py') or f.startswith('__') or f == 'runner.py':
+    if not f.endswith('.py') or f.startswith('_') or f == 'runner.py':
         continue
     mod_name: str = f[:-3]
     try:

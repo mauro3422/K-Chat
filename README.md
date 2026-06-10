@@ -1,6 +1,6 @@
 # Kairos (K-Chat)
 
-> **v0.0.17** — Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
+> **v0.0.21** — Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
 > No JS frameworks, no complex gateways. Each piece is an independent file.
 
 ## Vision
