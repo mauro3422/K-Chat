@@ -114,6 +114,25 @@ for f in sorted(_routers_dir.iterdir()):
 
 if __name__ == "__main__":
     import uvicorn
+    import socket
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8000"))
+
+    # Check if port is already in use and kill the blocking process
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, port))
+        s.close()
+    except OSError:
+        import signal
+        logger.warning("Port %s is in use, attempting to free it...", port)
+        try:
+            import subprocess
+            subprocess.run(["fuser", "-k", f"{port}/tcp"], capture_output=True, timeout=5)
+            import time
+            time.sleep(1)
+        except Exception:
+            pass
+
     uvicorn.run("web.server:app", host=host, port=port, reload=True, reload_dirs=["web", "src"], timeout_keep_alive=30)
