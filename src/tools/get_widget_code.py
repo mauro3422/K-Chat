@@ -21,7 +21,9 @@ DEFINITION = {
 }
 
 
-def run(widget_id: str, _session_id: str | None = None) -> str:
+def run(**kwargs) -> str:
+    widget_id = kwargs.get("widget_id") or kwargs.get("key", "")
+    _session_id = kwargs.get("_session_id")
     from src.tools._widget_helpers import validate_widget_args, get_saved_widget_repo
     result = validate_widget_args(_session_id, widget_id)
     if isinstance(result, str):
