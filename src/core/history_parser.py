@@ -53,6 +53,7 @@ def _sanitize_messages(raw_msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     sanitized = []
     valid_tool_call_ids = set()
+    pending_tool_call_ids: set[str] = set()
 
     for msg in raw_msgs:
         role = msg.get("role")
@@ -64,15 +65,22 @@ def _sanitize_messages(raw_msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     msg["tool_calls"] = filtered_tcs
                     for tc in filtered_tcs:
                         valid_tool_call_ids.add(tc.get("id"))
+                        pending_tool_call_ids.add(tc.get("id"))
                 else:
                     msg.pop("tool_calls", None)
                     if not msg.get("content"):
                         continue
+            else:
+                if pending_tool_call_ids:
+                    continue
             sanitized.append(msg)
         elif role == "tool":
             tcid = msg.get("tool_call_id")
             if tcid in valid_tool_call_ids:
                 sanitized.append(msg)
+                pending_tool_call_ids.discard(tcid)
         else:
+            if pending_tool_call_ids:
+                pending_tool_call_ids.clear()
             sanitized.append(msg)
     return sanitized

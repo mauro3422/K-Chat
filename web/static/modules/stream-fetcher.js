@@ -53,6 +53,11 @@ export function executeStreamFetch(params) {
             logUI('pensando_cleared', '' + msg.t);
           }
 
+          if (msg.t === 'heartbeat') {
+            if (onChunk) onChunk();
+            return readLoop();
+          }
+
           if (msg.t === 'content' && msg.d && msg.d.trim()) {
             hasContent = true;
             tokenCount++;

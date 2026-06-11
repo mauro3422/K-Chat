@@ -31,8 +31,8 @@ def get_backend_logs() -> list[dict[str, Any]]:
     return list(_backend_log_buffer)
 
 
-# Install handler at import time
+# Install handler at import time — attach to root logger so all app loggers are captured
 _backend_handler = BackendLogHandler()
-logging.getLogger("kairos").addHandler(_backend_handler)
-logging.getLogger("kairos.src.llm").setLevel(logging.INFO)
-logging.getLogger("kairos.web.routers.chat").setLevel(logging.INFO)
+logging.root.addHandler(_backend_handler)
+if logging.root.level > logging.INFO:
+    logging.root.setLevel(logging.INFO)

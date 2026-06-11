@@ -1,5 +1,16 @@
 window.widgetStates = window.widgetStates || {};
 
+(function loadInitialWidgetStates() {
+  var meta = document.getElementById('messages-metadata');
+  if (meta) {
+    try {
+      window.widgetStates = JSON.parse(meta.getAttribute('data-widget-states') || '{}');
+    } catch(e) {
+      console.error('Error parsing initial widgetStates:', e);
+    }
+  }
+})();
+
 // sessionId is set by chat.html template as a global var before this script loads
 
 window.retryLastMessage = function() { KairosForm.retry(); };

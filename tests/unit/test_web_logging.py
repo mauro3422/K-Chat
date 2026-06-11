@@ -78,7 +78,7 @@ def test_ring_buffer_overflow():
 
 
 def test_handler_installed_by_default(caplog):
-    """The module installs BackendLogHandler at import time."""
-    kairos_logger = logging.getLogger("kairos")
-    handler_types = [h for h in kairos_logger.handlers if isinstance(h, BackendLogHandler)]
-    assert len(handler_types) >= 1, "BackendLogHandler should be installed at import time"
+    """The module installs BackendLogHandler at import time on root logger."""
+    root_logger = logging.root
+    handler_types = [h for h in root_logger.handlers if isinstance(h, BackendLogHandler)]
+    assert len(handler_types) >= 1, "BackendLogHandler should be installed on root logger at import time"

@@ -40,7 +40,7 @@ export function getMaxRetries() {
 }
 
 export function getStreamTimeout() {
-  return retryState.streamTimeout || 30000;
+  return retryState.streamTimeout || 120000;
 }
 
 export const RetryHandler = {

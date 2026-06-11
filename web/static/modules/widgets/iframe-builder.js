@@ -33,10 +33,9 @@ export function createIframe(container, id, code) {
         var iframe = document.createElement('iframe');
         iframe.className = 'interactive-widget-iframe';
         iframe.sandbox = 'allow-scripts';
-        iframe.scrolling = 'no';
         iframe.style.width = '100%';
-        iframe.style.height = '200px';
-        iframe.style.minHeight = '200px';
+        iframe.style.height = '0';
+        iframe.style.minHeight = '60px';
         iframe.style.border = 'none';
         iframe.style.background = '#161b22';
         iframe.style.borderRadius = '0 0 8px 8px';
@@ -65,9 +64,15 @@ export function createIframe(container, id, code) {
                 .then(function(data) {
                     log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
                     KairosWidgets._registry[id] = data.code;
-                    // Cache for future refreshes
+                    // Cache code in session state for future refreshes
                     if (window.widgetStates) {
                         window.widgetStates['_code_' + key] = data.code;
+                        // Persist to DB so it survives page reload
+                        fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent('_code_' + key) + '/state', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ state: data.code })
+                        }).catch(function() {});
                     }
                     mountIframe(data.code);
                 })

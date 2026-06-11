@@ -15,6 +15,12 @@ from fastapi.exceptions import RequestValidationError
 from src.api import init_db
 from dependencies import manage as deps
 
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+
 logger = logging.getLogger(__name__)
 
 

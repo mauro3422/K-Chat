@@ -85,7 +85,7 @@ class MessageRepository(_BaseRepository):
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
 
-    def get_session_messages(self, session_id: str, limit: int = 200) -> list[tuple[Any, ...]]:
+    def get_session_messages(self, session_id: str, limit: int = 500) -> list[tuple[Any, ...]]:
         """Retrieve messages for a session, ordered by creation time."""
         try:
             conn = self._get_conn()

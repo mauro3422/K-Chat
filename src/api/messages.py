@@ -14,6 +14,6 @@ def save_message(*args: Any, **kwargs: Any) -> None:
     return repo.save(*args, **kwargs)
 
 
-def get_session_messages(session_id: str, limit: int = 200) -> list:
+def get_session_messages(session_id: str, limit: int = 500) -> list:
     """Obtiene los mensajes de una sesión ordenados por id."""
     return _get_repo(MessageRepository, "message").get_session_messages(session_id, limit)

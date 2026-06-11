@@ -1,6 +1,6 @@
 # Roadmap — K-Chat (Kairos)
 
-> Current version: **v0.0.17** (2026-06-11)
+> Current version: **v0.0.23** (2026-06-10)
 
 ## Philosophy
 
@@ -122,6 +122,21 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] requirements.txt con versiones pinneadas
 - [x] 30 tests nuevos: tool_parser, rate_limiter, history_parser, etc.
 
+### v0.0.18-0.0.21 — Documentation + cleanup
+- [x] Architecture docs: 8 archivos de documentación técnica
+- [x] CHANGELOG reestructurado (índice + archivos individuales)
+- [x] ESLint 0 errores, circular import fix, flaky test fix
+- [x] Widget code cache en DB: `widget_states` table con `_code_` entries
+- [x] LLM models split, client dedup, SessionRepository
+
+### v0.0.22 — Widget rendering fixes
+- [x] `message_renderer.py`: inyecta `_code_` entries en `data-widget-states` para widgets inline
+- [x] `content-handler.js`: deduplica widgets por key (evita duplicados html-widget + tag)
+- [x] `content-handler.js`: skip `[Widget: key]` literals en texto (placeholders del AI)
+- [x] `toolbar-core.js`: maneja 404 de version label graceful (verifica `r.ok`)
+- [x] `iframe-builder.js`: envuelve código del widget en try-catch para SyntaxError
+- [x] 470 tests Python pasan
+
 ## Próximas features
 
 | Priority | Area | What |
@@ -135,6 +150,9 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 | 7 | **Proactive Insights** | Insights proactivos basados en patrones de uso |
 | 8 | **run_code** | Ejecución segura de Python con sandboxing |
 | 9 | **Telegram Bot** | `bot.py` como adapter a `core.chat_stream()` |
+| 10 | **Auto-exploration skill** | Skill dedicada para que Kairos mapee y documente su propia arquitectura |
+| 11 | **Stream heartbeat** | Heartbeat cada 30s para evitar timeouts en streams largos |
+| 12 | **Widget versioning UI** | Mostrar versión actual del widget en toolbar sin fetch separado |
 
 ## Architecture Decisions
 

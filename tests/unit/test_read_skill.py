@@ -9,7 +9,7 @@ def test_read_skill_success():
     # The html-widgets skill should exist
     res = read_skill_run("html-widgets")
     assert "[ERROR]" not in res
-    assert "Habilidad: HTML Widgets Interactivos" in res
+    assert "Skill: Interactive HTML Widgets" in res
     assert "html-widget" in res
 
 

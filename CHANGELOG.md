@@ -3,6 +3,12 @@
 > **Regla**: Este archivo es solo el índice. El detalle de cada versión está en `changelogs/vX.Y.Z.md`.
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 
+## [v0.0.23] — 2026-06-10 — [Detalle](changelogs/v0.0.23.md)
+- Widget rendering fixes, stream stability, history sanitizer, backend logging
+
+## [v0.0.22] — 2026-06-10 — [Detalle](changelogs/v0.0.22.md)
+- Widget deduplication, iframe height auto, toolbar flex-wrap, placeholder fix
+
 ## [v0.0.21] — 2026-06-11 — [Detalle](changelogs/v0.0.21.md)
 - ESLint 0 errores, circular import fix, flaky test fix, final cleanup
 

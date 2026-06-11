@@ -1,6 +1,6 @@
-# Índice de Habilidades (Skills) de Kairos
+# Kairos Skills Index
 
-Este es el catálogo de especificaciones y guías de habilidades para el agente.
+This is the catalog of skill specifications and guides for the agent.
 
-Habilidades disponibles:
-- **html-widgets**: Guía y estándares para programar interfaces HTML y JavaScript interactivas con persistencia de estado dentro del chat.
+Available skills:
+- **html-widgets**: Guide and standards for building interactive HTML and JavaScript interfaces with state persistence inside the chat.

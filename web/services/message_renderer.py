@@ -14,12 +14,20 @@ def render_session_messages(session_id: str) -> str:
     all_tools = get_tool_history(session_id, 100)
     msg_tool_map = match_tools_to_msgs(msgs, all_tools)
     widget_states = get_widget_states(session_id)
-    widget_states_json = json.dumps(widget_states, ensure_ascii=False)
 
-    # Extract widgets from content for registration
-    widget_registry = {}
-    widget_index = 0
+    # Extract widget code from content blocks and inject as _code_ entries
+    # so inline widgets persist across page reloads without save_widget
     widget_regex = re.compile(r'```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```')
+
+    for match in widget_regex.finditer(
+        "\n".join(row[1] for row in msgs if row[0] == "assistant" and row[1])
+    ):
+        key = match.group(1)
+        code = match.group(2).replace('?.', '.')
+        if key and code:
+            widget_states[f'_code_{key}'] = code
+
+    widget_states_json = json.dumps(widget_states, ensure_ascii=False)
 
     parts = [
         f'<div id="messages-metadata" data-widget-states="{html.escape(widget_states_json)}" style="display:none;"></div>',
@@ -38,14 +46,6 @@ def render_session_messages(session_id: str) -> str:
                 phases = json.loads(phases_str)
             except (json.JSONDecodeError, TypeError):
                 pass
-
-        # Extract widgets from content and register them
-        if role == "assistant" and content:
-            for match in widget_regex.finditer(content):
-                widget_id = f'widget-{widget_index}'
-                widget_code = match.group(2).replace('?.', '.')
-                widget_registry[widget_id] = widget_code
-                widget_index += 1
 
         parts.append(render_msg_with_phases(role, content, reasoning, matched, ts, phases))
 

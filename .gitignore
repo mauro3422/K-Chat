@@ -54,3 +54,6 @@ scratch/
 # Playwright
 test-results/
 playwright-report/
+
+# Dependencies (vendored)
+dependencies/searxng/

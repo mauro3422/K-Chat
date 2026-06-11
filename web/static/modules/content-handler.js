@@ -52,18 +52,25 @@ export function registerContentHandler() {
           end: match.index + match[0].length,
           key: match[1],
           code: "",
-          full: match[0]
+          full: match[0],
+          fromTag: true
         });
       }
       
-      matches.sort(function(a, b) { return a.index - b.index; });
+      matches.sort(function(a, b) {
+        if (a.key && b.key && a.key === b.key) return (b.code ? 1 : 0) - (a.code ? 1 : 0);
+        return a.index - b.index;
+      });
       var filteredMatches = [];
       var lastEnd = 0;
+      var seenKeys = {};
       for (var m = 0; m < matches.length; m++) {
-        if (matches[m].index >= lastEnd) {
-          filteredMatches.push(matches[m]);
-          lastEnd = matches[m].end;
-        }
+        var mm = matches[m];
+        if (mm.index < lastEnd) continue;
+        if (mm.key && seenKeys[mm.key]) continue;
+        if (mm.key) seenKeys[mm.key] = true;
+        filteredMatches.push(mm);
+        lastEnd = mm.end;
       }
       matches = filteredMatches;
       

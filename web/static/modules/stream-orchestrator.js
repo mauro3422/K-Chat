@@ -92,6 +92,8 @@ export const StreamOrchestrator = {
       logUI('stream_error_final', 'falló definitivamente: ' + e2.message);
     }
 
+    clearTimeout(timeoutId);
+
     var hasContent = fetchResult ? fetchResult.hasContent : false;
 
     var streamError = errorHandler.getError();

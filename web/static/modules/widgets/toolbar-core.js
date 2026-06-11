@@ -16,8 +16,10 @@ export function createToolbar(container, id, key, code, hashId) {
     var toolbar = document.createElement('div');
     toolbar.className = 'widget-toolbar';
     toolbar.style.display = 'flex';
+    toolbar.style.flexWrap = 'wrap';
     toolbar.style.justifyContent = 'space-between';
     toolbar.style.alignItems = 'center';
+    toolbar.style.gap = '4px';
     toolbar.style.background = '#10141b';
     toolbar.style.border = '1px solid #30363d';
     toolbar.style.borderBottom = 'none';
@@ -35,7 +37,10 @@ export function createToolbar(container, id, key, code, hashId) {
     toolbar.appendChild(leftSide);
 
     if (key) {
-        fetchVersionLabel(key, leftSide);
+        var isCached = window.widgetStates && window.widgetStates['_code_' + key];
+        if (!isCached) {
+            fetchVersionLabel(key, leftSide);
+        }
     }
 
     var rightSide = document.createElement('div');
@@ -94,13 +99,16 @@ export function createToolbar(container, id, key, code, hashId) {
 
 function fetchVersionLabel(key, leftSide) {
     fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(key) + '/code')
-        .then(function parseVersionResponse(r) { return r.json(); })
-        .then(function appendVersionLabel(data) {
+        .then(function(r) {
+            if (!r.ok) throw new Error('not-found');
+            return r.json();
+        })
+        .then(function(data) {
             var vSpan = document.createElement('span');
             vSpan.className = 'widget-v-label';
             vSpan.style.color = '#00ffff';
             vSpan.style.marginLeft = '8px';
             vSpan.textContent = '[V' + data.version + ']';
             leftSide.appendChild(vSpan);
-        }).catch(function ignoreVersionError(){});
+        }).catch(function(){});
 }
