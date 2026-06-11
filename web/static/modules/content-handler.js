@@ -92,12 +92,13 @@ export function registerContentHandler() {
       }
       targetSeg.dataset.rawText = cacheKey;
 
+      var purifyConfig = { ADD_TAGS: ['iframe'], ADD_ATTR: ['data-widget-id', 'data-widget-key'] };
       var html = '';
       if (textToRender && typeof KairosWidgets !== 'undefined' && KairosWidgets.extract) {
         var extracted = KairosWidgets.extract(textToRender);
         var parsed = KairosMarkdown.parse(extracted);
         if (typeof DOMPurify !== 'undefined') {
-          html += DOMPurify.sanitize(parsed);
+          html += DOMPurify.sanitize(parsed, purifyConfig);
         } else {
           html += textToRender;
           console.warn('DOMPurify not loaded, rendering as plain text');
@@ -105,7 +106,7 @@ export function registerContentHandler() {
       } else if (textToRender) {
         parsed = KairosMarkdown.parse(textToRender);
         if (typeof DOMPurify !== 'undefined') {
-          html += DOMPurify.sanitize(parsed);
+          html += DOMPurify.sanitize(parsed, purifyConfig);
         } else {
           html += textToRender;
         }
@@ -116,6 +117,10 @@ export function registerContentHandler() {
       }
 
       targetSeg.innerHTML = html;
+      
+      if (typeof KairosWidgets !== 'undefined' && typeof KairosWidgets.initAll === 'function') {
+        KairosWidgets.initAll(bodyDiv);
+      }
     } catch (e) {
       console.error('Content handler error:', e);
     }

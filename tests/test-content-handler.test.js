@@ -232,7 +232,7 @@ describe('Content Handler', function() {
     global.KairosWidgets.extract = origExtract;
   });
 
-  test('does NOT call initAll()', function() {
+  test('calls initAll() after rendering widget containers', function() {
     var initAllCalled = false;
     global.KairosWidgets.initAll = function() { initAllCalled = true; };
 
@@ -253,7 +253,7 @@ describe('Content Handler', function() {
 
     handlingStream._cb('[Widget: foo]', state);
 
-    expect(initAllCalled).toBe(false);
+    expect(initAllCalled).toBe(true);
   });
 
   test('renders text-only messages correctly', function() {

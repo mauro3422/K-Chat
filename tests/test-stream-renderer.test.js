@@ -217,7 +217,7 @@ describe('content-handler', () => {
     expect(state.bodyDivs[0].children[0]?.dataset?.rawText).toBe(prevRawText);
   });
 
-  test('does NOT call initAll()', () => {
+  test('calls initAll() after rendering widget containers', () => {
     var initAllCalled = false;
     var origInitAll = global.KairosWidgets.initAll;
     global.KairosWidgets.initAll = function() { initAllCalled = true; };
@@ -226,7 +226,7 @@ describe('content-handler', () => {
     KairosStream.emit('content', '[Widget: foo]', state);
 
     global.KairosWidgets.initAll = origInitAll;
-    expect(initAllCalled).toBe(false);
+    expect(initAllCalled).toBe(true);
   });
 });
 
