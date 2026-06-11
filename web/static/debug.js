@@ -158,7 +158,7 @@ function copyAllDebug(el) {
   }
 
   var dc = document.getElementById('debug-content');
-  dc.textContent = 'Copiando...';
+  el.textContent = 'Copiando...';
 
   var pending = 2;
   function tryCopy() {
