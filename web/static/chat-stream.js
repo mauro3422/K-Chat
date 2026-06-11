@@ -1,3 +1,4 @@
+import { SessionContext } from './modules/session-context.js';
 import stateManager from './modules/widgets/state-manager.js';
 
 stateManager.loadFromJSON({});
@@ -22,7 +23,8 @@ KairosWidgets.startMessageHandler();
 KairosForm.init();
 
 export function loadSession(sid) {
-  sessionId = sid;
+  SessionContext.setSessionId(sid);
+  globalThis.sessionId = sid;
   window.history.replaceState({sid: sid}, '', '/sessions/' + sid);
 
   if (window.KairosWidgets && typeof KairosWidgets.reset === 'function') {
@@ -61,6 +63,6 @@ window.loadSession = loadSession;
 
 document.addEventListener('DOMContentLoaded', function() {
   if (window.location.pathname.startsWith('/sessions/')) {
-    window.loadSession(sessionId);
+    window.loadSession(SessionContext.getSessionId());
   }
 });

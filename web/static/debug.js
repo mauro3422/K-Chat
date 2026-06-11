@@ -1,3 +1,5 @@
+import { SessionContext } from './modules/session-context.js';
+
 let debugVisible = false;
 const streamEvents = [];
 let streamEvId = 0;
@@ -83,7 +85,8 @@ function refreshDebug() {
   var dc = document.getElementById('debug-content');
   if (!dc) return;
   dc.textContent = 'Cargando...';
-  fetch('/sessions/' + sessionId + '/debug').then(function(r) { return r.json(); }).then(function(d) {
+  var urlBuilder = SessionContext.createSessionUrlBuilder();
+  fetch(urlBuilder.debug()).then(function(r) { return r.json(); }).then(function(d) {
     var h = '';
     h += '<div class="db-section"><strong>Modelo:</strong> ' + (d.model || '-') + ' <span class="db-copy" onclick="copyAllDebug(this)" style="margin-left:8px">copy ALL</span></div>';
     h += '<div class="db-section"><strong>Razonamiento:</strong><span class="db-copy" onclick="copyText(this)">copy</span><pre class="db-pre">' + escHtml(d.reasoning || '(ninguno)') + '</pre></div>';
@@ -165,7 +168,8 @@ function copyAllDebug(el) {
     }
   }
 
-  fetch('/sessions/' + sessionId + '/debug').then(function(r) { return r.json(); }).then(function(d) {
+  var urlBuilder = SessionContext.createSessionUrlBuilder();
+  fetch(urlBuilder.debug()).then(function(r) { return r.json(); }).then(function(d) {
     parts.push('');
     parts.push('=== HISTORY ===');
     parts.push(JSON.stringify(d.history_before || [], null, 2));

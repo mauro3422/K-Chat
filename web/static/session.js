@@ -1,7 +1,10 @@
 /* eslint-disable no-redeclare, no-unused-vars */
 
+import { SessionContext } from './modules/session-context.js';
+
 function refreshSidebar() {
-  fetch('/sidebar?current=' + sessionId).then(function(r){ return r.text(); }).then(function(h){
+  var urlBuilder = SessionContext.createSessionUrlBuilder();
+  fetch(urlBuilder.sidebar()).then(function(r){ return r.text(); }).then(function(h){
     document.getElementById('session-list').innerHTML = h;
   }).catch(function(err) { console.error('Sidebar refresh failed:', err); });
 }
@@ -84,7 +87,7 @@ document.addEventListener('click', function(e) {
 
   if (e.target.classList.contains('act-confirm') && item.querySelector('.act-del')) {
     fetch('/sessions/' + sid + '/delete', {method:'POST'}).then(function() {
-      if (sessionId === sid) { window.location.href = '/'; }
+      if (SessionContext.getSessionId() === sid) { window.location.href = '/'; }
       else { item.remove(); }
     }).catch(function(err) { console.error('Delete failed:', err); });
     return;
@@ -96,4 +99,4 @@ document.addEventListener('click', function(e) {
   }
 });
 
-window.onpopstate = function(e) { if (e.state && e.state.sid) { sessionId = e.state.sid; } };
+window.onpopstate = function(e) { if (e.state && e.state.sid) { SessionContext.setSessionId(e.state.sid); globalThis.sessionId = e.state.sid; } };

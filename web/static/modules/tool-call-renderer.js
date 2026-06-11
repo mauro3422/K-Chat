@@ -1,3 +1,5 @@
+import C from './dom-contracts.js';
+
 export function registerToolCallRenderer() {
   if (typeof KairosStream === 'undefined') return;
 
@@ -21,7 +23,7 @@ export function registerToolCallRenderer() {
       if (state.context) {
         state.context.markToolTurn();
       }
-      var allTc = state.asstDiv.querySelectorAll('.tool-calls');
+      var allTc = state.asstDiv.querySelectorAll('.' + C.TOOL_CALLS);
       var tcEl = null;
       if (info.status === 'calling') {
         var foundIn = null;
@@ -32,14 +34,14 @@ export function registerToolCallRenderer() {
           tcEl = foundIn;
         } else if (allTc.length < state.reasoningEls.length) {
           tcEl = document.createElement('div');
-          tcEl.className = 'tool-calls';
+          tcEl.className = C.TOOL_CALLS;
           state.asstDiv.appendChild(tcEl);
           logUI('tool_calls_seq', allTc.length);
         } else if (allTc.length > 0) {
           tcEl = allTc[allTc.length - 1];
         } else {
           tcEl = document.createElement('div');
-          tcEl.className = 'tool-calls';
+          tcEl.className = C.TOOL_CALLS;
           state.asstDiv.appendChild(tcEl);
           logUI('tool_calls_seq', 0);
         }
@@ -54,7 +56,7 @@ export function registerToolCallRenderer() {
       if (info.status === 'calling') {
         if (!existing) {
           var span = document.createElement('span');
-          span.className = 'tc-item calling';
+          span.className = C.TC_ITEM_CALLING;
           span.setAttribute('data-id', info.id);
           span.setAttribute('data-tool', info.name);
           span.innerHTML = '<span class="tc-spinner"></span> ' + KairosUtils.escHtml(info.name);
@@ -63,12 +65,12 @@ export function registerToolCallRenderer() {
         }
       } else {
         if (existing) {
-          existing.className = 'tc-item ' + info.status;
+          existing.className = C.TC_ITEM + ' ' + info.status;
           existing.innerHTML = (info.status === 'ok' ? '&#10003; ' : '&#10007; ') + KairosUtils.escHtml(info.name);
           logUI('tool_' + info.status, info.name);
         } else {
           var span2 = document.createElement('span');
-          span2.className = 'tc-item ' + info.status;
+          span2.className = C.TC_ITEM + ' ' + info.status;
           span2.setAttribute('data-id', info.id);
           span2.innerHTML = (info.status === 'ok' ? '&#10003; ' : '&#10007; ') + KairosUtils.escHtml(info.name || '?');
           tcEl.appendChild(span2);

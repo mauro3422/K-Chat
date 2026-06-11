@@ -74,6 +74,18 @@ class MockElement {
       };
       return traverse2(this);
     }
+    if (sel === '.msg-text-segment') {
+      var traverse3 = function(node) {
+        for (var c = 0; c < node.children.length; c++) {
+          var child = node.children[c];
+          if (child.className === 'msg-text-segment') return child;
+          var found = traverse3(child);
+          if (found) return found;
+        }
+        return null;
+      };
+      return traverse3(this);
+    }
     return this;
   }
   insertAdjacentElement(pos, el) {

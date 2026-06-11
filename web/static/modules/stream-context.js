@@ -1,3 +1,4 @@
+import C from './dom-contracts.js';
 import { ReasoningState } from './reasoning-state.js';
 
 export class StreamContext {
@@ -16,7 +17,7 @@ export class StreamContext {
   constructor(asstDiv) {
     if (!asstDiv) throw new Error('asstDiv is required');
     this.#asstDiv = asstDiv;
-    this.#bodyDivs = [asstDiv.querySelector('.msg-body')];
+    this.#bodyDivs = [asstDiv.querySelector('.' + C.MSG_BODY)];
     this.#contentTexts = [''];
     this.#reasoningEls = [];
     this.#reasoningText = '';
@@ -133,7 +134,7 @@ export class StreamContext {
   ensureBodyDiv(phaseIdx, className) {
     while (this.#bodyDivs.length <= phaseIdx) {
       var newBody = document.createElement('div');
-      newBody.className = className || 'msg-body md-content';
+      newBody.className = className || C.MSG_BODY_MD();
       this.#asstDiv.appendChild(newBody);
       this.#bodyDivs.push(newBody);
       this.#contentTexts.push('');
@@ -155,7 +156,7 @@ export class StreamContext {
   }
 
   reset() {
-    this.#bodyDivs = [this.#asstDiv.querySelector('.msg-body')];
+    this.#bodyDivs = [this.#asstDiv.querySelector('.' + C.MSG_BODY)];
     this.#contentTexts = [''];
     this.#reasoningEls = [];
     this.#reasoningText = '';

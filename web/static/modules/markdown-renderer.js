@@ -1,5 +1,7 @@
 /* eslint-disable no-redeclare, no-unused-vars */
 
+import C from './dom-contracts.js';
+
 function decodeHtml(html) {
   // Solo decodificar si contiene entidades HTML escapadas
   if (html.indexOf('&lt;') >= 0 || html.indexOf('&gt;') >= 0 || html.indexOf('&quot;') >= 0) {
@@ -26,7 +28,7 @@ function parse(text) {
 function renderAll() {
   if (typeof marked === 'undefined') return;
   
-  var containers = document.querySelectorAll('.md-content');
+  var containers = document.querySelectorAll('.' + C.MD_CONTENT);
   
   // Configurar DOMPurify para permitir iframes de widgets y atributos de versión
   var purifyConfig = {

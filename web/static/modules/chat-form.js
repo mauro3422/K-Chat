@@ -1,18 +1,21 @@
 /* global StreamOrchestrator, RetryHandler */
 
+import C from './dom-contracts.js';
+import { SessionContext } from './session-context.js';
+
 var lastUserMessageText = '';
 var currentController = null;
 
 function retryLastMessage() {
   var lastAsstMsg = document.querySelector('.msg.assistant:last-child');
-  if (lastAsstMsg && lastAsstMsg.querySelector('.error-card')) {
+  if (lastAsstMsg && lastAsstMsg.querySelector('.' + C.ERROR_CARD)) {
     lastAsstMsg.remove();
   }
 
   var lastUserText = '';
   var userMsgs = document.querySelectorAll('.msg.user');
   if (userMsgs.length > 0) {
-    var lastUserBody = userMsgs[userMsgs.length - 1].querySelector('.msg-body');
+    var lastUserBody = userMsgs[userMsgs.length - 1].querySelector('.' + C.MSG_BODY);
     if (lastUserBody) {
       lastUserText = lastUserBody.innerText || lastUserBody.textContent || '';
     }
@@ -47,16 +50,16 @@ function init() {
     lastUserMessageText = text;
 
     var oldUrl = window.location.pathname;
-    if (oldUrl === '/') { window.history.replaceState({sid:sessionId}, '', '/sessions/' + sessionId); }
+    if (oldUrl === '/') { window.history.replaceState({sid:SessionContext.getSessionId()}, '', '/sessions/' + SessionContext.getSessionId()); }
 
     input.disabled = true;
     document.getElementById('spinner').textContent = '...';
 
     document.getElementById('messages').insertAdjacentHTML('beforeend',
-      '<div class="msg user"><div class="msg-label">Tu</div><div class="msg-body">' + KairosUtils.escHtml(text) + '</div></div>');
+      '<div class="msg user"><div class="msg-label">Tu</div><div class="' + C.MSG_BODY + '">' + KairosUtils.escHtml(text) + '</div></div>');
     var asstDiv = document.createElement('div');
     asstDiv.className = 'msg assistant';
-    asstDiv.innerHTML = '<div class="msg-label">Kairos</div><div class="msg-body md-content">Pensando...</div>';
+    asstDiv.innerHTML = '<div class="msg-label">Kairos</div><div class="' + C.MSG_BODY_MD() + '">Pensando...</div>';
     document.getElementById('messages').appendChild(asstDiv);
     KairosUtils.scrollToBottom();
 
@@ -67,7 +70,7 @@ function init() {
       asstDiv: asstDiv,
       lastUserMessageText: lastUserMessageText,
       controller: currentController,
-      sessionId: sessionId,
+      sessionId: SessionContext.getSessionId(),
       defaultModel: defaultModel
     });
   });

@@ -4,6 +4,7 @@
  * Genera el srcdoc HTML inyectado en cada iframe sandboxed.
  * También crea y monta iframes con soporte para widgets oficiales.
  */
+import { SessionContext } from '../session-context.js';
 import { fnv1a_32, log, KairosWidgets } from './core.js';
 import { createToolbar } from './toolbar-core.js';
 import stateManager from './state-manager.js';
@@ -58,7 +59,8 @@ export function createIframe(container, id, code) {
             mountIframe(cachedCode);
         } else {
             log(id, 'fetch-init', 'key=' + key);
-            fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(key) + '/code')
+            var urlBuilder = SessionContext.createSessionUrlBuilder();
+            fetch(urlBuilder.widgetCode(key))
                 .then(function(r) {
                     if (!r.ok) throw new Error("No encontrado");
                     return r.json();
@@ -67,7 +69,7 @@ export function createIframe(container, id, code) {
                     log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
                     KairosWidgets._registry[id] = data.code;
                     stateManager.setCodeCache(key, data.code);
-                    fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent('_code_' + key) + '/state', {
+                    fetch(urlBuilder.widgetState('_code_' + key), {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({ state: data.code })

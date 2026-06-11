@@ -3,6 +3,7 @@
  *
  * Escucha postMessage desde los iframes y gestiona IntersectionObserver global.
  */
+import { SessionContext } from '../session-context.js';
 import { log, KairosWidgets, fnv1a_32 } from './core.js';
 import { createIframe } from './iframe-builder.js';
 import { getWidgetObserver, setWidgetObserver } from './iframe.js';
@@ -49,7 +50,8 @@ export function startMessageHandler() {
             Object.keys(allState).forEach(function(k) {
                 if (k.indexOf('_code_') === 0) codeEntries[k] = allState[k];
             });
-            fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(hashId) + '/state', {
+            var urlBuilder = SessionContext.createSessionUrlBuilder();
+            fetch(urlBuilder.widgetState(hashId), {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ state: event.data.state, codeEntries: codeEntries })

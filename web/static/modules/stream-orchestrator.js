@@ -1,5 +1,6 @@
 /* global StreamErrorHandler, RetryHandler */
 
+import C from './dom-contracts.js';
 import { StreamContext } from './stream-context.js';
 import { executeStreamFetch } from './stream-fetcher.js';
 import { attemptRetry } from './stream-retry-coordinator.js';
@@ -54,7 +55,7 @@ export const StreamOrchestrator = {
 
       if (e2.name === 'AbortError') {
         logUI('stream_aborted', 'cancelado por nuevo mensaje');
-        var bodyDiv = asstDiv.querySelector('.msg-body');
+        var bodyDiv = asstDiv.querySelector('.' + C.MSG_BODY);
         var isEmpty = !bodyDiv || bodyDiv.textContent === 'Pensando...' || bodyDiv.textContent === '';
         if (isEmpty) {
           asstDiv.remove();
@@ -65,7 +66,7 @@ export const StreamOrchestrator = {
 
       logUI('stream_error', e2.message);
 
-      var hasSuccessfulTools = asstDiv.querySelectorAll('.tc-item.ok').length > 0;
+      var hasSuccessfulTools = asstDiv.querySelectorAll('.' + C.TC_ITEM + '.ok').length > 0;
       if (attemptRetry({
         asstDiv: asstDiv,
         form: form,
@@ -101,7 +102,7 @@ export const StreamOrchestrator = {
         return;
       }
 
-      hasSuccessfulTools = asstDiv.querySelectorAll('.tc-item.ok').length > 0;
+      hasSuccessfulTools = asstDiv.querySelectorAll('.' + C.TC_ITEM + '.ok').length > 0;
       if (attemptRetry({
         asstDiv: asstDiv,
         form: form,

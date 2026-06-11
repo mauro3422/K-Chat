@@ -3,6 +3,7 @@
  *
  * Estado global, utilidades básicas y extracción de widgets del markdown.
  */
+import C from '../dom-contracts.js';
 import stateManager from './state-manager.js';
 let _registry = {};
 let _debug = {};
@@ -44,9 +45,9 @@ export function extract(text) {
             stateManager.setCodeCache(key, code);
         }
         if (key) {
-            return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
+            return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
         }
-        return '<div class="interactive-widget-container" data-widget-id="' + id + '"></div>';
+        return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '"></div>';
     });
 
     // 2. Parse inline tags like [Widget: key] or [Widget key] to load saved widgets
@@ -59,7 +60,7 @@ export function extract(text) {
         }
         seenKeys[lowerKey] = true;
         var id = 'widget-' + nextIndex();
-        return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
+        return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
     });
 
     return text;

@@ -1,3 +1,5 @@
+import C from './dom-contracts.js';
+
 export function registerContentHandler() {
   if (typeof KairosStream === 'undefined') return;
 
@@ -37,12 +39,12 @@ export function registerContentHandler() {
 
       while (state.bodyDivs.length <= phaseIdx) {
         var newBody = document.createElement('div');
-        newBody.className = 'msg-body md-content';
+        newBody.className = C.MSG_BODY_MD();
         state.asstDiv.appendChild(newBody);
         state.bodyDivs.push(newBody);
         state.contentTexts.push('');
         if (state.context) {
-          state.context.ensureBodyDiv(phaseIdx, 'msg-body md-content');
+          state.context.ensureBodyDiv(phaseIdx, C.MSG_BODY_MD());
         }
       }
 
@@ -56,25 +58,19 @@ export function registerContentHandler() {
       var fullText = state.contentTexts[phaseIdx];
       var bodyDiv = state.bodyDivs[phaseIdx];
 
+      var targetSeg = bodyDiv.querySelector('.' + C.MSG_TEXT_SEGMENT);
+      if (!targetSeg) {
+        targetSeg = document.createElement('div');
+        targetSeg.className = C.MSG_TEXT_SEGMENT;
+        bodyDiv.appendChild(targetSeg);
+      }
+
       var children = Array.prototype.slice.call(bodyDiv.children);
       for (var c = 0; c < children.length; c++) {
-        var child = children[c];
-        if (!child.classList.contains('msg-text-segment')) {
-          bodyDiv.removeChild(child);
+        if (children[c] !== targetSeg) {
+          bodyDiv.removeChild(children[c]);
         }
       }
-
-      while (bodyDiv.children.length < 1) {
-        var txtSeg = document.createElement('div');
-        txtSeg.className = 'msg-text-segment';
-        bodyDiv.appendChild(txtSeg);
-      }
-
-      while (bodyDiv.children.length > 1) {
-        bodyDiv.removeChild(bodyDiv.lastChild);
-      }
-
-      var targetSeg = bodyDiv.children[0];
       if (!targetSeg) return;
 
       var textToRender = fullText;

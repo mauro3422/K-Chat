@@ -47,7 +47,7 @@
 </div>
 </div>
 <script>
-var sessionId = "{{ session_id }}";
+globalThis.sessionId = "{{ session_id }}";
 var defaultModel = "{{ model }}";
 // Placeholder until chat-stream.js module loads
 window.loadSession = function() { console.log('Loading session...'); };
@@ -61,6 +61,11 @@ document.addEventListener('DOMContentLoaded', function() {
     select.value = defaultModel;
   }
 });
+</script>
+<script type="module">
+  import { SessionContext } from '/static/modules/session-context.js';
+  SessionContext.init("{{ session_id }}");
+  globalThis.sessionId = SessionContext.getSessionId();
 </script>
 <script type="module" src="/static/session.js?v=10"></script>
 <script type="module" src="/static/modules/utils.js?v=2"></script>

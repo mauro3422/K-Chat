@@ -1,3 +1,5 @@
+import C from './dom-contracts.js';
+
 var retryState = { count: 0, maxRetries: 3, streamTimeout: null };
 
 function delay(ms) {
@@ -12,9 +14,9 @@ function showRetryNotice(attempt, reason) {
 export function scheduleRetry(form, input, asstDiv, lastUserMessageText, reason) {
   retryState.count++;
   showRetryNotice(retryState.count, reason);
-  var bodyDiv = asstDiv.querySelector('.msg-body');
+  var bodyDiv = asstDiv.querySelector('.' + C.MSG_BODY);
   if (bodyDiv) bodyDiv.innerHTML = '';
-  var toRemove = asstDiv.querySelectorAll('.reasoning, .tool-calls');
+  var toRemove = asstDiv.querySelectorAll('.' + C.REASONING + ', .' + C.TOOL_CALLS);
   for (var r = 0; r < toRemove.length; r++) {
     toRemove[r].remove();
   }

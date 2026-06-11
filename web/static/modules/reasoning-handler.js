@@ -1,3 +1,5 @@
+import C from './dom-contracts.js';
+
 export function registerReasoningHandler() {
   if (typeof KairosStream === 'undefined') return;
 
@@ -22,9 +24,9 @@ export function registerReasoningHandler() {
       var isNewPhase = state.reasoningState.enter();
       if (isNewPhase) {
         var newDet = document.createElement('details');
-        newDet.className = 'reasoning';
+        newDet.className = C.REASONING;
         newDet.open = true;
-        newDet.innerHTML = '<summary>Razonando...</summary><div class="rt"></div>';
+        newDet.innerHTML = '<summary>Razonando...</summary><div class="' + C.RT + '"></div>';
 
         if (state.reasoningEls.length > 0) {
           var prev = state.reasoningEls[state.reasoningEls.length - 1];
@@ -39,7 +41,7 @@ export function registerReasoningHandler() {
           logUI('reasoning_phase', state.reasoningEls.length);
         }
       }
-      var rt = state.reasoningEls[state.reasoningEls.length - 1].querySelector('.rt');
+      var rt = state.reasoningEls[state.reasoningEls.length - 1].querySelector('.' + C.RT);
       if (rt) rt.textContent += token;
     } catch (e) {
       console.error('Reasoning handler error:', e);

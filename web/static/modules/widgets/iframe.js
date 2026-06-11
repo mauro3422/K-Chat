@@ -3,6 +3,7 @@
  *
  * Inicialización de contenedores de widgets.
  */
+import C from '../dom-contracts.js';
 import { log, KairosWidgets } from './core.js';
 import { createIframe } from './iframe-builder.js';
 
@@ -21,7 +22,7 @@ export function getInitializedWidgets() {
 
 export function initAll(parentEl, forceImmediate) {
     var scope = parentEl || document.body;
-    var containers = scope.querySelectorAll('.interactive-widget-container');
+    var containers = scope.querySelectorAll('.' + C.WIDGET_CONTAINER);
     for (var i = 0; i < containers.length; i++) {
         var container = containers[i];
         var wmState = _initializedWidgets.get(container);

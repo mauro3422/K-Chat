@@ -3,11 +3,13 @@
  *
  * Listado de versiones, fetch de historial, navegación y carga de código.
  */
+import { SessionContext } from '../session-context.js';
 import { KairosWidgets } from './core.js';
 import { buildIframeSrc } from './iframe-builder.js';
 import stateManager from './state-manager.js';
 
 export function toggleHistoryList(container, id, key) {
+    var urlBuilder = SessionContext.createSessionUrlBuilder();
     var oldList = container.querySelector('.widget-history-list');
     if (oldList) {
         oldList.parentNode.removeChild(oldList);
@@ -31,7 +33,7 @@ export function toggleHistoryList(container, id, key) {
     title.style.marginBottom = '6px';
     historyDiv.appendChild(title);
 
-    fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(key) + '/versions')
+    fetch(urlBuilder.widgetVersions(key))
         .then(function parseVersionsResponse(r) { return r.json(); })
         .then(function renderVersionList(data) {
             if (!data.versions || data.versions.length === 0) {
@@ -58,7 +60,7 @@ export function toggleHistoryList(container, id, key) {
                     item.appendChild(link);
 
                     item.onclick = function onVersionClick() {
-                        fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(key) + '/versions/' + v.version + '/code')
+                        fetch(urlBuilder.versionCode(key, v.version))
                             .then(function parseVersionCodeResponse(r) { return r.json(); })
                             .then(function loadVersionCode(verData) {
                                 KairosWidgets._registry[id] = verData.code;
