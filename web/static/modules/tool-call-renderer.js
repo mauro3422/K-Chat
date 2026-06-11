@@ -1,6 +1,16 @@
 export function registerToolCallRenderer() {
   if (typeof KairosStream === 'undefined') return;
 
+  function _insertTcEl(tcEl, turnIdx, state) {
+    var refEl = state.bodyDivs[turnIdx];
+    if (!refEl) refEl = state.reasoningEls[turnIdx];
+    if (refEl) {
+      refEl.insertAdjacentElement('afterend', tcEl);
+    } else {
+      state.asstDiv.appendChild(tcEl);
+    }
+  }
+
   KairosStream.on('tool_call', function(dataStr, state) {
     try {
       var info = JSON.parse(dataStr);
@@ -9,19 +19,32 @@ export function registerToolCallRenderer() {
       state._toolTurnSinceLastContent = true;
       var allTc = state.asstDiv.querySelectorAll('.tool-calls');
       var tcEl = null;
-      var foundIn = null;
-      for (var ti = 0; ti < allTc.length; ti++) {
-        if (allTc[ti].querySelector('[data-id="' + info.id + '"]')) { foundIn = allTc[ti]; break; }
-      }
-      if (foundIn) {
-        tcEl = foundIn;
-      } else if (info.status === 'calling') {
-        tcEl = document.createElement('div');
-        tcEl.className = 'tool-calls';
-        state.asstDiv.appendChild(tcEl);
-        logUI('tool_calls_seq', state.reasoningEls.length);
+      if (info.status === 'calling') {
+        var foundIn = null;
+        for (var ti = 0; ti < allTc.length; ti++) {
+          if (allTc[ti].querySelector('[data-id="' + info.id + '"]')) { foundIn = allTc[ti]; break; }
+        }
+        if (foundIn) {
+          tcEl = foundIn;
+        } else if (allTc.length < state.reasoningEls.length) {
+          tcEl = document.createElement('div');
+          tcEl.className = 'tool-calls';
+          var turnIdx = allTc.length;
+          _insertTcEl(tcEl, turnIdx, state);
+          logUI('tool_calls_seq', turnIdx);
+        } else if (allTc.length > 0) {
+          tcEl = allTc[allTc.length - 1];
+        } else {
+          tcEl = document.createElement('div');
+          tcEl.className = 'tool-calls';
+          _insertTcEl(tcEl, 0, state);
+          logUI('tool_calls_seq', 0);
+        }
       } else {
-        if (allTc.length > 0) tcEl = allTc[allTc.length - 1];
+        for (var ti2 = 0; ti2 < allTc.length; ti2++) {
+          if (allTc[ti2].querySelector('[data-id="' + info.id + '"]')) { tcEl = allTc[ti2]; break; }
+        }
+        if (!tcEl && allTc.length > 0) tcEl = allTc[allTc.length - 1];
       }
       if (!tcEl) return;
       var existing = tcEl.querySelector('[data-id="' + info.id + '"]');

@@ -77,7 +77,33 @@ class MockElement {
     }
     return this;
   }
-  insertAdjacentElement(pos, el) { this.children.push(el); return el; }
+  insertAdjacentElement(pos, el) {
+    if (pos === 'afterend') {
+      var parent = this.parentNode || this;
+      var idx = parent.children.indexOf(this);
+      if (idx >= 0) {
+        parent.children.splice(idx + 1, 0, el);
+        el.parentNode = parent;
+      } else {
+        parent.children.push(el);
+        el.parentNode = parent;
+      }
+    } else if (pos === 'beforebegin') {
+      var parent2 = this.parentNode || this;
+      var idx2 = parent2.children.indexOf(this);
+      if (idx2 >= 0) {
+        parent2.children.splice(idx2, 0, el);
+        el.parentNode = parent2;
+      } else {
+        parent2.children.push(el);
+        el.parentNode = parent2;
+      }
+    } else {
+      this.children.push(el);
+      el.parentNode = this;
+    }
+    return el;
+  }
 }
 
 global.document = { createElement: (tag) => new MockElement(tag) };
