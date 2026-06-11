@@ -76,10 +76,6 @@ def build_stream_generator(
                 if tipo == "heartbeat":
                     continue
 
-                if now - last_yield_time > HEARTBEAT_INTERVAL:
-                    yield json.dumps({"t": "heartbeat", "d": ""}) + "\n"
-                    last_yield_time = now
-
                 if tipo == "content":
                     loop_error = loop_detector.check(token)
                     if loop_error:

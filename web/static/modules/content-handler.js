@@ -31,8 +31,10 @@ export function registerContentHandler() {
       state.contentTexts[phaseIdx] += token;
       
       var fullText = state.contentTexts[phaseIdx];
-      var matches = state._lastWidgetMatches || [];
-      var prevLen = state._lastFullTextLen || 0;
+      state._widgetCache = state._widgetCache || {};
+      var cache = state._widgetCache[phaseIdx] || { matches: [], prevLen: 0 };
+      var matches = cache.matches;
+      var prevLen = cache.prevLen;
       
       var mightHaveWidget = token.indexOf('`') >= 0 || token.indexOf('[') >= 0 || fullText.length !== prevLen + token.length;
       
@@ -79,8 +81,9 @@ export function registerContentHandler() {
           lastEnd = mm.end;
         }
         matches = filteredMatches;
-        state._lastWidgetMatches = matches;
-        state._lastFullTextLen = fullText.length;
+        cache.matches = matches;
+        cache.prevLen = fullText.length;
+        state._widgetCache[phaseIdx] = cache;
       }
       
       var bodyDiv = state.bodyDivs[phaseIdx];
