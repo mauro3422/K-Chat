@@ -3,11 +3,12 @@
 Allows the agent to generate interactive visual interfaces (like calculators, planners, charts, or simple games) directly in the chat conversation.
 
 ## Output Format
-To generate a widget, write a Markdown code block using the `html-widget` language tag.
+**IMPORTANT**: Do NOT output raw HTML code blocks in the chat. The HTML content triggers the loop detector. Instead:
+1. Construct the HTML in your reasoning/planning
+2. Call `save_widget(widget_id, code, description)` to save it
+3. Invoke with `[Widget: widget_id]` in your response
 
-* **Temporary Widgets (Draft)**: Use the simple block tag `html-widget`. It will be treated as a draft and will not enable version controls or editing. Note: The manual save button has been removed from the UI; use the `save_widget` action when you consider it appropriate to consolidate and promote a widget.
-* **Official Widgets (Versioned)**: Append the unique widget name in lowercase with no spaces next to the language tag, e.g.: `html-widget calculator` or `html-widget notes`. This immediately enables versioning, in-situ editing, and change history in the interface (allowing the user to edit and save new versions manually).
-* **Invoking/Loading Saved Widgets**: If the widget has already been officially saved in the system (you know this from your memory or by using `get_widget_code`), **NEVER** print its full source code in your chat response again. Instead, simply write the inline tag `[Widget: widget-name]` in your text (e.g., `Here's the widget: [Widget: quick-notes]`). The system will detect this call in real-time during streaming, asynchronously retrieve the code from the global database, and render the widget instantly without flooding the chat with repetitive code or inducing syntax errors.
+Only use ` ```html-widget ```` code blocks for very small temporary widgets (< 500 chars). For anything larger, use `save_widget`.
 
 All content in this block must be self-contained HTML, CSS, and JavaScript code. Do not add text explanations inside the code block.
 
