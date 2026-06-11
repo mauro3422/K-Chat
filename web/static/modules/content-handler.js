@@ -5,6 +5,7 @@ export function registerContentHandler() {
 
   KairosStream.on('content', function(token, ctx) {
     try {
+      var sharedKeys = ctx._renderedKeys || (ctx._renderedKeys = {});
       var state = ctx;
       if (ctx && typeof ctx.getBodyDivs === 'function') {
         state = {
@@ -16,7 +17,8 @@ export function registerContentHandler() {
           _toolPhase: ctx.getToolPhase(),
           _toolTurnSinceLastContent: ctx.getToolTurnSinceLastContent(),
           getPhaseIdx: function() { return ctx.getPhaseIndex(); },
-          context: ctx
+          context: ctx,
+          _renderedKeys: sharedKeys
         };
         for (var i = 0; i < state.bodyDivs.length; i++) {
           state.contentTexts.push(ctx.getContentText(i));
