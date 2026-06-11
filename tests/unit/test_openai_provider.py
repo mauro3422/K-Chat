@@ -9,12 +9,17 @@ class TestOpenAIProviderConstructor:
     def test_passes_api_key_and_base_url(self):
         with patch("src.llm.openai_provider.OpenAI") as mock_openai:
             OpenAIProvider(api_key="my-key", base_url="https://my.url")
-            mock_openai.assert_called_once_with(api_key="my-key", base_url="https://my.url")
+            call_kwargs = mock_openai.call_args.kwargs
+            assert call_kwargs["api_key"] == "my-key"
+            assert call_kwargs["base_url"] == "https://my.url"
+            assert "timeout" in call_kwargs
 
     def test_uses_default_base_url_when_not_provided(self):
         with patch("src.llm.openai_provider.OpenAI") as mock_openai:
             OpenAIProvider(api_key="my-key")
-            mock_openai.assert_called_once_with(api_key="my-key", base_url=_DEFAULT_BASE_URL)
+            call_kwargs = mock_openai.call_args.kwargs
+            assert call_kwargs["api_key"] == "my-key"
+            assert call_kwargs["base_url"] == _DEFAULT_BASE_URL
 
 
 class TestOpenAIProviderChat:

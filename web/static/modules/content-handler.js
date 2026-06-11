@@ -31,48 +31,57 @@ export function registerContentHandler() {
       state.contentTexts[phaseIdx] += token;
       
       var fullText = state.contentTexts[phaseIdx];
-      var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```/g;
-      var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
-      var matches = [];
-      var match;
+      var matches = state._lastWidgetMatches || [];
+      var prevLen = state._lastFullTextLen || 0;
       
-      while ((match = widgetRegex.exec(fullText)) !== null) {
-        matches.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          key: match[1] || null,
-          code: match[2],
-          full: match[0]
+      var mightHaveWidget = token.indexOf('`') >= 0 || token.indexOf('[') >= 0 || fullText.length !== prevLen + token.length;
+      
+      if (mightHaveWidget || prevLen === 0) {
+        var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```/g;
+        var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
+        var rawMatches = [];
+        var match;
+        
+        while ((match = widgetRegex.exec(fullText)) !== null) {
+          rawMatches.push({
+            index: match.index,
+            end: match.index + match[0].length,
+            key: match[1] || null,
+            code: match[2],
+            full: match[0]
+          });
+        }
+        
+        while ((match = tagRegex.exec(fullText)) !== null) {
+          rawMatches.push({
+            index: match.index,
+            end: match.index + match[0].length,
+            key: match[1],
+            code: "",
+            full: match[0],
+            fromTag: true
+          });
+        }
+        
+        rawMatches.sort(function(a, b) {
+          if (a.key && b.key && a.key === b.key) return (b.code ? 1 : 0) - (a.code ? 1 : 0);
+          return a.index - b.index;
         });
+        var filteredMatches = [];
+        var lastEnd = 0;
+        var seenKeys = {};
+        for (var m = 0; m < rawMatches.length; m++) {
+          var mm = rawMatches[m];
+          if (mm.index < lastEnd) continue;
+          if (mm.key && seenKeys[mm.key]) continue;
+          if (mm.key) seenKeys[mm.key] = true;
+          filteredMatches.push(mm);
+          lastEnd = mm.end;
+        }
+        matches = filteredMatches;
+        state._lastWidgetMatches = matches;
+        state._lastFullTextLen = fullText.length;
       }
-      
-      while ((match = tagRegex.exec(fullText)) !== null) {
-        matches.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          key: match[1],
-          code: "",
-          full: match[0],
-          fromTag: true
-        });
-      }
-      
-      matches.sort(function(a, b) {
-        if (a.key && b.key && a.key === b.key) return (b.code ? 1 : 0) - (a.code ? 1 : 0);
-        return a.index - b.index;
-      });
-      var filteredMatches = [];
-      var lastEnd = 0;
-      var seenKeys = {};
-      for (var m = 0; m < matches.length; m++) {
-        var mm = matches[m];
-        if (mm.index < lastEnd) continue;
-        if (mm.key && seenKeys[mm.key]) continue;
-        if (mm.key) seenKeys[mm.key] = true;
-        filteredMatches.push(mm);
-        lastEnd = mm.end;
-      }
-      matches = filteredMatches;
       
       var bodyDiv = state.bodyDivs[phaseIdx];
       var widgetMap = state.widgetMap[phaseIdx];

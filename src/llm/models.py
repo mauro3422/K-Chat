@@ -8,7 +8,7 @@ from src.llm.model_state import _switch_model  # noqa: F401
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-_MAX_RETRIES: int = 1
+_MAX_RETRIES: int = 3
 _RETRY_DELAY: float = 0.5
 
 

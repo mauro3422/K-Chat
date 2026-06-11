@@ -24,6 +24,8 @@ def test_fallback_switch_updates_system_prompt():
         mock_provider = MagicMock()
         mock_provider.chat.side_effect = [
             Exception("Connection error"),
+            Exception("Connection error"),
+            Exception("Connection error"),
             mock_response,
             mock_response,
         ]
@@ -40,10 +42,10 @@ def test_fallback_switch_updates_system_prompt():
         # Verify the returned choice
         assert res.message.content == "Response from fallback"
         
-        # call 1: big-pickle fails, call 2: verify_model(deepseek), call 3: fallback
-        assert mock_provider.chat.call_count == 3
+        # call 1-3: big-pickle fails (3 retries), call 4: verify_model(deepseek), call 5: fallback
+        assert mock_provider.chat.call_count == 5
         assert mock_provider.chat.call_args_list[0].kwargs.get("model") == "big-pickle"
-        assert mock_provider.chat.call_args_list[2].kwargs.get("model") == "deepseek-v4-flash-free"
+        assert mock_provider.chat.call_args_list[4].kwargs.get("model") == "deepseek-v4-flash-free"
         
         # Verify system prompt was updated
         assert "Active model: deepseek-v4-flash-free" in messages[0]["content"]

@@ -1,0 +1,27 @@
+use_default_settings: true
+
+general:
+  instance_name: "Kairos Search"
+  debug: true
+  enable_metrics: false
+
+search:
+  formats:
+    - html
+    - json
+
+server:
+  port: 8080
+  bind_address: "127.0.0.1"
+  limiter: false
+  public_instance: false
+  secret_key: "168cd69ae52c484936ea41d6f7b8bb43b1196838141398fdb8eb637510828a0b"
+  method: "GET"
+  image_proxy: false
+
+valkey:
+  url: false
+
+outgoing:
+  request_timeout: 5.0
+  max_request_timeout: 10.0

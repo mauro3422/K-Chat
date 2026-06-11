@@ -18,8 +18,12 @@ def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_ma
         for fut in as_completed(futs):
             tc, name = futs[fut]
             try:
-                tool_result = fut.result()
+                tool_result = fut.result(timeout=60)
                 status = "error" if tool_result and tool_result.startswith("[ERROR]") else "ok"
+            except TimeoutError:
+                logger.warning("Tool execution timed out for '%s'", name)
+                tool_result = f"[ERROR en {name}]: Timeout después de 60 segundos."
+                status = "error"
             except Exception:
                 logger.exception("Tool execution failed for '%s'", name)
                 tool_result = f"[ERROR en {name}]: Error interno al ejecutar el tool."

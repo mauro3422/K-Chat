@@ -116,4 +116,4 @@ if __name__ == "__main__":
     import uvicorn
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run("web.server:app", host=host, port=port, reload=True, reload_dirs=["web", "src"])
+    uvicorn.run("web.server:app", host=host, port=port, reload=True, reload_dirs=["web", "src"], timeout_keep_alive=30)

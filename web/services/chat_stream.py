@@ -76,6 +76,10 @@ def build_stream_generator(
                 if tipo == "heartbeat":
                     continue
 
+                if now - last_yield_time > HEARTBEAT_INTERVAL:
+                    yield json.dumps({"t": "heartbeat", "d": ""}) + "\n"
+                    last_yield_time = now
+
                 if tipo == "content":
                     loop_error = loop_detector.check(token)
                     if loop_error:
@@ -106,10 +110,16 @@ def build_stream_generator(
 
             logger.info("Chat completed for session %s: %d chars content, %d chars reasoning", session_id, len(full_content), len(full_reasoning))
 
-            save_assistant_message(session_id, full_content, full_reasoning, phases_output, debug_info, model)
-            saved = True
+            try:
+                save_assistant_message(session_id, full_content, full_reasoning, phases_output, debug_info, model)
+                saved = True
+            except Exception as e:
+                logger.error("Final save failed for %s: %s", session_id, e)
             background_tasks.add_task(auto_rename_session, session_id, message, model)
 
+        except GeneratorExit:
+            logger.info("Client disconnected for %s", session_id)
+            return
         except Exception as e:
             error_type, error_msg = classify_error(str(e))
             logger.error("Stream error for %s: [%s] %s", session_id, error_type, error_msg)
@@ -123,5 +133,9 @@ def build_stream_generator(
                     saved = True
                 except Exception as e:
                     logger.error("Final save failed for %s: %s", session_id, e)
+                    try:
+                        yield json.dumps({"t": "error", "d": {"type": "save_failed", "message": "Message not saved"}}) + "\n"
+                    except Exception:
+                        pass
 
     return generate
