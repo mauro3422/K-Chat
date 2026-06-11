@@ -1,16 +1,6 @@
 export function registerToolCallRenderer() {
   if (typeof KairosStream === 'undefined') return;
 
-  function _insertTcEl(tcEl, turnIdx, state) {
-    var refEl = state.bodyDivs[turnIdx];
-    if (!refEl) refEl = state.reasoningEls[turnIdx];
-    if (refEl) {
-      refEl.insertAdjacentElement('afterend', tcEl);
-    } else {
-      state.asstDiv.appendChild(tcEl);
-    }
-  }
-
   KairosStream.on('tool_call', function(dataStr, state) {
     try {
       var info = JSON.parse(dataStr);
@@ -29,15 +19,14 @@ export function registerToolCallRenderer() {
         } else if (allTc.length < state.reasoningEls.length) {
           tcEl = document.createElement('div');
           tcEl.className = 'tool-calls';
-          var turnIdx = allTc.length;
-          _insertTcEl(tcEl, turnIdx, state);
-          logUI('tool_calls_seq', turnIdx);
+          state.asstDiv.appendChild(tcEl);
+          logUI('tool_calls_seq', allTc.length);
         } else if (allTc.length > 0) {
           tcEl = allTc[allTc.length - 1];
         } else {
           tcEl = document.createElement('div');
           tcEl.className = 'tool-calls';
-          _insertTcEl(tcEl, 0, state);
+          state.asstDiv.appendChild(tcEl);
           logUI('tool_calls_seq', 0);
         }
       } else {

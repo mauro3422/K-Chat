@@ -20,17 +20,7 @@ export function registerContentHandler() {
       while (state.bodyDivs.length <= phaseIdx) {
         var newBody = document.createElement('div');
         newBody.className = 'msg-body md-content';
-        var prevBody = state.bodyDivs[state.bodyDivs.length - 1];
-        if (prevBody) {
-          prevBody.insertAdjacentElement('afterend', newBody);
-        } else {
-          var lastDet = state.reasoningEls[state.reasoningEls.length - 1];
-          if (lastDet) {
-            lastDet.insertAdjacentElement('afterend', newBody);
-          } else {
-            state.asstDiv.appendChild(newBody);
-          }
-        }
+        state.asstDiv.appendChild(newBody);
         state.bodyDivs.push(newBody);
         state.contentTexts.push('');
         state.widgetMap[phaseIdx] = state.widgetMap[phaseIdx] || {};
