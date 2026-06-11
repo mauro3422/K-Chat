@@ -14,6 +14,7 @@ export function initAll(parentEl, forceImmediate) {
     for (var i = 0; i < containers.length; i++) {
         var container = containers[i];
         if (container.dataset.initialized) continue;
+        if (!forceImmediate && container.dataset.observed) continue;
         var id = container.getAttribute('data-widget-id');
         var code = KairosWidgets._registry[id];
         var key = container.getAttribute('data-widget-key');
@@ -24,7 +25,6 @@ export function initAll(parentEl, forceImmediate) {
         if (forceImmediate || !_widgetObserver) {
             createIframe(container, id, code);
         } else {
-            if (container.dataset.observed) continue;
             container.dataset.observed = '1';
             _widgetObserver.observe(container);
             log(id, 'lazy-queue', 'esperando visibilidad');
@@ -41,3 +41,4 @@ export function setWidgetObserver(observer) {
 }
 window.KairosWidgets = window.KairosWidgets || {};
 window.KairosWidgets.initAll = initAll;
+window.KairosWidgets.setWidgetObserver = setWidgetObserver;

@@ -138,49 +138,58 @@ export function registerContentHandler() {
         bodyDiv.removeChild(bodyDiv.lastChild);
       }
       
-      for (var i = 0; i <= matches.length; i++) {
-        var start = i === 0 ? 0 : matches[i - 1].end;
-        var end = i === matches.length ? fullText.length : matches[i].index;
-        var segmentText = fullText.substring(start, end);
-        
-        var targetSeg = bodyDiv.children[i * 2];
-        if (!targetSeg) continue;
-        
-        var incompleteWidget = null;
-        if (i === matches.length) {
-          incompleteWidget = segmentText.match(/```html-widget(?:\s+[\w\-]+)?\s*\n([\s\S]*)$/);
-        }
-        
-        var cacheKey = segmentText;
-        if (targetSeg.dataset.rawText === cacheKey) {
-          continue;
-        }
-        targetSeg.dataset.rawText = cacheKey;
-        
-        if (incompleteWidget) {
-          var beforeIncomplete = segmentText.substring(0, segmentText.length - incompleteWidget[0].length);
-          var html = '';
-          if (beforeIncomplete) {
-            var parsedBefore = KairosMarkdown.parse(beforeIncomplete);
-            if (typeof DOMPurify !== 'undefined') {
-              html += DOMPurify.sanitize(parsedBefore);
-            } else {
-              html += beforeIncomplete;
-              console.warn('DOMPurify not loaded, rendering as plain text');
-            }
-          }
-          html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteWidget[0]) + '</code></pre>';
-          targetSeg.innerHTML = html;
-        } else {
-          var parsedText = KairosMarkdown.parse(segmentText);
-          if (typeof DOMPurify !== 'undefined') {
-            targetSeg.innerHTML = DOMPurify.sanitize(parsedText);
-          } else {
-            targetSeg.textContent = segmentText;
-            console.warn('DOMPurify not loaded, rendering as plain text');
-          }
-        }
-      }
+      function stripWidgetMarkers(text) {
+         return text
+           .replace(/```html-widget(?:\s+[\w\-]+)?\s*\n[\s\S]*?\n```/g, '')
+           .replace(/\[Widget:?\s*[\w\-]+\]/gi, '');
+       }
+       
+       for (var i = 0; i <= matches.length; i++) {
+         var start = i === 0 ? 0 : matches[i - 1].end;
+         var end = i === matches.length ? fullText.length : matches[i].index;
+         var segmentText = fullText.substring(start, end);
+         
+         var targetSeg = bodyDiv.children[i * 2];
+         if (!targetSeg) continue;
+         
+         var incompleteWidget = null;
+         if (i === matches.length) {
+           incompleteWidget = segmentText.match(/```html-widget(?:\s+[\w\-]+)?\s*\n([\s\S]*)$/);
+         }
+         
+         var cacheKey = segmentText;
+         if (targetSeg.dataset.rawText === cacheKey) {
+           continue;
+         }
+         targetSeg.dataset.rawText = cacheKey;
+         
+         var cleanText = stripWidgetMarkers(segmentText);
+         
+         if (incompleteWidget) {
+           var incPos = cleanText.indexOf(incompleteWidget[0]);
+           var beforeIncomplete = incPos >= 0 ? cleanText.substring(0, incPos) : '';
+           var html = '';
+           if (beforeIncomplete) {
+             var parsedBefore = KairosMarkdown.parse(beforeIncomplete);
+             if (typeof DOMPurify !== 'undefined') {
+               html += DOMPurify.sanitize(parsedBefore);
+             } else {
+               html += beforeIncomplete;
+               console.warn('DOMPurify not loaded, rendering as plain text');
+             }
+           }
+           html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteWidget[0]) + '</code></pre>';
+           targetSeg.innerHTML = html;
+         } else {
+           var parsedText = KairosMarkdown.parse(cleanText);
+           if (typeof DOMPurify !== 'undefined') {
+             targetSeg.innerHTML = DOMPurify.sanitize(parsedText);
+           } else {
+             targetSeg.textContent = segmentText;
+             console.warn('DOMPurify not loaded, rendering as plain text');
+           }
+         }
+       }
       
       KairosWidgets.initAll(bodyDiv);
     } catch (e) {

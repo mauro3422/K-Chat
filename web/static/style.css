@@ -137,7 +137,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg-p
 .msg { max-width: 80%; padding: 10px 14px; border-radius: 8px; font-size: 14px; line-height: 1.5; animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .msg.user { align-self: flex-end; background: var(--accent-blue); color: var(--text-white); }
 .msg.assistant { align-self: flex-start; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); }
-.msg.assistant:has(.interactive-widget-container) { max-width: 95%; padding: 10px 0; background: transparent; border: none; }
+.msg.assistant:has(.interactive-widget-container) { max-width: 95%; }
 .msg-label { font-size: 11px; font-weight: 600; margin-bottom: 4px; opacity: 0.7; }
 .msg-ts { font-size: 10px; margin-top: 4px; opacity: 0.5; }
 .msg-body { white-space: pre-wrap; word-break: break-word; }

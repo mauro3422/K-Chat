@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import './setup.js';
 
-global.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
+global.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ className: '', dataset: {}, innerHTML: '', style: {}, children: [], appendChild: function() {}, removeChild: function() {}, classList: { add: function() {} } }) };
 global.window = { addEventListener: () => {}, widgetStates: {} };
 global.logUI = () => {};
 global.sessionId = 'test';
@@ -99,5 +99,40 @@ describe('Widget System', () => {
     const rB = KairosWidgets.extract('```html-widget\n<div>Widget B</div>\n```');
     expect(rB).toContain('widget-0');
     expect(KairosWidgets.registry['widget-0']).toBe('<div>Widget B</div>');
+  });
+
+  test('initAll logs init only once per container in lazy mode', () => {
+    KairosWidgets.reset();
+    var container = {
+      dataset: {},
+      attributes: {},
+      children: [],
+      getAttribute: function(name) {
+        var m = { 'data-widget-id': 'w-lazy-test', 'data-widget-key': 'ltk1' };
+        return m[name] || null;
+      },
+      setAttribute: function(name, val) { this.attributes[name] = val; if (name.startsWith('data-')) this.dataset[name.slice(5)] = val; },
+      classList: { contains: function() { return false; } },
+      appendChild: function() { },
+      removeChild: function() { },
+      offsetHeight: 0,
+      parentElement: null
+    };
+    var scope = {
+      className: 'msg-body',
+      querySelectorAll: function(sel) {
+        if (sel === '.interactive-widget-container') return [container];
+        return [];
+      }
+    };
+
+    window.KairosWidgets.setWidgetObserver({ observe: function() {} });
+    window.KairosWidgets.initAll(scope);
+    window.KairosWidgets.initAll(scope);
+
+    var widget = KairosWidgets.debug['w-lazy-test'];
+    expect(widget).toBeDefined();
+    var inits = widget.events.filter(function(e) { return e.label === 'init'; });
+    expect(inits.length).toBe(1);
   });
 });

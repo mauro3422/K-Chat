@@ -105,16 +105,17 @@ export function buildIframeSrc(id, code, stateStr) {
         '</' + 'script>\n' +
         code + '\n' +
         '<style>\n' +
-        'html,body{height:auto!important;min-height:auto!important;overflow:visible!important;margin:0;padding:12px;overflow-x:hidden;scrollbar-width:none;}\n' +
+        'html,body{margin:0;padding:12px;overflow-x:hidden;scrollbar-width:none;}\n' +
         '[style*="100vh"],[style*="100%"],[style*="100VH"],[style*="100Vh"]{height:auto!important;}\n' +
         'html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}\n' +
         '</style>\n' +
         '<script>\n' +
         'var _lastSentH=0;\n' +
-        'function sendHeight(){var h=Math.max(1,Math.round(document.body.scrollHeight));if(Math.abs(h-_lastSentH)<=2)return;_lastSentH=h;window.parent.postMessage({type:"resize-iframe",id:"' + id + '",height:h},_origin);}\n' +
+        'function getDocHeight(){return Math.max(document.documentElement.scrollHeight,document.documentElement.offsetHeight,document.body.scrollHeight,document.body.offsetHeight);}\n' +
+        'function sendHeight(){var h=Math.max(1,Math.round(getDocHeight()));if(Math.abs(h-_lastSentH)<=2)return;_lastSentH=h;window.parent.postMessage({type:"resize-iframe",id:"' + id + '",height:h},_origin);}\n' +
         'sendHeight();setTimeout(sendHeight,100);setTimeout(sendHeight,600);setTimeout(sendHeight,2000);\n' +
-        'window.addEventListener("load",function(){sendHeight();requestAnimationFrame(function(){requestAnimationFrame(sendHeight);});});\n' +
-        'if(window.ResizeObserver){new ResizeObserver(sendHeight).observe(document.body);}\n' +
+        'window.addEventListener("load",function(){sendHeight();requestAnimationFrame(function(){requestAnimationFrame(function(){requestAnimationFrame(sendHeight);});});});\n' +
+        'if(window.ResizeObserver){var _ro=new ResizeObserver(sendHeight);_ro.observe(document.documentElement);_ro.observe(document.body);}\n' +
         '</' + 'script>\n' +
         '</body>\n</html>';
 }

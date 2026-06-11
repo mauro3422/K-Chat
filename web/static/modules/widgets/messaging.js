@@ -28,7 +28,9 @@ export function startMessageHandler() {
     }
 
     window.addEventListener('message', function(event) {
-        if (event.origin !== window.location.origin) return;
+        var isWidgetMessage = event.data && (event.data.type === 'resize-iframe' || event.data.type === 'save-widget-state' || event.data.type === 'widget-error');
+        if (isWidgetMessage && event.origin !== 'null' && event.origin !== window.location.origin) return;
+        if (!isWidgetMessage && event.origin !== window.location.origin) return;
         if (!event.data) return;
 
         if (event.data.type === 'resize-iframe') {
