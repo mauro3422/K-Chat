@@ -5,6 +5,7 @@
  */
 import { KairosWidgets } from './core.js';
 import { buildIframeSrc } from './iframe-builder.js';
+import stateManager from './state-manager.js';
 
 export function toggleHistoryList(container, id, key) {
     var oldList = container.querySelector('.widget-history-list');
@@ -64,10 +65,7 @@ export function toggleHistoryList(container, id, key) {
                                 var iframe = container.querySelector('iframe');
                                 if (iframe) {
                                     var hashId = key;
-                                    var stateStr = null;
-                                    if (window.widgetStates) {
-                                        stateStr = window.widgetStates[hashId] || null;
-                                    }
+                                    var stateStr = stateManager.getState(hashId);
                                     var safeStateStr = stateStr !== null ? JSON.stringify(stateStr) : 'null';
                                     iframe.srcdoc = buildIframeSrc(id, verData.code, safeStateStr);
                                 }

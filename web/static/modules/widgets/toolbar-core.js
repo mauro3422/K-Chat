@@ -8,6 +8,7 @@ import { buildIframeSrc } from './iframe-builder.js';
 import { KairosWidgets } from './core.js';
 import { openEditor } from './toolbar-editor.js';
 import { toggleHistoryList } from './toolbar-history.js';
+import stateManager from './state-manager.js';
 
 export function createToolbar(container, id, key, code, hashId) {
     var oldToolbar = container.querySelector('.widget-toolbar');
@@ -37,7 +38,7 @@ export function createToolbar(container, id, key, code, hashId) {
     toolbar.appendChild(leftSide);
 
     if (key) {
-        var isCached = window.widgetStates && window.widgetStates['_code_' + key];
+        var isCached = stateManager.getCodeCache(key);
         if (!isCached) {
             fetchVersionLabel(key, leftSide);
         }
@@ -76,8 +77,7 @@ export function createToolbar(container, id, key, code, hashId) {
         color: '#ff3366',
         onClick: function onResetClick() {
             if (confirm('¿Reiniciar estado del widget?')) {
-                window.widgetStates = window.widgetStates || {};
-                window.widgetStates[hashId] = null;
+                stateManager.setState(hashId, null);
                 fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(hashId) + '/state', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},

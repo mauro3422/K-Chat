@@ -3,6 +3,7 @@
  *
  * Estado global, utilidades básicas y extracción de widgets del markdown.
  */
+import stateManager from './state-manager.js';
 let _registry = {};
 let _debug = {};
 let _index = 0;
@@ -39,9 +40,8 @@ export function extract(text) {
         var id = 'widget-' + nextIndex();
         code = code.replace(/\?\.([\w.]+)\s*=(?!=)/g, '.$1 =');
         _registry[id] = code;
-        // Cache widget code in session state so it persists across refreshes
-        if (key && code && window.widgetStates) {
-            window.widgetStates['_code_' + key] = code;
+        if (key && code) {
+            stateManager.setCodeCache(key, code);
         }
         if (key) {
             return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
@@ -51,7 +51,13 @@ export function extract(text) {
 
     // 2. Parse inline tags like [Widget: key] or [Widget key] to load saved widgets
     var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
+    var seenKeys = {};
     text = text.replace(tagRegex, function(match, key) {
+        var lowerKey = key.toLowerCase();
+        if (seenKeys[lowerKey]) {
+            return '';
+        }
+        seenKeys[lowerKey] = true;
         var id = 'widget-' + nextIndex();
         return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
     });

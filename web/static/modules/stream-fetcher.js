@@ -6,7 +6,7 @@ export function executeStreamFetch(params) {
   var text = params.text;
   var controller = params.controller;
   var errorHandler = params.errorHandler;
-  var state = params.state;
+  var context = params.context || params.state;
   var onChunk = params.onChunk;
 
   var buf = '';
@@ -39,7 +39,7 @@ export function executeStreamFetch(params) {
           buf += decoder.decode();
           if (buf.trim()) {
             try { var lastMsg = JSON.parse(buf); } catch(e) { logUI('json_parse_error', buf.substring(0, 80)); }
-            if (lastMsg) KairosStream.emit(lastMsg.t, lastMsg.d, state);
+            if (lastMsg) KairosStream.emit(lastMsg.t, lastMsg.d, context);
           }
           logUI('stream_complete', 'tokens=' + tokenCount + ' hasContent=' + hasContent);
           return { hasContent: hasContent, tokenCount: tokenCount };
@@ -55,9 +55,12 @@ export function executeStreamFetch(params) {
           if (!line.trim()) continue;
           try { var msg = JSON.parse(line); } catch(e) { logUI('json_parse_error', line.substring(0, 80)); continue; }
 
-          if (state.firstToken) {
-            state.bodyDivs[0].textContent = '';
-            state.firstToken = false;
+          var isFirstToken = context.isFirstToken ? context.isFirstToken() : context.firstToken;
+          if (isFirstToken) {
+            var bodyDivs = context.getBodyDivs ? context.getBodyDivs() : context.bodyDivs;
+            bodyDivs[0].textContent = '';
+            if (context.clearFirstToken) context.clearFirstToken();
+            else context.firstToken = false;
             logUI('pensando_cleared', '' + msg.t);
           }
 
@@ -71,7 +74,7 @@ export function executeStreamFetch(params) {
             tokenCount++;
           }
 
-          KairosStream.emit(msg.t, msg.d, state);
+          KairosStream.emit(msg.t, msg.d, context);
         }
 
         return readLoop();

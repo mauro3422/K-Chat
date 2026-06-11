@@ -1,12 +1,26 @@
 export function registerToolCallRenderer() {
   if (typeof KairosStream === 'undefined') return;
 
-  KairosStream.on('tool_call', function(dataStr, state) {
+  KairosStream.on('tool_call', function(dataStr, ctx) {
     try {
+      var state = ctx;
+      if (ctx && typeof ctx.markToolTurn === 'function') {
+        state = {
+          asstDiv: ctx.getAsstDiv(),
+          reasoningEls: ctx.getReasoningEls(),
+          reasoningState: ctx.getReasoningState(),
+          _toolTurnSinceLastContent: ctx.getToolTurnSinceLastContent(),
+          context: ctx
+        };
+      }
+
       var info = JSON.parse(dataStr);
       if (info.status === 'partial') return;
       state.reasoningState.exit();
       state._toolTurnSinceLastContent = true;
+      if (state.context) {
+        state.context.markToolTurn();
+      }
       var allTc = state.asstDiv.querySelectorAll('.tool-calls');
       var tcEl = null;
       if (info.status === 'calling') {

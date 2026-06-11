@@ -6,6 +6,7 @@
 import { log, KairosWidgets, fnv1a_32 } from './core.js';
 import { createIframe } from './iframe-builder.js';
 import { getWidgetObserver, setWidgetObserver } from './iframe.js';
+import stateManager from './state-manager.js';
 
 export function startMessageHandler() {
     if (window.IntersectionObserver && !getWidgetObserver()) {
@@ -42,12 +43,11 @@ export function startMessageHandler() {
         } else if (event.data.type === 'save-widget-state') {
             var code = KairosWidgets._registry[event.data.id];
             var hashId = code ? 'widget-' + fnv1a_32(code) : event.data.id;
-            window.widgetStates = window.widgetStates || {};
-            window.widgetStates[hashId] = event.data.state;
-            // Also persist any _code_ entries (widget code cache)
+            stateManager.setState(hashId, event.data.state);
             var codeEntries = {};
-            Object.keys(window.widgetStates).forEach(function(k) {
-                if (k.indexOf('_code_') === 0) codeEntries[k] = window.widgetStates[k];
+            var allState = stateManager.toJSON();
+            Object.keys(allState).forEach(function(k) {
+                if (k.indexOf('_code_') === 0) codeEntries[k] = allState[k];
             });
             fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent(hashId) + '/state', {
                 method: 'POST',

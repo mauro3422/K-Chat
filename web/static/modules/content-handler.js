@@ -1,197 +1,125 @@
 export function registerContentHandler() {
   if (typeof KairosStream === 'undefined') return;
 
-  KairosStream.on('content', function(token, state) {
+  KairosStream.on('content', function(token, ctx) {
     try {
+      var state = ctx;
+      if (ctx && typeof ctx.getBodyDivs === 'function') {
+        state = {
+          bodyDivs: ctx.getBodyDivs(),
+          asstDiv: ctx.getAsstDiv(),
+          contentTexts: [],
+          reasoningEls: ctx.getReasoningEls(),
+          reasoningState: ctx.getReasoningState(),
+          _toolPhase: ctx.getToolPhase(),
+          _toolTurnSinceLastContent: ctx.getToolTurnSinceLastContent(),
+          getPhaseIdx: function() { return ctx.getPhaseIndex(); },
+          context: ctx
+        };
+        for (var i = 0; i < state.bodyDivs.length; i++) {
+          state.contentTexts.push(ctx.getContentText(i));
+        }
+      }
+
       if (!state || !state.bodyDivs) {
         logUI('content_no_state', 'token=' + String(token).substring(0, 40));
         return;
       }
-      
+
       if (state._toolTurnSinceLastContent) {
         state._toolTurnSinceLastContent = false;
         state._toolPhase = (state._toolPhase || 0) + 1;
+        if (state.context) {
+          state.context.enterToolPhase();
+        }
       }
-      var phaseIdx = Math.max(0, state.reasoningEls.length - 1) + (state._toolPhase || 0);
-      
-      state.widgetMap = state.widgetMap || [];
-      state.widgetMap[phaseIdx] = state.widgetMap[phaseIdx] || {};
-      
+      var phaseIdx = state.getPhaseIdx ? state.getPhaseIdx() : (Math.max(0, state.reasoningEls.length - 1) + (state._toolPhase || 0));
+
       while (state.bodyDivs.length <= phaseIdx) {
         var newBody = document.createElement('div');
         newBody.className = 'msg-body md-content';
         state.asstDiv.appendChild(newBody);
         state.bodyDivs.push(newBody);
         state.contentTexts.push('');
-        state.widgetMap[phaseIdx] = state.widgetMap[phaseIdx] || {};
+        if (state.context) {
+          state.context.ensureBodyDiv(phaseIdx, 'msg-body md-content');
+        }
       }
-      
+
       if (!state.contentTexts[phaseIdx]) logUI('body_start', token.substring(0, 60));
       state.contentTexts[phaseIdx] += token;
-      state.reasoningState.exit();
-      
-      var fullText = state.contentTexts[phaseIdx];
-      state._widgetCache = state._widgetCache || {};
-      var cache = state._widgetCache[phaseIdx] || {};
-      var matches = cache.matches || [];
-      
-      var mightHaveWidget = token.indexOf('`') >= 0 || token.indexOf('[') >= 0;
-      
-      if (mightHaveWidget || cache.prevLen === undefined) {
-        var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```/g;
-        var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
-        var rawMatches = [];
-        var match;
-        
-        while ((match = widgetRegex.exec(fullText)) !== null) {
-          rawMatches.push({
-            index: match.index,
-            end: match.index + match[0].length,
-            key: match[1] || null,
-            code: match[2],
-            full: match[0]
-          });
-        }
-        
-        while ((match = tagRegex.exec(fullText)) !== null) {
-          rawMatches.push({
-            index: match.index,
-            end: match.index + match[0].length,
-            key: match[1],
-            code: "",
-            full: match[0],
-            fromTag: true
-          });
-        }
-        
-        rawMatches.sort(function(a, b) {
-          if (a.key && b.key && a.key === b.key) return (b.code ? 1 : 0) - (a.code ? 1 : 0);
-          return a.index - b.index;
-        });
-        var filteredMatches = [];
-        var lastEnd = 0;
-        var seenKeys = {};
-        for (var m = 0; m < rawMatches.length; m++) {
-          var mm = rawMatches[m];
-          if (mm.index < lastEnd) continue;
-          if (mm.key && seenKeys[mm.key]) continue;
-          if (mm.key) seenKeys[mm.key] = true;
-          filteredMatches.push(mm);
-          lastEnd = mm.end;
-        }
-        matches = filteredMatches;
-        cache.matches = matches;
+      if (state.context) {
+        state.context.appendContentText(phaseIdx, token);
       }
-      
-      cache.prevLen = fullText.length;
-      state._widgetCache[phaseIdx] = cache;
-      
+      state.reasoningState.exit();
+
+      var fullText = state.contentTexts[phaseIdx];
       var bodyDiv = state.bodyDivs[phaseIdx];
-      var widgetMap = state.widgetMap[phaseIdx];
-      
+
       var children = Array.prototype.slice.call(bodyDiv.children);
       for (var c = 0; c < children.length; c++) {
         var child = children[c];
-        if (!child.classList.contains('msg-text-segment') && !child.classList.contains('interactive-widget-container')) {
+        if (!child.classList.contains('msg-text-segment')) {
           bodyDiv.removeChild(child);
         }
       }
-      
-      var expectedCount = matches.length * 2 + 1;
-      
-      var widgetIdx = 0;
-      while (bodyDiv.children.length < expectedCount) {
-        var newIdx = bodyDiv.children.length;
-        if (newIdx % 2 === 0) {
-          var txtSeg = document.createElement('div');
-          txtSeg.className = 'msg-text-segment';
-          bodyDiv.appendChild(txtSeg);
-        } else {
-          var wm = matches[widgetIdx];
-          widgetIdx++;
-          var existingGlobal = wm.key && state.asstDiv.querySelector('[data-widget-key="' + wm.key + '"]');
-          if (existingGlobal) {
-            var placeholder = document.createElement('div');
-            placeholder.className = 'widget-placeholder';
-            placeholder.style.display = 'none';
-            bodyDiv.appendChild(placeholder);
-            logUI('widget_skip_dup', wm.key + ' (already in prev phase)');
-          } else {
-            var widgetId = 'widget-' + KairosWidgets.nextIndex();
-            KairosWidgets.registry[widgetId] = wm.code;
-            widgetMap[wm.index] = widgetId;
-            
-            var container = document.createElement('div');
-            container.className = 'interactive-widget-container';
-            container.setAttribute('data-widget-id', widgetId);
-            if (wm.key) {
-              container.setAttribute('data-widget-key', wm.key);
-            }
-            bodyDiv.appendChild(container);
-            
-            logUI('widget_added', widgetId + ' code=' + wm.code.length + 'b');
-          }
-        }
+
+      while (bodyDiv.children.length < 1) {
+        var txtSeg = document.createElement('div');
+        txtSeg.className = 'msg-text-segment';
+        bodyDiv.appendChild(txtSeg);
       }
-      
-      while (bodyDiv.children.length > expectedCount) {
+
+      while (bodyDiv.children.length > 1) {
         bodyDiv.removeChild(bodyDiv.lastChild);
       }
-      
-      function stripWidgetMarkers(text) {
-         return text
-           .replace(/```html-widget(?:\s+[\w\-]+)?\s*\n[\s\S]*?\n```/g, '')
-           .replace(/\[Widget:?\s*[\w\-]+\]/gi, '');
-       }
-       
-       for (var i = 0; i <= matches.length; i++) {
-         var start = i === 0 ? 0 : matches[i - 1].end;
-         var end = i === matches.length ? fullText.length : matches[i].index;
-         var segmentText = fullText.substring(start, end);
-         
-         var targetSeg = bodyDiv.children[i * 2];
-         if (!targetSeg) continue;
-         
-         var incompleteWidget = null;
-         if (i === matches.length) {
-           incompleteWidget = segmentText.match(/```html-widget(?:\s+[\w\-]+)?\s*\n([\s\S]*)$/);
-         }
-         
-         var cacheKey = segmentText;
-         if (targetSeg.dataset.rawText === cacheKey) {
-           continue;
-         }
-         targetSeg.dataset.rawText = cacheKey;
-         
-         var cleanText = stripWidgetMarkers(segmentText);
-         
-         if (incompleteWidget) {
-           var incPos = cleanText.indexOf(incompleteWidget[0]);
-           var beforeIncomplete = incPos >= 0 ? cleanText.substring(0, incPos) : '';
-           var html = '';
-           if (beforeIncomplete) {
-             var parsedBefore = KairosMarkdown.parse(beforeIncomplete);
-             if (typeof DOMPurify !== 'undefined') {
-               html += DOMPurify.sanitize(parsedBefore);
-             } else {
-               html += beforeIncomplete;
-               console.warn('DOMPurify not loaded, rendering as plain text');
-             }
-           }
-           html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteWidget[0]) + '</code></pre>';
-           targetSeg.innerHTML = html;
-         } else {
-           var parsedText = KairosMarkdown.parse(cleanText);
-           if (typeof DOMPurify !== 'undefined') {
-             targetSeg.innerHTML = DOMPurify.sanitize(parsedText);
-           } else {
-             targetSeg.textContent = segmentText;
-             console.warn('DOMPurify not loaded, rendering as plain text');
-           }
-         }
-       }
-      
-      KairosWidgets.initAll(bodyDiv);
+
+      var targetSeg = bodyDiv.children[0];
+      if (!targetSeg) return;
+
+      var textToRender = fullText;
+      var incompleteTail = '';
+
+      var lastOpen = fullText.lastIndexOf('```html-widget');
+      if (lastOpen >= 0) {
+        var afterOpen = fullText.substring(lastOpen);
+        var completeBlock = afterOpen.match(/^```html-widget(?:\s+[\w\-]+)?\s*\n[\s\S]*?\n```/);
+        if (!completeBlock) {
+          textToRender = fullText.substring(0, lastOpen);
+          incompleteTail = fullText.substring(lastOpen);
+        }
+      }
+
+      var cacheKey = textToRender + '|' + incompleteTail;
+      if (targetSeg.dataset.rawText === cacheKey) {
+        return;
+      }
+      targetSeg.dataset.rawText = cacheKey;
+
+      var html = '';
+      if (textToRender && typeof KairosWidgets !== 'undefined' && KairosWidgets.extract) {
+        var extracted = KairosWidgets.extract(textToRender);
+        var parsed = KairosMarkdown.parse(extracted);
+        if (typeof DOMPurify !== 'undefined') {
+          html += DOMPurify.sanitize(parsed);
+        } else {
+          html += textToRender;
+          console.warn('DOMPurify not loaded, rendering as plain text');
+        }
+      } else if (textToRender) {
+        parsed = KairosMarkdown.parse(textToRender);
+        if (typeof DOMPurify !== 'undefined') {
+          html += DOMPurify.sanitize(parsed);
+        } else {
+          html += textToRender;
+        }
+      }
+
+      if (incompleteTail) {
+        html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteTail) + '</code></pre>';
+      }
+
+      targetSeg.innerHTML = html;
     } catch (e) {
       console.error('Content handler error:', e);
     }

@@ -1,9 +1,24 @@
 export function registerReasoningHandler() {
   if (typeof KairosStream === 'undefined') return;
 
-  KairosStream.on('reasoning', function(token, state) {
+  KairosStream.on('reasoning', function(token, ctx) {
     try {
+      var state = ctx;
+      if (ctx && typeof ctx.getReasoningState === 'function') {
+        state = {
+          reasoningEls: ctx.getReasoningEls(),
+          asstDiv: ctx.getAsstDiv(),
+          bodyDivs: ctx.getBodyDivs(),
+          reasoningState: ctx.getReasoningState(),
+          reasoningText: ctx.getReasoningText(),
+          context: ctx
+        };
+      }
+
       state.reasoningText += token;
+      if (state.context) {
+        state.context.appendReasoningText(token);
+      }
       var isNewPhase = state.reasoningState.enter();
       if (isNewPhase) {
         var newDet = document.createElement('details');

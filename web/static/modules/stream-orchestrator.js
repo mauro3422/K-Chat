@@ -1,6 +1,6 @@
 /* global StreamErrorHandler, RetryHandler */
 
-import { ReasoningState } from './reasoning-state.js';
+import { StreamContext } from './stream-context.js';
 import { executeStreamFetch } from './stream-fetcher.js';
 import { attemptRetry } from './stream-retry-coordinator.js';
 
@@ -36,17 +36,7 @@ export const StreamOrchestrator = {
       controller.abort();
     }, RetryHandler.getStreamTimeout());
 
-    var state = {
-      asstDiv: asstDiv,
-      bodyDivs: [asstDiv.querySelector('.msg-body')],
-      reasoningEls: [],
-      contentTexts: [''],
-      reasoningText: '',
-      firstToken: true,
-      reasoningState: new ReasoningState(),
-      _toolTurnSinceLastContent: false,
-      _toolPhase: 0
-    };
+    var context = new StreamContext(asstDiv);
 
     var fetchResult;
     try {
@@ -56,7 +46,7 @@ export const StreamOrchestrator = {
         text: text,
         controller: controller,
         errorHandler: errorHandler,
-        state: state,
+        context: context,
         onChunk: resetTimeout
       });
     } catch(e2) {
@@ -130,9 +120,9 @@ export const StreamOrchestrator = {
       return;
     }
 
-    if (state.reasoningEls.length) {
-      state.reasoningEls[state.reasoningEls.length - 1].querySelector('summary').textContent = 'Razonamiento';
-      logUI('reasoning_done', state.reasoningEls.length + ' fases');
+    if (context.getReasoningEls().length) {
+      context.getReasoningEls()[context.getReasoningEls().length - 1].querySelector('summary').textContent = 'Razonamiento';
+      logUI('reasoning_done', context.getReasoningEls().length + ' fases');
     }
 
     hasSuccessfulTools = asstDiv.querySelectorAll('.tc-item.ok').length > 0;

@@ -51,7 +51,7 @@ function makeEl(tag) {
       this.attributes[name] = val;
       if (name.startsWith('data-')) this.dataset[name.slice(5)] = val;
     },
-    getAttribute(name) { return this.attributes[name] || this.dataset[name.replace('data-', '')] || null; },
+    getAttribute(name) { return this.attributes[name] || null; },
     closest() { return null; },
     classList: {
       _classes: [],
@@ -87,6 +87,31 @@ function walkDeep(node, fn) {
   }
 }
 
+function mockExtract(text) {
+  var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)(?:\n```|$)/g;
+  var result = text.replace(widgetRegex, function(match, key, code) {
+    var id = 'widget-' + global.KairosWidgets.index++;
+    code = code.replace(/\?\.([\w.]+)\s*=(?!=)/g, '.$1 =');
+    global.KairosWidgets.registry[id] = code;
+    if (key) {
+      return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
+    }
+    return '<div class="interactive-widget-container" data-widget-id="' + id + '"></div>';
+  });
+
+  var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
+  var seenKeys = {};
+  result = result.replace(tagRegex, function(match, key) {
+    var lowerKey = key.toLowerCase();
+    if (seenKeys[lowerKey]) return '';
+    seenKeys[lowerKey] = true;
+    var id = 'widget-' + global.KairosWidgets.index++;
+    return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
+  });
+
+  return result;
+}
+
 global.document = {
   getElementById: function() { return null; },
   querySelector: function() { return null; },
@@ -96,6 +121,20 @@ global.document = {
   body: { appendChild: function() {} },
   _listeners: {}
 };
+
+global.KairosWidgets = {
+  index: 0,
+  nextIndex: function() { return this.index++; },
+  registry: {},
+  initAll: function() {},
+  reset: function() { this.registry = {}; this.index = 0; },
+  debug: {},
+  extract: mockExtract
+};
+global.DOMPurify = { sanitize: function(t) { return t; } };
+global.KairosMarkdown = { parse: function(t) { return '<p>' + t + '</p>'; } };
+global.KairosUtils = { escHtml: function(s) { return String(s); } };
+global.logUI = function() {};
 
 var handlingStream = {
   _cb: null,
@@ -111,21 +150,12 @@ beforeAll(async function() {
 });
 
 beforeEach(function() {
-  global.KairosWidgets = {
-    index: 0,
-    nextIndex: function() { return this.index++; },
-    registry: {},
-    initAll: function() {},
-    reset: function() {},
-    debug: {}
-  };
-  global.DOMPurify = { sanitize: function(t) { return t; } };
-  global.KairosMarkdown = { parse: function(t) { return '<p>' + t + '</p>'; } };
-  global.logUI = function() {};
+  global.KairosWidgets.index = 0;
+  global.KairosWidgets.registry = {};
 });
 
 describe('Content Handler', function() {
-  test('creates single widget container for duplicate marker in text', function() {
+  test('creates single widget container via extract() for duplicate marker', function() {
     var asstDiv = makeEl('div');
     var bodyDiv = makeEl('div');
     bodyDiv.className = 'msg-body md-content';
@@ -138,24 +168,17 @@ describe('Content Handler', function() {
       reasoningEls: [],
       reasoningState: { exit: function() {} },
       _toolPhase: 0,
-      _toolTurnSinceLastContent: false,
-      _widgetCache: {},
-      widgetMap: []
+      _toolTurnSinceLastContent: false
     };
 
     handlingStream._cb('[Widget: foo] y otro [Widget: foo] en el mismo texto', state);
 
-    var containers = bodyDiv.querySelectorAll('.interactive-widget-container');
-    expect(containers.length).toBe(1);
-
-    bodyDiv.children.forEach(function(child) {
-      if (child.className && child.className.indexOf('msg-text-segment') >= 0) {
-        expect(child.innerHTML).not.toContain('interactive-widget-container');
-      }
-    });
+    var html = bodyDiv.children[0].innerHTML;
+    var containerCount = (html.match(/interactive-widget-container/g) || []).length;
+    expect(containerCount).toBe(1);
   });
 
-  test('creates one container per unique key', function() {
+  test('creates one container per unique key via extract()', function() {
     var asstDiv = makeEl('div');
     var bodyDiv = makeEl('div');
     bodyDiv.className = 'msg-body md-content';
@@ -168,63 +191,28 @@ describe('Content Handler', function() {
       reasoningEls: [],
       reasoningState: { exit: function() {} },
       _toolPhase: 0,
-      _toolTurnSinceLastContent: false,
-      _widgetCache: {},
-      widgetMap: []
+      _toolTurnSinceLastContent: false
     };
 
     handlingStream._cb('[Widget: a] texto [Widget: b] otro [Widget: a] repetido', state);
 
-    var containers = bodyDiv.querySelectorAll('.interactive-widget-container');
-    expect(containers.length).toBe(2);
+    var html = bodyDiv.children[0].innerHTML;
+    var containerCount = (html.match(/interactive-widget-container/g) || []).length;
+    expect(containerCount).toBe(2);
   });
 
-  test('creates placeholder for duplicate key across phases', function() {
-    var asstDiv = makeEl('div');
-    var body0 = makeEl('div');
-    body0.className = 'msg-body md-content';
-    var body1 = makeEl('div');
-    body1.className = 'msg-body md-content';
-    asstDiv.appendChild(body0);
-    asstDiv.appendChild(body1);
-
-    var state = {
-      bodyDivs: [body0, body1],
-      asstDiv: asstDiv,
-      contentTexts: ['', ''],
-      reasoningEls: [],
-      reasoningState: { exit: function() {} },
-      _toolPhase: 0,
-      _toolTurnSinceLastContent: false,
-      _widgetCache: { 0: {}, 1: {} },
-      widgetMap: []
+  test('calls extract() with widget markers intact', function() {
+    var extractCalls = [];
+    var origExtract = global.KairosWidgets.extract;
+    global.KairosWidgets.extract = function(text) {
+      extractCalls.push(text);
+      return origExtract(text);
     };
 
-    handlingStream._cb('Fase 1 [Widget: dashboard]', state);
-
-    state._toolPhase = 1;
-    handlingStream._cb('Fase 2 [Widget: dashboard]', state);
-
-    var containersInPhase1 = body1.querySelectorAll('.interactive-widget-container');
-    expect(containersInPhase1.length).toBe(0);
-
-    var placeholders = body1.children.filter(function(c) {
-      return c.className && c.className.indexOf('widget-placeholder') >= 0;
-    });
-    expect(placeholders.length).toBe(1);
-  });
-
-  test('markers stripped from markdown parse input', function() {
     var asstDiv = makeEl('div');
     var bodyDiv = makeEl('div');
     bodyDiv.className = 'msg-body md-content';
     asstDiv.appendChild(bodyDiv);
-
-    var parseTexts = [];
-    global.KairosMarkdown.parse = function(text) {
-      parseTexts.push(text);
-      return '<p>' + text + '</p>';
-    };
 
     var state = {
       bodyDivs: [bodyDiv],
@@ -233,16 +221,152 @@ describe('Content Handler', function() {
       reasoningEls: [],
       reasoningState: { exit: function() {} },
       _toolPhase: 0,
-      _toolTurnSinceLastContent: false,
-      _widgetCache: {},
-      widgetMap: []
+      _toolTurnSinceLastContent: false
     };
 
     handlingStream._cb('antes [Widget: foo] despues', state);
 
-    parseTexts.forEach(function(text) {
-      expect(text).not.toContain('[Widget');
-      expect(text).not.toMatch(/\[Widget:?\s*\w+\]/);
-    });
+    expect(extractCalls.length).toBe(1);
+    expect(extractCalls[0]).toContain('[Widget: foo]');
+
+    global.KairosWidgets.extract = origExtract;
+  });
+
+  test('does NOT call initAll()', function() {
+    var initAllCalled = false;
+    global.KairosWidgets.initAll = function() { initAllCalled = true; };
+
+    var asstDiv = makeEl('div');
+    var bodyDiv = makeEl('div');
+    bodyDiv.className = 'msg-body md-content';
+    asstDiv.appendChild(bodyDiv);
+
+    var state = {
+      bodyDivs: [bodyDiv],
+      asstDiv: asstDiv,
+      contentTexts: [''],
+      reasoningEls: [],
+      reasoningState: { exit: function() {} },
+      _toolPhase: 0,
+      _toolTurnSinceLastContent: false
+    };
+
+    handlingStream._cb('[Widget: foo]', state);
+
+    expect(initAllCalled).toBe(false);
+  });
+
+  test('renders text-only messages correctly', function() {
+    var asstDiv = makeEl('div');
+    var bodyDiv = makeEl('div');
+    bodyDiv.className = 'msg-body md-content';
+    asstDiv.appendChild(bodyDiv);
+
+    var state = {
+      bodyDivs: [bodyDiv],
+      asstDiv: asstDiv,
+      contentTexts: [''],
+      reasoningEls: [],
+      reasoningState: { exit: function() {} },
+      _toolPhase: 0,
+      _toolTurnSinceLastContent: false
+    };
+
+    handlingStream._cb('Hello world, no widgets here', state);
+
+    expect(bodyDiv.children.length).toBe(1);
+    expect(bodyDiv.children[0].className).toBe('msg-text-segment');
+    expect(bodyDiv.children[0].innerHTML).toContain('Hello world');
+  });
+
+  test('renders incomplete widget as escaped code', function() {
+    var asstDiv = makeEl('div');
+    var bodyDiv = makeEl('div');
+    bodyDiv.className = 'msg-body md-content';
+    asstDiv.appendChild(bodyDiv);
+
+    var state = {
+      bodyDivs: [bodyDiv],
+      asstDiv: asstDiv,
+      contentTexts: [''],
+      reasoningEls: [],
+      reasoningState: { exit: function() {} },
+      _toolPhase: 0,
+      _toolTurnSinceLastContent: false
+    };
+
+    handlingStream._cb('before ```html-widget\n<div>incomplete', state);
+
+    expect(bodyDiv.children[0].innerHTML).toContain('<code>');
+    expect(bodyDiv.children[0].innerHTML).toContain('```html-widget');
+  });
+
+  test('creates msg-text-segment for each phase', function() {
+    var asstDiv = makeEl('div');
+    var bodyDiv = makeEl('div');
+    bodyDiv.className = 'msg-body md-content';
+    asstDiv.appendChild(bodyDiv);
+
+    var state = {
+      bodyDivs: [bodyDiv],
+      asstDiv: asstDiv,
+      contentTexts: [''],
+      reasoningEls: [],
+      reasoningState: { exit: function() {} },
+      _toolPhase: 0,
+      _toolTurnSinceLastContent: false
+    };
+
+    handlingStream._cb('Phase 0 content', state);
+
+    expect(bodyDiv.children.length).toBe(1);
+    expect(bodyDiv.children[0].className).toBe('msg-text-segment');
+  });
+
+  test('accumulates tokens across calls', function() {
+    var asstDiv = makeEl('div');
+    var bodyDiv = makeEl('div');
+    bodyDiv.className = 'msg-body md-content';
+    asstDiv.appendChild(bodyDiv);
+
+    var state = {
+      bodyDivs: [bodyDiv],
+      asstDiv: asstDiv,
+      contentTexts: [''],
+      reasoningEls: [],
+      reasoningState: { exit: function() {} },
+      _toolPhase: 0,
+      _toolTurnSinceLastContent: false
+    };
+
+    handlingStream._cb('Hello ', state);
+    handlingStream._cb('World', state);
+
+    expect(state.contentTexts[0]).toBe('Hello World');
+    expect(bodyDiv.children[0].innerHTML).toContain('Hello World');
+  });
+
+  test('handles html-widget code block', function() {
+    var asstDiv = makeEl('div');
+    var bodyDiv = makeEl('div');
+    bodyDiv.className = 'msg-body md-content';
+    asstDiv.appendChild(bodyDiv);
+
+    var state = {
+      bodyDivs: [bodyDiv],
+      asstDiv: asstDiv,
+      contentTexts: [''],
+      reasoningEls: [],
+      reasoningState: { exit: function() {} },
+      _toolPhase: 0,
+      _toolTurnSinceLastContent: false
+    };
+
+    handlingStream._cb('Text ```html-widget\n<div>widget</div>\n``` more', state);
+
+    var html = bodyDiv.children[0].innerHTML;
+    var containerCount = (html.match(/interactive-widget-container/g) || []).length;
+    expect(containerCount).toBe(1);
+    expect(Object.keys(global.KairosWidgets.registry).length).toBe(1);
   });
 });

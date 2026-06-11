@@ -6,17 +6,19 @@
  */
 import { fnv1a_32, log, KairosWidgets } from './core.js';
 import { createToolbar } from './toolbar-core.js';
+import stateManager from './state-manager.js';
+import { getInitializedWidgets } from './iframe.js';
 
 export function createIframe(container, id, code) {
     if (container.dataset.initialized) return;
     container.dataset.initialized = '1';
 
+    var wm = getInitializedWidgets();
+    wm.set(container, { initialized: true, observed: true, widgetId: id });
+
     var key = container.getAttribute('data-widget-key');
     var hashId = key ? key : 'widget-' + fnv1a_32(code || '');
-    var stateStr = null;
-    if (window.widgetStates) {
-        stateStr = window.widgetStates[hashId] || window.widgetStates[id] || null;
-    }
+    var stateStr = stateManager.getState(hashId) || stateManager.getState(id) || null;
     var safeStateStr = stateStr !== null ? JSON.stringify(stateStr) : 'null';
 
     var placeholder = document.createElement('div');
@@ -49,7 +51,7 @@ export function createIframe(container, id, code) {
 
     if (!code && key) {
         // Check session cache first (widget code persisted from previous render)
-        var cachedCode = window.widgetStates && window.widgetStates['_code_' + key];
+        var cachedCode = stateManager.getCodeCache(key);
         if (cachedCode) {
             log(id, 'cache-hit', 'key=' + key + ' code=' + cachedCode.length + 'b');
             KairosWidgets._registry[id] = cachedCode;
@@ -64,16 +66,12 @@ export function createIframe(container, id, code) {
                 .then(function(data) {
                     log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
                     KairosWidgets._registry[id] = data.code;
-                    // Cache code in session state for future refreshes
-                    if (window.widgetStates) {
-                        window.widgetStates['_code_' + key] = data.code;
-                        // Persist to DB so it survives page reload
-                        fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent('_code_' + key) + '/state', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ state: data.code })
-                        }).catch(function() {});
-                    }
+                    stateManager.setCodeCache(key, data.code);
+                    fetch('/sessions/' + sessionId + '/widgets/' + encodeURIComponent('_code_' + key) + '/state', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ state: data.code })
+                    }).catch(function() {});
                     mountIframe(data.code);
                 })
                 .catch(function(err) {

@@ -1,7 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import './setup.js';
 
-// Stream-renderer specific mocks
 class MockElement {
   constructor(tag) {
     this.tagName = (tag || 'div').toUpperCase();
@@ -108,6 +107,45 @@ class MockElement {
 
 global.document = { createElement: (tag) => new MockElement(tag) };
 
+function mockExtract(text) {
+  var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)(?:\n```|$)/g;
+  var result = text.replace(widgetRegex, function(match, key, code) {
+    var id = 'widget-' + global.KairosWidgets.index++;
+    code = code.replace(/\?\.([\w.]+)\s*=(?!=)/g, '.$1 =');
+    global.KairosWidgets.registry[id] = code;
+    if (key) {
+      return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
+    }
+    return '<div class="interactive-widget-container" data-widget-id="' + id + '"></div>';
+  });
+
+  var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
+  var seenKeys = {};
+  result = result.replace(tagRegex, function(match, key) {
+    var lowerKey = key.toLowerCase();
+    if (seenKeys[lowerKey]) return '';
+    seenKeys[lowerKey] = true;
+    var id = 'widget-' + global.KairosWidgets.index++;
+    return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
+  });
+
+  return result;
+}
+
+global.KairosWidgets = {
+  index: 0,
+  nextIndex: function() { return this.index++; },
+  registry: {},
+  initAll: function() {},
+  reset: function() { this.registry = {}; this.index = 0; },
+  debug: {},
+  extract: mockExtract
+};
+global.KairosMarkdown = { parse: function(t) { return '<p>' + t + '</p>'; } };
+global.DOMPurify = { sanitize: function(t) { return t; } };
+global.KairosUtils = { escHtml: function(s) { return String(s); } };
+global.logUI = function() {};
+
 const listeners = {};
 global.KairosStream = {
   on: (evt, cb) => { listeners[evt] = cb; },
@@ -131,29 +169,16 @@ function makeState(overrides) {
 
 describe('content-handler', () => {
 
-  test('safely initializes widgetMap', () => {
-    KairosWidgets.reset();
+  test('creates single msg-text-segment for text content', () => {
     const state = makeState();
     KairosStream.emit('content', 'Hola ', state);
-    expect(state.widgetMap).toBeDefined();
-    expect(state.widgetMap[0]).toBeDefined();
-  });
-
-  test('creates text segment and widget container for widget block', () => {
-    KairosWidgets.reset();
-    global.KairosWidgets.index = 0;
-    const state = makeState();
-    KairosStream.emit('content', 'Widget:\n```html-widget\n<div>W</div>\n```\nEnd.', state);
     const bodyDiv = state.bodyDivs[0];
-    expect(bodyDiv.children.length).toBe(3);
+    expect(bodyDiv.children.length).toBe(1);
     expect(bodyDiv.children[0].className).toBe('msg-text-segment');
-    expect(bodyDiv.children[1].className).toBe('interactive-widget-container');
-    expect(bodyDiv.children[2].className).toBe('msg-text-segment');
   });
 
-  test('registers widget in KairosWidgets.registry', () => {
+  test('calls KairosWidgets.extract() which populates registry', () => {
     KairosWidgets.reset();
-    global.KairosWidgets.index = 0;
     const state = makeState();
     KairosStream.emit('content', '```html-widget\n<div>Test</div>\n```', state);
     const keys = Object.keys(KairosWidgets.registry);
@@ -161,13 +186,15 @@ describe('content-handler', () => {
     expect(KairosWidgets.registry[keys[0]]).toContain('<div>Test</div>');
   });
 
-  test('sets data-widget-id on container', () => {
+  test('renders widget containers in innerHTML via extract()', () => {
     KairosWidgets.reset();
-    global.KairosWidgets.index = 0;
     const state = makeState();
-    KairosStream.emit('content', '```html-widget\n<div>X</div>\n```', state);
-    const container = state.bodyDivs[0].children[1];
-    expect(container.getAttribute('data-widget-id')).toBeDefined();
+    KairosStream.emit('content', 'Widget:\n```html-widget\n<div>W</div>\n```\nEnd.', state);
+    const bodyDiv = state.bodyDivs[0];
+    expect(bodyDiv.children.length).toBe(1);
+    expect(bodyDiv.children[0].className).toBe('msg-text-segment');
+    expect(bodyDiv.children[0].innerHTML).toContain('interactive-widget-container');
+    expect(bodyDiv.children[0].innerHTML).toContain('data-widget-id');
   });
 
   test('cache key prevents redundant re-rendering', () => {
@@ -177,36 +204,32 @@ describe('content-handler', () => {
     KairosStream.emit('content', '', state);
     expect(state.bodyDivs[0].children[0]?.dataset?.rawText).toBe(prevRawText);
   });
+
+  test('does NOT call initAll()', () => {
+    var initAllCalled = false;
+    var origInitAll = global.KairosWidgets.initAll;
+    global.KairosWidgets.initAll = function() { initAllCalled = true; };
+
+    const state = makeState();
+    KairosStream.emit('content', '[Widget: foo]', state);
+
+    global.KairosWidgets.initAll = origInitAll;
+    expect(initAllCalled).toBe(false);
+  });
 });
 
 describe('anti-regression', () => {
 
-  test('widget dedup - multiple same-key [Widget: x] tags produce ONE container', () => {
+  test('widget dedup - extract() handles duplicate [Widget: x] tags', () => {
     KairosWidgets.reset();
-    global.KairosWidgets.index = 0;
     const state = makeState();
     KairosStream.emit('content', '[Widget: alpha] stuff [Widget: alpha] more [Widget: alpha]', state);
     const bodyDiv = state.bodyDivs[0];
-    expect(bodyDiv.children.length).toBe(3);
+    expect(bodyDiv.children.length).toBe(1);
     expect(bodyDiv.children[0].className).toBe('msg-text-segment');
-    expect(bodyDiv.children[1].className).toBe('interactive-widget-container');
-    expect(bodyDiv.children[2].className).toBe('msg-text-segment');
-    const containers = bodyDiv.querySelectorAll('.interactive-widget-container');
-    expect(containers.length).toBe(1);
-  });
-
-  test('widget cache is phase-scoped (no cross-phase contamination)', () => {
-    KairosWidgets.reset();
-    global.KairosWidgets.index = 0;
-    const state = makeState({
-      reasoningEls: [new MockElement('details'), new MockElement('details')],
-      _widgetCache: {
-        0: { matches: [{ index: 0, end: 10, key: 'alpha', code: '', full: '[Widget: alpha]', fromTag: true }], prevLen: 100 }
-      }
-    });
-    KairosStream.emit('content', '[Widget: beta]', state);
-    expect(state._widgetCache[0].matches[0].key).toBe('alpha');
-    expect(state._widgetCache[1].matches[0].key).toBe('beta');
+    expect(bodyDiv.children[0].innerHTML).toContain('interactive-widget-container');
+    var containerCount = (bodyDiv.children[0].innerHTML.match(/interactive-widget-container/g) || []).length;
+    expect(containerCount).toBe(1);
   });
 
   test('multi-turn with no tools still creates new details', async () => {
@@ -224,18 +247,6 @@ describe('anti-regression', () => {
 
     KairosStream.emit('reasoning', 'Step 2...', state);
     expect(state.reasoningEls.length).toBe(2);
-  });
-
-  test('cache prevLen always updates (staleness fix)', () => {
-    KairosWidgets.reset();
-    global.KairosWidgets.index = 0;
-    const state = makeState();
-
-    KairosStream.emit('content', '[Widget: x]', state);
-    expect(state._widgetCache[0].prevLen).toBe('[Widget: x]'.length);
-
-    KairosStream.emit('content', ' hello', state);
-    expect(state._widgetCache[0].prevLen).toBe(state.contentTexts[0].length);
   });
 
   test('shouldRetry allows retry with successful tools', async () => {

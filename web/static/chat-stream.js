@@ -1,10 +1,12 @@
-window.widgetStates = window.widgetStates || {};
+import stateManager from './modules/widgets/state-manager.js';
+
+stateManager.loadFromJSON({});
 
 (function loadInitialWidgetStates() {
   var meta = document.getElementById('messages-metadata');
   if (meta) {
     try {
-      window.widgetStates = JSON.parse(meta.getAttribute('data-widget-states') || '{}');
+      stateManager.loadFromJSON(JSON.parse(meta.getAttribute('data-widget-states') || '{}'));
     } catch(e) {
       console.error('Error parsing initial widgetStates:', e);
     }
@@ -40,13 +42,13 @@ export function loadSession(sid) {
         var meta = document.getElementById('messages-metadata');
         if (meta) {
           try {
-            window.widgetStates = JSON.parse(meta.getAttribute('data-widget-states') || '{}');
+            stateManager.loadFromJSON(JSON.parse(meta.getAttribute('data-widget-states') || '{}'));
           } catch(e) {
             console.error('Error parsing widgetStates metadata:', e);
-            window.widgetStates = {};
+            stateManager.clear();
           }
         } else {
-          window.widgetStates = {};
+          stateManager.clear();
         }
 
         KairosMarkdown.renderAll();
