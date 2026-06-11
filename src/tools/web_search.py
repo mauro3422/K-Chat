@@ -168,17 +168,16 @@ def _search_and_format_results(
     return "\n".join(out).strip()
 
 
-def run(
-    query: str,
-    max_results: int = 3,
-    categories: str = "general",
-    language: str = "",
-    time_range: str = "",
-    page: int = 1,
-    safe_search: int = 0,
-    _retries: int = 2,
-    **kwargs: Any
-) -> str:
+def run(**kwargs: Any) -> str:
+    query = kwargs.get("query") or kwargs.get("q") or kwargs.get("search_query", "")
+    max_results = int(kwargs.get("max_results", kwargs.get("max", kwargs.get("limit", 3))))
+    categories = kwargs.get("categories") or kwargs.get("category", "general")
+    language = kwargs.get("language") or kwargs.get("lang") or kwargs.get("locale", "")
+    time_range = kwargs.get("time_range") or kwargs.get("time") or kwargs.get("timerange", "")
+    page = int(kwargs.get("page", kwargs.get("page_num", kwargs.get("pageno", 1))))
+    safe_search = int(kwargs.get("safe_search", kwargs.get("safe", kwargs.get("safesearch", 0))))
+    _retries = int(kwargs.get("_retries", 2))
+
     query = (query or "").strip()
     if not query:
         return "[ERROR] The search query is empty. Provide text to search for."

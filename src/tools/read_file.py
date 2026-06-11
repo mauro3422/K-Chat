@@ -66,7 +66,11 @@ def _paginate_and_format(path: str, lines: list[str], start_line: int, end_line:
     return metadata + content_str
 
 
-def run(path: str, start_line: int = 1, end_line: int | None = None, _session_id: str | None = None) -> str:
+def run(**kwargs) -> str:
+    path = kwargs.get("path") or kwargs.get("file_path") or kwargs.get("filepath", "")
+    start_line = int(kwargs.get("start_line", kwargs.get("start", 1)))
+    end_line = kwargs.get("end_line", kwargs.get("end"))
+    _session_id = kwargs.get("_session_id")
     resolved, err = resolve_and_validate_path(path)
     if err:
         return err

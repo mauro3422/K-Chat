@@ -25,7 +25,10 @@ DEFINITION: dict[str, Any] = {
 }
 
 
-def run(path: str, content: str, _session_id: str | None = None) -> str:
+def run(**kwargs) -> str:
+    path = kwargs.get("path") or kwargs.get("file_path") or kwargs.get("filepath", "")
+    content = kwargs.get("content") or kwargs.get("data") or kwargs.get("text", "")
+    _session_id = kwargs.get("_session_id")
     resolved, err = resolve_and_validate_path(path)
     if err:
         return err

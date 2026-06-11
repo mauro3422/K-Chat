@@ -193,7 +193,10 @@ def _fetch_with_retry(url: str, max_chars: int, _retries: int, **kwargs: Any) ->
                 return f"[ERROR] Error processing {url}."
 
 
-def run(url: str, max_chars: int = 10000, _retries: int = 1, **kwargs: Any) -> str | None:
+def run(**kwargs: Any) -> str | None:
+    url = kwargs.get("url") or kwargs.get("link") or kwargs.get("page_url", "")
+    max_chars = int(kwargs.get("max_chars", kwargs.get("max", kwargs.get("max_length", 10000))))
+    _retries = int(kwargs.get("_retries", 1))
     max_chars = min(max(max_chars, MIN_CHARS), MAX_CHARS)
 
     url = url.strip()

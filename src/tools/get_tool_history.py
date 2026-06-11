@@ -17,7 +17,9 @@ DEFINITION = {
 }
 
 
-def run(limit: int = 5, _session_id: str | None = None) -> str:
+def run(**kwargs) -> str:
+    limit = int(kwargs.get("limit", kwargs.get("max_results", kwargs.get("count", kwargs.get("n", 5)))))
+    _session_id = kwargs.get("_session_id")
     from src.tools._tool_persister import _get_tool_call_repo
     if not _session_id:
         return "No active session."

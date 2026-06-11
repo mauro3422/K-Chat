@@ -96,7 +96,10 @@ def _write_memory_file(filepath: str, header_lines: list[str], memories: dict[st
     return None
 
 
-def run(key: str, value: str, _session_id: str | None = None) -> str:
+def run(**kwargs) -> str:
+    key = kwargs.get("key") or kwargs.get("name", "")
+    value = kwargs.get("value") or kwargs.get("content") or kwargs.get("text", "")
+    _session_id = kwargs.get("_session_id")
     filepath = os.path.join(CONTEXT_DIR, "MEMORY.md")
 
     with _save_lock:
