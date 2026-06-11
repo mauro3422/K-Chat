@@ -198,15 +198,15 @@ describe('content-handler', () => {
     expect(KairosWidgets.registry[keys[0]]).toContain('<div>Test</div>');
   });
 
-  test('renders widget containers in innerHTML via extract()', () => {
+  test('renders widget containers as siblings for html-widget code block', () => {
     KairosWidgets.reset();
     const state = makeState();
     KairosStream.emit('content', 'Widget:\n```html-widget\n<div>W</div>\n```\nEnd.', state);
     const bodyDiv = state.bodyDivs[0];
-    expect(bodyDiv.children.length).toBe(1);
-    expect(bodyDiv.children[0].className).toBe('msg-text-segment');
-    expect(bodyDiv.children[0].innerHTML).toContain('interactive-widget-container');
-    expect(bodyDiv.children[0].innerHTML).toContain('data-widget-id');
+    expect(bodyDiv.children.length).toBe(3);
+    expect(bodyDiv.children[1].className).toBe('interactive-widget-container');
+    expect(bodyDiv.children[1].getAttribute('data-widget-id')).toMatch(/^widget-\d+$/);
+    expect(bodyDiv.children[0].innerHTML).not.toContain('interactive-widget-container');
   });
 
   test('cache key prevents redundant re-rendering', () => {

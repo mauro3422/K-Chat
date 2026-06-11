@@ -368,9 +368,10 @@ describe('Content Handler', function() {
 
     handlingStream._cb('Text ```html-widget\n<div>widget</div>\n``` more', state);
 
-    var html = bodyDiv.children[0].innerHTML;
-    var containerCount = (html.match(/interactive-widget-container/g) || []).length;
-    expect(containerCount).toBe(1);
-    expect(Object.keys(global.KairosWidgets.registry).length).toBe(1);
+    expect(bodyDiv.children.length).toBe(3);
+    expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
+    // The code block is not inside text segments (it's a sibling container)
+    expect(bodyDiv.children[0].innerHTML).not.toContain('interactive-widget-container');
+    expect(bodyDiv.children[2].innerHTML).not.toContain('interactive-widget-container');
   });
 });
