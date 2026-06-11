@@ -28,7 +28,8 @@ def test_parse_tool_call_corrupt_json():
     name, args, error = _parse_tool_call(tc, TOOL_MAP)
     assert name == "web_search"
     assert args == {}
-    assert error is None
+    assert error is not None
+    assert "Missing required parameters" in error
 
 
 def test_parse_tool_call_empty_name():
@@ -39,29 +40,28 @@ def test_parse_tool_call_empty_name():
     assert "does not exist" in error
 
 
-def test_parse_tool_call_execute_action_wrapping():
-    tc = _make_tc("execute_action", {
-        "action_name": "web_search",
-        "arguments": {"query": "clima"}
-    })
+def test_parse_tool_call_unknown_tool():
+    tc = _make_tc("execute_action", {"query": "test"})
     name, args, error = _parse_tool_call(tc, TOOL_MAP)
-    assert name == "web_search"
-    assert args == {"query": "clima"}
-    assert error is None
+    assert name == "execute_action"
+    assert error is not None
+    assert "does not exist" in error
 
 
 def test_get_required_params_existing_tool():
-    with patch("src.tools.TOOLS", [{
-        "function": {
-            "name": "web_search",
-            "parameters": {"required": ["query"]}
+    with patch("src.tools.loader.TOOL_DEFINITIONS", {
+        "web_search": {
+            "function": {
+                "name": "web_search",
+                "parameters": {"required": ["query"]}
+            }
         }
-    }]):
+    }):
         result = _get_required_params("web_search")
         assert result == ["query"]
 
 
 def test_get_required_params_non_existing_tool():
-    with patch("src.tools.TOOLS", [{"function": {"name": "web_search"}}]):
+    with patch("src.tools.loader.TOOL_DEFINITIONS", {}):
         result = _get_required_params("nonexistent_tool")
         assert result == []

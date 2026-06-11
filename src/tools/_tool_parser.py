@@ -16,17 +16,6 @@ def _parse_tool_call(tc: Any, tool_map: dict[str, Any]) -> tuple[str, dict[str, 
         logger.warning("tool_runner: invalid JSON in tool_call '%s' (%s): repr=%r error=%s", name, tc.id, raw_args, e)
         args = {}
 
-    if name == "execute_action":
-        inner_name = args.get("action_name")
-        inner_args = args.get("arguments", {})
-        if isinstance(inner_args, str):
-            try:
-                inner_args = json.loads(inner_args)
-            except (json.JSONDecodeError, TypeError):
-                pass
-        name = inner_name or ""
-        args = inner_args if isinstance(inner_args, dict) else {}
-
     error = None
     if not name or name.startswith("$") or name not in tool_map:
         error = f"[ERROR]: The tool '{name}' does not exist or is not valid."
@@ -40,8 +29,6 @@ def _parse_tool_call(tc: Any, tool_map: dict[str, Any]) -> tuple[str, dict[str, 
 
 
 def _get_required_params(tool_name: str) -> list[str]:
-    import src.tools
-    for t in src.tools.TOOLS:
-        if t.get("function", {}).get("name") == tool_name:
-            return t.get("function", {}).get("parameters", {}).get("required", [])
-    return []
+    from src.tools.loader import TOOL_DEFINITIONS
+    defn = TOOL_DEFINITIONS.get(tool_name, {})
+    return defn.get("function", {}).get("parameters", {}).get("required", [])

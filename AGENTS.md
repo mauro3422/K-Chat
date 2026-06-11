@@ -13,8 +13,10 @@ Agent rules:
 - **Specialized Skills**: Read `skills/html-widgets.md` via `read_skill` before creating widgets.
 - **Auto-Update Progress**: Log milestones, bugs, and discoveries in `MEMORY.md` via `save_memory`.
 - **Resume from Last State**: `MEMORY.md` contains all state. Read on start. Do not ask "what were we talking about".
-- **Tool params** (name→param): read rules/<tool>.md for details + edge cases:
-  - `web_search(query)` — `fetch_url(url)` — `save_memory(key, value)`
-  - `read_file(path)` — `write_file(path, content)` — `read_skill(name)`
-  - `get_tool_history(limit)` — `save_widget(widget_id, code)`
+- **Tool calls**: Call tools directly by name with their parameters. No wrapper needed.
+  - `web_search(query, max_results=3)` — `fetch_url(url, max_chars=10000)`
+  - `save_memory(key, value)` — `read_file(path, start_line=1)`
+  - `write_file(path, content)` — `read_skill(name)`
+  - `get_tool_history(limit=5)` — `save_widget(widget_id, code)`
   - `get_widget_code(widget_id)` — `update_widget(widget_id, code)`
+- Call multiple tools in parallel when possible.
