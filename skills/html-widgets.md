@@ -3,12 +3,15 @@
 Allows the agent to generate interactive visual interfaces (like calculators, planners, charts, or simple games) directly in the chat conversation.
 
 ## Output Format
-**IMPORTANT**: Do NOT output raw HTML code blocks in the chat. The HTML content triggers the loop detector. Instead:
-1. Construct the HTML in your reasoning/planning
-2. Call `save_widget(widget_id, code, description)` to save it
-3. Invoke with `[Widget: widget_id]` in your response
-
-Only use ` ```html-widget ```` code blocks for very small temporary widgets (< 500 chars). For anything larger, use `save_widget`.
+* **Temporary Widgets (Draft)**: Use the Markdown code block `` ```html-widget ```` to render directly in the chat. Keep the HTML compact (< 500 chars) to avoid the loop detector. Example:
+  ```html-widget
+  <div style="padding:16px;background:#161b22;border-radius:8px;color:#c9d1d9">
+    <h3>Hello</h3>
+    <p>Temp widget</p>
+  </div>
+  ```
+* **Official Widgets (Versioned)**: When the user confirms they want to persist it, call `save_widget(widget_id, code)` to save, then invoke with `[Widget: widget_id]`.
+* **Invoking Saved Widgets**: Use `[Widget: widget-name]` inline — the system retrieves and renders it.
 
 All content in this block must be self-contained HTML, CSS, and JavaScript code. Do not add text explanations inside the code block.
 

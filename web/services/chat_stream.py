@@ -13,8 +13,8 @@ from web.services.stream_error_classifier import classify_error
 logger = logging.getLogger(__name__)
 
 HEARTBEAT_INTERVAL = 20
-LOOP_WINDOW_SIZE = 10
-LOOP_PHRASE_REPEATS = 3
+LOOP_WINDOW_SIZE = 15
+LOOP_PHRASE_REPEATS = 6
 
 
 class _LoopDetector:
