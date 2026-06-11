@@ -1,5 +1,12 @@
 import { SessionContext } from './modules/session-context.js';
 
+function timeToMs(t) {
+  if (!t) return null;
+  var p = t.split(':');
+  if (p.length !== 3) return null;
+  return (parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60 + parseFloat(p[2])) * 1000;
+}
+
 let debugVisible = false;
 const streamEvents = [];
 let streamEvId = 0;
@@ -7,8 +14,8 @@ const uiEvents = [];
 let uiEvId = 0;
 
 function logStream(tipo, data) {
-  streamEvents.push({id: ++streamEvId, t: tipo, d: typeof data === 'string' ? data.substring(0, 120) : JSON.stringify(data).substring(0, 120), at: new Date().toISOString().slice(11,23)});
-  if (streamEvents.length > 100) streamEvents.shift();
+  streamEvents.push({id: ++streamEvId, t: tipo, d: typeof data === 'string' ? data : JSON.stringify(data), at: new Date().toISOString().slice(11,23)});
+  if (streamEvents.length > 500) streamEvents.shift();
   if (debugVisible) renderStreamLog();
 }
 
@@ -33,7 +40,7 @@ function renderStreamLog() {
   var el = document.getElementById('stream-log');
   if (!el) return;
   el.innerHTML = streamEvents.map(function(e) {
-    return '<div class="sl-item sl-' + e.t.replace('_','-') + '"><span class="sl-ts">' + e.at + '</span><span class="sl-tag">' + e.t + '</span><span class="sl-data">' + escHtml(e.d) + '</span></div>';
+    return '<div class="sl-item sl-' + e.t.replace('_','-') + '"><span class="sl-ts">' + e.at + '</span><span class="sl-tag">' + e.t + '</span><span class="sl-data">' + escHtml((e.d || '').substring(0, 500)) + '</span></div>';
   }).join('');
 }
 
@@ -135,6 +142,38 @@ function copyBackendLogs(el) {
 
 function copyAllDebug(el) {
   var parts = [];
+  
+  // Calculate stream durations
+  var starts = {};
+  uiEvents.forEach(function(e) {
+    if (e.label === 'stream_start') {
+      if (e.detail.indexOf('mensaje=') >= 0) {
+        var msgPreview = e.detail.substring(0, 60);
+        starts[e.id] = { at: e.at, msg: msgPreview };
+      }
+    }
+  });
+  parts.push('=== STREAM DURATIONS ===');
+  var hasDuration = false;
+  uiEvents.forEach(function(e) {
+    if (e.label === 'stream_complete') {
+      for (var sid in starts) {
+        var s = starts[sid];
+        var startMs = timeToMs(s.at);
+        var endMs = timeToMs(e.at);
+        if (startMs && endMs && endMs > startMs) {
+          var dur = (endMs - startMs) / 1000;
+          parts.push(s.at + ' → ' + e.at + ' = ' + dur.toFixed(1) + 's \"' + s.msg + '\"');
+          hasDuration = true;
+          delete starts[sid];
+          break;
+        }
+      }
+    }
+  });
+  if (!hasDuration) parts.push('(ninguno)');
+  parts.push('');
+
   parts.push('=== UI EVENTS ===');
   parts.push(uiEvents.map(function(e){ return e.id + ' ' + e.at + ' ' + e.label + ' ' + e.detail; }).join('\n') || '(ninguno)');
   parts.push('');
