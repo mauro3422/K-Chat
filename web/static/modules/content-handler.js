@@ -73,6 +73,15 @@ export function registerContentHandler() {
       }
       if (!targetSeg) return;
 
+      state._renderedKeys = state._renderedKeys || {};
+      var widgetMatches = [];
+      var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
+      var m;
+      while ((m = tagRegex.exec(fullText)) !== null) {
+        widgetMatches.push({ index: m.index, end: m.index + m[0].length, key: m[1], isNew: !state._renderedKeys[m[1]] });
+        state._renderedKeys[m[1]] = true;
+      }
+
       var textToRender = fullText;
       var incompleteTail = '';
 
@@ -86,38 +95,69 @@ export function registerContentHandler() {
         }
       }
 
-      var cacheKey = textToRender + '|' + incompleteTail;
-      if (targetSeg.dataset.rawText === cacheKey) {
-        return;
-      }
-      targetSeg.dataset.rawText = cacheKey;
-
-      var purifyConfig = { ADD_TAGS: ['iframe'], ADD_ATTR: ['data-widget-id', 'data-widget-key'] };
-      var html = '';
-      if (textToRender && typeof KairosWidgets !== 'undefined' && KairosWidgets.extract) {
-        var extracted = KairosWidgets.extract(textToRender);
-        var parsed = KairosMarkdown.parse(extracted);
-        if (typeof DOMPurify !== 'undefined') {
-          html += DOMPurify.sanitize(parsed, purifyConfig);
+      var expectedCount = widgetMatches.length * 2 + 1;
+      while (bodyDiv.children.length < expectedCount) {
+        var newIdx = bodyDiv.children.length;
+        if (newIdx % 2 === 0) {
+          var seg = document.createElement('div');
+          seg.className = C.MSG_TEXT_SEGMENT;
+          bodyDiv.appendChild(seg);
         } else {
-          html += textToRender;
-          console.warn('DOMPurify not loaded, rendering as plain text');
-        }
-      } else if (textToRender) {
-        parsed = KairosMarkdown.parse(textToRender);
-        if (typeof DOMPurify !== 'undefined') {
-          html += DOMPurify.sanitize(parsed, purifyConfig);
-        } else {
-          html += textToRender;
+          var wm = widgetMatches[(newIdx - 1) / 2];
+          if (wm.isNew) {
+            var wid = 'widget-' + KairosWidgets.nextIndex();
+            KairosWidgets.registry[wid] = '';
+            var con = document.createElement('div');
+            con.className = C.WIDGET_CONTAINER;
+            con.setAttribute('data-widget-id', wid);
+            con.setAttribute('data-widget-key', wm.key);
+            bodyDiv.appendChild(con);
+          } else {
+            var ph = document.createElement('div');
+            ph.style.display = 'none';
+            bodyDiv.appendChild(ph);
+          }
         }
       }
 
-      if (incompleteTail) {
-        html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteTail) + '</code></pre>';
+      while (bodyDiv.children.length > expectedCount) {
+        bodyDiv.removeChild(bodyDiv.lastChild);
       }
 
-      targetSeg.innerHTML = html;
-      
+      for (var i = 0; i <= widgetMatches.length; i++) {
+        var start = i === 0 ? 0 : widgetMatches[i - 1].end;
+        var end = i === widgetMatches.length ? textToRender.length : widgetMatches[i].index;
+        var segText = textToRender.substring(start, end);
+        var targetSeg = bodyDiv.children[i * 2];
+        if (!targetSeg) continue;
+        var cacheKey = segText + '|' + incompleteTail + '|' + (i === widgetMatches.length ? '' : widgetMatches[i].key);
+        if (targetSeg.dataset.rawText === cacheKey) continue;
+        targetSeg.dataset.rawText = cacheKey;
+
+        var purifyConfig = { ADD_TAGS: ['iframe'], ADD_ATTR: ['data-widget-id', 'data-widget-key'] };
+        var html = '';
+        if (segText && typeof KairosWidgets !== 'undefined' && KairosWidgets.extract) {
+          var extracted = KairosWidgets.extract(segText);
+          var parsed = KairosMarkdown.parse(extracted);
+          if (typeof DOMPurify !== 'undefined') {
+            html += DOMPurify.sanitize(parsed, purifyConfig);
+          } else {
+            html += segText;
+          }
+        } else if (segText) {
+          var parsed = KairosMarkdown.parse(segText);
+          if (typeof DOMPurify !== 'undefined') {
+            html += DOMPurify.sanitize(parsed, purifyConfig);
+          } else {
+            html += segText;
+          }
+        }
+        if (i === widgetMatches.length && incompleteTail) {
+          html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteTail) + '</code></pre>';
+        }
+        targetSeg.innerHTML = html;
+      }
+
       if (typeof KairosWidgets !== 'undefined' && typeof KairosWidgets.initAll === 'function') {
         KairosWidgets.initAll(bodyDiv);
       }

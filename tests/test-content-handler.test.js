@@ -155,7 +155,7 @@ beforeEach(function() {
 });
 
 describe('Content Handler', function() {
-  test('creates single widget container via extract() for duplicate marker', function() {
+  test('creates single widget container for duplicate marker', function() {
     var asstDiv = makeEl('div');
     var bodyDiv = makeEl('div');
     bodyDiv.className = 'msg-body md-content';
@@ -173,12 +173,12 @@ describe('Content Handler', function() {
 
     handlingStream._cb('[Widget: foo] y otro [Widget: foo] en el mismo texto', state);
 
-    var html = bodyDiv.children[0].innerHTML;
-    var containerCount = (html.match(/interactive-widget-container/g) || []).length;
-    expect(containerCount).toBe(1);
+    expect(bodyDiv.children.length).toBe(5);
+    expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
+    expect(bodyDiv.children[1].getAttribute('data-widget-key')).toBe('foo');
   });
 
-  test('creates one container per unique key via extract()', function() {
+  test('creates one container per unique key', function() {
     var asstDiv = makeEl('div');
     var bodyDiv = makeEl('div');
     bodyDiv.className = 'msg-body md-content';
@@ -196,12 +196,14 @@ describe('Content Handler', function() {
 
     handlingStream._cb('[Widget: a] texto [Widget: b] otro [Widget: a] repetido', state);
 
-    var html = bodyDiv.children[0].innerHTML;
-    var containerCount = (html.match(/interactive-widget-container/g) || []).length;
-    expect(containerCount).toBe(2);
+    expect(bodyDiv.children.length).toBe(7);
+    var containers = bodyDiv.children.filter(function(c) {
+      return c.className && c.className.indexOf('interactive-widget-container') >= 0;
+    });
+    expect(containers.length).toBe(2);
   });
 
-  test('calls extract() with widget markers intact', function() {
+  test('calls extract() with text segments (widget markers between segments)', function() {
     var extractCalls = [];
     var origExtract = global.KairosWidgets.extract;
     global.KairosWidgets.extract = function(text) {
@@ -226,8 +228,10 @@ describe('Content Handler', function() {
 
     handlingStream._cb('antes [Widget: foo] despues', state);
 
-    expect(extractCalls.length).toBe(1);
-    expect(extractCalls[0]).toContain('[Widget: foo]');
+    expect(extractCalls.length).toBeGreaterThanOrEqual(1);
+    extractCalls.forEach(function(text) {
+      expect(text).not.toContain('[Widget:');
+    });
 
     global.KairosWidgets.extract = origExtract;
   });
