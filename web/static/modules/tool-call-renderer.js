@@ -9,44 +9,19 @@ export function registerToolCallRenderer() {
       state._toolTurnSinceLastContent = true;
       var allTc = state.asstDiv.querySelectorAll('.tool-calls');
       var tcEl = null;
-      if (info.status === 'calling') {
-        var foundIn = null;
-        for (var ti = 0; ti < allTc.length; ti++) {
-          if (allTc[ti].querySelector('[data-id="' + info.id + '"]')) { foundIn = allTc[ti]; break; }
-        }
-        if (foundIn) {
-          tcEl = foundIn;
-        } else if (allTc.length < state.reasoningEls.length) {
-          tcEl = document.createElement('div');
-          tcEl.className = 'tool-calls';
-          var activePhaseIdx = state.reasoningEls.length - 1;
-          var currentBody = state.bodyDivs[activePhaseIdx];
-          if (currentBody) {
-            currentBody.insertAdjacentElement('afterend', tcEl);
-          } else if (activePhaseIdx >= 0 && state.reasoningEls[activePhaseIdx]) {
-            state.reasoningEls[activePhaseIdx].insertAdjacentElement('afterend', tcEl);
-          } else {
-            state.asstDiv.appendChild(tcEl);
-          }
-          logUI('tool_calls_seq', state.reasoningEls.length);
-        } else if (allTc.length > 0) {
-          tcEl = allTc[allTc.length - 1];
-        } else {
-          tcEl = document.createElement('div');
-          tcEl.className = 'tool-calls';
-          var currentBody2 = state.bodyDivs[0];
-          if (currentBody2) {
-            currentBody2.insertAdjacentElement('afterend', tcEl);
-          } else {
-            state.asstDiv.appendChild(tcEl);
-          }
-          logUI('tool_calls_seq', 0);
-        }
+      var foundIn = null;
+      for (var ti = 0; ti < allTc.length; ti++) {
+        if (allTc[ti].querySelector('[data-id="' + info.id + '"]')) { foundIn = allTc[ti]; break; }
+      }
+      if (foundIn) {
+        tcEl = foundIn;
+      } else if (info.status === 'calling') {
+        tcEl = document.createElement('div');
+        tcEl.className = 'tool-calls';
+        state.asstDiv.appendChild(tcEl);
+        logUI('tool_calls_seq', state.reasoningEls.length);
       } else {
-        for (var ti2 = 0; ti2 < allTc.length; ti2++) {
-          if (allTc[ti2].querySelector('[data-id="' + info.id + '"]')) { tcEl = allTc[ti2]; break; }
-        }
-        if (!tcEl && allTc.length > 0) tcEl = allTc[allTc.length - 1];
+        if (allTc.length > 0) tcEl = allTc[allTc.length - 1];
       }
       if (!tcEl) return;
       var existing = tcEl.querySelector('[data-id="' + info.id + '"]');

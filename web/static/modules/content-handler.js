@@ -20,11 +20,16 @@ export function registerContentHandler() {
       while (state.bodyDivs.length <= phaseIdx) {
         var newBody = document.createElement('div');
         newBody.className = 'msg-body md-content';
-        var lastDet = state.reasoningEls[state.reasoningEls.length - 1];
-        if (lastDet) {
-          lastDet.insertAdjacentElement('afterend', newBody);
+        var prevBody = state.bodyDivs[state.bodyDivs.length - 1];
+        if (prevBody) {
+          prevBody.insertAdjacentElement('afterend', newBody);
         } else {
-          state.asstDiv.appendChild(newBody);
+          var lastDet = state.reasoningEls[state.reasoningEls.length - 1];
+          if (lastDet) {
+            lastDet.insertAdjacentElement('afterend', newBody);
+          } else {
+            state.asstDiv.appendChild(newBody);
+          }
         }
         state.bodyDivs.push(newBody);
         state.contentTexts.push('');
@@ -104,6 +109,7 @@ export function registerContentHandler() {
       
       var expectedCount = matches.length * 2 + 1;
       
+      var widgetIdx = 0;
       while (bodyDiv.children.length < expectedCount) {
         var newIdx = bodyDiv.children.length;
         if (newIdx % 2 === 0) {
@@ -111,21 +117,30 @@ export function registerContentHandler() {
           txtSeg.className = 'msg-text-segment';
           bodyDiv.appendChild(txtSeg);
         } else {
-          var widgetIdx = Math.floor(newIdx / 2);
           var wm = matches[widgetIdx];
-          var widgetId = 'widget-' + KairosWidgets.nextIndex();
-          KairosWidgets.registry[widgetId] = wm.code;
-          widgetMap[wm.index] = widgetId;
-          
-          var container = document.createElement('div');
-          container.className = 'interactive-widget-container';
-          container.setAttribute('data-widget-id', widgetId);
-          if (wm.key) {
-            container.setAttribute('data-widget-key', wm.key);
+          widgetIdx++;
+          var existingGlobal = wm.key && state.asstDiv.querySelector('[data-widget-key="' + wm.key + '"]');
+          if (existingGlobal) {
+            var placeholder = document.createElement('div');
+            placeholder.className = 'widget-placeholder';
+            placeholder.style.display = 'none';
+            bodyDiv.appendChild(placeholder);
+            logUI('widget_skip_dup', wm.key + ' (already in prev phase)');
+          } else {
+            var widgetId = 'widget-' + KairosWidgets.nextIndex();
+            KairosWidgets.registry[widgetId] = wm.code;
+            widgetMap[wm.index] = widgetId;
+            
+            var container = document.createElement('div');
+            container.className = 'interactive-widget-container';
+            container.setAttribute('data-widget-id', widgetId);
+            if (wm.key) {
+              container.setAttribute('data-widget-key', wm.key);
+            }
+            bodyDiv.appendChild(container);
+            
+            logUI('widget_added', widgetId + ' code=' + wm.code.length + 'b');
           }
-          bodyDiv.appendChild(container);
-          
-          logUI('widget_added', widgetId + ' code=' + wm.code.length + 'b');
         }
       }
       

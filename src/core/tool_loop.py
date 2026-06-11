@@ -183,8 +183,7 @@ def run_tool_loop_streaming(
         curr_content = "".join(t[1] for t in accumulated if t[0] == "content") or None
 
         if curr_content and prev_content and curr_content == prev_content:
-            logger.warning("Duplicate content detected (turn %d), breaking tool loop", turn)
-            yield ("content", curr_content) if ctx.tagged else curr_content
+            logger.warning("Duplicate content detected (turn %d), breaking tool loop — not yielding, already streamed", turn)
             if phase_reasoning or curr_content:
                 _append_phase(ctx.phases_output, phase_reasoning, [], curr_content)
             break

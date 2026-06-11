@@ -85,7 +85,7 @@ function refreshDebug() {
   dc.textContent = 'Cargando...';
   fetch('/sessions/' + sessionId + '/debug').then(function(r) { return r.json(); }).then(function(d) {
     var h = '';
-    h += '<div class="db-section"><strong>Modelo:</strong> ' + (d.model || '-') + '</div>';
+    h += '<div class="db-section"><strong>Modelo:</strong> ' + (d.model || '-') + ' <span class="db-copy" onclick="copyAllDebug(this)" style="margin-left:8px">copy ALL</span></div>';
     h += '<div class="db-section"><strong>Razonamiento:</strong><span class="db-copy" onclick="copyText(this)">copy</span><pre class="db-pre">' + escHtml(d.reasoning || '(ninguno)') + '</pre></div>';
     h += '<div class="db-section"><strong>Tools:</strong><span class="db-copy" onclick="copyText(this)">copy</span><pre class="db-pre">' + escHtml(JSON.stringify(d.tool_calls || [], null, 2)) + '</pre></div>';
     h += '<div class="db-section"><strong>System Prompt:</strong><span class="db-copy" onclick="copyText(this)">copy</span><pre class="db-pre">' + escHtml((d.system_prompt || '').substring(0, 2000)) + '</pre></div>';
@@ -128,6 +128,59 @@ function copyBackendLogs(el) {
     }).join('\n');
     copyToClipboard(txt, el);
   }).catch(function() { el.textContent = 'error'; });
+}
+
+function copyAllDebug(el) {
+  var parts = [];
+  parts.push('=== UI EVENTS ===');
+  parts.push(uiEvents.map(function(e){ return e.id + ' ' + e.at + ' ' + e.label + ' ' + e.detail; }).join('\n') || '(ninguno)');
+  parts.push('');
+  parts.push('=== STREAM EVENTS ===');
+  parts.push(streamEvents.map(function(e){ return e.id + ' ' + e.at + ' ' + e.t + ' ' + e.d; }).join('\n') || '(ninguno)');
+  parts.push('');
+
+  if (typeof KairosWidgets !== 'undefined') {
+    var widgetDebug = KairosWidgets.debug;
+    parts.push('=== WIDGETS ===');
+    for (var wid in widgetDebug) {
+      var w = widgetDebug[wid];
+      parts.push('--- ' + wid + ' ---');
+      var container = document.querySelector('[data-widget-id="' + wid + '"]');
+      var iframe = container ? container.querySelector('iframe') : null;
+      parts.push('iframe=' + (iframe ? iframe.offsetHeight + 'px' : '-'));
+      (w.events || []).forEach(function(e) {
+        parts.push(new Date(e.t).toISOString().slice(11,23) + ' ' + e.label + ' ' + e.detail);
+      });
+    }
+  }
+
+  var dc = document.getElementById('debug-content');
+  dc.textContent = 'Copiando...';
+
+  var pending = 2;
+  function tryCopy() {
+    pending--;
+    if (pending === 0) {
+      copyToClipboard(parts.join('\n'), el);
+    }
+  }
+
+  fetch('/sessions/' + sessionId + '/debug').then(function(r) { return r.json(); }).then(function(d) {
+    parts.push('');
+    parts.push('=== HISTORY ===');
+    parts.push(JSON.stringify(d.history_before || [], null, 2));
+    tryCopy();
+  }).catch(function() { tryCopy(); });
+
+  fetch('/debug/backend-logs').then(function(r) { return r.json(); }).then(function(data2) {
+    var logs = data2.logs || [];
+    parts.push('');
+    parts.push('=== BACKEND LOGS ===');
+    parts.push(logs.map(function(log) {
+      return new Date(log.ts * 1000).toISOString().slice(11, 23) + ' ' + log.level + ' ' + log.message;
+    }).join('\n') || '(ninguno)');
+    tryCopy();
+  }).catch(function() { tryCopy(); });
 }
 
 function copyToClipboard(text, el) {
@@ -173,7 +226,7 @@ function refreshWidgetInfo() {
 export const KairosDebug = {
   logStream, logUI, toggleDebug,
   copyStreamLog, copyUILog, copyText, copyWidgetLog,
-  refreshDebug, copyBackendLogs,
+  refreshDebug, copyBackendLogs, copyAllDebug,
   get debugVisible() { return debugVisible; }
 };
 
@@ -190,3 +243,4 @@ window.copyUILog = KairosDebug.copyUILog;
 window.copyText = KairosDebug.copyText;
 window.copyWidgetLog = KairosDebug.copyWidgetLog;
 window.copyBackendLogs = KairosDebug.copyBackendLogs;
+window.copyAllDebug = KairosDebug.copyAllDebug;

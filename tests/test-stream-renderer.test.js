@@ -49,7 +49,34 @@ class MockElement {
     traverse(this);
     return res;
   }
-  querySelector(sel) { return this; }
+  querySelector(sel) {
+    if (sel.startsWith('[data-widget-key="')) {
+      var key = sel.replace('[data-widget-key="', '').replace('"]', '');
+      var traverse = function(node) {
+        for (var c = 0; c < node.children.length; c++) {
+          var child = node.children[c];
+          if (child.getAttribute && child.getAttribute('data-widget-key') === key) return child;
+          var found = traverse(child);
+          if (found) return found;
+        }
+        return null;
+      };
+      return traverse(this);
+    }
+    if (sel === '.interactive-widget-container') {
+      var traverse2 = function(node) {
+        for (var c = 0; c < node.children.length; c++) {
+          var child = node.children[c];
+          if (child.className === 'interactive-widget-container') return child;
+          var found = traverse2(child);
+          if (found) return found;
+        }
+        return null;
+      };
+      return traverse2(this);
+    }
+    return this;
+  }
   insertAdjacentElement(pos, el) { this.children.push(el); return el; }
 }
 
