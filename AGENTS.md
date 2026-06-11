@@ -13,8 +13,8 @@ Agent rules:
 - **Specialized Skills**: Read `skills/html-widgets.md` via `read_skill` before creating widgets.
 - **Auto-Update Progress**: Log milestones, bugs, and discoveries in `MEMORY.md` via `save_memory`.
 - **Resume from Last State**: `MEMORY.md` contains all state. Read on start. Do not ask "what were we talking about".
-- **Tool Rules**: For detailed parameters, defaults, and edge cases, read the file in `rules/`:
-  - `rules/web_search.md`  — `rules/fetch_url.md`  — `rules/save_memory.md`
-  - `rules/read_file.md`  — `rules/write_file.md`  — `rules/read_skill.md`
-  - `rules/get_tool_history.md`  — `rules/save_widget.md`
-  - `rules/get_widget_code.md`  — `rules/update_widget.md`
+- **Tool params** (name→param): read rules/<tool>.md for details + edge cases:
+  - `web_search(query)` — `fetch_url(url)` — `save_memory(key, value)`
+  - `read_file(path)` — `write_file(path, content)` — `read_skill(name)`
+  - `get_tool_history(limit)` — `save_widget(widget_id, code)`
+  - `get_widget_code(widget_id)` — `update_widget(widget_id, code)`
