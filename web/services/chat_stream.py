@@ -64,6 +64,18 @@ def build_stream_generator(
 
         logger.info("Starting chat for session %s with model %s", session_id, model)
 
+        def _save_with_retry(desc: str = "") -> bool:
+            for attempt in range(2):
+                try:
+                    save_assistant_message(session_id, full_content, full_reasoning, phases_output, debug_info, model)
+                    logger.info("Save OK%s: %d chars", f" ({desc})" if desc else "", len(full_content))
+                    return True
+                except Exception as e:
+                    logger.warning("Save failed%s (attempt %d/2): %s", f" ({desc})" if desc else "", attempt + 1, e)
+                    if attempt == 0:
+                        time.sleep(0.5)
+            return False
+
         loop_detector = _LoopDetector()
         last_yield_time = time.monotonic()
         last_save_time = time.monotonic()
@@ -74,6 +86,7 @@ def build_stream_generator(
                 now = time.monotonic()
 
                 if tipo == "heartbeat":
+                    yield json.dumps({"t": "heartbeat", "d": ""}) + "\n"
                     continue
 
                 if tipo == "content":
@@ -92,12 +105,9 @@ def build_stream_generator(
                 last_yield_time = now
 
                 if now - last_save_time > save_interval and (full_content or full_reasoning):
-                    try:
-                        save_assistant_message(session_id, full_content, full_reasoning, phases_output, debug_info, model)
+                    if _save_with_retry("periodic"):
                         saved = True
                         last_save_time = now
-                    except Exception as e:
-                        logger.warning("Periodic save failed: %s", e)
 
             if not full_content and not full_reasoning:
                 logger.warning("Empty response for session %s with model %s", session_id, model)
@@ -106,11 +116,8 @@ def build_stream_generator(
 
             logger.info("Chat completed for session %s: %d chars content, %d chars reasoning", session_id, len(full_content), len(full_reasoning))
 
-            try:
-                save_assistant_message(session_id, full_content, full_reasoning, phases_output, debug_info, model)
+            if _save_with_retry("final"):
                 saved = True
-            except Exception as e:
-                logger.error("Final save failed for %s: %s", session_id, e)
             background_tasks.add_task(auto_rename_session, session_id, message, model)
 
         except GeneratorExit:
@@ -124,11 +131,9 @@ def build_stream_generator(
         finally:
             if not saved and (full_content or full_reasoning):
                 logger.info("Saving partial message for session %s after stream interruption", session_id)
-                try:
-                    save_assistant_message(session_id, full_content, full_reasoning, phases_output, debug_info, model)
+                if _save_with_retry("interruption"):
                     saved = True
-                except Exception as e:
-                    logger.error("Final save failed for %s: %s", session_id, e)
+                else:
                     try:
                         yield json.dumps({"t": "error", "d": {"type": "save_failed", "message": "Message not saved"}}) + "\n"
                     except Exception:

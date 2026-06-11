@@ -1,6 +1,7 @@
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Generator
 from typing import Any
 from src.tools._rate_limiter import _check_rate_limit
@@ -9,30 +10,45 @@ from src.tools._tool_persister import _persist_tool_results
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+_HEARTBEAT_INTERVAL: float = 10.0
+_POLL_INTERVAL: float = 0.5
+
 
 def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]]) -> Generator[Any, None, None]:
     with ThreadPoolExecutor(max_workers=max(1, len(tcs_info))) as pool:
         futs = {}
         for tc, name, args in tcs_info:
             futs[pool.submit(tool_map[name], **args, _session_id=session_id)] = (tc, name)
-        for fut in as_completed(futs):
-            tc, name = futs[fut]
-            try:
-                tool_result = fut.result(timeout=60)
-                status = "error" if tool_result and tool_result.startswith("[ERROR]") else "ok"
-            except TimeoutError:
-                logger.warning("Tool execution timed out for '%s'", name)
-                tool_result = f"[ERROR en {name}]: Timeout después de 60 segundos."
-                status = "error"
-            except Exception:
-                logger.exception("Tool execution failed for '%s'", name)
-                tool_result = f"[ERROR en {name}]: Error interno al ejecutar el tool."
-                status = "error"
-            if len(tool_result) > 30000:
-                tool_result = tool_result[:30000] + "\n...[truncado]"
-            results[tc.id] = (tool_result, status)
-            if tagged:
-                yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": status}))
+        remaining = set(futs.keys())
+        last_heartbeat = time.monotonic()
+        while remaining:
+            done = {fut for fut in remaining if fut.done()}
+            if done:
+                for fut in done:
+                    tc, name = futs[fut]
+                    try:
+                        tool_result = fut.result(timeout=0)
+                        status = "error" if tool_result and tool_result.startswith("[ERROR]") else "ok"
+                    except TimeoutError:
+                        logger.warning("Tool execution timed out for '%s'", name)
+                        tool_result = f"[ERROR en {name}]: Timeout después de 60 segundos."
+                        status = "error"
+                    except Exception:
+                        logger.exception("Tool execution failed for '%s'", name)
+                        tool_result = f"[ERROR en {name}]: Error interno al ejecutar el tool."
+                        status = "error"
+                    if len(tool_result) > 30000:
+                        tool_result = tool_result[:30000] + "\n...[truncado]"
+                    results[tc.id] = (tool_result, status)
+                    if tagged:
+                        yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": status}))
+                remaining -= done
+            if remaining:
+                now = time.monotonic()
+                if tagged and now - last_heartbeat >= _HEARTBEAT_INTERVAL:
+                    yield ("heartbeat", "")
+                    last_heartbeat = now
+                time.sleep(_POLL_INTERVAL)
 
 
 def _prepare_tool_calls(

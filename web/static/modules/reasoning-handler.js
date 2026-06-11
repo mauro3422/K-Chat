@@ -4,8 +4,8 @@ export function registerReasoningHandler() {
   KairosStream.on('reasoning', function(token, state) {
     try {
       state.reasoningText += token;
-      var toolCount = state._lastToolCount !== undefined ? state._lastToolCount : (state._lastToolCount = state.asstDiv.querySelectorAll('.tool-calls').length);
-      if (state.reasoningEls.length <= toolCount) {
+      var isNewPhase = state.reasoningState.enter();
+      if (isNewPhase) {
         var newDet = document.createElement('details');
         newDet.className = 'reasoning';
         newDet.open = true;

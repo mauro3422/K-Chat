@@ -7,9 +7,8 @@ export function attemptRetry(params) {
   var lastUserMessageText = params.lastUserMessageText;
   var reason = params.reason;
   var hasContent = params.hasContent;
-  var hasSuccessfulTools = params.hasSuccessfulTools;
 
-  if (!RetryHandler.shouldRetry(hasContent, hasSuccessfulTools)) {
+  if (!RetryHandler.shouldRetry(hasContent)) {
     return false;
   }
 
@@ -30,9 +29,5 @@ export function handleRetryFinalization(params) {
   }
 
   RetryHandler.resetRetryCount();
-  input.disabled = false;
-  input.value = '';
-  document.getElementById('spinner').textContent = '';
-  input.focus();
-  KairosUtils.scrollToBottom();
+  KairosUtils.finalizeStream(input);
 }

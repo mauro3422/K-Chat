@@ -12,15 +12,20 @@ function showRetryNotice(attempt, reason) {
 export function scheduleRetry(form, input, asstDiv, lastUserMessageText, reason) {
   retryState.count++;
   showRetryNotice(retryState.count, reason);
-  asstDiv.remove();
+  var bodyDiv = asstDiv.querySelector('.msg-body');
+  if (bodyDiv) bodyDiv.innerHTML = '';
+  var toRemove = asstDiv.querySelectorAll('.reasoning, .tool-calls');
+  for (var r = 0; r < toRemove.length; r++) {
+    toRemove[r].remove();
+  }
   input.value = lastUserMessageText;
   return delay(2000 * retryState.count).then(function doScheduledSubmit() {
     form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
   });
 }
 
-export function shouldRetry(hasContent, hasSuccessfulTools) {
-  return retryState.count < retryState.maxRetries && !hasContent && !hasSuccessfulTools;
+export function shouldRetry(hasContent) {
+  return retryState.count < retryState.maxRetries && !hasContent;
 }
 
 export function incrementRetry() {

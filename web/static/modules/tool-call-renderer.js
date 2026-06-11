@@ -5,6 +5,8 @@ export function registerToolCallRenderer() {
     try {
       var info = JSON.parse(dataStr);
       if (info.status === 'partial') return;
+      state.reasoningState.exit();
+      state._toolTurnSinceLastContent = true;
       var allTc = state.asstDiv.querySelectorAll('.tool-calls');
       var tcEl = null;
       if (info.status === 'calling') {

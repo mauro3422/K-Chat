@@ -5,6 +5,17 @@ from src.api import save_debug_info
 from src.api import save_message as db_save_message
 
 
+def _dedup_phases(phases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not phases:
+        return phases
+    result = [phases[0]]
+    for phase in phases[1:]:
+        prev = result[-1]
+        if phase.get("content") != prev.get("content") or phase.get("reasoning") != prev.get("reasoning"):
+            result.append(phase)
+    return result
+
+
 def save_assistant_message(
     session_id: str,
     full_content: str,
@@ -14,6 +25,7 @@ def save_assistant_message(
     model: str,
 ) -> None:
     """Persists the assistant message and debug info to the database."""
+    phases_output[:] = _dedup_phases(phases_output)
     phases_json = json.dumps(phases_output, ensure_ascii=False)
     pt = debug_info.get("prompt_tokens", 0)
     ct = debug_info.get("completion_tokens", 0)

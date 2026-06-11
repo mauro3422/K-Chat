@@ -1,5 +1,6 @@
 /* global StreamErrorHandler, RetryHandler */
 
+import { ReasoningState } from './reasoning-state.js';
 import { executeStreamFetch } from './stream-fetcher.js';
 import { attemptRetry } from './stream-retry-coordinator.js';
 
@@ -41,7 +42,10 @@ export const StreamOrchestrator = {
       reasoningEls: [],
       contentTexts: [''],
       reasoningText: '',
-      firstToken: true
+      firstToken: true,
+      reasoningState: new ReasoningState(),
+      _toolTurnSinceLastContent: false,
+      _toolPhase: 0
     };
 
     var fetchResult;
@@ -65,10 +69,7 @@ export const StreamOrchestrator = {
         if (isEmpty) {
           asstDiv.remove();
         }
-        input.disabled = false;
-        input.value = '';
-        document.getElementById('spinner').textContent = '';
-        input.focus();
+        KairosUtils.finalizeStream(input);
         return;
       }
 
@@ -106,11 +107,7 @@ export const StreamOrchestrator = {
       if (errorType === 'auth' || errorType === 'rate_limit') {
         StreamErrorHandler.showRetryMessage(asstDiv, errorMsg);
         RetryHandler.resetRetryCount();
-        input.disabled = false;
-        input.value = '';
-        document.getElementById('spinner').textContent = '';
-        input.focus();
-        KairosUtils.scrollToBottom();
+        KairosUtils.finalizeStream(input);
         return;
       }
 
@@ -129,11 +126,7 @@ export const StreamOrchestrator = {
 
       StreamErrorHandler.showRetryMessage(asstDiv, errorMsg + ' (después de ' + RetryHandler.getMaxRetries() + ' reintentos)');
       RetryHandler.resetRetryCount();
-      input.disabled = false;
-      input.value = '';
-      document.getElementById('spinner').textContent = '';
-      input.focus();
-      KairosUtils.scrollToBottom();
+      KairosUtils.finalizeStream(input);
       return;
     }
 
@@ -165,11 +158,7 @@ export const StreamOrchestrator = {
       if (typeof debugVisible !== 'undefined' && debugVisible) refreshDebug();
     }
 
-    input.disabled = false;
-    input.value = '';
-    document.getElementById('spinner').textContent = '';
-    input.focus();
-    KairosUtils.scrollToBottom();
+    KairosUtils.finalizeStream(input);
   }
 
 };

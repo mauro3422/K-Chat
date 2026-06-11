@@ -173,11 +173,23 @@ def run_tool_loop_streaming(
     phase_tool_ids = []
     total_reasoning = []
 
+    prev_content: str | None = None
+
     while turn < ctx.max_turns:
         accumulated, reasoning_out, tool_calls_out, phase_reasoning = yield from _process_llm_stream(
             ctx.history, ctx.model, ctx.debug, ctx.tagged, total_reasoning,
         )
 
+        curr_content = "".join(t[1] for t in accumulated if t[0] == "content") or None
+
+        if curr_content and prev_content and curr_content == prev_content:
+            logger.warning("Duplicate content detected (turn %d), breaking tool loop", turn)
+            yield ("content", curr_content) if ctx.tagged else curr_content
+            if phase_reasoning or curr_content:
+                _append_phase(ctx.phases_output, phase_reasoning, [], curr_content)
+            break
+
+        prev_content = curr_content
         has_tool_call = bool(tool_calls_out)
 
         if has_tool_call:

@@ -8,7 +8,11 @@ export function registerContentHandler() {
         return;
       }
       
-      var phaseIdx = Math.max(0, state.reasoningEls.length - 1);
+      if (state._toolTurnSinceLastContent) {
+        state._toolTurnSinceLastContent = false;
+        state._toolPhase = (state._toolPhase || 0) + 1;
+      }
+      var phaseIdx = Math.max(0, state.reasoningEls.length - 1) + (state._toolPhase || 0);
       
       state.widgetMap = state.widgetMap || [];
       state.widgetMap[phaseIdx] = state.widgetMap[phaseIdx] || {};
@@ -29,16 +33,16 @@ export function registerContentHandler() {
       
       if (!state.contentTexts[phaseIdx]) logUI('body_start', token.substring(0, 60));
       state.contentTexts[phaseIdx] += token;
+      state.reasoningState.exit();
       
       var fullText = state.contentTexts[phaseIdx];
       state._widgetCache = state._widgetCache || {};
-      var cache = state._widgetCache[phaseIdx] || { matches: [], prevLen: 0 };
-      var matches = cache.matches;
-      var prevLen = cache.prevLen;
+      var cache = state._widgetCache[phaseIdx] || {};
+      var matches = cache.matches || [];
       
-      var mightHaveWidget = token.indexOf('`') >= 0 || token.indexOf('[') >= 0 || fullText.length !== prevLen + token.length;
+      var mightHaveWidget = token.indexOf('`') >= 0 || token.indexOf('[') >= 0;
       
-      if (mightHaveWidget || prevLen === 0) {
+      if (mightHaveWidget || cache.prevLen === undefined) {
         var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```/g;
         var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
         var rawMatches = [];
@@ -82,9 +86,10 @@ export function registerContentHandler() {
         }
         matches = filteredMatches;
         cache.matches = matches;
-        cache.prevLen = fullText.length;
-        state._widgetCache[phaseIdx] = cache;
       }
+      
+      cache.prevLen = fullText.length;
+      state._widgetCache[phaseIdx] = cache;
       
       var bodyDiv = state.bodyDivs[phaseIdx];
       var widgetMap = state.widgetMap[phaseIdx];

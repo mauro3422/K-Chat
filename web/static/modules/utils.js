@@ -41,5 +41,14 @@ function showToast(message, type) {
   setTimeout(function() { if (toast.parentNode) toast.remove(); }, 8000);
 }
 
-export const KairosUtils = { escHtml, scrollToBottom, initGlobalErrorHandlers, showToast };
+function finalizeStream(input) {
+  input.disabled = false;
+  input.value = '';
+  var spinner = document.getElementById('spinner');
+  if (spinner) spinner.textContent = '';
+  input.focus();
+  scrollToBottom();
+}
+
+export const KairosUtils = { escHtml, scrollToBottom, initGlobalErrorHandlers, showToast, finalizeStream };
 window.KairosUtils = KairosUtils;
