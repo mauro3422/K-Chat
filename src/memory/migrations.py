@@ -210,6 +210,30 @@ def _migration_010_memory_index(conn, engine):
     engine.execute(conn, "CREATE INDEX IF NOT EXISTS idx_memory_index_key ON memory_index (key)")
 
 
+def _migration_011_cleanup_orphans(conn, engine):
+    # Clean orphaned records from sessions that were deleted
+    for table in ('widget_states', 'memory_index', 'messages', 'tool_calls', 'debug_info'):
+        engine.execute(conn, f"""
+            DELETE FROM {table} WHERE session_id NOT IN (SELECT session_id FROM sessions)
+        """)
+    # Add cleanup triggers: when a session is deleted, cascade cleanups
+    triggers = [
+        ('trg_cleanup_widget_states', 'widget_states'),
+        ('trg_cleanup_memory_index', 'memory_index'),
+        ('trg_cleanup_messages', 'messages'),
+        ('trg_cleanup_tool_calls', 'tool_calls'),
+        ('trg_cleanup_debug_info', 'debug_info'),
+    ]
+    for tname, table in triggers:
+        engine.execute(conn, f"""
+            CREATE TRIGGER IF NOT EXISTS {tname}
+            AFTER DELETE ON sessions
+            BEGIN
+                DELETE FROM {table} WHERE session_id = OLD.session_id;
+            END;
+        """)
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -221,4 +245,5 @@ MIGRATIONS = (
     _migration_008_add_token_counts,
     _migration_009_add_indexes,
     _migration_010_memory_index,
+    _migration_011_cleanup_orphans,
 )
