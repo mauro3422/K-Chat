@@ -33,13 +33,15 @@ export function registerReasoningHandler() {
           prev.querySelector('summary').textContent = 'Razonamiento';
           prev.open = false;
           state.asstDiv.appendChild(newDet);
-          state.reasoningEls.push(newDet);
-          logUI('reasoning_phase', state.reasoningEls.length);
         } else {
-          state.bodyDivs[0].insertAdjacentElement('beforebegin', newDet);
-          state.reasoningEls.push(newDet);
-          logUI('reasoning_phase', state.reasoningEls.length);
+          if (state.asstDiv.children.length > 1) {
+            state.asstDiv.appendChild(newDet);
+          } else {
+            state.bodyDivs[0].insertAdjacentElement('beforebegin', newDet);
+          }
         }
+        state.reasoningEls.push(newDet);
+        logUI('reasoning_phase', state.reasoningEls.length);
       }
       var rt = state.reasoningEls[state.reasoningEls.length - 1].querySelector('.' + C.RT);
       if (rt) rt.textContent += token;
