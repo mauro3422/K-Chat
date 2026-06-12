@@ -10,6 +10,8 @@ import os
 import re
 from typing import Any
 
+from src.tools._path_helpers import resolve_and_validate_path
+
 logger = logging.getLogger(__name__)
 
 DEFINITION = {
@@ -398,8 +400,14 @@ def _walk_directory(
         if entry.startswith('.'):
             continue
         if os.path.isdir(full) and entry not in SKIP_DIRS:
+            _, err = resolve_and_validate_path(full)
+            if err:
+                continue
             dirs.append(entry)
         elif os.path.isfile(full) and not entry.startswith('.'):
+            _, err = resolve_and_validate_path(full)
+            if err:
+                continue
             if pattern:
                 if fnmatch.fnmatch(entry, pattern):
                     files.append(entry)
@@ -415,6 +423,9 @@ def _walk_directory(
             return output, file_count
 
         fpath = os.path.join(path, fname)
+        _, err = resolve_and_validate_path(fpath)
+        if err:
+            continue
         info = _analyze_file(fpath, show_imports)
         file_count += 1
         size_str = _format_size(info['size'])
@@ -431,8 +442,11 @@ def _walk_directory(
             if file_count > MAX_FILES_LISTED:
                 return output, file_count
             dpath = os.path.join(path, dname)
+            resolved_dpath, err = resolve_and_validate_path(dpath)
+            if err:
+                continue
             child_output, file_count = _walk_directory(
-                dpath, depth, pattern, show_imports, current_depth + 1, file_count
+                resolved_dpath, depth, pattern, show_imports, current_depth + 1, file_count
             )
             output += child_output
 
@@ -440,15 +454,19 @@ def _walk_directory(
 
 
 def run(**kwargs: Any) -> str:
-    path = os.path.expanduser(kwargs.get("path", "~/proyectos"))
+    path = kwargs.get("path", "~/proyectos")
     depth = min(int(kwargs.get("depth", 1)), 3)  # max depth 3
     pattern = kwargs.get("pattern", "").strip()
     show_imports = bool(kwargs.get("show_imports", False))
 
-    if not os.path.exists(path):
+    resolved_path, err = resolve_and_validate_path(path)
+    if err:
+        return err
+
+    if not os.path.exists(resolved_path):
         return f"[ERROR] El path '{path}' no existe."
 
-    output, count = _walk_directory(path, depth, pattern, show_imports)
+    output, count = _walk_directory(resolved_path, depth, pattern, show_imports)
 
     # Limitar output total
     if len(output) > 30000:

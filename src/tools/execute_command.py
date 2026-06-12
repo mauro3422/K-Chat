@@ -3,6 +3,8 @@ import os
 import subprocess
 from typing import Any
 
+from src.tools._path_helpers import resolve_and_validate_path
+
 logger = logging.getLogger(__name__)
 
 DEFINITION = {
@@ -64,17 +66,17 @@ def _is_dangerous(cmd: str) -> tuple[bool, str]:
 def run(**kwargs: Any) -> str:
     command = kwargs.get("command", "").strip()
     timeout = min(int(kwargs.get("timeout", DEFAULT_TIMEOUT)), MAX_TIMEOUT)
-    cwd = os.path.expanduser(kwargs.get("cwd", "~/proyectos"))
+    cwd = kwargs.get("cwd", "~/proyectos")
 
     if not command:
         return "[ERROR] No command provided."
 
-    # Expandir ~ en el directorio si no se expandió antes
-    if cwd.startswith("~"):
-        cwd = os.path.expanduser(cwd)
+    resolved_cwd, err = resolve_and_validate_path(cwd)
+    if err:
+        return err
 
     # Validar que el directorio exista
-    if not os.path.isdir(cwd):
+    if not os.path.isdir(resolved_cwd):
         return (
             f"[ERROR] El directorio '{cwd}' no existe. "
             f"Asegurate de que la carpeta exista o pasa un cwd valido."
@@ -94,7 +96,7 @@ def run(**kwargs: Any) -> str:
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=cwd,
+            cwd=resolved_cwd,
         )
 
         output = ""
