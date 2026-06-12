@@ -67,6 +67,16 @@ export function registerContentHandler() {
         bodyDiv.appendChild(targetSeg);
       }
 
+      // Collect existing containers by key before DOM rebuild
+      var existingByKey = {};
+      for (var ci = 1; ci < bodyDiv.children.length; ci += 2) {
+        var ch = bodyDiv.children[ci];
+        if (ch && ch.className === C.WIDGET_CONTAINER) {
+          var key = ch.getAttribute('data-widget-key');
+          if (key) existingByKey[key] = ch;
+        }
+      }
+
       var children = Array.prototype.slice.call(bodyDiv.children);
       for (var c = 0; c < children.length; c++) {
         if (children[c] !== targetSeg) {
@@ -88,8 +98,10 @@ export function registerContentHandler() {
       while ((m = codeBlockRegex.exec(fullText)) !== null) {
         var cKey = m[1] || null;
         var innerCode = m[2] || '';
-        widgetMatches.push({ index: m.index, end: m.index + m[0].length, key: cKey, code: innerCode, isNew: cKey ? !state._renderedKeys[cKey] : true, codeBlock: true });
-        if (cKey) state._renderedKeys[cKey] = true;
+        // Anonymous code blocks tracked by stable position in fullText
+        var dedupKey = cKey || '_pos_' + m.index;
+        widgetMatches.push({ index: m.index, end: m.index + m[0].length, key: cKey, code: innerCode, isNew: !state._renderedKeys[dedupKey], codeBlock: true });
+        state._renderedKeys[dedupKey] = true;
       }
 
       widgetMatches.sort(function(a, b) { return a.index - b.index; });
@@ -139,13 +151,17 @@ export function registerContentHandler() {
           bodyDiv.appendChild(seg);
         } else {
           var wm = widgetMatches[(newIdx - 1) / 2];
-          if (wm.isNew) {
+          var lookupKey = wm.key || (wm.codeBlock ? '_pos_' + (wm.index || 0) : null);
+          var existing = lookupKey ? existingByKey[lookupKey] : null;
+          if (existing) {
+            bodyDiv.appendChild(existing);
+          } else if (wm.isNew) {
             var wid = 'widget-' + KairosWidgets.nextIndex();
             KairosWidgets.registry[wid] = wm.code || '';
             var con = document.createElement('div');
             con.className = C.WIDGET_CONTAINER;
             con.setAttribute('data-widget-id', wid);
-            if (wm.key) con.setAttribute('data-widget-key', wm.key);
+            if (lookupKey) con.setAttribute('data-widget-key', lookupKey);
             bodyDiv.appendChild(con);
           } else {
             var ph = document.createElement('div');
