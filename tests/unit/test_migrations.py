@@ -11,6 +11,8 @@ from src.memory.migrations import (
     _migration_007_saved_widgets_global,
     _migration_008_add_token_counts,
     _migration_009_add_indexes,
+    _migration_010_memory_index,
+    _migration_011_cleanup_orphans,
     MIGRATIONS,
 )
 
@@ -140,10 +142,26 @@ class TestMigration009AddIndexes:
         assert engine.execute.call_count == 4
 
 
+class TestMigration010MemoryIndex:
+    def test_creates_table_and_index(self):
+        conn = MagicMock()
+        engine = MagicMock()
+        _migration_010_memory_index(conn, engine)
+        assert engine.execute.call_count == 2
+
+
+class TestMigration011CleanupOrphans:
+    def test_deletes_orphans_and_creates_triggers(self):
+        conn = MagicMock()
+        engine = MagicMock()
+        _migration_011_cleanup_orphans(conn, engine)
+        assert engine.execute.call_count == 10
+
+
 class TestMigrationRegistry:
     def test_all_migrations_are_callable(self):
         for m in MIGRATIONS:
             assert callable(m)
 
     def test_migration_count(self):
-        assert len(MIGRATIONS) == 9
+        assert len(MIGRATIONS) == 11

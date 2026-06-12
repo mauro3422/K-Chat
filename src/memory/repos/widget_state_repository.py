@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class WidgetStateRepository(_BaseRepository):
+    _table_name = "widget_states"
 
     def save_state(self, session_id: str, widget_id: str, state: str) -> None:
         """Save or update a widget state."""
@@ -20,15 +21,6 @@ class WidgetStateRepository(_BaseRepository):
                     state = excluded.state,
                     updated_at = excluded.updated_at
             ''', (session_id, widget_id, state, datetime.now().isoformat()))
-
-    def delete_by_session(self, session_id: str, cursor: Any = None) -> None:
-        """Delete all widget states for a session. Pass cursor for atomic orchestration."""
-        if cursor is not None:
-            cursor.execute("DELETE FROM widget_states WHERE session_id = ?", (session_id,))
-        else:
-            with self._transaction() as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM widget_states WHERE session_id = ?", (session_id,))
 
     def get_states(self, session_id: str) -> dict[str, str]:
         """Retrieve all widget states for a session."""

@@ -11,7 +11,7 @@ from src.api.widgets import (
 )
 from src.api.chat import get_default_model, get_verified_models, chat_stream, auto_rename_session
 from src.api.debug import save_debug_info, get_debug_info
-from src.api.database import init_db, generate_session_id
+from src.api.database import init_db, generate_session_id, check_db_connection
 from src.api._repos import _get_repo  # noqa: F401 — may be needed by consumers
 
 # Constants
@@ -28,6 +28,6 @@ __all__ = [
     "sanitize_widget_id",
     "get_default_model", "get_verified_models", "chat_stream", "auto_rename_session",
     "save_debug_info", "get_debug_info",
-    "init_db", "generate_session_id",
+    "init_db", "generate_session_id", "check_db_connection",
     "PRIORITY", "TOOL_DEFINITIONS",
 ]

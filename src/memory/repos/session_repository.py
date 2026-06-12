@@ -36,11 +36,8 @@ class SessionRepository(_BaseRepository):
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
-            MessageRepository(self._conn).delete_by_session(session_id, cursor)
-            ToolCallRepository(self._conn).delete_by_session(session_id, cursor)
-            DebugRepository(self._conn).delete_by_session(session_id, cursor)
-            WidgetStateRepository(self._conn).delete_by_session(session_id, cursor)
-            SavedWidgetRepository(self._conn).delete_by_session(session_id, cursor)
+            for repo_cls in [MessageRepository, ToolCallRepository, DebugRepository, WidgetStateRepository, SavedWidgetRepository]:
+                repo_cls(self._conn).delete_by_session(session_id, cursor)
             cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
             conn.commit()
         except Exception:

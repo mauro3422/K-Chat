@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class SavedWidgetRepository(_BaseRepository):
+    _table_name = "saved_widgets"
 
     def save(self, session_id: str, widget_id: str, code: str, description: str = "") -> dict[str, Any]:
         """Save a widget version and update the active widget record."""

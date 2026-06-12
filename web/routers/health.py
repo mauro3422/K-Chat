@@ -9,12 +9,9 @@ def health():
     checks = {}
     
     # Check database
+    from src.api import check_db_connection
     try:
-        from src.memory.database import get_conn
-        conn = get_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        checks["database"] = "ok"
+        checks["database"] = "ok" if check_db_connection() else "error"
     except Exception as e:
         checks["database"] = f"error: {e}"
     

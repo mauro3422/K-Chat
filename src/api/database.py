@@ -13,3 +13,14 @@ def init_db() -> None:
 def generate_session_id() -> str:
     """Genera un ID único de sesión."""
     return _generate_session_id()
+
+
+def check_db_connection() -> bool:
+    """Check that the database is reachable by running SELECT 1."""
+    from src.memory.database import get_conn
+    try:
+        conn = get_conn()
+        conn.execute("SELECT 1")
+        return True
+    except Exception:
+        return False

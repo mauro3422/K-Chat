@@ -8,6 +8,8 @@ logger = logging.getLogger(__name__)
 
 
 class _BaseRepository:
+    _table_name: str = ""
+
     def __init__(self, conn: Any = None, engine: Any = None) -> None:
         self._conn = conn
         self._engine = engine
@@ -34,6 +36,16 @@ class _BaseRepository:
                 conn.rollback()
             logger.exception("Database transaction failed")
             raise
+
+    def delete_by_session(self, session_id: str, cursor: Any = None) -> None:
+        if not self._table_name:
+            raise NotImplementedError("Subclass must set _table_name")
+        sql = f"DELETE FROM {self._table_name} WHERE session_id = ?"
+        if cursor is not None:
+            cursor.execute(sql, (session_id,))
+        else:
+            with self._transaction() as conn:
+                conn.cursor().execute(sql, (session_id,))
 
 
 __all__ = ["_BaseRepository"]

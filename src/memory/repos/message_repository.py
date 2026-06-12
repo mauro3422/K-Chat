@@ -24,6 +24,7 @@ class MessageRecord:
 
 
 class MessageRepository(_BaseRepository):
+    _table_name = "messages"
 
     def save(
         self,
@@ -75,15 +76,6 @@ class MessageRepository(_BaseRepository):
             completion_tokens=record.completion_tokens,
             total_tokens=record.total_tokens,
         )
-
-    def delete_by_session(self, session_id: str, cursor: Any = None) -> None:
-        """Delete all messages for a session. Pass cursor for atomic orchestration."""
-        if cursor is not None:
-            cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
-        else:
-            with self._transaction() as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
 
     def get_session_messages(self, session_id: str, limit: int = 500) -> list[tuple[Any, ...]]:
         """Retrieve messages for a session, ordered by creation time."""
