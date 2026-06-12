@@ -3,6 +3,11 @@
 > **Regla**: Este archivo es solo el índice. El detalle de cada versión está en `changelogs/vX.Y.Z.md`.
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 
+## [v0.0.26] — 2026-06-12 — [Detalle](changelogs/v0.0.26.md)
+- Removed the shared `_get_repo()` registry and moved runtime callers to module-level repository singletons
+- Trimmed `src/api/_repos.py` out of the runtime path and aligned the remaining facade/tests to the direct seams
+- Updated architecture docs so the repository/cache story matches the code
+
 ## [v0.0.25] — 2026-06-12 — [Detalle](changelogs/v0.0.25.md)
 - Stream contract shared between Python and JS, widget bootstrap split, dev server split, API facade trimmed
 - Page/model startup no longer blocks requests, `src.core._deps` moved from partials to explicit wrappers, sync save path fixed without reintroducing a core cycle

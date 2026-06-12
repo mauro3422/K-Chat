@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch
 
 
-@patch("src.core._deps.llm_chat")
+@patch("src.core.chat_sync.llm_chat")
 @patch("src.core.chat_sync.build_system_prompt")
 @patch("src.core.chat_sync.get_default_model")
 def test_chat_basic(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):
@@ -19,7 +19,7 @@ def test_chat_basic(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):
     mock_build_sp.assert_not_called()
 
 
-@patch("src.core._deps.llm_chat")
+@patch("src.core.chat_sync.llm_chat")
 @patch("src.core.chat_sync.build_system_prompt")
 @patch("src.core.chat_sync.get_default_model")
 def test_chat_no_history(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):
@@ -36,7 +36,7 @@ def test_chat_no_history(mock_get_model, mock_build_sp, mock_llm_chat, make_choi
     mock_build_sp.assert_called_once_with("test-model")
 
 
-@patch("src.core._deps.llm_chat")
+@patch("src.core.chat_sync.llm_chat")
 @patch("src.core.chat_sync.build_system_prompt")
 @patch("src.core.chat_sync.get_default_model")
 def test_chat_with_existing_history(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):
@@ -53,7 +53,7 @@ def test_chat_with_existing_history(mock_get_model, mock_build_sp, mock_llm_chat
     mock_build_sp.assert_not_called()
 
 
-@patch("src.core._deps.llm_chat")
+@patch("src.core.chat_sync.llm_chat")
 @patch("src.core.chat_sync.build_system_prompt")
 @patch("src.core.chat_sync.get_default_model")
 def test_chat_error_propagation(mock_get_model, mock_build_sp, mock_llm_chat):
@@ -65,7 +65,7 @@ def test_chat_error_propagation(mock_get_model, mock_build_sp, mock_llm_chat):
         chat("Hi", [{"role": "system", "content": "sys"}])
 
 
-@patch("src.core._deps.llm_chat")
+@patch("src.core.chat_sync.llm_chat")
 @patch("src.core.chat_sync.build_system_prompt")
 @patch("src.core.chat_sync.get_default_model")
 def test_chat_empty_message(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):

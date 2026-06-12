@@ -221,7 +221,7 @@ def test_empty_message(mock_chat, make_choice):
     assert any("OK" in c for c in contents)
 
 
-@patch("src.core._deps.llm_chat")
+@patch("src.core.chat_sync.llm_chat")
 def test_chat_non_streaming(mock_chat, make_choice):
     """chat() returns response and updated history."""
     mock_chat.return_value = make_choice(content="Respuesta de prueba")

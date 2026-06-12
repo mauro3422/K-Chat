@@ -10,7 +10,7 @@ entry/
   web/server.py       → FastAPI entry point (static files, middleware, exception handlers)
 
 api/
-  api.py              → Public facade: 19+ functions, lazy repos, single entry for web routers
+  api.py              → Compatibility facade for domain modules, used by older callers
 
 core/
   orchestrator.py     → Chat loop, streaming, compression, debug snapshots
@@ -67,10 +67,9 @@ support/
 
 ## `src/api.py`
 
-**Responsibility:** Public facade for the entire backend. Web routers call api.py exclusively; it owns repository singletons and coordinates core/orchestrator + memory.
+**Responsibility:** Compatibility facade for the backend. New code should import domain modules directly; the facade stays only for older callers.
 
 **Public Interface (19+ functions):**
-- `get_repos()` → tuple of 6 repo instances (lazy)
 - `ensure_session(session_id)`, `rename_session(...)`, `delete_session(...)`, `get_sessions(limit)`
 - `save_message(...)`, `get_session_messages(...)`, `get_history(...)`, `get_tool_history(...)`
 - `rebuild_history(...)`, `filter_messages_for_ui(...)`, `match_tools_to_msgs(...)`

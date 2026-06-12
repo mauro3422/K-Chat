@@ -112,10 +112,10 @@ User input → src/cli.py → core.chat_sync.chat()
 ## Module Responsibilities
 
 ### `src/api/` — Public Facade Package
-- `__init__.py`: Single entry point for web routers. All DB ops through this.
-- 19+ public functions: `get_repos()`, `save_message()`, `rebuild_history()`, `get_sessions()`, `rename_session()`, `delete_session()`, `get_session_messages()`, `filter_messages_for_ui()`, `match_tools_to_msgs()`, `save_widget_state()`, `db_save_widget()`, `db_get_widget()`, `db_get_widget_versions()`, `db_get_widget_by_version()`, `save_debug_info()`, `get_debug_info()`, `get_tool_history()`, `chat_stream()`.
-- Sub-modules: `messages.py`, `sessions.py`, `widgets.py`, `debug.py`, `tools.py`, `rebuild.py`, `filter.py`, `stream.py`, `repos.py`.
-- Lazy repository singletons via `_get_repo()` with name-based caching.
+- `__init__.py`: Compatibility surface for older callers. New code should import the domain module directly.
+- Public functions are grouped by domain: `save_message()`, `rebuild_history()`, `get_sessions()`, `rename_session()`, `delete_session()`, `get_session_messages()`, `filter_messages_for_ui()`, `match_tools_to_msgs()`, `save_widget_state()`, `db_save_widget()`, `db_get_widget()`, `db_get_widget_versions()`, `db_get_widget_by_version()`, `save_debug_info()`, `get_debug_info()`, `get_tool_history()`, `chat_stream()`.
+- Sub-modules: `messages.py`, `session.py`, `widgets.py`, `debug.py`, `tools.py`, `history.py`, `chat.py`, `database.py`.
+- Repository singletons now live in each domain module; there is no shared `_get_repo()` cache layer anymore.
 
 ### `src/core/orchestrator.py` — The Brain
 - `chat_stream()`: Main streaming generator. Manages the full lifecycle of a conversation turn (84 lines).
@@ -183,7 +183,7 @@ User input → src/cli.py → core.chat_sync.chat()
   - `widget_state_repository.py`: `WidgetStateRepository` — save_state, get_states, delete_session_widget_states.
   - `debug_repository.py`: `DebugRepository` — save_info, get_info, delete_session_debug.
   - `saved_widget_repository.py`: `SavedWidgetRepository` — save, get, get_versions, get_by_version.
-  - `__init__.py`: `Repositories` dataclass + `get_repos(conn)` factory function.
+  - `__init__.py`: `Repositories` dataclass + `get_repos(conn)` factory function for shared-connection use cases.
 - `repositories.py`: Legacy re-exports from `repos/` for backwards compatibility.
 - `migrations.py`: 9 migration functions from `_migration_001_initial_schema` to `_migration_009_add_indexes`. Idempotent via `IF NOT EXISTS` and `try/except OperationalError`.
 

@@ -126,7 +126,7 @@ WEB (dashboard)
 | **Repository** | 6 repos en `src/memory/repos/`, base abstracta `_BaseRepository` |
 | **Context Manager** | `_transaction()` con rollback automático |
 | **Provider/Registry** | `_PROVIDER_REGISTRY` + `register_provider()` para LLMs dinámicos |
-| **Lazy Singleton** | `_get_repo()`, `_get_provider()`, `_get_conn()` |
+| **Lazy Singleton** | `_get_provider()`, `_get_conn()` |
 | **Auto-discovery** | `importlib` scan en `tools/loader.py` |
 | **Event Emitter** | `KairosStream` en frontend (on/emit) |
 | **Dataclass** | `ToolLoopContext` (11 params → 1 objeto), `StreamState`, `MessageRecord` |
