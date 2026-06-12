@@ -1,4 +1,4 @@
-/* global StreamErrorHandler */
+import { StreamErrorHandler } from './stream-error-handler.js';
 
 export function executeStreamFetch(params) {
   var sessionId = params.sessionId;

@@ -20,11 +20,12 @@ DEFINITION = {
 def run(**kwargs) -> str:
     limit = int(kwargs.get("limit", kwargs.get("max_results", kwargs.get("count", kwargs.get("n", 5)))))
     _session_id = kwargs.get("_session_id")
-    from src.tools._tool_persister import _get_tool_call_repo
+    from src.memory.repos import ToolCallRepository
+    from src.api._repos import _get_repo
     if not _session_id:
         return "No active session."
     try:
-        rows = _get_tool_call_repo().get_history(_session_id, limit=min(limit, 20))
+        rows = _get_repo(ToolCallRepository, "tool_call").get_history(_session_id, limit=min(limit, 20))
     except Exception:
         return "[ERROR] Could not retrieve the tool history."
     if not rows:

@@ -15,6 +15,7 @@ await import(`file://${widgetsDir}/toolbar.js`);
 const iframeModule = await import(`file://${widgetsDir}/iframe.js`);
 await import(`file://${widgetsDir}/messaging.js`);
 await import(`file://${widgetsDir}/index.js`);
+const { setWidgetObserver } = iframeModule;
 
 function makeContainer(id, key) {
     return {
@@ -47,7 +48,7 @@ function makeScope(container) {
 beforeEach(() => {
     KairosWidgets.reset();
     iframeModule.reset();
-    window.KairosWidgets.setWidgetObserver({ observe: function() {} });
+    setWidgetObserver({ observe: function() {} });
 });
 
 describe('Widget Init — WeakMap tracking', () => {
@@ -55,8 +56,8 @@ describe('Widget Init — WeakMap tracking', () => {
         var container = makeContainer('w-idem', 'idem-key');
         var scope = makeScope(container);
 
-        window.KairosWidgets.initAll(scope);
-        window.KairosWidgets.initAll(scope);
+        iframeModule.initAll(scope);
+        iframeModule.initAll(scope);
 
         var widget = KairosWidgets.debug['w-idem'];
         expect(widget).toBeDefined();
@@ -105,7 +106,7 @@ describe('Widget Init — WeakMap tracking', () => {
         // Note: KairosWidgets.reset() clears registry+index but not _debug,
         // so we count total init events - should be 2 (one before reset, one after)
         KairosWidgets.reset();
-        window.KairosWidgets.initAll(scope);
+        iframeModule.initAll(scope);
 
         var widget = KairosWidgets.debug['w-reset'];
         var inits = widget.events.filter(function(e) { return e.label === 'init'; });
@@ -117,7 +118,7 @@ describe('Widget Init — WeakMap tracking', () => {
         var scope = makeScope(container);
 
         // Set up observer so lazy path is taken
-        window.KairosWidgets.setWidgetObserver({ observe: function() {} });
+        setWidgetObserver({ observe: function() {} });
 
         window.KairosWidgets.initAll(scope);
 
@@ -134,9 +135,9 @@ describe('Widget Init — WeakMap tracking', () => {
         var scope = makeScope(container);
 
         // Even with observer set, forceImmediate=true should take immediate path
-        window.KairosWidgets.setWidgetObserver({ observe: function() {} });
+        setWidgetObserver({ observe: function() {} });
 
-        window.KairosWidgets.initAll(scope, true);
+        iframeModule.initAll(scope, true);
 
         var wm = iframeModule.getInitializedWidgets();
         var state = wm.get(container);
@@ -151,7 +152,7 @@ describe('Widget Init — WeakMap tracking', () => {
         var scope = makeScope(container);
 
         // No observer set (null) -> immediate path
-        window.KairosWidgets.setWidgetObserver(null);
+        setWidgetObserver(null);
 
         window.KairosWidgets.initAll(scope);
 

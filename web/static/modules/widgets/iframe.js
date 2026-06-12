@@ -60,5 +60,4 @@ export function setWidgetObserver(observer) {
 }
 window.KairosWidgets = window.KairosWidgets || {};
 window.KairosWidgets.initAll = initAll;
-window.KairosWidgets.setWidgetObserver = setWidgetObserver;
-window.KairosWidgets.resetInitializedWidgets = reset;
+

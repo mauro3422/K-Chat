@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import './setup.js';
+import { KairosStream } from '../web/static/modules/stream-dispatcher.js';
 
 class MockElement {
   constructor(tag) {
@@ -158,15 +159,11 @@ global.DOMPurify = { sanitize: function(t) { return t; } };
 global.KairosUtils = { escHtml: function(s) { return String(s); } };
 global.logUI = function() {};
 
-const listeners = {};
-global.KairosStream = {
-  on: (evt, cb) => { listeners[evt] = cb; },
-  emit: (evt, ...args) => { if (listeners[evt]) listeners[evt](...args); }
-};
-
 const mockReasoningState = { enter: () => false, exit: () => {} };
 
 await import('../web/static/modules/content-handler.js');
+global.KairosStream = KairosStream;
+global.window.KairosWidgets = global.KairosWidgets;
 
 function makeState(overrides) {
   return Object.assign({
@@ -217,16 +214,13 @@ describe('content-handler', () => {
     expect(state.bodyDivs[0].children[0]?.dataset?.rawText).toBe(prevRawText);
   });
 
-  test('calls initAll() after rendering widget containers', () => {
-    var initAllCalled = false;
-    var origInitAll = global.KairosWidgets.initAll;
-    global.KairosWidgets.initAll = function() { initAllCalled = true; };
-
+  test('renders widget containers for [Widget: foo] marker', () => {
     const state = makeState();
     KairosStream.emit('content', '[Widget: foo]', state);
-
-    global.KairosWidgets.initAll = origInitAll;
-    expect(initAllCalled).toBe(true);
+    const bodyDiv = state.bodyDivs[0];
+    expect(bodyDiv.children.length).toBe(3);
+    expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
+    expect(bodyDiv.children[1].getAttribute('data-widget-key')).toBe('foo');
   });
 });
 

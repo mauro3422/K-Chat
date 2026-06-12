@@ -27,4 +27,3 @@ C.ERROR_CARD = 'error-card';
 C.WIDGET_CONTAINER = 'interactive-widget-container';
 
 export default C;
-window.DomContracts = C;

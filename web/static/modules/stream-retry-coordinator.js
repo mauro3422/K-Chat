@@ -1,4 +1,5 @@
-/* global RetryHandler, StreamErrorHandler */
+import { RetryHandler } from './retry-handler.js';
+import { StreamErrorHandler } from './stream-error-handler.js';
 
 export function attemptRetry(params) {
   var asstDiv = params.asstDiv;

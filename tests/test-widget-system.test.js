@@ -13,9 +13,10 @@ const KairosWidgets = coreModule.KairosWidgets;
 const iframeBuilder = await import(`file://${widgetsDir}/iframe-builder.js`);
 const buildIframeSrc = iframeBuilder.buildIframeSrc;
 await import(`file://${widgetsDir}/toolbar.js`);
-await import(`file://${widgetsDir}/iframe.js`);
+const iframeModule = await import(`file://${widgetsDir}/iframe.js`);
 await import(`file://${widgetsDir}/messaging.js`);
 await import(`file://${widgetsDir}/index.js`);
+const { setWidgetObserver } = iframeModule;
 
 describe('Widget System', () => {
   test('extract genera IDs únicos', () => {
@@ -126,9 +127,9 @@ describe('Widget System', () => {
       }
     };
 
-    window.KairosWidgets.setWidgetObserver({ observe: function() {} });
-    window.KairosWidgets.initAll(scope);
-    window.KairosWidgets.initAll(scope);
+    setWidgetObserver({ observe: function() {} });
+    iframeModule.initAll(scope);
+    iframeModule.initAll(scope);
 
     var widget = KairosWidgets.debug['w-lazy-test'];
     expect(widget).toBeDefined();

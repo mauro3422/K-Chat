@@ -178,11 +178,12 @@ describe('WidgetStateManager', () => {
         });
     });
 
-    describe('window.WidgetStateManager', () => {
-        test('instance is exported to window', () => {
-            expect(window.WidgetStateManager).toBeDefined();
-            expect(typeof window.WidgetStateManager.getState).toBe('function');
-            expect(typeof window.WidgetStateManager.setState).toBe('function');
+    describe('default export instance', () => {
+        test('instance works via import', async () => {
+            const defaultInstance = (await import(`file://${stateManagerPath}?t=${Date.now()}`)).default;
+            expect(defaultInstance).toBeDefined();
+            expect(typeof defaultInstance.getState).toBe('function');
+            expect(typeof defaultInstance.setState).toBe('function');
         });
     });
 });

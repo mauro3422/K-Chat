@@ -21,7 +21,10 @@ def build_stream_generator(
     message: str,
     history: list[dict[str, Any]],
     model: str,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    loop_detector: LoopDetector | None = None,
+    save_fn: Callable | None = None,
+    rename_fn: Callable | None = None,
 ) -> Callable[..., Generator[str, None, None]]:
     """Builds the NDJSON generator for the chat stream."""
     def generate() -> Generator[str, None, None]:
@@ -36,7 +39,7 @@ def build_stream_generator(
         def _save_with_retry(desc: str = "") -> bool:
             for attempt in range(2):
                 try:
-                    save_assistant_message(session_id, full_content, full_reasoning, phases_output, debug_info, model)
+                    _save(session_id, full_content, full_reasoning, phases_output, debug_info, model)
                     logger.info("Save OK%s: %d chars", f" ({desc})" if desc else "", len(full_content))
                     return True
                 except Exception as e:
@@ -45,7 +48,9 @@ def build_stream_generator(
                         time.sleep(0.5)
             return False
 
-        loop_detector = LoopDetector()
+        detector = loop_detector or LoopDetector()
+        _save = save_fn or save_assistant_message
+        _rename = rename_fn or auto_rename_session
         last_yield_time = time.monotonic()
         last_save_time = time.monotonic()
         save_interval = 30
@@ -59,7 +64,7 @@ def build_stream_generator(
                     continue
 
                 if tipo == "content":
-                    loop_error = loop_detector.check(token)
+                    loop_error = detector.check(token)
                     if loop_error:
                         logger.warning("Loop detected for %s: %s", session_id, loop_error)
                         yield json.dumps({"t": "error", "d": {"type": "loop_detected", "message": loop_error}}) + "\n"
@@ -87,7 +92,7 @@ def build_stream_generator(
 
             if _save_with_retry("final"):
                 saved = True
-            background_tasks.add_task(auto_rename_session, session_id, message, model)
+            background_tasks.add_task(_rename, session_id, message, model)
 
         except GeneratorExit:
             logger.info("Client disconnected for %s", session_id)

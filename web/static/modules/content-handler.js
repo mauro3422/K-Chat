@@ -1,9 +1,14 @@
 import C from './dom-contracts.js';
 import { getLogger } from './logger.js';
+import { processWidgetContainers } from './widget-container-renderer.js';
+import { KairosStream } from './stream-dispatcher.js';
+import { KairosWidgets } from './widgets/core.js';
+import { initAll } from './widgets/iframe.js';
+import { KairosMarkdown } from './markdown-renderer.js';
+import { KairosUtils } from './utils.js';
 var log = getLogger('content-handler');
 
 export function registerContentHandler() {
-  if (typeof KairosStream === 'undefined') return;
 
   KairosStream.on('content', function(token, ctx) {
     try {
@@ -69,7 +74,6 @@ export function registerContentHandler() {
         bodyDiv.appendChild(targetSeg);
       }
 
-      // Collect existing containers by key before DOM rebuild
       var existingByKey = {};
       for (var ci = 1; ci < bodyDiv.children.length; ci += 2) {
         var ch = bodyDiv.children[ci];
@@ -88,101 +92,11 @@ export function registerContentHandler() {
       if (!targetSeg) return;
 
       state._renderedKeys = state._renderedKeys || {};
-      var widgetMatches = [];
-      var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
-      var m;
-      while ((m = tagRegex.exec(fullText)) !== null) {
-        widgetMatches.push({ index: m.index, end: m.index + m[0].length, key: m[1], isNew: !state._renderedKeys[m[1]], codeBlock: false });
-        state._renderedKeys[m[1]] = true;
-      }
 
-      var codeBlockRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```/g;
-      while ((m = codeBlockRegex.exec(fullText)) !== null) {
-        var cKey = m[1] || null;
-        var innerCode = m[2] || '';
-        // Anonymous code blocks tracked by stable position in fullText
-        var dedupKey = cKey || '_pos_' + m.index;
-        widgetMatches.push({ index: m.index, end: m.index + m[0].length, key: cKey, code: innerCode, isNew: !state._renderedKeys[dedupKey], codeBlock: true });
-        state._renderedKeys[dedupKey] = true;
-      }
-
-      widgetMatches.sort(function(a, b) { return a.index - b.index; });
-      // Remove overlapping matches (code block covers tag inside it)
-      var filteredMatches = [];
-      var lastEnd = 0;
-      for (var fm = 0; fm < widgetMatches.length; fm++) {
-        if (widgetMatches[fm].index >= lastEnd) {
-          filteredMatches.push(widgetMatches[fm]);
-          lastEnd = widgetMatches[fm].end;
-        }
-      }
-      widgetMatches = filteredMatches;
-
-      if (widgetMatches.length) {
-        log.info('matches', { count: widgetMatches.length, types: widgetMatches.map(function(w){ return (w.codeBlock ? 'cb' : 'tag') + '=' + (w.key || 'anon') + ' new=' + w.isNew; }).join(', ') });
-      }
-
-      var textToRender = fullText;
-      var incompleteTail = '';
-
-      var lastOpen = fullText.lastIndexOf('```html-widget');
-      if (lastOpen >= 0) {
-        var afterOpen = fullText.substring(lastOpen);
-        var completeBlock = afterOpen.match(/^```html-widget(?:\s+[\w\-]+)?\s*\n[\s\S]*?\n```/);
-        if (!completeBlock) {
-          textToRender = fullText.substring(0, lastOpen);
-          incompleteTail = fullText.substring(lastOpen);
-          log.debug('incomplete_cb', { tailLen: incompleteTail.length });
-        }
-      }
-
-      // Remove complete code blocks from textToRender (handled as siblings)
-      for (var wmi = 0; wmi < widgetMatches.length; wmi++) {
-        var wmm = widgetMatches[wmi];
-        if (wmm.codeBlock && textToRender.length >= wmm.end) {
-          textToRender = textToRender.substring(0, wmm.index) + textToRender.substring(wmm.end);
-          var shift = wmm.end - wmm.index;
-          for (var adj = wmi + 1; adj < widgetMatches.length; adj++) {
-            widgetMatches[adj].index -= shift;
-            widgetMatches[adj].end -= shift;
-          }
-        }
-      }
-
-      var expectedCount = widgetMatches.length * 2 + 1;
-      while (bodyDiv.children.length < expectedCount) {
-        var newIdx = bodyDiv.children.length;
-        if (newIdx % 2 === 0) {
-          var seg = document.createElement('div');
-          seg.className = C.MSG_TEXT_SEGMENT;
-          bodyDiv.appendChild(seg);
-        } else {
-          var wm = widgetMatches[(newIdx - 1) / 2];
-          var lookupKey = wm.key || (wm.codeBlock ? '_pos_' + (wm.index || 0) : null);
-          var existing = lookupKey ? existingByKey[lookupKey] : null;
-          if (existing) {
-            bodyDiv.appendChild(existing);
-            log.debug('reuse_container', { key: lookupKey, wid: existing.getAttribute('data-widget-id') });
-          } else if (wm.isNew) {
-            var wid = 'widget-' + KairosWidgets.nextIndex();
-            KairosWidgets.registry[wid] = wm.code || '';
-            var con = document.createElement('div');
-            con.className = C.WIDGET_CONTAINER;
-            con.setAttribute('data-widget-id', wid);
-            if (lookupKey) con.setAttribute('data-widget-key', lookupKey);
-            bodyDiv.appendChild(con);
-            log.info('new_container', { wid: wid, key: lookupKey, codeLen: (wm.code || '').length });
-          } else {
-            var ph = document.createElement('div');
-            ph.style.display = 'none';
-            bodyDiv.appendChild(ph);
-          }
-        }
-      }
-
-      while (bodyDiv.children.length > expectedCount) {
-        bodyDiv.removeChild(bodyDiv.lastChild);
-      }
+      var result = processWidgetContainers(fullText, bodyDiv, existingByKey, state._renderedKeys);
+      var textToRender = result.textToRender;
+      var incompleteTail = result.incompleteTail;
+      var widgetMatches = result.widgetMatches;
 
       for (var i = 0; i <= widgetMatches.length; i++) {
         var start = i === 0 ? 0 : widgetMatches[i - 1].end;
@@ -218,9 +132,7 @@ export function registerContentHandler() {
         targetSeg.innerHTML = html;
       }
 
-      if (typeof KairosWidgets !== 'undefined' && typeof KairosWidgets.initAll === 'function') {
-        KairosWidgets.initAll(bodyDiv);
-      }
+      initAll(bodyDiv);
     } catch (e) {
       console.error('Content handler error:', e);
     }

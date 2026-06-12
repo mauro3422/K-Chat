@@ -1,6 +1,7 @@
 /* eslint-disable no-redeclare, no-unused-vars */
 
 import C from './dom-contracts.js';
+import { KairosWidgets } from './widgets/core.js';
 
 function decodeHtml(html) {
   // Solo decodificar si contiene entidades HTML escapadas
@@ -61,4 +62,3 @@ function renderAll() {
 }
 
 export const KairosMarkdown = { parse, renderAll };
-window.KairosMarkdown = KairosMarkdown;

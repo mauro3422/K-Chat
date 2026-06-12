@@ -1,4 +1,5 @@
 import { SessionContext } from './modules/session-context.js';
+import { KairosUtils } from './modules/utils.js';
 
 function timeToMs(t) {
   if (!t) return null;
@@ -46,6 +47,7 @@ function renderStreamLog() {
 
 function toggleDebug() {
   debugVisible = !debugVisible;
+  window.debugVisible = debugVisible;
   var p = document.getElementById('debug-panel');
   var m = document.getElementById('main');
   if (p) p.classList.toggle('open', debugVisible);
@@ -287,3 +289,4 @@ window.copyText = KairosDebug.copyText;
 window.copyWidgetLog = KairosDebug.copyWidgetLog;
 window.copyBackendLogs = KairosDebug.copyBackendLogs;
 window.copyAllDebug = KairosDebug.copyAllDebug;
+window.debugVisible = debugVisible;

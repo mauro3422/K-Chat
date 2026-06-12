@@ -51,4 +51,3 @@ function finalizeStream(input) {
 }
 
 export const KairosUtils = { escHtml, scrollToBottom, initGlobalErrorHandlers, showToast, finalizeStream };
-window.KairosUtils = KairosUtils;

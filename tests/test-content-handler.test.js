@@ -136,22 +136,17 @@ global.KairosMarkdown = { parse: function(t) { return '<p>' + t + '</p>'; } };
 global.KairosUtils = { escHtml: function(s) { return String(s); } };
 global.logUI = function() {};
 
-var handlingStream = {
-  _cb: null,
-  on: function(evt, cb) { if (evt === 'content') this._cb = cb; },
-  emit: function() {}
-};
-var origStream = global.KairosStream;
+import { KairosStream } from '../web/static/modules/stream-dispatcher.js';
 
 beforeAll(async function() {
-  global.KairosStream = handlingStream;
   await import('../web/static/modules/content-handler.js');
-  global.KairosStream = origStream;
+  window.KairosWidgets = global.KairosWidgets;
 });
 
 beforeEach(function() {
   global.KairosWidgets.index = 0;
   global.KairosWidgets.registry = {};
+  global.KairosWidgets.debug = {};
 });
 
 describe('Content Handler', function() {
@@ -171,7 +166,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    handlingStream._cb('[Widget: foo] y otro [Widget: foo] en el mismo texto', state);
+    KairosStream.emit('content', '[Widget: foo] y otro [Widget: foo] en el mismo texto', state);
 
     expect(bodyDiv.children.length).toBe(5);
     expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
@@ -194,7 +189,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    handlingStream._cb('[Widget: a] texto [Widget: b] otro [Widget: a] repetido', state);
+    KairosStream.emit('content', '[Widget: a] texto [Widget: b] otro [Widget: a] repetido', state);
 
     expect(bodyDiv.children.length).toBe(7);
     var containers = bodyDiv.children.filter(function(c) {
@@ -203,14 +198,7 @@ describe('Content Handler', function() {
     expect(containers.length).toBe(2);
   });
 
-  test('calls extract() with text segments (widget markers between segments)', function() {
-    var extractCalls = [];
-    var origExtract = global.KairosWidgets.extract;
-    global.KairosWidgets.extract = function(text) {
-      extractCalls.push(text);
-      return origExtract(text);
-    };
-
+  test('renders widget markers without raw [Widget: text visible', function() {
     var asstDiv = makeEl('div');
     var bodyDiv = makeEl('div');
     bodyDiv.className = 'msg-body md-content';
@@ -226,20 +214,13 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    handlingStream._cb('antes [Widget: foo] despues', state);
+    KairosStream.emit('content', 'antes [Widget: foo] despues', state);
 
-    expect(extractCalls.length).toBeGreaterThanOrEqual(1);
-    extractCalls.forEach(function(text) {
-      expect(text).not.toContain('[Widget:');
-    });
-
-    global.KairosWidgets.extract = origExtract;
+    expect(bodyDiv.children.length).toBe(3);
+    expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
   });
 
-  test('calls initAll() after rendering widget containers', function() {
-    var initAllCalled = false;
-    global.KairosWidgets.initAll = function() { initAllCalled = true; };
-
+  test('creates widget container for [Widget: foo] marker', function() {
     var asstDiv = makeEl('div');
     var bodyDiv = makeEl('div');
     bodyDiv.className = 'msg-body md-content';
@@ -255,9 +236,11 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    handlingStream._cb('[Widget: foo]', state);
+    KairosStream.emit('content', '[Widget: foo]', state);
 
-    expect(initAllCalled).toBe(true);
+    expect(bodyDiv.children.length).toBe(3);
+    expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
+    expect(bodyDiv.children[1].getAttribute('data-widget-key')).toBe('foo');
   });
 
   test('renders text-only messages correctly', function() {
@@ -276,7 +259,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    handlingStream._cb('Hello world, no widgets here', state);
+    KairosStream.emit('content', 'Hello world, no widgets here', state);
 
     expect(bodyDiv.children.length).toBe(1);
     expect(bodyDiv.children[0].className).toBe('msg-text-segment');
@@ -299,7 +282,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    handlingStream._cb('before ```html-widget\n<div>incomplete', state);
+    KairosStream.emit('content', 'before ```html-widget\n<div>incomplete', state);
 
     expect(bodyDiv.children[0].innerHTML).toContain('<code>');
     expect(bodyDiv.children[0].innerHTML).toContain('```html-widget');
@@ -321,7 +304,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    handlingStream._cb('Phase 0 content', state);
+    KairosStream.emit('content', 'Phase 0 content', state);
 
     expect(bodyDiv.children.length).toBe(1);
     expect(bodyDiv.children[0].className).toBe('msg-text-segment');
@@ -343,8 +326,8 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    handlingStream._cb('Hello ', state);
-    handlingStream._cb('World', state);
+    KairosStream.emit('content', 'Hello ', state);
+    KairosStream.emit('content', 'World', state);
 
     expect(state.contentTexts[0]).toBe('Hello World');
     expect(bodyDiv.children[0].innerHTML).toContain('Hello World');
@@ -366,7 +349,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    handlingStream._cb('Text ```html-widget\n<div>widget</div>\n``` more', state);
+    KairosStream.emit('content', 'Text ```html-widget\n<div>widget</div>\n``` more', state);
 
     expect(bodyDiv.children.length).toBe(3);
     expect(bodyDiv.children[1].className).toContain('interactive-widget-container');

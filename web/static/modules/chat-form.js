@@ -1,5 +1,5 @@
-/* global StreamOrchestrator, RetryHandler */
-
+import { StreamOrchestrator } from './stream-orchestrator.js';
+import { RetryHandler } from './retry-handler.js';
 import C from './dom-contracts.js';
 import { SessionContext } from './session-context.js';
 

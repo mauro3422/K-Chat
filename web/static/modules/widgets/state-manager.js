@@ -60,6 +60,4 @@ const instance = new WidgetStateManager();
 export { WidgetStateManager };
 export default instance;
 
-if (typeof window !== 'undefined') {
-    window.WidgetStateManager = instance;
-}
+

@@ -40,9 +40,7 @@ export const KairosSession = { refreshSidebar, confirmRename, cancelEdit, restor
 // Backwards-compatible globals for HTML onclick handlers
 window.KairosSession = KairosSession;
 window.refreshSidebar = KairosSession.refreshSidebar;
-window.confirmRename = KairosSession.confirmRename;
-window.cancelEdit = KairosSession.cancelEdit;
-window.restoreActions = KairosSession.restoreActions;
+
 
 document.addEventListener('htmx:afterSwap', function() {
   KairosUtils.scrollToBottom();

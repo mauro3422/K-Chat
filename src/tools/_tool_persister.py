@@ -3,15 +3,6 @@ from datetime import datetime
 from typing import Any
 from src.memory.repos import ToolCallRepository
 
-_tool_call_repo: ToolCallRepository | None = None
-
-
-def _get_tool_call_repo() -> ToolCallRepository:
-    global _tool_call_repo
-    if _tool_call_repo is None:
-        _tool_call_repo = ToolCallRepository()
-    return _tool_call_repo
-
 
 def _persist_tool_results(
     tcs_info: list[tuple[Any, str, dict[str, Any]]],
@@ -21,8 +12,8 @@ def _persist_tool_results(
     history: list[dict[str, Any]],
     tool_detail: list[dict[str, Any]],
 ) -> None:
-    tool_call_repo = _get_tool_call_repo()
-    conn = tool_call_repo._get_conn()
+    from src.api._repos import _get_repo
+    conn = _get_repo(ToolCallRepository, "tool_call")._get_conn()
     try:
         for tc, name, args in tcs_info:
             tool_result, status = results.get(tc.id, ("[ERROR]: Missing", "error"))

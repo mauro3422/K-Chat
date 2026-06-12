@@ -1,5 +1,7 @@
 import { SessionContext } from './modules/session-context.js';
 import stateManager from './modules/widgets/state-manager.js';
+import { KairosForm } from './modules/chat-form.js';
+import { KairosWidgets } from './modules/widgets/index.js';
 
 stateManager.loadFromJSON({});
 
@@ -15,9 +17,6 @@ stateManager.loadFromJSON({});
 })();
 
 // sessionId is set by chat.html template as a global var before this script loads
-
-window.retryLastMessage = function() { KairosForm.retry(); };
-window.escHtml = function(s) { return KairosUtils.escHtml(s); };
 
 KairosWidgets.startMessageHandler();
 KairosForm.init();

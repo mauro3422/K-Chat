@@ -1,5 +1,5 @@
-/* global StreamErrorHandler, RetryHandler */
-
+import { StreamErrorHandler } from './stream-error-handler.js';
+import { RetryHandler } from './retry-handler.js';
 import C from './dom-contracts.js';
 import { StreamContext } from './stream-context.js';
 import { executeStreamFetch } from './stream-fetcher.js';

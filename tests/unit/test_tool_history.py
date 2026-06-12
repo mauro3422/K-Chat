@@ -16,7 +16,7 @@ def test_run_no_session():
 def test_run_empty_history():
     mock_repo = MagicMock()
     mock_repo.get_history.return_value = []
-    with patch("src.tools._tool_persister._get_tool_call_repo", return_value=mock_repo):
+    with patch("src.api._repos._get_repo", return_value=mock_repo):
         result = run(_session_id="ses-1")
     assert "No tools have been used" in result
     mock_repo.get_history.assert_called_once_with("ses-1", limit=5)
@@ -29,7 +29,7 @@ def test_run_with_results():
     ]
     mock_repo = MagicMock()
     mock_repo.get_history.return_value = mock_data
-    with patch("src.tools._tool_persister._get_tool_call_repo", return_value=mock_repo):
+    with patch("src.api._repos._get_repo", return_value=mock_repo):
         result = run(_session_id="ses-1")
     assert "web_search" in result
     assert "save_memory" in result
@@ -39,6 +39,6 @@ def test_run_with_results():
 def test_run_limit_capped():
     mock_repo = MagicMock()
     mock_repo.get_history.return_value = []
-    with patch("src.tools._tool_persister._get_tool_call_repo", return_value=mock_repo):
+    with patch("src.api._repos._get_repo", return_value=mock_repo):
         run(_session_id="ses-1", limit=50)
     mock_repo.get_history.assert_called_once_with("ses-1", limit=20)

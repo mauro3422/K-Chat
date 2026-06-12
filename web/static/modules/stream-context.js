@@ -169,4 +169,3 @@ export class StreamContext {
   }
 }
 
-window.StreamContext = StreamContext;

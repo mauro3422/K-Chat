@@ -70,8 +70,9 @@ def _prepare_tool_calls(
                 yield ("tool_call", json.dumps({"id": tc.id, "name": name or "unknown", "status": "calling"}))
                 yield ("tool_call", json.dumps({"id": tc.id, "name": name or "unknown", "status": "error"}))
             if session_id:
-                from src.tools._tool_persister import _get_tool_call_repo
-                _get_tool_call_repo().log(session_id, name or "unknown", json.dumps(args, ensure_ascii=False), "error", turn=turn)
+                from src.memory.repos import ToolCallRepository
+                from src.api._repos import _get_repo
+                _get_repo(ToolCallRepository, "tool_call").log(session_id, name or "unknown", json.dumps(args, ensure_ascii=False), "error", turn=turn)
             history.append({"role": "tool", "content": error, "tool_call_id": tc.id})
             tool_detail.append({"name": name or "unknown", "args": args, "status": "error", "result_truncated": error[:300]})
             continue
@@ -113,8 +114,9 @@ def run_parallel_tools(
                 yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": "calling"}))
                 yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": "error"}))
             if session_id:
-                from src.tools._tool_persister import _get_tool_call_repo
-                _get_tool_call_repo().log(session_id, name, json.dumps(args, ensure_ascii=False), "error", turn=turn)
+                from src.memory.repos import ToolCallRepository
+                from src.api._repos import _get_repo
+                _get_repo(ToolCallRepository, "tool_call").log(session_id, name, json.dumps(args, ensure_ascii=False), "error", turn=turn)
             history.append({"role": "tool", "content": msg, "tool_call_id": tc.id})
             tool_detail.append({"name": name, "args": args, "status": "error", "result_truncated": msg[:300]})
         return

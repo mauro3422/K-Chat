@@ -1,12 +1,7 @@
-_saved_widget_repo = None
-
-
 def get_saved_widget_repo():
-    global _saved_widget_repo
-    if _saved_widget_repo is None:
-        from src.memory.repos import SavedWidgetRepository
-        _saved_widget_repo = SavedWidgetRepository()
-    return _saved_widget_repo
+    from src.memory.repos import SavedWidgetRepository
+    from src.api._repos import _get_repo
+    return _get_repo(SavedWidgetRepository, "saved_widget")
 
 
 def sanitize_widget_id(widget_id: str) -> str:
