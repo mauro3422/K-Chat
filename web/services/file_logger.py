@@ -63,5 +63,5 @@ def install_jsonl_handler(module: str = "app") -> JsonlHandler:
     return handler
 
 
-# Install at import time (catches most app loggers automatically)
-install_jsonl_handler()
+# Install on root logger at import time so ALL named loggers are captured
+logging.root.addHandler(JsonlHandler("root"))

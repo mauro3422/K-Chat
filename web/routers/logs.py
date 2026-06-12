@@ -73,7 +73,7 @@ def query_client_logs(
 @router.post("/api/logs/client")
 def ingest_client_logs(entries: list[ClientLogEntry]):
     """Persist client-submitted log entries to a JSONL file."""
-    _ensure_dirs()
+    CLIENT_LOG_DIR.mkdir(parents=True, exist_ok=True)
     date_str = datetime.utcnow().strftime("%Y%m%d")
     path = CLIENT_LOG_DIR / f"{date_str}.jsonl"
 
@@ -90,11 +90,11 @@ def ingest_client_logs(entries: list[ClientLogEntry]):
 @router.get("/api/logs/tail")
 def tail_logs(
     lines: int = Query(50, ge=1, le=500),
-    source: str = Query("server", regex="^(server|client)$"),
+    source: str = Query("server", pattern="^(server|client)$"),
 ):
     """Tail the latest JSONL log file (like tail -f but one-shot)."""
     log_dir = SERVER_LOG_DIR if source == "server" else CLIENT_LOG_DIR
-    _ensure_dirs()
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     path = _latest_log_path(log_dir)
     if not path:
@@ -108,7 +108,7 @@ def tail_logs(
 
 
 def _resolve_log_path(log_dir: Path, date: Optional[str]) -> Optional[Path]:
-    _ensure_dirs()
+    log_dir.mkdir(parents=True, exist_ok=True)
     if date:
         p = log_dir / f"{date}.jsonl"
         return p if p.exists() else None
