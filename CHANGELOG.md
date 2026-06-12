@@ -3,6 +3,10 @@
 > **Regla**: Este archivo es solo el índice. El detalle de cada versión está en `changelogs/vX.Y.Z.md`.
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 
+## [v0.0.24] — 2026-06-12 — [Detalle](changelogs/v0.0.24.md)
+- DOM ordering, loop detector v2 (context-aware), transparent retry handler
+- getPhaseIndex fix, 18 Python test repairs (0 failures), 591 tests total
+
 ## [v0.0.23] — 2026-06-10 — [Detalle](changelogs/v0.0.23.md)
 - Widget rendering fixes, stream stability, history sanitizer, backend logging
 
