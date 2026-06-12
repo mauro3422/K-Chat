@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import BackgroundTasks
 
-from src.core import chat_stream
+from src.core.orchestrator import chat_stream
 from src.background_tasks import auto_rename_session
 from web.services.loop_detector import LoopDetector
 from web.services.message_persister import save_assistant_message

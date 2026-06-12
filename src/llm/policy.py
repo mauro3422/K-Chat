@@ -2,7 +2,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from src.llm import models
+import src.llm.models as models
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -102,4 +102,3 @@ def _mark_and_refresh(model: str, refresh: bool = True) -> str:
     models.mark_model_failed(model)
     next_model = models._switch_model(model)
     return next_model
-

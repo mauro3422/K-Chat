@@ -1,15 +1,11 @@
 import pytest
-from src.api import (
-    init_db,
-    ensure_session,
-    get_sessions,
-    get_session_messages,
-    get_tool_history,
-    get_widget_states,
-    get_debug_info,
-    save_message,
-)
-from src.memory.repositories import MessageRecord
+from src.memory.schema import init_db
+from src.api.session import ensure_session, get_sessions
+from src.api.messages import get_session_messages, save_message
+from src.api.tools import get_tool_history
+from src.api.widgets import get_widget_states
+from src.api.debug import get_debug_info
+from src.memory.repos import MessageRecord
 
 
 @pytest.fixture(autouse=True)

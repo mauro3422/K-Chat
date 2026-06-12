@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from src.memory.repositories import (
+from src.memory.repos import (
     MessageRecord,
     MessageRepository,
     SessionRepository,

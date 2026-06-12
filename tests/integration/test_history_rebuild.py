@@ -3,8 +3,9 @@ import json
 import tempfile
 
 
-from src.api import save_message, get_session_messages
+from src.api.messages import save_message, get_session_messages
 from src.core.history import rebuild_history
+from src.memory.schema import init_db
 from src.tools.read_file import run as read_file_run
 from src.tools.write_file import run as write_file_run
 
@@ -215,4 +216,3 @@ def test_history_rebuild_sanitizes_orphaned_tools():
     assert history[3]["role"] == "tool"
     assert history[3]["content"].endswith("Éxito: Se ha guardado en MEMORY.md")
     assert history[3]["tool_call_id"] == "call_valid_456"
-

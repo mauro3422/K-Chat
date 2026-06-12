@@ -1,11 +1,19 @@
 import logging
-from src.llm.client import chat as llm_chat
+from collections.abc import Callable
+from typing import Any
+
 from src.memory.repos import SessionRepository
 
 logger = logging.getLogger(__name__)
 _SESSION_REPO = SessionRepository()
 
-def auto_rename_session(session_id: str, first_message: str, model: str) -> None:
+
+def auto_rename_session(
+    session_id: str,
+    first_message: str,
+    model: str,
+    chat_fn: Callable[[list[dict[str, Any]], str], Any] | None = None,
+) -> None:
     """Generates an automatic title for the session if it has no name yet."""
     if not _SESSION_REPO.check_should_rename(session_id):
         return
@@ -16,7 +24,9 @@ def auto_rename_session(session_id: str, first_message: str, model: str) -> None
         f"Message: {first_message}"
     )
     try:
-        r = llm_chat(
+        if chat_fn is None:
+            from src.llm.client import chat as chat_fn
+        r = chat_fn(
             [{"role": "user", "content": prompt}],
             model
         )

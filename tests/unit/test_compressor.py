@@ -55,11 +55,10 @@ class TestCompressHistory:
         recent = history[-KEEP_RECENT:]
         system = history[0]
 
-        with patch("src.llm.client.chat") as mock_llm:
-            mock_response = MagicMock()
-            mock_response.message.content = "Test summary"
-            mock_llm.return_value = mock_response
-            compress_history(history, "test-model")
+        mock_response = MagicMock()
+        mock_response.message.content = "Test summary"
+        mock_llm = MagicMock(return_value=mock_response)
+        compress_history(history, "test-model", chat_fn=mock_llm)
 
         mock_llm.assert_called_once()
         assert len(history) == 1 + 1 + KEEP_RECENT
@@ -72,9 +71,8 @@ class TestCompressHistory:
         history += [make_msg(content=f"msg {i}") for i in range(20)]
         original = list(history)
 
-        with patch("src.llm.client.chat") as mock_llm:
-            mock_llm.side_effect = RuntimeError("LLM error")
-            compress_history(history, "test-model")
+        mock_llm = MagicMock(side_effect=RuntimeError("LLM error"))
+        compress_history(history, "test-model", chat_fn=mock_llm)
 
         assert history == original
 
@@ -83,10 +81,9 @@ class TestCompressHistory:
         history += [make_msg(content=f"msg {i}") for i in range(20)]
         original = list(history)
 
-        with patch("src.llm.client.chat") as mock_llm:
-            mock_response = MagicMock()
-            mock_response.message.content = None
-            mock_llm.return_value = mock_response
-            compress_history(history, "test-model")
+        mock_response = MagicMock()
+        mock_response.message.content = None
+        mock_llm = MagicMock(return_value=mock_response)
+        compress_history(history, "test-model", chat_fn=mock_llm)
 
         assert history == original

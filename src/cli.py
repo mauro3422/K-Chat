@@ -2,7 +2,8 @@ import logging
 import sys
 from typing import Any
 
-from src.core import chat_stream, get_default_model
+from src.core.orchestrator import chat_stream
+from src.llm.policy import get_default_model
 from src.core.orchestrator import generate_session_id
 from src.memory.schema import init_db
 from src.api.messages import save_message

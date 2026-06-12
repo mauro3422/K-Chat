@@ -1,6 +1,6 @@
 from typing import Any
 
-from src.core import get_default_model
+from src.llm.policy import get_default_model
 
 def handle_command(entry: str, history: list[dict[str, Any]]) -> str | None:
     """Procesa comandos /. Devuelve un modelo nuevo si se cambió, None si no."""

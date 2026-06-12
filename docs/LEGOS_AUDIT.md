@@ -51,7 +51,7 @@ These are already close to the "lego" ideal because they have clear owners and f
 These modules are still mostly there to keep old callers alive:
 
 - `src/api/__init__.py`
-- `src/api/database.py`
+- `api modules for session and db were split`
 - `src/api/chat.py`
 - `web/static/app.js`
 - `web/static/modules/widgets/bootstrap.js`
@@ -84,7 +84,7 @@ Best next cut:
 
 Current state:
 - `src/llm/policy.py` does discovery, verification, default selection, and refresh policy
-- `src/llm/manager.py` is now a compatibility wrapper around that policy
+- `llm policy moved to src/llm/policy.py` is now a compatibility wrapper around that policy
 - `src/llm/model_state.py` holds shared state
 - `src/llm/client.py` does runtime failover
 
@@ -166,7 +166,7 @@ Best next cut:
 1. Reduce the compatibility bootstraps if the legacy surface is no longer needed.
 2. Keep shrinking legacy globals and transition surfaces where practical.
 3. Split `src/llm/policy.py` into smaller policy objects or modules.
-4. Split `src/memory/database.py` into lifecycle pieces.
+4. Split `memory connection + schema + repos` into lifecycle pieces.
 
 ### P1
 
@@ -177,7 +177,7 @@ Best next cut:
 ### P2
 
 1. Reduce compatibility aliases in `session.js`, `debug.js`, and `chat-stream.js`.
-2. Review whether `src/api/database.py` still deserves to exist as a facade.
+2. Review whether `api modules for session and db were split` still deserves to exist as a facade.
 3. Consider replacing the current `window` bridge pattern with explicit initialization objects where practical.
 
 ## What "done" looks like for this repo

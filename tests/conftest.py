@@ -16,7 +16,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.memory.database import init_db
+from src.memory.schema import init_db
 
 
 @pytest.fixture

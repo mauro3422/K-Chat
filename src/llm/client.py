@@ -3,7 +3,8 @@ import json
 from types import SimpleNamespace
 from collections.abc import Callable, Generator
 from typing import Any
-from src.llm import models, manager
+import src.llm.models as models
+import src.llm.policy as policy
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ def _update_system_prompt(messages: list[dict[str, Any]], model: str, build_prom
 
 def _resolve_model(messages: list[dict[str, Any]], model: str | None, build_prompt_fn: Callable | None = None) -> str:
     if model is None:
-        model = manager.get_default_model()
+        model = policy.get_default_model()
     if models.is_model_failed(model):
         model = models._switch_model(model)
         _update_system_prompt(messages, model, build_prompt_fn)
@@ -39,7 +40,7 @@ def _with_fallback(
         return fn(model)
     except Exception as e:
         logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
-        next_model = manager._mark_and_refresh(model, refresh=not models._is_rate_limit_error(e))
+        next_model = policy._mark_and_refresh(model, refresh=not models._is_rate_limit_error(e))
         _update_system_prompt(messages, next_model, build_prompt_fn)
         logger.info("Switching model to: %s", next_model)
         return fn(next_model)
@@ -54,7 +55,7 @@ def _try_stream(model: str, messages: list[dict[str, Any]], **kwargs: Any) -> An
         return s
     except Exception as e:
         logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)
-        model = manager._mark_and_refresh(model, refresh=not models._is_rate_limit_error(e))
+        model = policy._mark_and_refresh(model, refresh=not models._is_rate_limit_error(e))
         _update_system_prompt(messages, model, None)
         logger.info("Switching stream to: %s", model)
         return models._api_call(model=model, messages=messages, stream=True, **kwargs)
@@ -109,7 +110,7 @@ def _update_debug_usage(chunk: Any, debug: dict[str, Any] | None) -> None:
 def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_fn: Callable | None = None, **kwargs: Any) -> Any:
     debug = kwargs.pop("debug", None)
     if model is None:
-        model = manager.get_default_model()
+        model = policy.get_default_model()
     if models.is_model_failed(model):
         model = models._switch_model(model)
         _update_system_prompt(messages, model, build_prompt_fn)

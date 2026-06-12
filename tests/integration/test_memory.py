@@ -1,8 +1,11 @@
 import json
 
 
-from src.api import save_message, get_session_messages, ensure_session, rename_session, delete_session, get_sessions, get_tool_history, save_debug_info, get_debug_info
-from src.memory.repositories import ToolCallRepository
+from src.api.messages import save_message, get_session_messages
+from src.api.session import ensure_session, rename_session, delete_session, get_sessions
+from src.api.tools import get_tool_history
+from src.api.debug import save_debug_info, get_debug_info
+from src.memory.repos import ToolCallRepository
 
 
 def test_save_and_get_message():

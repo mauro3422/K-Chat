@@ -2,7 +2,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from src.llm import chat
+from src.llm.client import chat
 from src.llm.models import _failed_models, _api_call
 from src.context import build_system_prompt
 
@@ -85,5 +85,4 @@ def test_api_call_retries_on_rate_limit(mock_sleep):
             _api_call(model="big-pickle", messages=[])
 
         assert mock_provider.chat.call_count == 3
-
 

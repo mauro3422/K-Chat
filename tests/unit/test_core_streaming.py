@@ -45,7 +45,7 @@ def _make_tool_call_obj(name: str, args: dict, tc_id: str = "call_1"):
 @patch("src.llm.client.chat_stream")
 def test_streaming_content_only(mock_stream, mock_chat):
     """Streaming path: solo contenido, sin tools."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     mock_stream.side_effect = _make_stream_mock([
         [("reasoning", "pensando..."), ("content", "Hola mundo")],
@@ -66,7 +66,7 @@ def test_streaming_content_only(mock_stream, mock_chat):
 @patch("src.llm.client.chat_stream")
 def test_streaming_tool_then_content(mock_stream, mock_chat):
     """Streaming path: tool_call en stream → ejecuta tool → stream final."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     tcs = [_make_tool_call_obj("web_search", {"query": "test"}, "c1")]
     mock_stream.side_effect = _make_stream_mock(
@@ -104,7 +104,7 @@ def test_streaming_tool_then_content(mock_stream, mock_chat):
 @patch("src.llm.client.chat_stream")
 def test_streaming_multiple_tools(mock_stream, mock_chat):
     """Streaming path: multiples tool_calls en paralelo desde el stream."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     tcs = [
         _make_tool_call_obj("web_search", {"query": "a"}, "c1"),
@@ -143,7 +143,7 @@ def test_streaming_multiple_tools(mock_stream, mock_chat):
 @patch("src.llm.client.chat_stream")
 def test_streaming_no_tools_from_stream(mock_stream, mock_chat):
     """Streaming path: eventos de tool_call en stream pero tool_calls_output vacío (no se ejecutan tools)."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     mock_stream.side_effect = _make_stream_mock([
         [("reasoning", "pensando..."), ("content", "respuesta")],
@@ -162,7 +162,7 @@ def test_streaming_no_tools_from_stream(mock_stream, mock_chat):
 @patch("src.llm.client.chat_stream")
 def test_streaming_content_then_tool(mock_stream, mock_chat):
     """Streaming path: contenido primero, luego tool_call en el stream."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     tcs = [_make_tool_call_obj("web_search", {"query": "test"}, "c1")]
     mock_stream.side_effect = _make_stream_mock(
@@ -198,7 +198,7 @@ def test_streaming_content_then_tool(mock_stream, mock_chat):
 @patch("src.llm.client.chat_stream")
 def test_streaming_session_id_propagates(mock_stream, mock_chat):
     """Streaming path: session_id se pasa a los tools."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     tcs = [_make_tool_call_obj("web_search", {"query": "x"}, "c1")]
     mock_stream.side_effect = _make_stream_mock(

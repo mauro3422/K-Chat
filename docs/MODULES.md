@@ -10,14 +10,14 @@ entry/
   web/server.py       → FastAPI entry point (static files, middleware, exception handlers)
 
 api/
-  api.py              → Compatibility facade for domain modules, used by older callers
+  __init__.py         → package marker only
 
 core/
   orchestrator.py     → Chat loop, streaming, compression, debug snapshots
   tool_loop.py        → Tool call orchestration (streaming + sync), ToolLoopContext
   chat_sync.py        → Synchronous chat wrapper (CLI path)
   history.py          → History reconstruction + UI filtering
-  _deps.py            → Dependency wiring (partials, avoids circular imports)
+  __init__.py         → package marker only
 
 llm/
   protocol.py         → LLMProvider Protocol (runtime-checkable)
@@ -25,7 +25,7 @@ llm/
   models.py           → Model registry, provider registry, _api_call with retry
   client.py           → chat() and chat_stream() with fallback, tool delta processing
   policy.py           → Model discovery, verification, selection
-  manager.py          → Compatibility wrapper
+  __init__.py         → package marker only
 
 tools/
   __init__.py         → Auto-loader: TOOLS, TOOL_MAP, TOOL_DEFINITIONS
@@ -36,8 +36,10 @@ tools/
   *.py                → Individual tools (DEFINITION + run)
 
 memory/
-  database.py         → Connection factory (WAL, busy timeout), init_db
-  repositories.py     → 6 repos: Message, Session, ToolCall, WidgetState, Debug, SavedWidget
+  connection.py       → Connection factory (WAL, busy timeout), engine injection
+  schema.py           → init_db + migrations
+  repos/              → 6 repos: Message, Session, ToolCall, WidgetState, Debug, SavedWidget
+  repos/              → 6 repos: Message, Session, ToolCall, WidgetState, Debug, SavedWidget
   migrations.py       → 9 idempotent migrations (001→009)
 
 context/
@@ -66,9 +68,9 @@ support/
 
 ---
 
-## `src/api.py`
+## `src/api/`
 
-**Responsibility:** Compatibility facade for the backend. New code should import domain modules directly; the facade stays only for older callers.
+**Responsibility:** Domain modules for sessions, messages, widgets, debug, tools, history, chat and database access.
 
 **Public Interface (19+ functions):**
 - `ensure_session(session_id)`, `rename_session(...)`, `delete_session(...)`, `get_sessions(limit)`
@@ -78,7 +80,7 @@ support/
 - `save_debug_info(...)`, `get_debug_info(...)`
 - `chat_stream(...)` — delegates to `orchestrator.chat_stream()`
 
-**Depends on:** `src.memory.repositories`, `src.core.orchestrator`, `src.core.history`
+**Depends on:** `src.memory.repos`, `src.core.orchestrator`, `src.core.history`
 
 ---
 
@@ -91,10 +93,10 @@ support/
 - `_compress_if_needed(history, model) → list`
 - `_save_debug_info(session_id, model, history_before, chain, system_prompt, tool_calls)`
 
-**Depends on:** `src.llm.client`, `src.tools`, `src.context`, `src.compressor`, `src.memory.repositories`
+**Depends on:** `src.llm.client`, `src.tools`, `src.context`, `src.compressor`, `src.memory.repos`
 
 **Key Internals:**
-- `_deps` module provides `llm_chat`, `llm_stream`, `build_system_prompt`, `TOOL_MAP` as wired partials.
+- `_deps` remains only as a compatibility seam for tests and legacy callers; runtime code uses direct imports.
 - Delegates tool loops to `tool_loop.run_tool_loop_streaming()` / `run_tool_loop_sync()`.
 
 ---
@@ -113,7 +115,7 @@ support/
 - `_process_llm_stream(...)`: reads LLM stream, yields content/reasoning/tool_calls.
 - `_yield_stream_fallback(...)`: fallback when streaming fails.
 
-**Depends on:** `src.llm.client`, `src.tools.runner`, `src.memory.repositories`
+**Depends on:** `src.llm.client`, `src.tools.runner`, `src.memory.repos`
 
 ---
 
@@ -126,7 +128,7 @@ support/
 - `filter_messages_for_ui(raw_msgs) → list` — keeps only final assistant message per turn
 - `match_tools_to_msgs(msgs, all_tools) → dict` — associates tools with messages chronologically
 
-**Depends on:** `src.memory.repositories`, `src.context`
+**Depends on:** `src.memory.repos`, `src.context`
 
 ---
 
@@ -138,18 +140,6 @@ support/
 - `chat(message, history, model) → str` — calls `llm_chat`, returns response content
 
 **Depends on:** `src.llm.client`, `src.tools`
-
----
-
-## `src/core/_deps.py`
-
-**Responsibility:** Central dependency wiring. Avoids circular imports.
-
-**Exports (functools.partial):**
-- `llm_chat = partial(client.chat, ...)`
-- `llm_stream = partial(client.chat_stream, ...)`
-- `build_system_prompt = partial(context.build_system_prompt, ...)`
-- `TOOL_MAP = src.tools.TOOL_MAP`
 
 ---
 
@@ -201,7 +191,7 @@ support/
 - `chat_stream(messages, model, reasoning_output, tagged, tool_calls_output, **kwargs) → Generator`
 - `_update_system_prompt(messages, model)` — refreshes system prompt on model switch
 
-**Depends on:** `src.llm.models`, `src.llm.manager`, `src.context`
+**Depends on:** `src.llm.models`, `src.context`
 
 ---
 
@@ -217,17 +207,6 @@ support/
 - `_mark_and_refresh(model) → str` — marks failed, returns alternative
 
 **Depends on:** `src.llm.models`
-
-## `src/llm/manager.py`
-
-**Responsibility:** Compatibility wrapper for legacy LLM imports.
-
-**Public Interface:**
-- Same as `src/llm/policy.py`
-
-**Depends on:** `src.llm.policy`
-
----
 
 ## `src/tools/__init__.py`
 
@@ -253,7 +232,7 @@ support/
 - `_session_rate` — dict with per-session rate limiting (30 calls / 10s window, LRU eviction)
 - `_rate_lock` — threading.Lock for thread-safe rate checking
 
-**Depends on:** `src.memory.repositories`
+**Depends on:** `src.memory.repos`
 
 ---
 
@@ -275,29 +254,6 @@ support/
 - `init_db()` — creates tables, runs all migrations, enables foreign keys
 
 **Depends on:** `src.memory.connection`, `src.memory.migrations`
-
-## `src/memory/database.py`
-
-**Responsibility:** Backward-compatible database facade.
-
-**Public Interface:**
-- Re-exports `get_conn()`, `init_db()`, `get_engine()`, `set_engine()`
-
-**Depends on:** `src.memory.connection`, `src.memory.schema`
-
----
-
-## `src/memory/repositories.py`
-
-**Responsibility:** Shim de retrocompatibilidad — re-exports from `src/memory/repos/` (6 repos individuales).
-
-**Public Interface:**
-- `from .repos import *` — backward-compat shim
-- Each repo lives in its own file under `src/memory/repos/`: `message_repository.py`, `session_repository.py`, `tool_call_repository.py`, `widget_state_repository.py`, `saved_widget_repository.py`, `debug_repository.py`
-
-**Depends on:** `src.memory.repos.*`
-
----
 
 ## `src/memory/migrations.py`
 
@@ -444,7 +400,7 @@ support/
 ```
 entry (cli.py, web/server.py)
   ↓
-api (src/api.py)
+api modules (src/api/*)
   ↓
 core (orchestrator, tool_loop, chat_sync, history)
   ↓
@@ -453,4 +409,4 @@ llm + tools + memory + context
 config (config.py, paths.py, .env)
 ```
 
-The web layer depends on api.py. api.py depends on core. Core depends on llm, tools, memory, context. All depend on config. There are no circular dependencies.
+The web layer depends on domain modules under src/api. Those modules depend on core, memory, tools, or context as needed. Core depends on llm, tools, memory, context. All depend on config. There are no circular dependencies in runtime.

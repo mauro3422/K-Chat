@@ -1,9 +1,9 @@
 import json
 import re
 
-from src.api import save_message
+from src.api.messages import save_message
 from src.core.history import rebuild_history
-from src.memory.database import init_db
+from src.memory.schema import init_db
 
 
 def test_rebuild_history_empty_session():

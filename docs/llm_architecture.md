@@ -4,14 +4,13 @@
 
 | Archivo | Función |
 |---|---|
-| `__init__.py` | API pública: exporta `chat`, `chat_stream`, `PRIORITY`, `register_provider`, `get_verified_models`, `get_default_model` |
+| `__init__.py` | Package marker only |
 | `protocol.py` | Define `LLMProvider` Protocol (interfaz con `chat`, `chat_stream`, `list_models`) |
 | `openai_provider.py` | Implementación concreta de `LLMProvider` usando el SDK de OpenAI |
 | `providers.py` | Registro de providers (dict nombre→clase) + singleton lazy `_get_provider()` |
 | `model_state.py` | Estado thread-safe: modelos fallidos, verificados, caché de modelos. Lógica de fallback por prioridad |
 | `models.py` | Re-exporta de `providers` y `model_state`. Wrapper `_api_call()` con backoff exponencial |
 | `policy.py` | Lógica de negocio: verificación de modelos (async), selección por prioridad, refresh de lista verificada |
-| `manager.py` | Wrapper de compatibilidad para la política LLM |
 | `client.py` | Puntos de entrada `chat()` y `chat_stream()`: resolución de modelo, failover, streaming, procesamiento de tool calls |
 
 ## 2. Provider Pattern
@@ -52,15 +51,14 @@ Stream tiene su propio fallback en `_try_stream()` con la misma lógica.
 ## 4. Dependencias
 
 ```
-__init__.py ──→ client, models, policy, manager
+__init__.py ──→ (package marker only)
 protocol.py ──→ (ninguna)
 openai_provider.py ──→ openai, config
 providers.py ──→ protocol, openai_provider
 model_state.py ──→ (ninguna, solo stdlib)
 models.py ──→ providers, model_state
 policy.py ──→ models
-manager.py ──→ policy, models
-client.py ──→ models, manager
+client.py ──→ models, policy
 ```
 
 ## 5. Lo que está bien
@@ -74,7 +72,7 @@ client.py ──→ models, manager
 
 ## 6. Lo que podría mejorar
 
-- **`models.py` rompe encapsulación**: expone `_get_provider()` y `_api_call()` como semipúblicos. `manager.py` y `client.py` acceden a internals de otros módulos.
+- **`models.py` rompe encapsulación**: expone `_get_provider()` y `_api_call()` como semipúblicos. `policy.py` y `client.py` acceden a internals de otros módulos.
 - **`_switch_model` confusa**: cuando `model != FALLBACK_MODEL` siempre retorna `FALLBACK_MODEL`, sin importar la prioridad. La lógica de "buscar en PRIORITY" solo aplica si ya estás en el fallback.
 - **`_MAX_RETRIES = 1`**: en la práctica solo hace 1 intento (0 reintentos reales). El backoff exponencial no se aprovecha.
 - **Duplicación de lógica de failover**: `_try_stream()` y `_with_fallback()` repaten el mismo patrón de catch→mark→switch→retry.

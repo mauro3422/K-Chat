@@ -3,6 +3,11 @@
 > **Regla**: Este archivo es solo el índice. El detalle de cada versión está en `changelogs/vX.Y.Z.md`.
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 
+## [v0.0.44] — 2026-06-12 — [Detalle](changelogs/v0.0.44.md)
+- Removed the last active compatibility shims from `src.core`, `src.llm`, `src.api`, and `src.memory`
+- Aligned the public docs and README with the actual runtime modules and boundaries
+- Verified the cleaned runtime with the focused Python test batch
+
 ## [v0.0.43] — 2026-06-12 — [Detalle](changelogs/v0.0.43.md)
 - Decoupled rate-limit retry logic into a reusable `src/llm/retry.py` wrapper and central config `src/constants.py`
 - Optimized unit tests runtimes by patching `time.sleep` (reduced from 43s to 12s)

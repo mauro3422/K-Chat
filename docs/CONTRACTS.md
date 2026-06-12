@@ -21,11 +21,11 @@ other parts of the system.
 | Boundary | Source of truth | Main consumers | Current seam / risk | Refactor target |
 |---|---|---|---|---|
 | HTTP chat stream | `web/services/chat_stream.py`, `web/services/stream_contract.py`, `web/routers/chat.py` | `web/static/modules/*`, browser UI | Stream event shape used to be implicit; server and client now share the event contract modules | Shared event schema + contract tests |
-| Assistant/tool persistence | `src.memory.repos.*`, `src.api.messages` | `src/core`, `web/services/message_persister.py`, tools | `src/tools/_tool_persister.py` used raw SQL; `tool_loop.py` now writes assistant tool-turns directly through `MessageRepository` | One persistence path through repositories/facade |
+| Assistant/tool persistence | `src.memory.repos.*`, `src.api.messages` | `src/core`, `web/services/message_persister.py`, tools | `src/tools/_tool_persister.py` used raw SQL; `tool_loop.py` now writes assistant tool-turns directly through `MessageRepository` | One persistence path through repositories/modules |
 | Tool execution loop | `src/core/tool_loop.py`, `src/constants.py` | `src/core/orchestrator.py`, `src/core/chat_sync.py`, `src.tools.runner` | `max_turns` and loop policy are duplicated in more than one place | Single loop policy module with shared constants |
-| LLM selection and fallback | `src/llm/policy.py`, `src/llm/models.py` | `src.core`, `src.llm`, `src.compressor`, `src.background_tasks` | `_deps.py` wires hidden partials; fallback policy is split | Explicit provider/fallback interface |
+| LLM selection and fallback | `src/llm/policy.py`, `src/llm/models.py` | `src.core`, `src.llm`, `src.compressor`, `src.background_tasks` | Legacy `_deps.py` seam was removed; fallback policy is split | Explicit provider/fallback interface |
 | Model metadata catalog | `web/services/model_catalog.py`, `~/.local/share/opencode-delegate/model_registry.json` (or `KAIROS_MODEL_REGISTRY`) | `web/routers/pages.py`, `web/templates/chat.html` | Model selector used to show raw ids only; richer capabilities were not visible | Cached metadata helper with graceful fallback to ids |
-| API facade | `src/api/__init__.py`, `src/api/*` | `web/routers/*`, `web/services/*`, CLI | Facade is now a compatibility layer; most internal callers use domain modules directly | Split by domain contracts, not by file growth |
+| API modules | `src/api/*` | `web/routers/*`, `web/services/*`, CLI | Domain modules are the source of truth; the package marker is empty | Split by domain contracts, not by file growth |
 | Widget rendering/state | `web/static/modules/content-handler.js`, `web/services/message_renderer.py`, `web/services/widget_contract.py`, `web/static/modules/widgets/contract.js`, `src.memory.repos.widget_state_repository` | browser, DB, tool outputs | Render state, widget code, and widget versions were split across Python and JS with no shared schema | Formal widget contract with version/state fields |
 | Retry / abort / timeout | `web/static/modules/retry-handler.js`, `web/static/modules/stream-orchestrator.js`, `web/services/chat_stream.py` | browser stream handling, server stream cleanup | Retry state used to be a singleton; now it is held by `RetryController` instances per stream | One stream lifecycle policy and isolated retry state |
 | Frontend module state | `web/static/modules/*` | browser entry points, tests | Several modules rely on globals on `window` for compatibility | Reduce globals to compatibility wrappers only |
@@ -141,7 +141,7 @@ do because many modules depend on them.
 ### 4. LLM Routing
 
 **Shape today**
-- Model choice, fallback, verification, and provider wiring are scattered across `src/llm/*`, `src/core/_deps.py`, and call sites.
+- Model choice, fallback, verification, and provider wiring are scattered across `src/llm/*` and call sites. The old `_deps.py` seam was removed.
 
 **What must stay true**
 - One place decides the active model and fallback chain.
@@ -150,6 +150,12 @@ do because many modules depend on them.
 **Recommended seam**
 - Expose a narrow provider/fallback service.
 - Remove hidden partial wiring where a function can accept explicit dependencies instead.
+
+**Current source of truth**
+- `src/llm/client.py`
+- `src/llm/models.py`
+- `src/llm/policy.py`
+- `src/compressor.py` and `src/background_tasks.py` now accept explicit chat callables for their LLM work instead of depending on a module-level import.
 
 ### 4b. Model Metadata Catalog
 
@@ -172,16 +178,19 @@ do because many modules depend on them.
 ### 5. API Facade
 
 **Shape today**
-- The facade is now a compatibility surface, not the preferred import path.
-- Some internal modules already import domain modules directly.
+- Domain modules are the source of truth.
+- The package marker is empty; callers import the specific domain module they need.
 
 **What must stay true**
 - Web code should not touch repositories directly.
 - Facade functions should be grouped by domain, and the flat export pile should keep shrinking.
 
 **Recommended seam**
-- Keep the `__init__` re-export file as a compatibility layer only.
+- Keep imports pointed at the specific domain module.
 - Prefer direct imports from `src.core`, `src.llm`, `src.memory.connection`, `src.memory.schema`, `src.api.session`, `src.api.messages`, `src.api.history`, `src.api.tools`, `src.api.widgets`, and `src.api.debug`.
+
+**Current source of truth**
+- `src.api.*` domain modules are the source of truth; `src.api.__init__` is a package marker only.
 
 ### 6. Widgets
 

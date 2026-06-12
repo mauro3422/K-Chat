@@ -2,8 +2,8 @@ from fastapi.testclient import TestClient
 
 
 from web.server import app
-from src.memory.database import init_db
-from src.api import db_save_widget, db_get_widget, db_get_widget_versions, db_get_widget_by_version
+from src.memory.schema import init_db
+from src.api.widgets import db_save_widget, db_get_widget, db_get_widget_versions, db_get_widget_by_version
 from src.tools.save_widget import run as save_widget_run
 from src.tools.get_widget_code import run as get_widget_code_run
 from src.tools.update_widget import run as update_widget_run
@@ -156,4 +156,3 @@ def test_widget_portability_across_sessions():
     assert len(versions) == 2
     assert versions[0]["version"] == 2
     assert versions[1]["version"] == 1
-

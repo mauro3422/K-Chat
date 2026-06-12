@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
-from src.llm import get_default_model
+from src.llm.policy import get_default_model
 from src.api.session import get_sessions
 from src.llm.model_state import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
 from web.services.message_renderer import render_session_messages

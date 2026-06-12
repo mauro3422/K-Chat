@@ -79,7 +79,7 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 ### v0.0.9 — Playwright E2E + limpieza
 - [x] Playwright E2E setup con Chromium
 - [x] -1420 líneas de dead code eliminadas
-- [x] `src/memory/repositories.py` shim reducido a 3 líneas
+- [x] Repositorios migrados a `src/memory/repos/` y shim eliminado
 
 ### v0.0.10 — Frontend split
 - [x] `chat-form.js` dividido en submission + input-handler

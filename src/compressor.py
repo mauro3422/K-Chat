@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,11 @@ def should_compress(history: list[dict[str, Any]]) -> bool:
     return total_tokens > MAX_ESTIMATED_TOKENS
 
 
-def compress_history(history: list[dict[str, Any]], model: str) -> None:
+def compress_history(
+    history: list[dict[str, Any]],
+    model: str,
+    chat_fn: Callable[[list[dict[str, Any]], str], Any] | None = None,
+) -> None:
     keep = KEEP_RECENT
     to_compress = history[1:-keep]
     if not to_compress:
@@ -40,8 +45,9 @@ def compress_history(history: list[dict[str, Any]], model: str) -> None:
         f"{m['role']}: {(m.get('content') or '')[:300]}" for m in to_compress
     )
     try:
-        from src.llm.client import chat as llm_chat
-        r = llm_chat(
+        if chat_fn is None:
+            from src.llm.client import chat as chat_fn
+        r = chat_fn(
             [{"role": "user", "content": f"Summarize this conversation in 2-3 lines, key facts only:\n\n{text}"}],
             model
         )

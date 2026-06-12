@@ -2,8 +2,9 @@ from fastapi.testclient import TestClient
 
 
 from web.server import app
-from src.api import save_widget_state, get_widget_states, save_message, get_session_messages
-from src.memory.database import init_db
+from src.api.widgets import save_widget_state, get_widget_states
+from src.api.messages import save_message, get_session_messages
+from src.memory.schema import init_db
 from src.compressor import estimate_tokens, should_compress
 
 client = TestClient(app)
@@ -73,7 +74,7 @@ def test_message_tokens_persistence():
     # Wait, get_session_messages queries:
     # SELECT role, content, model, created_at, reasoning, phases FROM messages
     # Let's execute a direct sqlite query if we want to assert the token counts
-    from src.memory.database import get_conn
+    from src.memory.connection import get_conn
     conn = get_conn()
     try:
         cursor = conn.cursor()

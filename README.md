@@ -47,11 +47,12 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   │   ├── openai_provider.py → OpenAI-compatible provider
 │   │   ├── models.py       → API client, retry, model switching
 │   │   ├── client.py       → chat() and chat_stream()
-│   │   └── manager.py      → Model discovery, verification, selection
+│   │   └── policy.py       → Model discovery, verification, selection
 │   ├── memory/
-│   │   ├── database.py     → SQLite connection + schema init
-│   │   ├── repositories.py → CRUD repositories (messages, sessions, tools, widgets, debug)
-│   │   └── migrations.py   → Schema migration functions
+│   │   ├── connection.py   → SQLite connection management
+│   │   ├── schema.py       → Schema init + migrations bootstrap
+│   │   ├── migrations.py   → Schema migration functions
+│   │   └── repos/          → CRUD repositories (messages, sessions, tools, widgets, debug)
 │   ├── tools/
 │   │   ├── __init__.py     → Module exports
 │   │   ├── loader.py       → Auto-loader (TOOL_MAP, TOOL_DEFINITIONS)

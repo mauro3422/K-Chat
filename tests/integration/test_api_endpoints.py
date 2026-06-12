@@ -1,8 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
 from web.server import app
-from src.memory.database import init_db
-from src.api import save_message, save_debug_info
+from src.memory.schema import init_db
+from src.api.messages import save_message
+from src.api.debug import save_debug_info
 
 client = TestClient(app)
 

@@ -27,16 +27,16 @@ ENTRY POINTS
 └── web/server.py               (FastAPI + middleware)
 
 API FACADE
-└── src/api/                    (19+ funciones públicas, lazy repos)
-    ├── messages.py, sessions.py, widgets.py, debug.py
-    ├── tools.py, rebuild.py, filter.py, stream.py, repos.py
+└── src/api/                    (módulos de dominio, sin agregador)
+    ├── messages.py, session.py, widgets.py, debug.py
+    ├── tools.py, history.py, chat.py
 
 CORE (cerebro)
 ├── src/core/orchestrator.py    (chat loop principal)
 ├── src/core/tool_loop.py       (ciclo razonamiento↔herramientas, max 5 turns)
 ├── src/core/history.py         (reconstrucción + filtrado UI)
 ├── src/core/chat_sync.py       (wrapper síncrono CLI)
-└── src/core/_deps.py           (wiring DI, partials)
+└── src/core/_deps.py           (removed)
 
 LLM (abstracción de modelo)
 ├── src/llm/protocol.py         (LLMProvider Protocol)
@@ -44,7 +44,6 @@ LLM (abstracción de modelo)
 ├── src/llm/models.py           (registry, retry, fallback)
 ├── src/llm/client.py           (chat + chat_stream)
 ├── src/llm/policy.py           (descubrimiento, verificación)
-└── src/llm/manager.py          (compatibilidad)
 
 TOOLS (sistema de herramientas)
 ├── src/tools/__init__.py       (auto-loader: TOOLS, TOOL_MAP)
@@ -57,7 +56,6 @@ TOOLS (sistema de herramientas)
 MEMORY (persistencia)
 ├── src/memory/connection.py    (SQLite WAL, PooledConnection)
 ├── src/memory/schema.py        (init + migrations)
-├── src/memory/database.py      (compatibilidad)
 ├── src/memory/repos/           (6 repositorios tipados)
 │   ├── base.py                 (_BaseRepository + _transaction())
 │   ├── message_repository.py
@@ -82,7 +80,7 @@ WEB (dashboard)
 └── web/logging.py              (BackendLogHandler ring buffer)
 ```
 
-**Dirección de dependencias:** `entry → api → core → llm/tools/memory/context → config`. Sin dependencias circulares (resueltas vía `_deps.py` con `provide()` pattern).
+**Dirección de dependencias:** `entry → api → core → llm/tools/memory/context → config`. Sin dependencias circulares en runtime; cualquier compatibilidad vieja quedó confinada a facades o fue eliminada.
 
 ---
 
@@ -133,8 +131,8 @@ WEB (dashboard)
 | **Auto-discovery** | `importlib` scan en `tools/loader.py` |
 | **Event Emitter** | `KairosStream` en frontend (on/emit) |
 | **Dataclass** | `ToolLoopContext` (11 params → 1 objeto), `StreamState`, `MessageRecord` |
-| **Partial Wiring** | `_deps.py` — `functools.partial` para evitar circular imports |
-| **Shim** | `repositories.py`, `history.py` — backward compat gradual |
+| **Legacy Compatibility** | `_deps.py` — eliminado; ya no forma parte del runtime |
+| **Shim** | `history.py` — backward compat gradual |
 | **Strategy** | `execute_action` meta-tool (una interfaz, N acciones) |
 | **Rate Limiting** | Per-session (tools) + per-IP (HTTP) con LRU eviction |
 
@@ -168,7 +166,7 @@ WEB (dashboard)
 | **Tests JS** | ~110 tests (Vitest), ESLint 0 | 8/10 | Playwright setup inicial |
 | **Seguridad** | CSP, SSRF, XSS, rate limit, path guard | 9/10 | Audit v0.0.15 |
 | **Documentación** | ARCHITECTURE.md, MODULES.md, API_REFERENCE.md | 8/10 | Auto-generada |
-| **Arquitectura** | Sin circular deps, DI vía _deps.py | 9/10 | Refactor v0.0.12 |
+| **Arquitectura** | Sin circular deps en runtime, compatibilidad reducida | 9/10 | Refactor acumulado |
 | **DB** | 6 repos, 9 migraciones, FK constraints | 9/10 | Transactions con rollback |
 | **Frontend** | ES modules, event dispatcher, 12 módulos | 8/10 | Vanilla JS (sin type safety) |
 | **Infra** | Docker, CI pipeline, health check | 7/10 | Básico pero funcional |

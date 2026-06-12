@@ -4,7 +4,7 @@ ARQUITECTURA DE src/core/ — K-Chat
 1. QUÉ HACE CADA ARCHIVO
 --------------------------
 __init__.py        — Punto de entrada: exporta chat() y chat_stream().
-_deps.py           — Legacy compatibility seam kept only for tests/edge patching.
+_deps.py           — Removed legacy seam; runtime uses direct imports.
 orchestrator.py    — Orquestador principal: gestiona historial, compressión y delega al tool loop.
 tool_loop.py       — Bucle de ejecución de herramientas: LLM → tool calls → ejecutar → repetir (max 5 turnos).
 chat_sync.py       — Wrapper síncrono simplificado: un solo turno sin herramientas (para pruebas rápidas).
@@ -36,7 +36,7 @@ Mensaje usuario → chat_stream() (orchestrator.py:47)
 3. DEPENDENCIAS POR ARCHIVO
 -----------------------------
 __init__.py     → src.llm, src.core.chat_sync, src.core.orchestrator
-_deps.py        → seam fino hacia src.llm.client y TOOL_MAP (compatibilidad/test patching)
+_deps.py        → removed seam; no runtime consumers
 orchestrator.py → src.llm.get_default_model, src.context.build_system_prompt,
                   src.tools.runner.run_parallel_tools, src.core.tool_loop, src.llm.client, src.tools
 tool_loop.py    → src.tools, src.llm.client, src.memory.repos.MessageRepository
@@ -50,7 +50,7 @@ history_ui.py   → (ninguna dependencia externa, puro stdlib)
 
 4. PUNTOS DE ACOPLAMIENTO
 ----------------------------
-A) _deps.py → TOOL_MAP hardcodeado: Si cambia la lista de herramientas, toca tocar _deps.
+B) _deps.py ya no existe como seam activo.
 B) tool_loop.py → import lazy de src.api.save_message (líneas 56, 301): acoplamiento circular implícito.
 C) orchestrator.py → Parámetros compress_fn / should_compress_fn inyectados como optional callbacks,
    pero el caller debe conocer la implementación concreta.
@@ -64,7 +64,7 @@ H) tool_loop.py → Persistencia de assistant tool-turns todavía se hace con un
 5. LO QUE ESTÁ BIEN
 ----------------------
 + Separación clara: historial (parser/rebuilder/ui) separado del loop de ejecución.
-+ _deps.py centraliza la inyección de system prompt sin repetir partials.
++ El runtime ya no depende de _deps.py; la inyección quedó repartida en módulos concretos.
 + Historial sanitizado (history_parser.py:48) descarta tool calls huérfanos correctamente.
 + Filtrado UI (history_ui.py) es puro y testeable sin dependencias externas.
 + tool_loop.py usa dataclass _ToolLoopContext para encapsular estado del loop.

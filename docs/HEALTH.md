@@ -37,10 +37,6 @@ Extracted to `web/services/chat_stream.py` (77 lines). The router now only valid
 
 Extracted to `web/services/message_renderer.py`. The router now handles routes and model discovery only (87 lines).
 
-### ~~Issue: `src/memory/database.py` is 181 lines with inline migrations~~ ✅ Fixed
-
-Extracted to `src/memory/migrations.py` (198 lines, 9 numbered migrations). `database.py` is now 33 lines.
-
 ---
 
 ## 2. Open/Closed Principle (OCP)
@@ -65,7 +61,7 @@ Mostly not applicable — the codebase is procedural/functional, not class-hiera
 
 ### ~~Issue: `src/core/__init__.py` and `src/llm/__init__.py` use `sys.modules[__name__].__class__`~~ ✅ Fixed
 
-Both files now use regular imports. The remaining `_deps` seam is narrow and mostly exists for compatibility/test patching; the runtime should be treated as the direct imports in `src.llm.client` and `src.core.tool_loop`.
+Both files are now package markers only. The last `_deps` seam was removed after it stopped having runtime consumers; the runtime should be treated as the direct imports in `src.llm.client` and `src.core.tool_loop`.
 
 ---
 
@@ -113,18 +109,15 @@ class DebugInfo:
 
 ### Issue: `src/compressor.py` imports `src.llm.chat` directly
 
-It bypasses the `client.py` abstraction layer.
+~~It bypasses the `client.py` abstraction layer.~~ ✅ Fixed
 
-**Recommendation:** Import from `src.llm.client` or, better, accept a `chat_fn` callable as parameter:
-```python
-def compress_history(history: list, model: str, chat_fn=llm_chat) -> None:
-```
-
-This makes the compressor testable without patching global imports.
+`compress_history()` now accepts an optional `chat_fn` callable. The default path imports lazily inside the function, and tests can inject a mock directly.
 
 ### Issue: `src/background_tasks.py` depends on `src.llm.chat`
 
-Same problem — it should receive a callable, not import directly.
+~~Same problem — it should receive a callable, not import directly.~~ ✅ Fixed
+
+`auto_rename_session()` now accepts an optional `chat_fn` callable. The default path imports lazily inside the function, which removes the module-level dependency and makes the seam explicit.
 
 ---
 
@@ -203,7 +196,7 @@ Extracted `StreamError` class and `_classify_error()` to `web/services/chat_stre
 ### Issue: `except Exception as e` without context
 
 Multiple places catch generic exceptions and only log:
-- `src/memory/database.py` in ALTER TABLE blocks
+- `src/memory/schema.py` in ALTER TABLE blocks
 - `src/compressor.py`
 - `src/background_tasks.py`
 
@@ -215,11 +208,11 @@ Multiple places catch generic exceptions and only log:
 
 ### ~~Issue: `src/core/orchestrator.py` is hard to unit test~~ ✅ Fixed
 
-The orchestrator was split into `chat_sync.py`, `tool_loop.py`, and `orchestrator.py`. Tests now patch specific functions on the module namespace (e.g., `src.core.llm_stream`, `src.core.TOOL_MAP`) directly. All 102 Python tests pass.
+The orchestrator was split into `chat_sync.py`, `tool_loop.py`, and `orchestrator.py`. Tests now patch explicit seams or inject callables directly. All 102 Python tests pass.
 
 ### ~~Issue: `src/llm/__init__.py` mocking hack makes tests fragile~~ ✅ Fixed
 
-Both `src/core/__init__.py` and `src/llm/__init__.py` were converted to regular imports. Tests patch `src.core.llm_chat` and `src.core.llm_stream` directly on the module. The ModuleType property hacks were removed completely.
+Both `src/core/__init__.py` and `src/llm/__init__.py` are package markers only. The ModuleType property hacks were removed completely, and the remaining compatibility seams are explicit rather than implicit.
 
 ---
 
@@ -229,7 +222,7 @@ Both `src/core/__init__.py` and `src/llm/__init__.py` were converted to regular 
 
 1. **Delete `src/tool_runner.py`**
 2. **Move inline imports to top** — `pages.py`, `orchestrator.py`
-3. **Extract `src/memory/migrations.py`** — separate from `database.py`
+3. **Extract `src/memory/migrations.py`** — separate from connection lifecycle
 4. **Translate remaining Spanish logs/comments**
 5. **Split `src/core/orchestrator.py`** into `chat_sync.py`, `tool_loop.py`
 6. **Extract error classification** to `web/services/chat_stream.py`
@@ -245,7 +238,7 @@ Both `src/core/__init__.py` and `src/llm/__init__.py` were converted to regular 
 ### P3 — High impact, higher risk
 
 15. ~~**Remove ModuleType property hacks** from `src/core/__init__.py` and `src/llm/__init__.py`~~ ✅ Done
-16. ~~**Add connection pooling** to `src/memory/database.py`~~ ✅ Done
+16. ~~**Add connection pooling** to `src/memory/connection.py`~~ ✅ Done
 17. ~~**Add type hints across all public interfaces**~~ ✅ Done
 
 ---
@@ -265,8 +258,8 @@ web/server.py ──► web/routers/* ──► web/ui_utils.py
              │         ┌─────────────┼─────────────┐
              │         ▼             ▼             ▼
              │    src/llm/      src/tools/    src/memory/
-             │    client.py     runner.py       database.py
-             │    manager.py    *.py            migrations.py
+             │    client.py     runner.py       schema.py
+             │    policy.py     *.py            migrations.py
              │    models.py                     message.py
              │                                  session.py
              │                                  widget.py

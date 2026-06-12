@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Callable, Generator
 from typing import Any
 
-from src.llm import get_default_model
+from src.llm.policy import get_default_model
 from src.context import build_system_prompt
 from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync

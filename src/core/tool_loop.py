@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 import src.tools as tools
-from src.llm import client as llm_client
+import src.llm.client as llm_client
 from src.constants import MAX_TOOL_TURNS
 from src.memory.repos import MessageRepository
 

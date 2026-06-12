@@ -7,7 +7,7 @@ from unittest.mock import patch
 def test_no_tools(mock_chat, make_choice):
     """Simple text response, no tools needed."""
     mock_chat.return_value = make_choice(content="¡Hola!")
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     history = [{"role": "system", "content": "test"}]
     tokens = list(chat_stream("Hola!", history, model="test-model", tagged=True, streaming=False))
@@ -23,7 +23,7 @@ def test_no_tools(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_tool_call_then_response(mock_chat, make_choice):
     """Model calls a tool, then responds."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     # First call: tool_calls
     mock_chat.side_effect = [
@@ -66,7 +66,7 @@ def test_tool_call_then_response(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_tool_error(mock_chat, make_choice):
     """Tool raises an exception."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     # Use a real side effect that raises
     def failing_run(**kwargs):
@@ -92,7 +92,7 @@ def test_tool_error(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_session_id_propagates_to_tools(mock_chat, make_choice):
     """session_id is passed as _session_id to tools."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     captured = {}
     def tracking_tool(**kwargs):
@@ -117,7 +117,7 @@ def test_session_id_propagates_to_tools(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_multiple_tool_calls_same_turn(mock_chat, make_choice):
     """Multiple tools called in a single turn."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     tools_called = []
 
@@ -152,7 +152,7 @@ def test_multiple_tool_calls_same_turn(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_mixed_tool_results(mock_chat, make_choice):
     """One tool succeeds, one fails in the same turn."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     call_count = [0]
 
@@ -187,7 +187,7 @@ def test_mixed_tool_results(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_tool_result_truncation(mock_chat, make_choice):
     """Tool result >30000 chars gets truncated."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     long_result = "x" * 35000
 
@@ -212,7 +212,7 @@ def test_tool_result_truncation(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_empty_message(mock_chat, make_choice):
     """Empty message still works."""
-    from src.core import chat_stream
+    from src.core.orchestrator import chat_stream
 
     mock_chat.return_value = make_choice(content="OK")
     history = [{"role": "system", "content": "test"}]
@@ -225,7 +225,7 @@ def test_empty_message(mock_chat, make_choice):
 def test_chat_non_streaming(mock_chat, make_choice):
     """chat() returns response and updated history."""
     mock_chat.return_value = make_choice(content="Respuesta de prueba")
-    from src.core import chat
+    from src.core.chat_sync import chat
 
     resp, history = chat("Hola", None)
     assert resp == "Respuesta de prueba"

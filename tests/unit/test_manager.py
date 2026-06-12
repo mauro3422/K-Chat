@@ -1,7 +1,7 @@
 from unittest.mock import patch, MagicMock
 import pytest
 
-from src.llm.manager import (
+from src.llm.policy import (
     verify_model,
     get_verified_models,
     get_models,
@@ -12,7 +12,7 @@ from src.llm.manager import (
 
 
 class TestVerifyModel:
-    @patch("src.llm.manager.models._api_call")
+    @patch("src.llm.policy.models._api_call")
     def test_returns_true_on_success(self, mock_api_call):
         mock_api_call.return_value = MagicMock()
         assert verify_model("deepseek-v4-flash-free") is True
@@ -23,28 +23,28 @@ class TestVerifyModel:
             timeout=2.0,
         )
 
-    @patch("src.llm.manager.models._api_call")
+    @patch("src.llm.policy.models._api_call")
     def test_returns_false_on_exception(self, mock_api_call):
         mock_api_call.side_effect = Exception("API error")
         assert verify_model("bad-model") is False
 
 
 class TestGetModels:
-    @patch("src.llm.manager.models.set_cached_models")
-    @patch("src.llm.manager.models.get_cached_models_safe")
+    @patch("src.llm.policy.models.set_cached_models")
+    @patch("src.llm.policy.models.get_cached_models_safe")
     def test_fetches_from_api_when_cache_empty(
         self, mock_get_cache, mock_set_cache
     ):
         mock_provider = MagicMock()
         mock_provider.list_models.return_value = ["model1", "model2"]
         mock_get_cache.side_effect = [None, ["model1", "model2"]]
-        with patch("src.llm.manager.models._get_provider", return_value=mock_provider):
+        with patch("src.llm.policy.models._get_provider", return_value=mock_provider):
             result = get_models()
         mock_provider.list_models.assert_called_once()
         mock_set_cache.assert_called_once_with(["model1", "model2"])
         assert result == ["model1", "model2"]
 
-    @patch("src.llm.manager.models.get_cached_models_safe")
+    @patch("src.llm.policy.models.get_cached_models_safe")
     def test_returns_cached_when_available(self, mock_get_cache):
         mock_get_cache.return_value = ["cached1", "cached2"]
 
@@ -52,38 +52,38 @@ class TestGetModels:
 
         assert result == ["cached1", "cached2"]
 
-    @patch("src.llm.manager.models.set_cached_models")
-    @patch("src.llm.manager.models.get_cached_models_safe")
+    @patch("src.llm.policy.models.set_cached_models")
+    @patch("src.llm.policy.models.get_cached_models_safe")
     def test_forces_refresh(self, mock_get_cache, mock_set_cache):
         mock_provider = MagicMock()
         mock_provider.list_models.return_value = ["fresh1"]
         mock_get_cache.side_effect = [["cached"], ["fresh1"]]
-        with patch("src.llm.manager.models._get_provider", return_value=mock_provider):
+        with patch("src.llm.policy.models._get_provider", return_value=mock_provider):
             result = get_models(force_refresh=True)
         mock_provider.list_models.assert_called_once()
         assert result == ["fresh1"]
 
-    @patch("src.llm.manager.models.get_cached_models_safe")
+    @patch("src.llm.policy.models.get_cached_models_safe")
     def test_fallback_to_cache_on_api_error(self, mock_get_cache):
         mock_provider = MagicMock()
         mock_provider.list_models.side_effect = Exception("API down")
         mock_get_cache.side_effect = [None, ["old_cache"]]
-        with patch("src.llm.manager.models._get_provider", return_value=mock_provider):
+        with patch("src.llm.policy.models._get_provider", return_value=mock_provider):
             result = get_models()
         assert result == ["old_cache"]
 
-    @patch("src.llm.manager.models.get_cached_models_safe")
+    @patch("src.llm.policy.models.get_cached_models_safe")
     def test_raises_when_no_cache_and_api_fails(self, mock_get_cache):
         mock_provider = MagicMock()
         mock_provider.list_models.side_effect = Exception("API down")
         mock_get_cache.return_value = None
-        with patch("src.llm.manager.models._get_provider", return_value=mock_provider):
+        with patch("src.llm.policy.models._get_provider", return_value=mock_provider):
             with pytest.raises(Exception, match="API down"):
                 get_models()
 
 
 class TestGetFreeModels:
-    @patch("src.llm.manager.get_models")
+    @patch("src.llm.policy.get_models")
     def test_filters_free_models(self, mock_get_models):
         mock_m1 = MagicMock()
         mock_m1.id = "model-free"
@@ -101,7 +101,7 @@ class TestGetFreeModels:
 
 
 class TestGetVerifiedModels:
-    @patch("src.llm.manager.models.get_verified_models_safe")
+    @patch("src.llm.policy.models.get_verified_models_safe")
     def test_returns_cached_when_available(self, mock_get_verified):
         mock_get_verified.return_value = ["deepseek-v4-flash-free"]
 
@@ -109,10 +109,10 @@ class TestGetVerifiedModels:
 
         assert result == ["deepseek-v4-flash-free"]
 
-    @patch("src.llm.manager.get_free_models")
-    @patch("src.llm.manager.verify_model")
-    @patch("src.llm.manager.models.set_verified_models")
-    @patch("src.llm.manager.models.get_verified_models_safe")
+    @patch("src.llm.policy.get_free_models")
+    @patch("src.llm.policy.verify_model")
+    @patch("src.llm.policy.models.set_verified_models")
+    @patch("src.llm.policy.models.get_verified_models_safe")
     def test_verifies_free_models(
         self, mock_get_verified, mock_set_verified, mock_verify, mock_get_free
     ):
@@ -129,10 +129,10 @@ class TestGetVerifiedModels:
         assert result == ["good-free"]
         mock_set_verified.assert_called_once_with(["good-free"])
 
-    @patch("src.llm.manager.get_free_models")
-    @patch("src.llm.manager.verify_model")
-    @patch("src.llm.manager.models.set_verified_models")
-    @patch("src.llm.manager.models.get_verified_models_safe")
+    @patch("src.llm.policy.get_free_models")
+    @patch("src.llm.policy.verify_model")
+    @patch("src.llm.policy.models.set_verified_models")
+    @patch("src.llm.policy.models.get_verified_models_safe")
     def test_forces_refresh(
         self, mock_get_verified, mock_set_verified, mock_verify, mock_get_free
     ):
@@ -147,9 +147,9 @@ class TestGetVerifiedModels:
         mock_get_free.assert_called_once_with(force_refresh=True)
         assert result == ["m1-free"]
 
-    @patch("src.llm.manager.get_free_models")
-    @patch("src.llm.manager.models.set_verified_models")
-    @patch("src.llm.manager.models.get_verified_models_safe")
+    @patch("src.llm.policy.get_free_models")
+    @patch("src.llm.policy.models.set_verified_models")
+    @patch("src.llm.policy.models.get_verified_models_safe")
     def test_fallback_on_error(
         self, mock_get_verified, mock_set_verified, mock_get_free
     ):
@@ -160,9 +160,9 @@ class TestGetVerifiedModels:
 
         assert result == ["fallback_model"]
 
-    @patch("src.llm.manager.get_free_models")
-    @patch("src.llm.manager.models.set_verified_models")
-    @patch("src.llm.manager.models.get_verified_models_safe")
+    @patch("src.llm.policy.get_free_models")
+    @patch("src.llm.policy.models.set_verified_models")
+    @patch("src.llm.policy.models.get_verified_models_safe")
     def test_uses_fallback_model_when_no_cache(
         self, mock_get_verified, mock_set_verified, mock_get_free
     ):
@@ -176,9 +176,9 @@ class TestGetVerifiedModels:
 
 
 class TestGetDefaultModel:
-    @patch("src.llm.manager.models.is_model_failed")
-    @patch("src.llm.manager.models.get_verified_models_safe")
-    @patch("src.llm.manager.get_free_models")
+    @patch("src.llm.policy.models.is_model_failed")
+    @patch("src.llm.policy.models.get_verified_models_safe")
+    @patch("src.llm.policy.get_free_models")
     def test_returns_priority_model_when_available(self, mock_get_free, mock_get_verified, mock_failed):
         mock_get_verified.return_value = None
         mock_m1 = MagicMock()
@@ -192,9 +192,9 @@ class TestGetDefaultModel:
 
         assert result == "deepseek-v4-flash-free"
 
-    @patch("src.llm.manager.models.is_model_failed")
-    @patch("src.llm.manager.models.get_verified_models_safe")
-    @patch("src.llm.manager.get_free_models")
+    @patch("src.llm.policy.models.is_model_failed")
+    @patch("src.llm.policy.models.get_verified_models_safe")
+    @patch("src.llm.policy.get_free_models")
     def test_skips_failed_model(self, mock_get_free, mock_get_verified, mock_failed):
         mock_get_verified.return_value = None
         mock_m1 = MagicMock()
@@ -208,7 +208,7 @@ class TestGetDefaultModel:
 
         assert result == "deepseek-v4-flash-free"
 
-    @patch("src.llm.manager.get_free_models")
+    @patch("src.llm.policy.get_free_models")
     def test_returns_fallback_on_error(self, mock_get_free):
         mock_get_free.side_effect = Exception("API error")
 
@@ -216,9 +216,9 @@ class TestGetDefaultModel:
 
         assert result == "deepseek-v4-flash-free"
 
-    @patch("src.llm.manager.models.is_model_failed")
-    @patch("src.llm.manager.models.get_verified_models_safe")
-    @patch("src.llm.manager.get_free_models")
+    @patch("src.llm.policy.models.is_model_failed")
+    @patch("src.llm.policy.models.get_verified_models_safe")
+    @patch("src.llm.policy.get_free_models")
     def test_prefers_deepseek_even_when_big_pickle_is_available(self, mock_get_free, mock_get_verified, mock_failed):
         mock_get_verified.return_value = None
         mock_m1 = MagicMock()
@@ -230,9 +230,9 @@ class TestGetDefaultModel:
 
         assert result == "deepseek-v4-flash-free"
 
-    @patch("src.llm.manager.models.is_model_failed")
-    @patch("src.llm.manager.models.get_verified_models_safe")
-    @patch("src.llm.manager.get_free_models")
+    @patch("src.llm.policy.models.is_model_failed")
+    @patch("src.llm.policy.models.get_verified_models_safe")
+    @patch("src.llm.policy.get_free_models")
     def test_prefers_verified_cache_when_available(self, mock_get_free, mock_get_verified, mock_failed):
         mock_get_verified.return_value = ["deepseek-v4-flash-free"]
         mock_failed.return_value = False
@@ -244,9 +244,9 @@ class TestGetDefaultModel:
 
 
 class TestMarkAndRefresh:
-    @patch("src.llm.manager.models._switch_model")
-    @patch("src.llm.manager.models.mark_model_failed")
-    @patch("src.llm.manager.get_verified_models")
+    @patch("src.llm.policy.models._switch_model")
+    @patch("src.llm.policy.models.mark_model_failed")
+    @patch("src.llm.policy.get_verified_models")
     def test_marks_and_switches(self, mock_verify, mock_mark, mock_switch):
         mock_switch.return_value = "deepseek-v4-flash-free"
 
@@ -257,9 +257,9 @@ class TestMarkAndRefresh:
         mock_switch.assert_called_once_with("big-pickle")
         assert result == "deepseek-v4-flash-free"
 
-    @patch("src.llm.manager.models._switch_model")
-    @patch("src.llm.manager.models.mark_model_failed")
-    @patch("src.llm.manager.get_verified_models")
+    @patch("src.llm.policy.models._switch_model")
+    @patch("src.llm.policy.models.mark_model_failed")
+    @patch("src.llm.policy.get_verified_models")
     def test_handles_verify_failure(self, mock_verify, mock_mark, mock_switch):
         mock_verify.side_effect = Exception("verify error")
         mock_switch.return_value = "fallback"
@@ -270,9 +270,9 @@ class TestMarkAndRefresh:
         mock_mark.assert_called_once_with("big-pickle")
         assert result == "fallback"
 
-    @patch("src.llm.manager.models._switch_model")
-    @patch("src.llm.manager.models.mark_model_failed")
-    @patch("src.llm.manager.get_verified_models")
+    @patch("src.llm.policy.models._switch_model")
+    @patch("src.llm.policy.models.mark_model_failed")
+    @patch("src.llm.policy.get_verified_models")
     def test_can_skip_refresh(self, mock_verify, mock_mark, mock_switch):
         mock_switch.return_value = "fallback"
 

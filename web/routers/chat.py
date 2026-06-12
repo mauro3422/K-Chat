@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.llm import get_default_model
+from src.llm.policy import get_default_model
 from src.api.history import rebuild_history
 from src.api.messages import save_message as db_save_message
 from src.api.session import ensure_session

@@ -7,7 +7,6 @@
 | `__init__.py` | Re-exporta todo el API público del módulo memory |
 | `connection.py` | Gestiona conexiones SQLite con pool por hilo y engine inyectable |
 | `schema.py` | Inicialización del esquema y ejecución de migraciones |
-| `database.py` | Wrapper de compatibilidad para `get_conn()` / `init_db()` |
 | `migrations.py` | Define 9 migraciones secuenciales del esquema |
 | `sqlite_engine.py` | Implementación concreta del protocolo `DatabaseEngine` para SQLite |
 | `repos/__init__.py` | Agrupa todos los repos en un dataclass `Repositories` y expone `get_repos()` |

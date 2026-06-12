@@ -14,16 +14,16 @@ The system is organized in layers with clear boundaries:
            │                              │
            ▼                              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  API Facade (src/api/)                                      │
-│  Compatibility surface for older callers.                  │
-│  New code imports domain modules directly.                 │
+│  API Domain Modules (src/api/)                             │
+│  Session, messages, widgets, debug, tools, history, db    │
+│  `__init__.py` is a package marker only.                   │
 └──────────┬──────────────────────────────┬───────────────────┘
            │                              │
            ▼                              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Core Layer (src/core/)                                     │
 │  orchestrator.py  │  tool_loop.py  │  history.py           │
-│  chat_sync.py     │  _deps.py                              │
+│  chat_sync.py     │  package marker only                   │
 │  Chat loop, streaming, tool phases, compression            │
 └──────────┬──────────────────────────────┬───────────────────┘
            │                              │
@@ -33,11 +33,11 @@ The system is organized in layers with clear boundaries:
 │  LLM   │  │  Tools   │  │   Memory     │  │  Context   │
 │  Layer │  │  Layer   │  │   Layer      │  │  Layer     │
 │src/llm/│  │src/tools/│  │ src/memory/  │  │src/context │
-│protocol│  │loader.py │  │ database.py  │  │_build_tools│
-│provider│  │runner.py │  │repositorie s │  │_md() lazy  │
-│models  │  │10 tools  │  │migrations.py │  │import tool │
-│client  │  │          │  │              │  │definitions │
-│manager │  │          │  │              │  │            │
+│protocol│  │loader.py │  │ connection.py │  │_build_tools│
+│provider│  │runner.py │  │ schema.py     │  │_md() lazy  │
+│models  │  │10 tools  │  │ repos/        │  │import tool │
+│client  │  │          │  │ migrations.py │  │definitions │
+│policy  │  │          │  │              │  │            │
 └───┬────┘  └──────────┘  └──────────────┘  └────────────┘
     │
     ▼
@@ -111,12 +111,12 @@ User input → src/cli.py → core.chat_sync.chat()
 
 ## Module Responsibilities
 
-### `src/api/` — Public Facade Package
-- `__init__.py`: Compatibility surface for older callers. New code should import the domain module directly.
+### `src/api/` — Domain Modules
+- `__init__.py`: package marker only.
 - Public functions are grouped by domain: `save_message()`, `rebuild_history()`, `get_sessions()`, `rename_session()`, `delete_session()`, `get_session_messages()`, `filter_messages_for_ui()`, `match_tools_to_msgs()`, `save_widget_state()`, `db_save_widget()`, `db_get_widget()`, `db_get_widget_versions()`, `db_get_widget_by_version()`, `save_debug_info()`, `get_debug_info()`, `get_tool_history()`, `chat_stream()`.
-- Sub-modules: `messages.py`, `session.py`, `widgets.py`, `debug.py`, `tools.py`, `history.py`, `chat.py`, `database.py`.
+- Sub-modules: `messages.py`, `session.py`, `widgets.py`, `debug.py`, `tools.py`, `history.py`.
 - Repository singletons now live in each domain module; there is no shared `_get_repo()` cache layer anymore.
-- `src.core._deps` remains only as a narrow compatibility/test seam; runtime code now calls `src.llm.client` and `src.tools` directly.
+- `src.core._deps` was removed after the runtime stopped using it; runtime code now calls `src.llm.client` and `src.tools` directly.
 
 ### `src/core/orchestrator.py` — The Brain
 - `chat_stream()`: Main streaming generator. Manages the full lifecycle of a conversation turn (84 lines).
@@ -150,9 +150,8 @@ User input → src/cli.py → core.chat_sync.chat()
 ### `src/core/chat_sync.py` — CLI Chat
 - `chat()`: Synchronous wrapper. Calls `llm_chat(history, model, tools=TOOLS)`, returns response content.
 
-### `src/core/_deps.py` — Dependency Wiring
-- Module-level `functools.partial` wrappers: `llm_chat`, `llm_stream`, `build_system_prompt`, `TOOL_MAP`.
-- Centralizes imports to avoid circular dependencies.
+### `src/core/_deps.py` — Removed seam
+- This compatibility file was removed after the runtime stopped using it.
 
 ### `src/llm/` — Model Abstraction
 - `protocol.py`: `LLMProvider` runtime-checkable Protocol. Defines `chat()`, `chat_stream()`, `list_models()`.
@@ -160,8 +159,7 @@ User input → src/cli.py → core.chat_sync.chat()
 - `models.py`: Model registry, `PRIORITY`/`FALLBACK_MODEL` constants, `_api_call()` with retry, `_switch_model()`, `_PROVIDER_REGISTRY` dict and `register_provider()` function for dynamic provider registration.
 - `client.py`: `chat()` and `chat_stream()` with error handling, tool delta processing, debug usage tracking.
 - `policy.py`: Model discovery, verification (`verify_model`), priority selection, free/paid filtering.
-- `manager.py`: Compatibility wrapper for legacy LLM imports/tests.
-- `__init__.py`: Module facade exposing unified interface.
+- `__init__.py`: Package marker only.
 
 ### `src/tools/` — Tool System
 - `__init__.py`: Auto-loader via `importlib`. Exports `TOOLS` (schema for LLM), `TOOL_MAP` (execution), `TOOL_DEFINITIONS` (metadata).
@@ -177,7 +175,6 @@ User input → src/cli.py → core.chat_sync.chat()
 ### `src/memory/` — Persistence Layer
 - `connection.py`: SQLite connection factory (WAL mode, busy timeout). `PooledConnection` wrapper (no-op close). `DatabaseEngine` Protocol for swappable backends. `get_engine()` / `set_engine()` for engine injection.
 - `schema.py`: `init_db()` and per-path schema initialization / migration execution.
-- `database.py`: Compatibility wrapper that re-exports the public connection/schema entry points.
 - `sqlite_engine.py`: `SQLiteEngine` — default SQLite implementation of `DatabaseEngine` with WAL mode and busy timeout.
 - `repos/`: 6 repository classes in separate files, all inheriting from `_BaseRepository`.
   - `base.py`: `_BaseRepository` with `_get_conn()` and `_transaction()` context manager (commit on success, rollback on exception, uses engine if available).
@@ -188,7 +185,6 @@ User input → src/cli.py → core.chat_sync.chat()
   - `debug_repository.py`: `DebugRepository` — save_info, get_info, delete_session_debug.
   - `saved_widget_repository.py`: `SavedWidgetRepository` — save, get, get_versions, get_by_version.
   - `__init__.py`: `Repositories` dataclass + `get_repos(conn)` factory function for shared-connection use cases.
-- `repositories.py`: Legacy re-exports from `repos/` for backwards compatibility.
 - `migrations.py`: 9 migration functions from `_migration_001_initial_schema` to `_migration_009_add_indexes`. Idempotent via `IF NOT EXISTS` and `try/except OperationalError`.
 
 ### `src/context/` — Context Assembly (Package)
