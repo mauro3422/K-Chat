@@ -23,6 +23,12 @@ export function registerReasoningHandler() {
       }
       var isNewPhase = state.reasoningState.enter();
       if (isNewPhase) {
+        // A new reasoning phase after a tool turn means the tool turn
+        // is consumed by the reasoning transition — don't double-count it
+        // in getPhaseIndex.
+        if (state.context && state.context.getToolTurnSinceLastContent()) {
+          state.context.consumeToolTurn();
+        }
         var newDet = document.createElement('details');
         newDet.className = C.REASONING;
         newDet.open = true;

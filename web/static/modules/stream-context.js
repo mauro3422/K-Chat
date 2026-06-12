@@ -99,6 +99,10 @@ export class StreamContext {
     this.#toolTurnSinceLastContent = true;
   }
 
+  consumeToolTurn() {
+    this.#toolTurnSinceLastContent = false;
+  }
+
   getToolTurnSinceLastContent() {
     return this.#toolTurnSinceLastContent;
   }

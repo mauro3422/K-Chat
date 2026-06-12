@@ -214,4 +214,4 @@ def run(**kwargs: Any) -> str | None:
     if ssrf_err:
         return ssrf_err
 
-    return _fetch_with_retry(url, max_chars, _retries, **kwargs)
+    return _fetch_with_retry(url, max_chars, _retries)

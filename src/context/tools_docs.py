@@ -30,6 +30,45 @@ def _auto_section(name: str, fn: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _build_tools_md() -> str:
+    """Generates a markdown document listing all available tools.
+
+    The output is consumed by the system prompt to inform the LLM about
+    which tools are available and how to call them.
+    """
+    from src.tools import TOOL_DEFINITIONS
+
+    lines = [
+        "# Available Tools",
+        "",
+        "These are the internal tools available via `execute_action(action_name=..., arguments=...)`.",
+        "",
+    ]
+    for name in sorted(TOOL_DEFINITIONS.keys()):
+        fn = TOOL_DEFINITIONS[name]["function"]
+        desc = fn["description"]
+        lines.append(f"- **{name}**: {desc}")
+        props = fn.get("parameters", {}).get("properties", {})
+        required = fn.get("parameters", {}).get("required", [])
+        example_parts = []
+        for pname, pdef in sorted(props.items()):
+            ptype = pdef.get("type", "string")
+            req_label = "required" if pname in required else "optional"
+            pdesc = pdef.get("description", "")
+            lines.append(f"  - `{pname}` ({ptype}) ({req_label}): {pdesc}")
+            default = pdef.get("default", "")
+            if ptype == "string":
+                val = default or f"example {pname}"
+                example_parts.append(f'{pname}="{val}"')
+            else:
+                val = default or 5
+                example_parts.append(f"{pname}={val}")
+        if example_parts:
+            lines.append(f"  Example: `{name}({', '.join(example_parts)})`")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def _build_rules_files(rules_dir: str) -> None:
     """Generates rules/<tool>.md files from TOOL_DEFINITIONS.
     

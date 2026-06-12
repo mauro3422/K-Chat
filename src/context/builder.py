@@ -6,7 +6,7 @@ from typing import Any
 from src.paths import CONTEXT_DIR
 from src.context.templates import TEMPLATES
 from src.context.files import _ensure_file, _read_file
-from src.context.tools_docs import _build_rules_files
+from src.context.tools_docs import _build_rules_files, _build_tools_md
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,10 @@ def load_context() -> str:
             segments.append(content)
 
     _build_rules_files(RULES_DIR)
+
+    tools_path = os.path.join(CONTEXT_DIR, "TOOLS.md")
+    with open(tools_path, "w", encoding="utf-8") as f:
+        f.write(_build_tools_md())
 
     return "\n\n".join(segments)
 

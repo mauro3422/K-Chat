@@ -17,6 +17,15 @@ def _parse_tool_call(tc: Any, tool_map: dict[str, Any]) -> tuple[str, dict[str, 
         args = {}
 
     error = None
+    if name == "execute_action":
+        action_name = args.get("action_name")
+        inner_args = args.get("arguments", {})
+        if action_name and action_name in tool_map:
+            name = action_name
+            args = inner_args if isinstance(inner_args, dict) else {}
+        else:
+            error = f"[ERROR]: The action '{action_name}' does not exist."
+            return name, args, error
     if not name or name.startswith("$") or name not in tool_map:
         error = f"[ERROR]: The tool '{name}' does not exist or is not valid."
     else:

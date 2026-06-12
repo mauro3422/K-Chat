@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from web.logging import BackendLogHandler, get_backend_logs
+from web.logging_handler import BackendLogHandler, get_backend_logs
 
 
 @pytest.fixture(autouse=True)
@@ -16,7 +16,7 @@ def _isolate_logging():
     ``BackendLogHandler``.  We snapshot and restore the disable threshold
     here to guarantee every test starts with a clean logging state.
     """
-    from web.logging import _reset_buffer
+    from web.logging_handler import _reset_buffer
     saved_disable = logging.root.manager.disable
     logging.root.manager.disable = 0
     _reset_buffer()
@@ -55,7 +55,7 @@ def test_get_backend_logs_returns_copy():
 
 def test_ring_buffer_overflow():
     """When the buffer exceeds _max_backend_logs, oldest records are dropped."""
-    import web.logging as wl
+    import web.logging_handler as wl
     original_max = wl._max_backend_logs
     wl._max_backend_logs = 5
 

@@ -23,8 +23,9 @@ DEFINITION = {
 }
 
 
-def run(**kwargs) -> str:
-    name = kwargs.get("name", kwargs.get("skill", kwargs.get("skill_name", "")))
+def run(name=None, **kwargs) -> str:
+    if name is None:
+        name = kwargs.get("name", kwargs.get("skill", kwargs.get("skill_name", "")))
     _session_id = kwargs.get("_session_id")
     """Reads and returns the content of a skill from the skills/ folder."""
     # Sanitize the name to prevent directory traversal

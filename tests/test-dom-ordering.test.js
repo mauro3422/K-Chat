@@ -202,4 +202,41 @@ describe('DOM Ordering', () => {
     var dom = makeDom();
     expect(dom.asstDiv.children.length).toBe(1);
   });
+
+  test('getPhaseIndex does not double-count tool turn plus reasoning transition', function() {
+    var dom = makeDom();
+    var ctx = new StreamContext(dom.asstDiv);
+
+    // Simulate: reasoning[0] → content → tool_call → reasoning[1] → content
+    var d1 = document.createElement('details');
+    d1.className = 'reasoning';
+    ctx.addReasoningEl(d1);
+
+    // First content: phaseIdx should be 0 (no tool turn yet)
+    expect(ctx.getPhaseIndex()).toBe(0);
+
+    // Mark tool turn (as tool-call handler does)
+    ctx.markToolTurn();
+
+    // Start new reasoning phase (as reasoning handler does with fix)
+    var d2 = document.createElement('details');
+    d2.className = 'reasoning';
+    ctx.addReasoningEl(d2);
+    ctx.consumeToolTurn();  // <-- the fix: consume the pending tool turn
+
+    // Second content: phaseIdx should be 1 (not 2), no double-count
+    expect(ctx.getPhaseIndex()).toBe(1);
+  });
+
+  test('tool turn without new reasoning still increments phaseIdx', function() {
+    var dom = makeDom();
+    var ctx = new StreamContext(dom.asstDiv);
+
+    // Simulate: content → tool_call → content (no new reasoning)
+    ctx.markToolTurn();
+    ctx.enterToolPhase();  // consumes tool turn, increments toolPhase
+
+    // phaseIdx = max(0, 0-1) + 1 = 0 + 1 = 1
+    expect(ctx.getPhaseIndex()).toBe(1);
+  });
 });
