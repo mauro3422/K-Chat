@@ -27,8 +27,9 @@ await import(`file://${widgetsDir}/toolbar.js`);
 await import(`file://${widgetsDir}/index.js`);
 await import('../web/static/modules/markdown-renderer.js');
 await import('../web/static/modules/stream-dispatcher.js');
+await import('../web/static/modules/stream-bootstrap.js');
 await import('../web/static/modules/content-handler.js');
-await import('../web/static/modules/chat-form.js');
+await import('../web/static/modules/chat-form-bootstrap.js');
 
 describe('Frontend Integration', () => {
   test('KairosWidgets tiene extract', () => {

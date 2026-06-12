@@ -1,9 +1,8 @@
 import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
+import { KairosStream } from './stream-dispatcher.js';
 
 export function registerToolCallRenderer() {
-  if (typeof KairosStream === 'undefined') return;
-
   KairosStream.on('tool_call', function(dataStr, ctx) {
     try {
       var state = ctx;

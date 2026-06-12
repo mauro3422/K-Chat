@@ -1,4 +1,6 @@
 import { StreamErrorHandler } from './stream-error-handler.js';
+import { KairosStream } from './stream-dispatcher.js';
+import { parseStreamEvent } from './stream-contract.js';
 
 export function executeStreamFetch(params) {
   var sessionId = params.sessionId;
@@ -38,8 +40,12 @@ export function executeStreamFetch(params) {
         if (r.done) {
           buf += decoder.decode();
           if (buf.trim()) {
-            try { var lastMsg = JSON.parse(buf); } catch(e) { logUI('json_parse_error', buf.substring(0, 80)); }
-            if (lastMsg) KairosStream.emit(lastMsg.t, lastMsg.d, context);
+            var lastMsg = parseStreamEvent(buf);
+            if (!lastMsg) {
+              logUI('json_parse_error', buf.substring(0, 80));
+            } else {
+              KairosStream.emit(lastMsg.t, lastMsg.d, context);
+            }
           }
           logUI('stream_complete', 'tokens=' + tokenCount + ' hasContent=' + hasContent);
           return { hasContent: hasContent, tokenCount: tokenCount };
@@ -53,7 +59,8 @@ export function executeStreamFetch(params) {
         for (var i = 0; i < lines.length; i++) {
           var line = lines[i];
           if (!line.trim()) continue;
-          try { var msg = JSON.parse(line); } catch(e) { logUI('json_parse_error', line.substring(0, 80)); continue; }
+          var msg = parseStreamEvent(line);
+          if (!msg) { logUI('json_parse_error', line.substring(0, 80)); continue; }
 
           var isFirstToken = context.isFirstToken ? context.isFirstToken() : context.firstToken;
           if (isFirstToken) {

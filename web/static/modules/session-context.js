@@ -41,6 +41,4 @@ export const SessionContext = {
     _initialized = false;
   }
 };
-
-window.SessionContext = SessionContext;
 export default SessionContext;

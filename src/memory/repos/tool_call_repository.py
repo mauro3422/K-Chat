@@ -19,6 +19,29 @@ class ToolCallRepository(_BaseRepository):
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (session_id, tool_name, input_str, status, turn, datetime.now().isoformat()))
 
+    def record_execution(
+        self,
+        session_id: str,
+        tool_name: str,
+        input_str: str,
+        status: str,
+        tool_result: str,
+        turn: int = 0,
+        tool_call_id: str | None = None,
+    ) -> None:
+        """Persist both the tool call and its resulting tool message in one transaction."""
+        with self._transaction() as conn:
+            cursor = conn.cursor()
+            created_at = datetime.now().isoformat()
+            cursor.execute('''
+                INSERT INTO tool_calls (session_id, tool_name, input, status, turn, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (session_id, tool_name, input_str, status, turn, created_at))
+            cursor.execute('''
+                INSERT INTO messages (session_id, role, content, model, tool_call_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (session_id, "tool", tool_result, None, tool_call_id, created_at))
+
     def get_history(self, session_id: str, limit: int = 10) -> list[tuple[Any, ...]]:
         """Retrieve tool call history for a session."""
         try:

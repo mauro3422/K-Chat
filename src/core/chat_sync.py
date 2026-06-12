@@ -1,6 +1,6 @@
-from src.llm import get_default_model
 from src.context import build_system_prompt
-from src.core import _deps
+from src.llm import get_default_model
+from src.llm.client import chat as llm_chat
 from src.tools import TOOLS
 from typing import Any
 
@@ -11,7 +11,7 @@ def chat(message_user: str, history: list[dict[str, Any]] | None = None) -> tupl
     if history is None:
         history = [build_system_prompt(model)]
     history.append({"role": "user", "content": message_user})
-    choice = _deps.llm_chat(history, model, tools=TOOLS)
+    choice = llm_chat(history, model, build_prompt_fn=build_system_prompt, tools=TOOLS)
     response = choice.message.content or ""
     history.append({"role": "assistant", "content": response})
     return response, history

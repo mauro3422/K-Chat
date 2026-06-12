@@ -1,11 +1,12 @@
 import { StreamOrchestrator } from './stream-orchestrator.js';
-import { RetryHandler } from './retry-handler.js';
+import { createRetryController } from './retry-handler.js';
 import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
 import { SessionContext } from './session-context.js';
 
 var lastUserMessageText = '';
 var currentController = null;
+var currentRetryController = createRetryController();
 
 function retryLastMessage() {
   var lastAsstMsg = document.querySelector('.msg.assistant:last-child');
@@ -47,6 +48,9 @@ function init() {
 
     if (currentController) currentController.abort();
     currentController = new AbortController();
+    if (!currentRetryController || text !== lastUserMessageText) {
+      currentRetryController = createRetryController();
+    }
 
     lastUserMessageText = text;
 
@@ -71,6 +75,7 @@ function init() {
       asstDiv: asstDiv,
       lastUserMessageText: lastUserMessageText,
       controller: currentController,
+      retryController: currentRetryController,
       sessionId: SessionContext.getSessionId(),
       defaultModel: defaultModel
     });
@@ -79,7 +84,7 @@ function init() {
 
 function resetForm() {
   lastUserMessageText = '';
-  RetryHandler.resetRetryCount();
+  currentRetryController.resetRetryCount();
 }
 
 export const KairosForm = {
@@ -87,4 +92,3 @@ export const KairosForm = {
   retry: retryLastMessage,
   reset: resetForm
 };
-window.KairosForm = KairosForm;

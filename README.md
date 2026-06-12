@@ -213,5 +213,6 @@ What doesn't work gets replaced, not patched.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — System architecture, data flow, persistence model
 - [docs/MODULES.md](docs/MODULES.md) — Module responsibilities, public interfaces, dependency map
+- [docs/CONTRACTS.md](docs/CONTRACTS.md) — Boundary contracts and refactor seams
 - [docs/HEALTH.md](docs/HEALTH.md) — Known issues and refactoring candidates
 - [ROADMAP.md](ROADMAP.md) — Completed features and next priorities

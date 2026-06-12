@@ -37,6 +37,8 @@ export function registerContentHandler() {
         return;
       }
 
+      var widgetsApi = globalThis.KairosWidgets || KairosWidgets;
+
       if (state._toolTurnSinceLastContent) {
         state._toolTurnSinceLastContent = false;
         state._toolPhase = (state._toolPhase || 0) + 1;
@@ -110,8 +112,8 @@ export function registerContentHandler() {
 
         var purifyConfig = { ADD_TAGS: ['iframe'], ADD_ATTR: ['data-widget-id', 'data-widget-key'] };
         var html = '';
-        if (segText && typeof KairosWidgets !== 'undefined' && KairosWidgets.extract) {
-          var extracted = KairosWidgets.extract(segText);
+        if (segText && widgetsApi && widgetsApi.extract) {
+          var extracted = widgetsApi.extract(segText);
           var parsed = KairosMarkdown.parse(extracted);
           if (typeof DOMPurify !== 'undefined') {
             html += DOMPurify.sanitize(parsed, purifyConfig);

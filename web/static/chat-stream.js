@@ -1,7 +1,7 @@
 import { SessionContext } from './modules/session-context.js';
 import stateManager from './modules/widgets/state-manager.js';
 import { KairosForm } from './modules/chat-form.js';
-import { KairosWidgets } from './modules/widgets/index.js';
+import { KairosWidgets, startMessageHandler } from './modules/widgets/index.js';
 import { KairosMarkdown } from './modules/markdown-renderer.js';
 
 stateManager.loadFromJSON({});
@@ -19,7 +19,7 @@ stateManager.loadFromJSON({});
 
 // sessionId is set by chat.html template as a global var before this script loads
 
-KairosWidgets.startMessageHandler();
+startMessageHandler();
 KairosForm.init();
 
 export function loadSession(sid) {

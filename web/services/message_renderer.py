@@ -1,9 +1,12 @@
 import json
 import html
-import re
 
-from src.api import filter_messages_for_ui, match_tools_to_msgs, get_session_messages, get_tool_history, get_widget_states
+from src.api.history import filter_messages_for_ui, match_tools_to_msgs
+from src.api.messages import get_session_messages
+from src.api.tools import get_tool_history
+from src.api.widgets import get_widget_states
 from web.ui_utils import render_msg_with_phases
+from web.services.widget_contract import extract_inline_widget_states
 
 
 def render_session_messages(session_id: str) -> str:
@@ -14,18 +17,7 @@ def render_session_messages(session_id: str) -> str:
     all_tools = get_tool_history(session_id, 100)
     msg_tool_map = match_tools_to_msgs(msgs, all_tools)
     widget_states = get_widget_states(session_id)
-
-    # Extract widget code from content blocks and inject as _code_ entries
-    # so inline widgets persist across page reloads without save_widget
-    widget_regex = re.compile(r'```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```')
-
-    for match in widget_regex.finditer(
-        "\n".join(row[1] for row in msgs if row[0] == "assistant" and row[1])
-    ):
-        key = match.group(1)
-        code = match.group(2).replace('?.', '.')
-        if key and code:
-            widget_states[f'_code_{key}'] = code
+    widget_states.update(extract_inline_widget_states(msgs))
 
     widget_states_json = json.dumps(widget_states, ensure_ascii=False)
 

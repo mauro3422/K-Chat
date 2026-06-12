@@ -8,6 +8,7 @@ import { log, KairosWidgets, fnv1a_32 } from './core.js';
 import { createIframe } from './iframe-builder.js';
 import { getWidgetObserver, setWidgetObserver } from './iframe.js';
 import stateManager from './state-manager.js';
+import { isWidgetCodeEntry } from './contract.js';
 
 export function startMessageHandler() {
     if (window.IntersectionObserver && !getWidgetObserver()) {
@@ -48,7 +49,7 @@ export function startMessageHandler() {
             var codeEntries = {};
             var allState = stateManager.toJSON();
             Object.keys(allState).forEach(function(k) {
-                if (k.indexOf('_code_') === 0) codeEntries[k] = allState[k];
+                if (isWidgetCodeEntry(k)) codeEntries[k] = allState[k];
             });
             var urlBuilder = SessionContext.createSessionUrlBuilder();
             fetch(urlBuilder.widgetState(hashId), {
@@ -62,5 +63,3 @@ export function startMessageHandler() {
         }
     });
 }
-window.KairosWidgets = window.KairosWidgets || {};
-window.KairosWidgets.startMessageHandler = startMessageHandler;

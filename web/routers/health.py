@@ -2,14 +2,14 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 import os
 
+from src.api.database import check_db_connection
+
 router = APIRouter()
 
 @router.get("/health")
 def health():
     checks = {}
     
-    # Check database
-    from src.api import check_db_connection
     try:
         checks["database"] = "ok" if check_db_connection() else "error"
     except Exception as e:

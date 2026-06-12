@@ -9,12 +9,13 @@ export function attemptRetry(params) {
   var lastUserMessageText = params.lastUserMessageText;
   var reason = params.reason;
   var hasContent = params.hasContent;
+  var retryController = params.retryController || RetryHandler;
 
-  if (!RetryHandler.shouldRetry(hasContent)) {
+  if (!retryController.shouldRetry(hasContent)) {
     return false;
   }
 
-  RetryHandler.scheduleRetry(form, input, asstDiv, lastUserMessageText, reason);
+  retryController.scheduleRetry(form, input, asstDiv, lastUserMessageText, reason);
   return true;
 }
 
@@ -23,6 +24,7 @@ export function handleRetryFinalization(params) {
   var input = params.input;
   var hasContent = params.hasContent;
   var reason = params.reason;
+  var retryController = params.retryController || RetryHandler;
 
   StreamErrorHandler.markCallingPillsError(asstDiv);
 
@@ -30,6 +32,6 @@ export function handleRetryFinalization(params) {
     StreamErrorHandler.showRetryMessage(asstDiv, reason);
   }
 
-  RetryHandler.resetRetryCount();
+  retryController.resetRetryCount();
   KairosUtils.finalizeStream(input);
 }

@@ -1,8 +1,7 @@
 import C from './dom-contracts.js';
+import { KairosStream } from './stream-dispatcher.js';
 
 export function registerReasoningHandler() {
-  if (typeof KairosStream === 'undefined') return;
-
   KairosStream.on('reasoning', function(token, ctx) {
     try {
       var state = ctx;

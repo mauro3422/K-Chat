@@ -4,8 +4,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.api import get_default_model, rebuild_history, ensure_session
-from src.api import save_message as db_save_message
+from src.api.chat import get_default_model
+from src.api.history import rebuild_history
+from src.api.messages import save_message as db_save_message
+from src.api.session import ensure_session
 from web.services.chat_stream import build_stream_generator
 
 router = APIRouter()

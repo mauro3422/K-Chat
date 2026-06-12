@@ -3,6 +3,11 @@
 > **Regla**: Este archivo es solo el índice. El detalle de cada versión está en `changelogs/vX.Y.Z.md`.
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 
+## [v0.0.25] — 2026-06-12 — [Detalle](changelogs/v0.0.25.md)
+- Stream contract shared between Python and JS, widget bootstrap split, dev server split, API facade trimmed
+- Page/model startup no longer blocks requests, `src.core._deps` moved from partials to explicit wrappers, sync save path fixed without reintroducing a core cycle
+- 19 Python integration/unit tests and 43 JS tests validated on the new borders
+
 ## [v0.0.24] — 2026-06-12 — [Detalle](changelogs/v0.0.24.md)
 - DOM ordering, loop detector v2 (context-aware), transparent retry handler
 - getPhaseIndex fix, 18 Python test repairs (0 failures), 591 tests total

@@ -6,11 +6,10 @@ from typing import Any, Callable
 
 from src.tools import TOOLS
 from src.core import _deps
-from src.core._deps import save_message
+from src.constants import MAX_TOOL_TURNS
 
 logger = logging.getLogger(__name__)
 
-MAX_TOOL_TURNS = 5
 OUTPUT_CHUNK_SIZE = 12
 
 
@@ -26,7 +25,7 @@ class _ToolLoopContext:
     tool_detail: list[dict[str, Any]] | None = None
     run_parallel_tools_fn: Callable[..., Any] | None = None
     tool_map: dict[str, Any] | None = None
-    max_turns: int = 10
+    max_turns: int = MAX_TOOL_TURNS
 
 
 def _build_tool_calls_list(tool_calls_out: list[Any]) -> list[dict[str, Any]]:
@@ -53,6 +52,7 @@ def _append_assistant_with_tools(history: list[dict[str, Any]], content: str | N
 
 def _save_assistant_tool_calls(session_id: str | None, content: str | None, model: str, tool_calls_list: list[dict[str, Any]]) -> None:
     if session_id:
+        from src.api.messages import save_message
         save_message(
             session_id,
             "assistant",
@@ -309,6 +309,7 @@ def run_tool_loop_sync(
         "tool_calls": [],
     })
     if ctx.session_id:
+        from src.api.messages import save_message
         save_message(
             ctx.session_id, "assistant", content_str,
             model=ctx.model, tool_calls="[]"

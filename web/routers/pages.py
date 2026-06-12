@@ -5,7 +5,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
-from src.api import get_default_model, get_sessions
+from src.api.chat import get_default_model
+from src.api.session import get_sessions
+from src.llm.model_state import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
 from web.services.message_renderer import render_session_messages
 
 router = APIRouter()
@@ -16,16 +18,14 @@ _NOCACHE_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
 
 def get_available_model_ids() -> list[str]:
-    from src.api import get_verified_models, PRIORITY
-    try:
-        free_ids = get_verified_models()
-    except Exception:
-        free_ids = ["deepseek-v4-flash-free"]
-
+    verified = get_verified_models_safe()
+    free_ids = verified or []
     models = list(PRIORITY)
     for fid in free_ids:
         if fid not in models:
             models.append(fid)
+    if (verified is None or not free_ids) and FALLBACK_MODEL not in models:
+        models.append(FALLBACK_MODEL)
     return models
 
 
@@ -79,5 +79,3 @@ def sidebar(request: Request) -> HTMLResponse:
 @router.get("/sessions/{session_id}/messages", response_class=HTMLResponse)
 def session_messages(session_id: str) -> HTMLResponse:
     return HTMLResponse(render_session_messages(session_id))
-
-

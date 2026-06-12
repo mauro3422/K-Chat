@@ -16,6 +16,9 @@ global.fetch = () => Promise.resolve({ text: () => Promise.resolve('<div id="mes
 global.logUI = () => {};
 global.logStream = () => {};
 
+const widgetsModule = await import('../web/static/modules/widgets/index.js');
+const formModule = await import('../web/static/modules/chat-form.js');
+
 // Set up window with history mock before importing chat-stream.js
 global.window = Object.assign(global.window || {}, {
   addEventListener: () => {},
@@ -28,10 +31,21 @@ global.window = Object.assign(global.window || {}, {
 var chatModule = await import('../web/static/chat-stream.js');
 
 // Ensure KairosForm and KairosWidgets have mock reset/retry
-global.window.KairosForm = Object.assign(global.window.KairosForm || {}, { reset() {}, retry() {} });
-global.window.KairosWidgets = Object.assign(global.window.KairosWidgets || {}, { reset() {} });
-global.KairosForm = global.window.KairosForm;
-global.KairosWidgets = global.window.KairosWidgets;
+widgetsModule.KairosWidgets.startMessageHandler = () => {};
+widgetsModule.KairosWidgets.reset = () => {};
+formModule.KairosForm.reset = () => {};
+formModule.KairosForm.retry = () => {};
+global.KairosWidgets = widgetsModule.KairosWidgets;
+global.KairosForm = formModule.KairosForm;
+global.window.KairosWidgets = widgetsModule.KairosWidgets;
+global.window.KairosForm = formModule.KairosForm;
+
+function mockElement() {
+  return {
+    innerHTML: '',
+    getAttribute: () => '{}'
+  };
+}
 
 describe('chat-stream', () => {
 
@@ -42,7 +56,7 @@ describe('chat-stream', () => {
   test('loadSession cambia sessionId', () => {
     const prevSid = global.sessionId;
     global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
-    global.document.getElementById = () => ({ innerHTML: '' });
+    global.document.getElementById = () => mockElement();
     window.loadSession('custom-sid-999');
     expect(global.sessionId).toBe('custom-sid-999');
     global.sessionId = prevSid;
@@ -50,7 +64,7 @@ describe('chat-stream', () => {
 
   test('loadSession llama replaceState', () => {
     global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
-    global.document.getElementById = () => ({ innerHTML: '' });
+    global.document.getElementById = () => mockElement();
     window._lastState = undefined;
     window._lastUrl = undefined;
     window.loadSession('sid-replace-test');
@@ -61,7 +75,7 @@ describe('chat-stream', () => {
 
   test('loadSession pasa URL correcta', () => {
     global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
-    global.document.getElementById = () => ({ innerHTML: '' });
+    global.document.getElementById = () => mockElement();
     window._lastUrl = undefined;
     window.loadSession('url-test-sid');
     expect(window._lastUrl).toContain('url-test-sid');
@@ -69,16 +83,16 @@ describe('chat-stream', () => {
 
   test('loadSession llama widgets.reset', () => {
     let wReset = false;
-    global.KairosWidgets.reset = () => { wReset = true; };
-    global.document.getElementById = () => ({ innerHTML: '' });
+    widgetsModule.KairosWidgets.reset = () => { wReset = true; };
+    global.document.getElementById = () => mockElement();
     window.loadSession('sid-reset');
     expect(wReset).toBe(true);
   });
 
   test('loadSession llama form.reset', () => {
     let fReset = false;
-    global.KairosForm.reset = () => { fReset = true; };
-    global.document.getElementById = () => ({ innerHTML: '' });
+    formModule.KairosForm.reset = () => { fReset = true; };
+    global.document.getElementById = () => mockElement();
     window.loadSession('sid-reset');
     expect(fReset).toBe(true);
   });
@@ -112,7 +126,7 @@ describe('chat-stream', () => {
   test('loadSession llama fetch con URL correcta', async () => {
     let fetchedUrl = null;
     global.fetch = (url) => { fetchedUrl = url; return Promise.resolve({ text: () => Promise.resolve('') }); };
-    global.document.getElementById = () => ({ innerHTML: '' });
+    global.document.getElementById = () => mockElement();
     window.loadSession('url-test-sid');
     expect(fetchedUrl).toBe('/sessions/url-test-sid/messages');
   });
@@ -121,7 +135,7 @@ describe('chat-stream', () => {
     const { KairosMarkdown } = await import('../web/static/modules/markdown-renderer.js');
     const fetchPromise = Promise.resolve({ text: () => Promise.resolve('<div id="messages"></div>') });
     global.fetch = () => fetchPromise;
-    global.document.getElementById = () => ({ innerHTML: '' });
+    global.document.getElementById = () => mockElement();
     window.loadSession('render-test-sid');
     await fetchPromise;
     await new Promise(r => setTimeout(r, 10));

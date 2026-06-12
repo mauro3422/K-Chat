@@ -4,7 +4,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from src.api import get_debug_info
+from src.api.debug import get_debug_info
 from web.logging_handler import get_backend_logs
 
 router = APIRouter()

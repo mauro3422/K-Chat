@@ -1,7 +1,8 @@
 import { StreamErrorHandler } from './stream-error-handler.js';
-import { RetryHandler } from './retry-handler.js';
+import { createRetryController } from './retry-handler.js';
 import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
+import { KairosStream } from './stream-dispatcher.js';
 import { StreamContext } from './stream-context.js';
 import { executeStreamFetch } from './stream-fetcher.js';
 import { attemptRetry } from './stream-retry-coordinator.js';
@@ -17,6 +18,7 @@ export const StreamOrchestrator = {
     var controller = params.controller;
     var sessionId = params.sessionId;
     var defaultModel = params.defaultModel;
+    var retryController = params.retryController || createRetryController();
 
     logUI('stream_start', 'mensaje=' + text.substring(0, 40) + '...');
 
@@ -24,19 +26,20 @@ export const StreamOrchestrator = {
     KairosStream.on('error', errorHandler.handler);
 
     var timeoutId = null;
+    var streamTimeout = retryController.getStreamTimeout();
 
     var resetTimeout = function resetStreamTimeout() {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(function() {
-        logUI('stream_timeout', RetryHandler.getStreamTimeout() / 1000 + 's sin respuesta, abortando');
+        logUI('stream_timeout', streamTimeout / 1000 + 's sin respuesta, abortando');
         controller.abort();
-      }, RetryHandler.getStreamTimeout());
+      }, streamTimeout);
     };
 
     timeoutId = setTimeout(function() {
-      logUI('stream_timeout', RetryHandler.getStreamTimeout() / 1000 + 's sin respuesta, abortando');
+      logUI('stream_timeout', streamTimeout / 1000 + 's sin respuesta, abortando');
       controller.abort();
-    }, RetryHandler.getStreamTimeout());
+    }, streamTimeout);
 
     var context = new StreamContext(asstDiv);
 
@@ -61,6 +64,7 @@ export const StreamOrchestrator = {
         if (isEmpty) {
           asstDiv.remove();
         }
+        retryController.resetRetryCount();
         KairosUtils.finalizeStream(input);
         return;
       }
@@ -75,14 +79,16 @@ export const StreamOrchestrator = {
         lastUserMessageText: lastUserMessageText,
         reason: 'error: ' + e2.message,
         hasContent: false,
-        hasSuccessfulTools: hasSuccessfulTools
+        hasSuccessfulTools: hasSuccessfulTools,
+        retryController: retryController
       })) {
         return;
       }
 
       StreamErrorHandler.markCallingPillsError(asstDiv);
-      StreamErrorHandler.showRetryMessage(asstDiv, 'No se pudo recibir la respuesta después de ' + RetryHandler.getMaxRetries() + ' reintentos. Detalle: ' + KairosUtils.escHtml(e2.toString()));
+      StreamErrorHandler.showRetryMessage(asstDiv, 'No se pudo recibir la respuesta después de ' + retryController.getMaxRetries() + ' reintentos. Detalle: ' + KairosUtils.escHtml(e2.toString()));
       logUI('stream_error_final', 'falló definitivamente: ' + e2.message);
+      retryController.resetRetryCount();
     }
 
     clearTimeout(timeoutId);
@@ -98,7 +104,7 @@ export const StreamOrchestrator = {
 
       if (errorType === 'auth' || errorType === 'rate_limit') {
         StreamErrorHandler.showRetryMessage(asstDiv, errorMsg);
-        RetryHandler.resetRetryCount();
+        retryController.resetRetryCount();
         KairosUtils.finalizeStream(input);
         return;
       }
@@ -111,13 +117,14 @@ export const StreamOrchestrator = {
         lastUserMessageText: lastUserMessageText,
         reason: errorMsg,
         hasContent: hasContent,
-        hasSuccessfulTools: hasSuccessfulTools
+        hasSuccessfulTools: hasSuccessfulTools,
+        retryController: retryController
       })) {
         return;
       }
 
-      StreamErrorHandler.showRetryMessage(asstDiv, errorMsg + ' (después de ' + RetryHandler.getMaxRetries() + ' reintentos)');
-      RetryHandler.resetRetryCount();
+      StreamErrorHandler.showRetryMessage(asstDiv, errorMsg + ' (después de ' + retryController.getMaxRetries() + ' reintentos)');
+      retryController.resetRetryCount();
       KairosUtils.finalizeStream(input);
       return;
     }
@@ -136,16 +143,18 @@ export const StreamOrchestrator = {
         lastUserMessageText: lastUserMessageText,
         reason: 'respuesta vacía',
         hasContent: false,
-        hasSuccessfulTools: hasSuccessfulTools
+        hasSuccessfulTools: hasSuccessfulTools,
+        retryController: retryController
       })) {
         return;
       }
 
       StreamErrorHandler.markCallingPillsError(asstDiv);
-      StreamErrorHandler.showRetryMessage(asstDiv, 'La respuesta estuvo vacía después de ' + RetryHandler.getMaxRetries() + ' reintentos. Puede ser un problema temporal del modelo.');
-      logUI('stream_empty_final', 'sin contenido después de ' + RetryHandler.getMaxRetries() + ' reintentos');
+      StreamErrorHandler.showRetryMessage(asstDiv, 'La respuesta estuvo vacía después de ' + retryController.getMaxRetries() + ' reintentos. Puede ser un problema temporal del modelo.');
+      logUI('stream_empty_final', 'sin contenido después de ' + retryController.getMaxRetries() + ' reintentos');
+      retryController.resetRetryCount();
     } else {
-      RetryHandler.resetRetryCount();
+      retryController.resetRetryCount();
       refreshSidebar();
       if (typeof debugVisible !== 'undefined' && debugVisible) refreshDebug();
     }
@@ -154,4 +163,3 @@ export const StreamOrchestrator = {
   }
 
 };
-window.StreamOrchestrator = StreamOrchestrator;

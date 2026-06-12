@@ -239,6 +239,34 @@ class TestToolCallRepository:
         assert args[0][1] == ("sess_1", 5)
         assert result == [("get_weather", '{"city":"NYC"}', "success", "2024-01-01", 1)]
 
+    @patch("src.memory.repos.base.get_conn")
+    def test_record_execution(self, mock_get_conn, mock_conn):
+        mock_conn, mock_cursor = mock_conn
+        mock_get_conn.return_value = mock_conn
+        repo = ToolCallRepository()
+
+        repo.record_execution(
+            "sess_1",
+            "get_weather",
+            '{"city":"NYC"}',
+            "success",
+            "sunny",
+            turn=2,
+            tool_call_id="call_1",
+        )
+
+        assert mock_conn.cursor.return_value.execute.call_count == 2
+        first_args = mock_conn.cursor.return_value.execute.call_args_list[0][0]
+        second_args = mock_conn.cursor.return_value.execute.call_args_list[1][0]
+        assert "INSERT INTO tool_calls" in first_args[0]
+        assert first_args[1][:4] == ("sess_1", "get_weather", '{"city":"NYC"}', "success")
+        assert "INSERT INTO messages" in second_args[0]
+        assert second_args[1][0] == "sess_1"
+        assert second_args[1][1] == "tool"
+        assert second_args[1][2] == "sunny"
+        assert second_args[1][4] == "call_1"
+        mock_conn.commit.assert_called_once()
+
 
 class TestWidgetStateRepository:
     @patch("src.memory.repos.base.get_conn")

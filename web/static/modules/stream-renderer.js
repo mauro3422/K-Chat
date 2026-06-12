@@ -1,5 +1,7 @@
+import { KairosStream } from './stream-dispatcher.js';
+
 export function initStreamRenderer() {
-  if (typeof KairosStream === 'undefined') {
+  if (!KairosStream) {
     console.error('KairosStream not defined');
     return;
   }

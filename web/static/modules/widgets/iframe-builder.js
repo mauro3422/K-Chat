@@ -9,6 +9,7 @@ import { KairosUtils } from '../utils.js';
 import { fnv1a_32, log, KairosWidgets } from './core.js';
 import { createToolbar } from './toolbar-core.js';
 import stateManager from './state-manager.js';
+import { widgetCodeEntryKey } from './contract.js';
 import { getInitializedWidgets } from './iframe.js';
 import { getLogger } from '../logger.js';
 var cbLog = getLogger('iframe-builder');
@@ -39,6 +40,7 @@ export function createIframe(container, id, code) {
         var iframe = document.createElement('iframe');
         iframe.className = 'interactive-widget-iframe';
         iframe.sandbox = 'allow-scripts';
+        iframe.style = iframe.style || {};
         iframe.style.width = '100%';
         iframe.style.height = '0';
         iframe.style.minHeight = '60px';
@@ -73,7 +75,7 @@ export function createIframe(container, id, code) {
                     log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
                     KairosWidgets._registry[id] = data.code;
                     stateManager.setCodeCache(key, data.code);
-                    fetch(urlBuilder.widgetState('_code_' + key), {
+                    fetch(urlBuilder.widgetState(widgetCodeEntryKey(key)), {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({ state: data.code })

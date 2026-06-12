@@ -4,7 +4,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from src.api import save_widget_state, db_save_widget, db_get_widget, db_get_widget_versions, db_get_widget_by_version, sanitize_widget_id
+from src.api.widgets import (
+    save_widget_state,
+    db_save_widget,
+    db_get_widget,
+    db_get_widget_versions,
+    db_get_widget_by_version,
+)
+from src.tools._widget_helpers import sanitize_widget_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -68,4 +75,3 @@ def save_widget(session_id: str, widget_id: str, payload: SaveWidgetPayload) -> 
     except Exception as e:
         logger.error("Error saving widget: %s", e)
         raise HTTPException(status_code=500, detail="Internal error saving widget.")
-

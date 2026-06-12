@@ -5,6 +5,7 @@
  */
 import C from '../dom-contracts.js';
 import stateManager from './state-manager.js';
+import { INLINE_WIDGET_BLOCK_RE, INLINE_WIDGET_TAG_RE, normalizeWidgetCode } from './contract.js';
 import { getLogger } from '../logger.js';
 var clog = getLogger('widgets-core');
 let _registry = {};
@@ -38,10 +39,10 @@ export function log(id, label, detail) {
 
 export function extract(text) {
     // 1. Parse markdown code blocks with an optional key: ```html-widget [key]
-    var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)(?:\n```|$)/g;
-    text = text.replace(widgetRegex, function(match, key, code) {
+    INLINE_WIDGET_BLOCK_RE.lastIndex = 0;
+    text = text.replace(INLINE_WIDGET_BLOCK_RE, function(match, key, code) {
         var id = 'widget-' + nextIndex();
-        code = code.replace(/\?\.([\w.]+)\s*=(?!=)/g, '.$1 =');
+        code = normalizeWidgetCode(code);
         _registry[id] = code;
         if (key && code) {
             stateManager.setCodeCache(key, code);
@@ -55,9 +56,9 @@ export function extract(text) {
     });
 
     // 2. Parse inline tags like [Widget: key] or [Widget key] to load saved widgets
-    var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
     var seenKeys = {};
-    text = text.replace(tagRegex, function(match, key) {
+    INLINE_WIDGET_TAG_RE.lastIndex = 0;
+    text = text.replace(INLINE_WIDGET_TAG_RE, function(match, key) {
         var lowerKey = key.toLowerCase();
         if (seenKeys[lowerKey]) {
             return '';
@@ -90,4 +91,3 @@ export const KairosWidgets = {
     extract,
     reset
 };
-window.KairosWidgets = KairosWidgets;

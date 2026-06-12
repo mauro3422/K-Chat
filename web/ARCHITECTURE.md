@@ -8,7 +8,9 @@
 
 | File | Responsibility |
 |------|----------------|
-| `server.py` | FastAPI app factory, lifespan, middlewares, exception handlers, auto-discovery of routers |
+| `server.py` | Exposes the FastAPI app object for ASGI import |
+| `app_factory.py` | FastAPI app factory, lifespan, middlewares, exception handlers, auto-discovery of routers |
+| `dev_server.py` | Development launcher and optional port-freeing helper |
 | `logging.py` | In-memory ring buffer (`BackendLogHandler`) for backend logs exposed via `/debug/backend-logs` |
 | `ui_utils.py` | Pure HTML rendering helpers for chat messages (phases, reasoning, tool calls, timestamps) |
 | `routers/pages.py` | Serves HTML pages: `/`, `/sessions/{id}`, `/sidebar`, `/sessions/{id}/messages` |
@@ -18,19 +20,19 @@
 | `routers/debug.py` | `GET .../debug`, `GET /debug/backend-logs` — local-only debug endpoints |
 | `routers/health.py` | `GET /health` — DB + LLM provider connectivity check |
 | `services/chat_stream.py` | Builds the NDJSON generator that wraps `chat_stream()` and persists on completion/error |
+| `services/stream_contract.py` | Shared NDJSON event contract for server-side stream serialization |
 | `services/message_persister.py` | Serializes phases + debug info and writes assistant message + debug to DB |
 | `services/message_renderer.py` | Renders full session HTML: fetches messages, matches tools, extracts widget code, builds form |
 | `services/stream_error_classifier.py` | Pattern-matches error strings into categories (`rate_limit`, `timeout`, `network`, `model`, `unknown`) |
+| `static/modules/widgets/bootstrap.js` | Compatibility bootstrap for `window.KairosWidgets` |
+| `static/modules/stream-bootstrap.js` | Compatibility bootstrap for `window.StreamOrchestrator` |
+| `static/modules/chat-form-bootstrap.js` | Compatibility bootstrap for `window.KairosForm` |
 
 ---
 
 ## 2. Auto-discovery of routers
 
-```
-server.py:94-106
-```
-
-On import, `server.py` scans `web/routers/*.py`:
+On app creation, `app_factory.py` scans `web/routers/*.py`:
 
 1. `Path(__file__).parent / "routers"` → lists files.
 2. Skips: non-`.py`, files starting with `_`.
@@ -79,8 +81,8 @@ chat_stream.py:build_stream_generator()
 StreamingResponse(generate(), media_type="application/x-ndjson")
   │
   ├─ For each (tipo, token) from chat_stream():
-  │     ├─ tipo == "reasoning" → accumulate + yield {"t":"reasoning","d":token}
-  │     └─ tipo == "content"   → accumulate + yield {"t":"content","d":token}
+  │     ├─ serialized through `web/services/stream_contract.py`
+  │     └─ frontend parses the same event set through `web/static/modules/stream-contract.js`
   │
   ├─ On completion:
   │     ├─ message_persister.save_assistant_message()  # writes content + phases + debug to DB
@@ -105,7 +107,7 @@ StreamingResponse(generate(), media_type="application/x-ndjson")
 | Jinja2 | `pages.py`, `message_renderer.py` |
 | Pydantic | `chat.py`, `widgets.py` (payload models) |
 | Uvicorn | `server.py` (`__main__`) |
-| `src.api` | All routers + services (DB, LLM, history, tools, widgets) |
+| `src.api` | Backward-compatible facade for routers/services still in transition |
 | `src.memory.database` | `health.py` (DB ping) |
 | `dependencies.manage` | `server.py` (SearXNG lifecycle) |
 
@@ -116,7 +118,7 @@ server.py          ← importlib.imports all routers
 logging.py         ← debug.py
 ui_utils.py        ← message_renderer.py (via render_msg_with_phases)
 chat.py            ← chat_stream.py
-chat_stream.py     ← message_persister.py, stream_error_classifier.py
+chat_stream.py     ← message_persister.py, stream_error_classifier.py, stream_contract.py
 message_renderer.py← ui_utils.py
 ```
 

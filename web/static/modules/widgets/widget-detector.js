@@ -7,9 +7,9 @@
  * Does NOT create DOM elements.
  * Does NOT populate KairosWidgets.registry.
  */
-export function registerWidgetDetector() {
-  if (typeof KairosStream === 'undefined') return;
+import { KairosStream } from '../stream-dispatcher.js';
 
+export function registerWidgetDetector() {
   KairosStream.on('content', function(token, state) {
     try {
       if (!state || !state.bodyDivs) return;

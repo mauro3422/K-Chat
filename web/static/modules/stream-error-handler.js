@@ -44,4 +44,3 @@ export const StreamErrorHandler = {
   showRetryMessage,
   createStreamErrorHandler
 };
-window.StreamErrorHandler = StreamErrorHandler;

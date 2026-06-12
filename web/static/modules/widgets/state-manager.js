@@ -4,7 +4,7 @@
  * Replaces scattered window.widgetStates reads/writes with a single
  * coordinated manager. Handles _code_ prefix internally.
  */
-const CODE_PREFIX = '_code_';
+import { WIDGET_STATE_CODE_PREFIX } from './contract.js';
 
 class WidgetStateManager {
     constructor() {
@@ -20,11 +20,11 @@ class WidgetStateManager {
     }
 
     getCodeCache(key) {
-        return this._store.get(CODE_PREFIX + key) ?? null;
+        return this._store.get(WIDGET_STATE_CODE_PREFIX + key) ?? null;
     }
 
     setCodeCache(key, code) {
-        this._store.set(CODE_PREFIX + key, code);
+        this._store.set(WIDGET_STATE_CODE_PREFIX + key, code);
     }
 
     loadFromJSON(json) {
@@ -59,5 +59,4 @@ const instance = new WidgetStateManager();
 
 export { WidgetStateManager };
 export default instance;
-
 

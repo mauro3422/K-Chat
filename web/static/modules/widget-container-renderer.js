@@ -1,9 +1,11 @@
 import C from './dom-contracts.js';
 import { getLogger } from './logger.js';
+import { KairosWidgets } from './widgets/core.js';
 
 var log = getLogger('widget-container-renderer');
 
 export function processWidgetContainers(fullText, bodyDiv, existingByKey, renderedKeys) {
+  var widgetsApi = globalThis.KairosWidgets || KairosWidgets;
   var widgetMatches = [];
   var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
   var m;
@@ -77,8 +79,8 @@ export function processWidgetContainers(fullText, bodyDiv, existingByKey, render
         bodyDiv.appendChild(existing);
         log.debug('reuse_container', { key: lookupKey, wid: existing.getAttribute('data-widget-id') });
       } else if (wm.isNew) {
-        var wid = 'widget-' + window.KairosWidgets.nextIndex();
-        window.KairosWidgets.registry[wid] = wm.code || '';
+        var wid = 'widget-' + widgetsApi.nextIndex();
+        widgetsApi.registry[wid] = wm.code || '';
         var con = document.createElement('div');
         con.className = C.WIDGET_CONTAINER;
         con.setAttribute('data-widget-id', wid);

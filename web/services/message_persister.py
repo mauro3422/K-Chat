@@ -1,8 +1,8 @@
 import json
 from typing import Any
 
-from src.api import save_debug_info
-from src.api import save_message as db_save_message
+from src.api.debug import save_debug_info
+from src.api.messages import save_message as db_save_message
 
 
 def _dedup_phases(phases: list[dict[str, Any]]) -> list[dict[str, Any]]:

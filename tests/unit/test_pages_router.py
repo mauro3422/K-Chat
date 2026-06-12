@@ -20,8 +20,8 @@ def test_router_has_routes():
     assert "/favicon.ico" in paths
 
 
-@patch("src.api.PRIORITY", ["model-a", "model-b"])
-@patch("src.api.get_verified_models", return_value=["model-c", "model-a"])
+@patch("web.routers.pages.PRIORITY", ["model-a", "model-b"])
+@patch("web.routers.pages.get_verified_models_safe", return_value=["model-c", "model-a"])
 def test_get_available_model_ids_includes_all(mock_verified):
     """Returns priority models first, then any additional verified models not in priority."""
     result = get_available_model_ids()
@@ -29,16 +29,16 @@ def test_get_available_model_ids_includes_all(mock_verified):
     assert result == ["model-a", "model-b", "model-c"]
 
 
-@patch("src.api.PRIORITY", ["model-a"])
-@patch("src.api.get_verified_models", return_value=["model-a", "model-b"])
+@patch("web.routers.pages.PRIORITY", ["model-a"])
+@patch("web.routers.pages.get_verified_models_safe", return_value=["model-a", "model-b"])
 def test_get_available_model_ids_no_duplicates(mock_verified):
     """Duplicate model IDs should not appear twice."""
     result = get_available_model_ids()
     assert result == ["model-a", "model-b"]
 
 
-@patch("src.api.PRIORITY", ["model-a"])
-@patch("src.api.get_verified_models", side_effect=Exception("API fail"))
+@patch("web.routers.pages.PRIORITY", ["model-a"])
+@patch("web.routers.pages.get_verified_models_safe", return_value=None)
 def test_get_available_model_ids_fallback_on_error(mock_verified):
     """If get_verified_models raises, fallback list is used."""
     result = get_available_model_ids()

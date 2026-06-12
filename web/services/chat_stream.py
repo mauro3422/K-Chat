@@ -1,4 +1,3 @@
-import json
 import logging
 import time
 from collections.abc import Callable, Generator
@@ -6,11 +5,12 @@ from typing import Any
 
 from fastapi import BackgroundTasks
 
-from src.api import chat_stream, auto_rename_session
+from src.api.chat import chat_stream, auto_rename_session
 from web.services.loop_detector import LoopDetector
 from web.services.message_persister import save_assistant_message
 from web.services.stream_error_classifier import classify_error
 from web.services.stream_retry_handler import StreamRetryHandler
+from web.services.stream_contract import serialize_stream_event
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def build_stream_generator(
                 now = time.monotonic()
 
                 if tipo == "heartbeat":
-                    yield json.dumps({"t": "heartbeat", "d": ""}) + "\n"
+                    yield serialize_stream_event("heartbeat", "")
                     continue
 
                 if tipo == "content":
@@ -87,16 +87,13 @@ def build_stream_generator(
                                         full_reasoning += rtoken
                                     elif rtipo == "content":
                                         full_content += rtoken
-                                    yield json.dumps({"t": rtipo, "d": rtoken}) + "\n"
+                                    yield serialize_stream_event(rtipo, rtoken)
                                     recovered = True
                             except Exception as e:
                                 logger.error("Recovery failed for %s: %s", session_id, e)
 
                         if not recovered:
-                            yield json.dumps({
-                                "t": "error",
-                                "d": {"type": "loop_detected", "message": loop_error},
-                            }) + "\n"
+                            yield serialize_stream_event("error", {"type": "loop_detected", "message": loop_error})
 
                         break  # Exit main stream regardless of recovery outcome
 
@@ -105,7 +102,7 @@ def build_stream_generator(
                 elif tipo == "content":
                     full_content += token
 
-                yield json.dumps({"t": tipo, "d": token}) + "\n"
+                yield serialize_stream_event(tipo, token)
                 last_yield_time = now
 
                 if now - last_save_time > save_interval and (full_content or full_reasoning):
@@ -115,7 +112,7 @@ def build_stream_generator(
 
             if not full_content and not full_reasoning:
                 logger.warning("Empty response for session %s with model %s", session_id, model)
-                yield json.dumps({"t": "error", "d": {"type": "empty_response", "message": "The model did not generate any content"}}) + "\n"
+                yield serialize_stream_event("error", {"type": "empty_response", "message": "The model did not generate any content"})
                 return
 
             logger.info("Chat completed for session %s: %d chars content, %d chars reasoning", session_id, len(full_content), len(full_reasoning))
@@ -130,7 +127,7 @@ def build_stream_generator(
         except Exception as e:
             error_type, error_msg = classify_error(str(e))
             logger.error("Stream error for %s: [%s] %s", session_id, error_type, error_msg)
-            yield json.dumps({"t": "error", "d": {"type": error_type, "message": error_msg}}) + "\n"
+            yield serialize_stream_event("error", {"type": error_type, "message": error_msg})
             return
         finally:
             if not saved and (full_content or full_reasoning):
@@ -139,7 +136,7 @@ def build_stream_generator(
                     saved = True
                 else:
                     try:
-                        yield json.dumps({"t": "error", "d": {"type": "save_failed", "message": "Message not saved"}}) + "\n"
+                        yield serialize_stream_event("error", {"type": "save_failed", "message": "Message not saved"})
                     except Exception:
                         pass
 

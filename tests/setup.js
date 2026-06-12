@@ -164,6 +164,7 @@ global.KairosWidgets = {
   registry: {},
   initAll: () => {},
   reset: () => {},
+  startMessageHandler: () => {},
   debug: {},
 };
 global.KairosMarkdown = { parse: (t) => '<p>' + t + '</p>' };

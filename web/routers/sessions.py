@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Form
 from fastapi.responses import HTMLResponse
 
-from src.api import rename_session, delete_session
+from src.api.session import rename_session, delete_session
 
 router = APIRouter()
 

@@ -1,7 +1,10 @@
 import logging
 import sys
 from typing import Any
-from src.api import chat_stream, get_default_model, init_db, generate_session_id, save_message
+
+from src.api.chat import chat_stream, get_default_model
+from src.api.database import generate_session_id, init_db
+from src.api.messages import save_message
 from src.handler_cli import handle_command
 
 logger: logging.Logger = logging.getLogger(__name__)
