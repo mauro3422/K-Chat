@@ -1,4 +1,6 @@
 import C from './dom-contracts.js';
+import { getLogger } from './logger.js';
+var log = getLogger('content-handler');
 
 export function registerContentHandler() {
   if (typeof KairosStream === 'undefined') return;
@@ -116,6 +118,10 @@ export function registerContentHandler() {
       }
       widgetMatches = filteredMatches;
 
+      if (widgetMatches.length) {
+        log.info('matches', { count: widgetMatches.length, types: widgetMatches.map(function(w){ return (w.codeBlock ? 'cb' : 'tag') + '=' + (w.key || 'anon') + ' new=' + w.isNew; }).join(', ') });
+      }
+
       var textToRender = fullText;
       var incompleteTail = '';
 
@@ -126,6 +132,7 @@ export function registerContentHandler() {
         if (!completeBlock) {
           textToRender = fullText.substring(0, lastOpen);
           incompleteTail = fullText.substring(lastOpen);
+          log.debug('incomplete_cb', { tailLen: incompleteTail.length });
         }
       }
 
@@ -155,6 +162,7 @@ export function registerContentHandler() {
           var existing = lookupKey ? existingByKey[lookupKey] : null;
           if (existing) {
             bodyDiv.appendChild(existing);
+            log.debug('reuse_container', { key: lookupKey, wid: existing.getAttribute('data-widget-id') });
           } else if (wm.isNew) {
             var wid = 'widget-' + KairosWidgets.nextIndex();
             KairosWidgets.registry[wid] = wm.code || '';
@@ -163,6 +171,7 @@ export function registerContentHandler() {
             con.setAttribute('data-widget-id', wid);
             if (lookupKey) con.setAttribute('data-widget-key', lookupKey);
             bodyDiv.appendChild(con);
+            log.info('new_container', { wid: wid, key: lookupKey, codeLen: (wm.code || '').length });
           } else {
             var ph = document.createElement('div');
             ph.style.display = 'none';

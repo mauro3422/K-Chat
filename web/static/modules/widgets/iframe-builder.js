@@ -9,6 +9,8 @@ import { fnv1a_32, log, KairosWidgets } from './core.js';
 import { createToolbar } from './toolbar-core.js';
 import stateManager from './state-manager.js';
 import { getInitializedWidgets } from './iframe.js';
+import { getLogger } from '../logger.js';
+var cbLog = getLogger('iframe-builder');
 
 export function createIframe(container, id, code) {
     if (container.dataset.initialized) return;
@@ -48,6 +50,7 @@ export function createIframe(container, id, code) {
         iframe.srcdoc = buildIframeSrc(id, widgetCode, safeStateStr);
         container.appendChild(iframe);
         container.dataset.initialized = '1';
+        cbLog.info('mounted', { id: id, key: key, codeLen: widgetCode.length, iframeH: iframe.offsetHeight });
     }
 
     if (!code && key) {
@@ -78,6 +81,7 @@ export function createIframe(container, id, code) {
                 })
                 .catch(function(err) {
                     log(id, 'fetch-error', err.message);
+                    cbLog.error('fetch_failed', { id: id, key: key, err: err.message });
                     placeholder.innerHTML = '<div class="widget-error" style="color: #ff6b6b; padding: 16px; background: #161b22; border-radius: 8px; border-left: 3px solid #ff6b6b;"><strong>Widget "' + KairosUtils.escHtml(key) + '" no encontrado</strong><br><span style="color: #8b949e; font-size: 13px;">Este widget fue creado en una sesión anterior pero no se guardó oficialmente.<br>Para persistirlo, usá <code>save_widget</code> en el chat.</span></div>';
                 });
         }

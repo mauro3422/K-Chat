@@ -5,6 +5,8 @@
  */
 import C from '../dom-contracts.js';
 import stateManager from './state-manager.js';
+import { getLogger } from '../logger.js';
+var clog = getLogger('widgets-core');
 let _registry = {};
 let _debug = {};
 let _index = 0;
@@ -45,8 +47,10 @@ export function extract(text) {
             stateManager.setCodeCache(key, code);
         }
         if (key) {
+            clog.debug('extract_cb', { id: id, key: key, codeLen: code.length });
             return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
         }
+        clog.debug('extract_cb', { id: id, key: null, codeLen: code.length });
         return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '"></div>';
     });
 
@@ -60,6 +64,7 @@ export function extract(text) {
         }
         seenKeys[lowerKey] = true;
         var id = 'widget-' + nextIndex();
+        clog.debug('extract_tag', { id: id, key: key });
         return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
     });
 
