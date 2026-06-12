@@ -37,6 +37,11 @@ class _LoopDetector:
         if len(self._recent_text) > 2000:
             self._recent_text = self._recent_text[-1000:]
 
+        # Skip phrase repetition check inside html-widget code blocks
+        # (CSS/HTML formatting repeats legitimately in widget templates)
+        if self._inside_code_block():
+            return None
+
         for phrase_len in [50, 100, 200]:
             if len(self._recent_text) >= phrase_len * LOOP_PHRASE_REPEATS:
                 phrase = self._recent_text[-phrase_len:]
@@ -45,6 +50,14 @@ class _LoopDetector:
                     return f"Loop detectado: frase de {phrase_len} chars repetida {count} veces"
 
         return None
+
+    def _inside_code_block(self) -> bool:
+        last_open = self._recent_text.rfind('```html-widget')
+        if last_open < 0:
+            return False
+        # Check if there's a closing ``` after the opening
+        after_open = self._recent_text[last_open + 3:]
+        return '```' not in after_open
 
 
 def build_stream_generator(
