@@ -1,3 +1,4 @@
+import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
 
 var retryState = { count: 0, maxRetries: 3, streamTimeout: null };

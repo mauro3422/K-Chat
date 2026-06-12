@@ -1,3 +1,4 @@
+import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
 
 export function markPillAsError(pill) {

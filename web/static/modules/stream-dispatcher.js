@@ -1,5 +1,7 @@
 /* eslint-disable no-redeclare, no-unused-vars */
 
+import { KairosUtils } from './utils.js';
+
 const listeners = {};
 
 function on(event, cb) {

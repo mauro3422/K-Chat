@@ -1,10 +1,13 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import './setup.js';
+
+vi.mock('../web/static/modules/utils.js', () => ({
+  KairosUtils: { scrollToBottom: vi.fn() }
+}));
 
 // Override specific mocks for session tests
 global.window.onpopstate = null;
 global.sessionId = 'test-session-123';
-global.KairosUtils = { scrollToBottom: () => {} };
 global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
 
 // Load module (IIFE executes, registers event listeners)
@@ -95,12 +98,11 @@ describe('KairosSession', () => {
     expect(global.sessionId).toBe('unchanged');
   });
 
-  test('htmx:afterSwap llama scrollToBottom', () => {
-    let scrolled = false;
-    global.KairosUtils.scrollToBottom = function() { scrolled = true; };
+  test('htmx:afterSwap llama scrollToBottom', async () => {
+    const { KairosUtils } = await import('../web/static/modules/utils.js');
     const h = global.document._listeners['htmx:afterSwap'];
     if (h) h();
-    expect(scrolled).toBe(true);
+    expect(KairosUtils.scrollToBottom).toHaveBeenCalled();
   });
 
   test('click rename guarda origName en dataset', () => {

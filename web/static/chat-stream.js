@@ -2,6 +2,7 @@ import { SessionContext } from './modules/session-context.js';
 import stateManager from './modules/widgets/state-manager.js';
 import { KairosForm } from './modules/chat-form.js';
 import { KairosWidgets } from './modules/widgets/index.js';
+import { KairosMarkdown } from './modules/markdown-renderer.js';
 
 stateManager.loadFromJSON({});
 

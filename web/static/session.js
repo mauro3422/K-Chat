@@ -1,6 +1,7 @@
 /* eslint-disable no-redeclare, no-unused-vars */
 
 import { SessionContext } from './modules/session-context.js';
+import { KairosUtils } from './modules/utils.js';
 
 function refreshSidebar() {
   var urlBuilder = SessionContext.createSessionUrlBuilder();

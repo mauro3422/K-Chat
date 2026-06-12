@@ -5,6 +5,7 @@
  * También crea y monta iframes con soporte para widgets oficiales.
  */
 import { SessionContext } from '../session-context.js';
+import { KairosUtils } from '../utils.js';
 import { fnv1a_32, log, KairosWidgets } from './core.js';
 import { createToolbar } from './toolbar-core.js';
 import stateManager from './state-manager.js';

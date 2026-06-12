@@ -1,5 +1,9 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import './setup.js';
+
+vi.mock('../web/static/modules/markdown-renderer.js', () => ({
+  KairosMarkdown: { renderAll: vi.fn() }
+}));
 
 // Override chat-stream specific mocks
 const _utils = { escHtml: (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') };
@@ -7,7 +11,6 @@ const _utils = { escHtml: (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&
 global.KairosUtils = _utils;
 global.sessionId = 'chat-stream-sid';
 global.defaultModel = 'test-model';
-global.KairosMarkdown = { renderAll() {} };
 global.KairosStream = { on() {}, emit() {} };
 global.fetch = () => Promise.resolve({ text: () => Promise.resolve('<div id="messages">content</div>') });
 global.logUI = () => {};
@@ -115,14 +118,13 @@ describe('chat-stream', () => {
   });
 
   test('loadSession llama renderAll', async () => {
-    let renderCalled = false;
-    global.KairosMarkdown = { renderAll: () => { renderCalled = true; } };
+    const { KairosMarkdown } = await import('../web/static/modules/markdown-renderer.js');
     const fetchPromise = Promise.resolve({ text: () => Promise.resolve('<div id="messages"></div>') });
     global.fetch = () => fetchPromise;
     global.document.getElementById = () => ({ innerHTML: '' });
     window.loadSession('render-test-sid');
     await fetchPromise;
     await new Promise(r => setTimeout(r, 10));
-    expect(renderCalled).toBe(true);
+    expect(KairosMarkdown.renderAll).toHaveBeenCalled();
   });
 });
