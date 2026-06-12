@@ -18,32 +18,27 @@ class LoopDetector:
         if len(self._recent_tokens) > LOOP_WINDOW_SIZE:
             self._recent_tokens = self._recent_tokens[-LOOP_WINDOW_SIZE:]
 
-        if len(self._recent_tokens) >= LOOP_WINDOW_SIZE:
-            if len(set(self._recent_tokens)) == 1 and self._recent_tokens[0].strip():
-                return f"Loop detectado: mismo token repetido {LOOP_WINDOW_SIZE} veces"
-
         self._recent_text += token
         if len(self._recent_text) > 2000:
             self._recent_text = self._recent_text[-1000:]
 
-        # Skip phrase repetition check inside html-widget code blocks
-        # (CSS/HTML formatting repeats legitimately in widget templates)
-        if self._inside_code_block():
-            return None
+        # Token check: same word 15+ times in a row — always a loop
+        if len(self._recent_tokens) >= LOOP_WINDOW_SIZE:
+            if len(set(self._recent_tokens)) == 1 and self._recent_tokens[0].strip():
+                return f"Loop detectado: mismo token repetido {LOOP_WINDOW_SIZE} veces"
 
-        for phrase_len in [50, 100, 200]:
-            if len(self._recent_text) >= phrase_len * LOOP_PHRASE_REPEATS:
-                phrase = self._recent_text[-phrase_len:]
-                count = self._recent_text.count(phrase)
-                if count >= LOOP_PHRASE_REPEATS and len(phrase.strip()) > 10:
-                    return f"Loop detectado: frase de {phrase_len} chars repetida {count} veces"
+        # Phrase repetition check: skipped inside ANY unclosed code block
+        # (CSS/HTML/code formatting repeats legitimately in templates)
+        if not self._inside_code_block():
+            for phrase_len in [50, 100, 200]:
+                if len(self._recent_text) >= phrase_len * LOOP_PHRASE_REPEATS:
+                    phrase = self._recent_text[-phrase_len:]
+                    count = self._recent_text.count(phrase)
+                    if count >= LOOP_PHRASE_REPEATS and len(phrase.strip()) > 10:
+                        return f"Loop detectado: frase de {phrase_len} chars repetida {count} veces"
 
         return None
 
     def _inside_code_block(self) -> bool:
-        last_open = self._recent_text.rfind('```html-widget')
-        if last_open < 0:
-            return False
-        # Check if there's a closing ``` after the opening
-        after_open = self._recent_text[last_open + 3:]
-        return '```' not in after_open
+        count = self._recent_text.count('```')
+        return count % 2 == 1

@@ -10,6 +10,7 @@ from src.api import chat_stream, auto_rename_session
 from web.services.loop_detector import LoopDetector
 from web.services.message_persister import save_assistant_message
 from web.services.stream_error_classifier import classify_error
+from web.services.stream_retry_handler import StreamRetryHandler
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ def build_stream_generator(
     model: str,
     background_tasks: BackgroundTasks,
     loop_detector: LoopDetector | None = None,
+    retry_handler: StreamRetryHandler | None = None,
     save_fn: Callable | None = None,
     rename_fn: Callable | None = None,
 ) -> Callable[..., Generator[str, None, None]]:
@@ -67,8 +69,36 @@ def build_stream_generator(
                     loop_error = detector.check(token)
                     if loop_error:
                         logger.warning("Loop detected for %s: %s", session_id, loop_error)
-                        yield json.dumps({"t": "error", "d": {"type": "loop_detected", "message": loop_error}}) + "\n"
-                        break
+
+                        recovered = False
+                        if retry_handler is not None and retry_handler.can_retry:
+                            logger.info(
+                                "Transparent recovery (attempt %d/%d) for %s",
+                                retry_handler.retry_count + 1,
+                                retry_handler.max_retries,
+                                session_id,
+                            )
+                            try:
+                                for rtipo, rtoken in retry_handler.attempt_recovery(
+                                    history, full_content, full_reasoning,
+                                    model, session_id,
+                                ):
+                                    if rtipo == "reasoning":
+                                        full_reasoning += rtoken
+                                    elif rtipo == "content":
+                                        full_content += rtoken
+                                    yield json.dumps({"t": rtipo, "d": rtoken}) + "\n"
+                                    recovered = True
+                            except Exception as e:
+                                logger.error("Recovery failed for %s: %s", session_id, e)
+
+                        if not recovered:
+                            yield json.dumps({
+                                "t": "error",
+                                "d": {"type": "loop_detected", "message": loop_error},
+                            }) + "\n"
+
+                        break  # Exit main stream regardless of recovery outcome
 
                 if tipo == "reasoning":
                     full_reasoning += token

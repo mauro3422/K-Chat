@@ -46,3 +46,28 @@ def test_after_code_block_trigger_works():
         if triggered:
             break
     assert triggered
+
+
+def test_any_code_block_skips_phrase_check():
+    """Any triple-backtick block (not just html-widget) should skip phrase check."""
+    d = LoopDetector()
+    for ch in "```python\ndata = \n    print('test')\n":
+        d.check(ch)
+    inner = "    print('test')\n"
+    for _ in range(LOOP_PHRASE_REPEATS + 2):
+        for ch in inner:
+            d.check(ch)
+    assert d.check("x") is None
+
+
+def test_token_check_still_triggers_inside_code_block():
+    """Repeated-token check should still fire even inside a code block."""
+    d = LoopDetector()
+    for ch in "```css\n":
+        d.check(ch)
+    # Now repeat same token 15 times inside the code block
+    for _ in range(LOOP_WINDOW_SIZE):
+        d.check("a")
+    result = d.check("a")
+    assert result is not None
+    assert "mismo token repetido" in result
