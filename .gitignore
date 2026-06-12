@@ -57,3 +57,5 @@ playwright-report/
 
 # Dependencies (vendored)
 dependencies/searxng/
+logs/
+logs/
