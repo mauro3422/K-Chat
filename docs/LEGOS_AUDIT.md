@@ -52,7 +52,7 @@ These modules are still mostly there to keep old callers alive:
 
 - `src/api/__init__.py`
 - `api modules for session and db were split`
-- `src/api/chat.py`
+- `src/api/*` transitional modules
 - `web/static/app.js`
 - `web/static/modules/widgets/bootstrap.js`
 - `web/static/modules/stream-bootstrap.js`

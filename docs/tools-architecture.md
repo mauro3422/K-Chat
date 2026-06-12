@@ -12,6 +12,8 @@
 | `_tool_persister.py` | Inserta cada tool_call y resultado en SQLite (tablas `tool_calls` + `messages`). |
 | `_path_helpers.py` | Resuelve paths y valida que estén dentro de project_root, home o /tmp (previene path traversal). |
 | `_widget_helpers.py` | Repo singleton de widgets, sanitiza `widget_id`, valida session_id. |
+| `execute_command.py` | Ejecuta comandos shell con timeout, cwd configurable y bloqueo básico de patrones peligrosos. |
+| `list_files.py` | `ls` mejorado con análisis de lenguaje, funciones, clases, imports y estructura de directorios. |
 | `web_search.py` | Busca en SearXNG local con retry, formato de resultados, infoboxes y suggestions. |
 | `read_file.py` | Lee archivo con paginación (100 líneas max/call), formato numerado, validación de path. |
 | `write_file.py` | Crea/sobreescribe archivo, crea directorios padres si faltan, validación de path. |

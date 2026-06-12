@@ -99,8 +99,8 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 
 ## Features
 
-### 10 Tools
-`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`. Auto-registered via `importlib` filesystem scan.
+### 12 Tools
+`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`, `list_files`, `execute_command`. Auto-registered via `importlib` filesystem scan.
 
 ### Streaming with visual phases
 Each interaction is shown in sequenced phases: reasoning → tools → reasoning → tools → final response. Tools are shown as pills with spinner (calling) and checkmark (ok).

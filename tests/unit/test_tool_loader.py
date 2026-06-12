@@ -4,6 +4,8 @@ EXPECTED_TOOLS = [
     "fetch_url",
     "get_tool_history",
     "get_widget_code",
+    "execute_command",
+    "list_files",
     "read_file",
     "read_skill",
     "save_memory",
@@ -121,7 +123,7 @@ def test_circular_sensitive_tools_run_imports_api():
 
 
 def test_build_tools_md_generates_all_10():
-    """Verifica que la auto-generación de TOOLS.md incluya las 10 tools
+    """Verifica que la auto-generación de TOOLS.md incluya las tools
     sin errores de circular import."""
     from src.context import _build_tools_md
     result = _build_tools_md()
