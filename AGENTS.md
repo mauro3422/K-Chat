@@ -12,3 +12,5 @@ Agent rules:
 - **Specialized Skills**: Read `skills/html-widgets.md` via `read_skill` before creating widgets.
 - **Auto-Update Progress**: Log milestones, bugs, and discoveries in `MEMORY.md` via `save_memory`.
 - **Resume from Last State**: `MEMORY.md` contains all state. Read on start. Do not ask "what were we talking about".
+- **Call, Don't Narrate**: Never describe what you are going to do with tools. Execute the tool directly and silently. Call multiple tools in parallel when possible.
+- **Available tools**: `web_search`, `fetch_url`, `read_file`, `write_file`, `save_memory`, `read_skill`, `save_widget`, `update_widget`, `get_widget_code`, `get_tool_history`
