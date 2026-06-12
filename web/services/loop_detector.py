@@ -12,13 +12,22 @@ class LoopDetector:
     def __init__(self):
         self._recent_tokens: list[str] = []
         self._recent_text: str = ""
+        self._total_backticks: int = 0
+        self._is_widget_mode: bool = False
 
     def check(self, token: str) -> str | None:
         self._recent_tokens.append(token)
         if len(self._recent_tokens) > LOOP_WINDOW_SIZE:
             self._recent_tokens = self._recent_tokens[-LOOP_WINDOW_SIZE:]
 
+        if "html-widget" in token:
+            self._is_widget_mode = True
+
+        old_count = self._recent_text.count('```')
         self._recent_text += token
+        new_count = self._recent_text.count('```')
+        self._total_backticks += (new_count - old_count)
+
         if len(self._recent_text) > 2000:
             self._recent_text = self._recent_text[-1000:]
 
@@ -27,9 +36,9 @@ class LoopDetector:
             if len(set(self._recent_tokens)) == 1 and self._recent_tokens[0].strip():
                 return f"Loop detectado: mismo token repetido {LOOP_WINDOW_SIZE} veces"
 
-        # Phrase repetition check: skipped inside ANY unclosed code block
-        # (CSS/HTML/code formatting repeats legitimately in templates)
-        if not self._inside_code_block():
+        # Phrase repetition check: skipped inside ANY unclosed code block or if widget mode is active
+        # (CSS/HTML/code formatting repeats legitimately in templates and widgets)
+        if not self._inside_code_block() and not self._is_widget_mode:
             for phrase_len in [50, 100, 200]:
                 if len(self._recent_text) >= phrase_len * LOOP_PHRASE_REPEATS:
                     phrase = self._recent_text[-phrase_len:]
@@ -40,5 +49,5 @@ class LoopDetector:
         return None
 
     def _inside_code_block(self) -> bool:
-        count = self._recent_text.count('```')
-        return count % 2 == 1
+        return self._total_backticks % 2 == 1
+

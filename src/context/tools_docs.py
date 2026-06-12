@@ -41,7 +41,7 @@ def _build_tools_md() -> str:
     lines = [
         "# Available Tools",
         "",
-        "These are the internal tools available via `execute_action(action_name=..., arguments=...)`.",
+        "These are the internal tools available directly as API function calls.",
         "",
     ]
     for name in sorted(TOOL_DEFINITIONS.keys()):

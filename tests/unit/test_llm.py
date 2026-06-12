@@ -6,7 +6,8 @@ from src.llm import chat
 from src.llm.models import _failed_models, _api_call
 from src.context import build_system_prompt
 
-def test_fallback_switch_updates_system_prompt():
+@patch("src.llm.retry.time.sleep")
+def test_fallback_switch_updates_system_prompt(mock_sleep):
     _failed_models.clear()
     
     # Mocking choice response
@@ -70,7 +71,8 @@ def test_fallback_switch_updates_system_prompt():
         assert "Active model: deepseek-v4-flash-free" in messages2[0]["content"]
 
 
-def test_api_call_raises_rate_limit_without_retries():
+@patch("src.llm.retry.time.sleep")
+def test_api_call_retries_on_rate_limit(mock_sleep):
     class DummyRateLimitError(Exception):
         status_code = 429
 
@@ -82,4 +84,6 @@ def test_api_call_raises_rate_limit_without_retries():
         with pytest.raises(DummyRateLimitError):
             _api_call(model="big-pickle", messages=[])
 
-        mock_provider.chat.assert_called_once_with(model="big-pickle", messages=[])
+        assert mock_provider.chat.call_count == 3
+
+

@@ -28,30 +28,56 @@ export function registerWidgetDetector() {
       var fullText = state.contentTexts[phaseIdx] || '';
       if (!fullText) return;
 
+      // Find all standard code blocks and inline code blocks that are NOT widgets
+      var ignoredRanges = [];
+      var ignoredCodeBlockRegex = /```(?!html-widget)[\s\S]*?(?:```|$)/g;
+      var matchRange;
+      while ((matchRange = ignoredCodeBlockRegex.exec(fullText)) !== null) {
+        ignoredRanges.push({ start: matchRange.index, end: matchRange.index + matchRange[0].length });
+      }
+      var inlineRegex = /`[^`\n]+`/g;
+      while ((matchRange = inlineRegex.exec(fullText)) !== null) {
+        ignoredRanges.push({ start: matchRange.index, end: matchRange.index + matchRange[0].length });
+      }
+
+      function isIgnored(idx) {
+        for (var i = 0; i < ignoredRanges.length; i++) {
+          var range = ignoredRanges[i];
+          if (idx >= range.start && idx < range.end) {
+            return true;
+          }
+        }
+        return false;
+      }
+
       var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```/g;
       var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
       var rawMatches = [];
       var match;
 
       while ((match = widgetRegex.exec(fullText)) !== null) {
-        rawMatches.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          key: match[1] || null,
-          code: match[2],
-          full: match[0]
-        });
+        if (!isIgnored(match.index)) {
+          rawMatches.push({
+            index: match.index,
+            end: match.index + match[0].length,
+            key: match[1] || null,
+            code: match[2],
+            full: match[0]
+          });
+        }
       }
 
       while ((match = tagRegex.exec(fullText)) !== null) {
-        rawMatches.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          key: match[1],
-          code: '',
-          full: match[0],
-          fromTag: true
-        });
+        if (!isIgnored(match.index)) {
+          rawMatches.push({
+            index: match.index,
+            end: match.index + match[0].length,
+            key: match[1],
+            code: '',
+            full: match[0],
+            fromTag: true
+          });
+        }
       }
 
       rawMatches.sort(function(a, b) {

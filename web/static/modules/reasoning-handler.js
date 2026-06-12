@@ -39,11 +39,7 @@ export function registerReasoningHandler() {
           prev.open = false;
           state.asstDiv.appendChild(newDet);
         } else {
-          if (state.asstDiv.children.length > 1) {
-            state.asstDiv.appendChild(newDet);
-          } else {
-            state.bodyDivs[0].insertAdjacentElement('beforebegin', newDet);
-          }
+          state.bodyDivs[0].insertAdjacentElement('beforebegin', newDet);
         }
         state.reasoningEls.push(newDet);
         logUI('reasoning_phase', state.reasoningEls.length);

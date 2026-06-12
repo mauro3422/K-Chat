@@ -92,12 +92,14 @@ def get_default_model() -> str:
     return models.FALLBACK_MODEL
 
 
-def _mark_and_refresh(model: str) -> str:
+def _mark_and_refresh(model: str, refresh: bool = True) -> str:
     """Marks model as failed, refreshes verified list, and returns the alternative model."""
-    try:
-        get_verified_models(force_refresh=True)
-    except Exception:
-        logger.exception("Failed to refresh verified models")
+    if refresh:
+        try:
+            get_verified_models(force_refresh=True)
+        except Exception:
+            logger.exception("Failed to refresh verified models")
     models.mark_model_failed(model)
     next_model = models._switch_model(model)
     return next_model
+

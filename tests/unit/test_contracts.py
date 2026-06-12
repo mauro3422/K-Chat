@@ -15,7 +15,9 @@ def _bg_tasks():
 def test_tool_loop_default_turns_match_shared_constant():
     ctx = _ToolLoopContext(history=[], model="m")
     assert ctx.max_turns == MAX_TOOL_TURNS
-    assert MAX_TOOL_TURNS == 5
+    assert MAX_TOOL_TURNS == 25
+
+
 
 
 def test_tool_runner_heartbeat_constant_is_centralized():

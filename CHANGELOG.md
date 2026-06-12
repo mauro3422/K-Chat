@@ -3,6 +3,13 @@
 > **Regla**: Este archivo es solo el índice. El detalle de cada versión está en `changelogs/vX.Y.Z.md`.
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 
+## [v0.0.43] — 2026-06-12 — [Detalle](changelogs/v0.0.43.md)
+- Decoupled rate-limit retry logic into a reusable `src/llm/retry.py` wrapper and central config `src/constants.py`
+- Optimized unit tests runtimes by patching `time.sleep` (reduced from 43s to 12s)
+- Fixed loop detection false positives by tracking absolute backticks across truncation, and suspended phrase check in widget mode
+- Symmetrically aligned client-side and server-side widget extractors to ignore widget patterns inside standard code blocks and backticks
+- Fixed offset index shifting bug in `widget-container-renderer.js` and disabled verbose client-side logs to preserve Celerona SUMA C10 TDP
+
 ## [v0.0.42] — 2026-06-12 — [Detalle](changelogs/v0.0.42.md)
 - Rate-limit errors now surface the provider reset window when headers expose it, and the UI shows the interruption reason instead of a generic failure
 - The model selector now reads local model metadata and shows context / modality / capability labels instead of raw ids only

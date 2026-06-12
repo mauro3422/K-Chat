@@ -16,12 +16,12 @@ def test_read_write_file_tools():
     test_content = "Hola Mundo 123"
 
     # Write file
-    write_res = write_file_run(test_file_path, test_content)
+    write_res = write_file_run(path=test_file_path, content=test_content)
     assert "[OK]" in write_res
     assert os.path.exists(test_file_path)
 
     # Read file
-    read_res = read_file_run(test_file_path)
+    read_res = read_file_run(path=test_file_path)
     assert "[File: " in read_res
     assert "1: Hola Mundo 123" in read_res
 
@@ -33,10 +33,10 @@ def test_read_file_pagination_and_numbering():
     test_content = "Linea Uno\nLinea Dos\nLinea Tres\nLinea Cuatro"
 
     # Write
-    write_file_run(test_file_path, test_content)
+    write_file_run(path=test_file_path, content=test_content)
 
     # Read range 2 to 3
-    res_range = read_file_run(test_file_path, start_line=2, end_line=3)
+    res_range = read_file_run(path=test_file_path, start_line=2, end_line=3)
     assert "[File: " in res_range
     assert "Total lines: 4" in res_range
     assert "Displayed range: 2-3" in res_range
@@ -44,6 +44,7 @@ def test_read_file_pagination_and_numbering():
     assert "2: Linea Dos\n" in res_range
     assert "3: Linea Tres\n" in res_range
     assert "4: Linea Cuatro" not in res_range
+
 
 
 def test_history_rebuild_preserves_tools():

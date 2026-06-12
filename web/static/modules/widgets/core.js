@@ -38,34 +38,56 @@ export function log(id, label, detail) {
 }
 
 export function extract(text) {
+    // Find all standard code blocks and inline code blocks that are NOT widgets
+    var ignoredRanges = [];
+    var ignoredCodeBlockRegex = /```(?!html-widget)[\s\S]*?(?:```|$)/g;
+    var match;
+    while ((match = ignoredCodeBlockRegex.exec(text)) !== null) {
+        ignoredRanges.push({ start: match.index, end: match.index + match[0].length });
+    }
+    var inlineRegex = /`[^`\n]+`/g;
+    while ((match = inlineRegex.exec(text)) !== null) {
+        ignoredRanges.push({ start: match.index, end: match.index + match[0].length });
+    }
+
+    function isIgnored(idx) {
+        for (var i = 0; i < ignoredRanges.length; i++) {
+            var range = ignoredRanges[i];
+            if (idx >= range.start && idx < range.end) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // 1. Parse markdown code blocks with an optional key: ```html-widget [key]
     INLINE_WIDGET_BLOCK_RE.lastIndex = 0;
-    text = text.replace(INLINE_WIDGET_BLOCK_RE, function(match, key, code) {
+    text = text.replace(INLINE_WIDGET_BLOCK_RE, function(match, key, code, offset) {
+        if (isIgnored(offset)) {
+            return match;
+        }
         var id = 'widget-' + nextIndex();
         code = normalizeWidgetCode(code);
         _registry[id] = code;
         if (key && code) {
             stateManager.setCodeCache(key, code);
         }
-        if (key) {
-            clog.debug('extract_cb', { id: id, key: key, codeLen: code.length });
-            return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
-        }
-        clog.debug('extract_cb', { id: id, key: null, codeLen: code.length });
-        return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '"></div>';
+        return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '"' + (key ? ' data-widget-key="' + key + '"' : '') + '></div>';
     });
 
     // 2. Parse inline tags like [Widget: key] or [Widget key] to load saved widgets
     var seenKeys = {};
     INLINE_WIDGET_TAG_RE.lastIndex = 0;
-    text = text.replace(INLINE_WIDGET_TAG_RE, function(match, key) {
+    text = text.replace(INLINE_WIDGET_TAG_RE, function(match, key, offset) {
+        if (isIgnored(offset)) {
+            return match;
+        }
         var lowerKey = key.toLowerCase();
         if (seenKeys[lowerKey]) {
             return '';
         }
         seenKeys[lowerKey] = true;
         var id = 'widget-' + nextIndex();
-        clog.debug('extract_tag', { id: id, key: key });
         return '<div class="' + C.WIDGET_CONTAINER + '" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
     });
 
