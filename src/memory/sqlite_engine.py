@@ -5,7 +5,7 @@ from typing import Any
 
 class SQLiteEngine:
     def connect(self) -> sqlite3.Connection:
-        from src.memory.database import _get_db_path
+        from src.memory.connection import _get_db_path
         db_path = _get_db_path()
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         conn = sqlite3.connect(db_path, check_same_thread=False)

@@ -4,8 +4,8 @@
 
 | Módulo | Rol |
 |--------|-----|
-| `main.js` | Entry point. Importa todos los módulos, los expone en `window` para compatibilidad con `onclick` inline. |
-| `session.js` | CRUD de sesiones: renombrar, eliminar, refrescar sidebar via HTMX + fetch. |
+| `app.js` | Entry point del bundle. Ensambla el runtime y delega globals de compatibilidad a los bootstraps. |
+| `session.js` | CRUD de sesiones, sidebar refresh y binding del selector de modelo via HTMX + fetch. |
 | `debug.js` | Panel de debug: log de eventos stream/UI, inspección de razonamiento/tools/system prompt, logs backend. |
 | `chat-stream.js` | Bootstrap: inicializa `KairosWidgets`, `KairosForm`, provee `loadSession()` para SPA-like navigation. |
 | `utils.js` | Utilidades globales: `escHtml`, `scrollToBottom`, `showToast`, handlers de error global. |
@@ -79,7 +79,7 @@ KairosStream.off('content', callback);
 
 | Módulo | Usa globals |
 |--------|-------------|
-| `main.js` | `window.*` (expone todo) |
+| `app.js` | sólo ensambla; los bootstraps exponen los globals |
 | `session.js` | `sessionId`, `KairosUtils` |
 | `debug.js` | `KairosUtils`, `KairosWidgets`, `sessionId`, `debugVisible` |
 | `chat-stream.js` | `sessionId`, `defaultModel`, `KairosWidgets`, `KairosForm`, `KairosMarkdown` |
@@ -96,7 +96,7 @@ KairosStream.off('content', callback);
 | `reasoning-handler.js` | `KairosStream`, `logUI` |
 | `tool-call-renderer.js` | `KairosStream`, `KairosUtils`, `logUI` |
 
-**Observación**: `logStream`, `logUI`, `sessionId`, `defaultModel` se usan sin import — dependen de que `main.js` los exponga en `window`.
+**Observación**: `logStream`, `logUI`, `sessionId`, `defaultModel` se usan sin import — dependen de que el bundle exponga las compatibilidades históricas.
 
 ## 6. Lo que está bien
 
@@ -106,7 +106,7 @@ KairosStream.off('content', callback);
 - **State compartido explícito** en vez de globals — el `state` viaja como parámetro.
 - **DOMPurify** para sanitización de HTML renderizado.
 - **Debug panel** potente: logs de stream/UI/widgets, inspección de razonamiento y system prompt.
-- **Compatibilidad HTML inline**: patrón `window.X = X` para `onclick="..."` en innerHTML dinámico.
+- **Compatibilidad HTML inline**: ya no es parte del flujo normal; quedaron sólo globals/bootstraps de transición.
 
 ## 7. Lo que podría mejorar
 

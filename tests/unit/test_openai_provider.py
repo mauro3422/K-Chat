@@ -13,6 +13,7 @@ class TestOpenAIProviderConstructor:
             assert call_kwargs["api_key"] == "my-key"
             assert call_kwargs["base_url"] == "https://my.url"
             assert "timeout" in call_kwargs
+            assert call_kwargs["max_retries"] == 0
 
     def test_uses_default_base_url_when_not_provided(self):
         with patch("src.llm.openai_provider.OpenAI") as mock_openai:

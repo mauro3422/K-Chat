@@ -4,7 +4,6 @@ from collections.abc import Generator
 from typing import Any
 
 from src.core import chat_stream as _chat_stream, get_default_model as _get_default_model
-from src.llm import get_verified_models as _get_verified_models
 from src.background_tasks import auto_rename_session as _auto_rename_session
 from src.compressor import compress_history, should_compress
 
@@ -12,11 +11,6 @@ from src.compressor import compress_history, should_compress
 def get_default_model() -> str:
     """Retorna el nombre del modelo por defecto."""
     return _get_default_model()
-
-
-def get_verified_models() -> list[str]:
-    """Retorna la lista de modelos verificados disponibles."""
-    return _get_verified_models()
 
 
 def chat_stream(

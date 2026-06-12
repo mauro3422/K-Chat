@@ -2,19 +2,21 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 import os
 
-from src.api.database import check_db_connection
+from src.memory.connection import get_conn
 
 router = APIRouter()
 
 @router.get("/health")
 def health():
     checks = {}
-    
+
     try:
-        checks["database"] = "ok" if check_db_connection() else "error"
+        conn = get_conn()
+        conn.execute("SELECT 1")
+        checks["database"] = "ok"
     except Exception as e:
         checks["database"] = f"error: {e}"
-    
+
     # Check LLM provider
     try:
         api_key = os.environ.get("OPENCODE_ZEN_API_KEY", "")

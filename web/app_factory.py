@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from dependencies import manage as deps
-from src.api.database import init_db
+from src.memory.schema import init_db
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def register_middlewares(app: FastAPI) -> None:
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-        if request.url.path.startswith("/static"):
+        if request.method != "POST" or not request.url.path.startswith("/chat/"):
             return await call_next(request)
         client_ip = request.client.host if request.client else "unknown"
         now = time.time()

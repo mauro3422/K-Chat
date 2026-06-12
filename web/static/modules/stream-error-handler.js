@@ -15,11 +15,11 @@ export function markCallingPillsError(asstDiv) {
 export function showRetryMessage(asstDiv, reason) {
   var bodyDiv = asstDiv.querySelector('.' + C.MSG_BODY);
   if (bodyDiv) {
-    bodyDiv.innerHTML =
+      bodyDiv.innerHTML =
       '<div class="' + C.ERROR_CARD + '">' +
         '<div class="error-header">&#9888; Respuesta interrumpida</div>' +
         '<div class="error-detail">' + KairosUtils.escHtml(reason) + '</div>' +
-        '<button class="error-retry-btn" onclick="KairosForm.retry()">Reintentar envío</button>' +
+        '<button type="button" class="error-retry-btn">Reintentar envío</button>' +
       '</div>';
   }
 }

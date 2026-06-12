@@ -6,11 +6,11 @@ export default defineConfig({
   build: {
     outDir: '../../dist/static',
     emptyOutDir: true,
-    rollupOptions: {
-      input: {
-        app: resolve(__dirname, 'web/static/main.js'),
+      rollupOptions: {
+        input: {
+        app: resolve(__dirname, 'web/static/app.js'),
+        },
       },
-    },
   },
   server: {
     proxy: {

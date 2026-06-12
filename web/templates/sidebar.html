@@ -2,8 +2,7 @@
 {% set label = s.name if s.name else s.sid[:8] %}
 {% set meta = s.user_count ~ " msgs - " ~ s.last_str[:10] %}
 {% set active = " active" if s.sid == current else "" %}
-<div class="session-item{{ active }}" data-sid="{{ s.sid }}"
-  onclick="loadSession('{{ s.sid }}')">
+<div class="session-item{{ active }}" data-sid="{{ s.sid }}">
   <div class="session-main">
     <div class="session-preview">{{ label }}</div>
     <div class="session-actions">

@@ -18,6 +18,7 @@ class OpenAIProvider:
             api_key=api_key or OPENCODE_ZEN_API_KEY,
             base_url=base_url,
             timeout=httpx.Timeout(connect=10, read=300, write=10, pool=10),
+            max_retries=0,
         )
 
     def chat(self, messages: list[dict[str, Any]], model: str, **kwargs: Any) -> Any:

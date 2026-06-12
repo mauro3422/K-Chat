@@ -3,6 +3,87 @@
 > **Regla**: Este archivo es solo el índice. El detalle de cada versión está en `changelogs/vX.Y.Z.md`.
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 
+## [v0.0.42] — 2026-06-12 — [Detalle](changelogs/v0.0.42.md)
+- Rate-limit errors now surface the provider reset window when headers expose it, and the UI shows the interruption reason instead of a generic failure
+- The model selector now reads local model metadata and shows context / modality / capability labels instead of raw ids only
+- Empty replies no longer auto-retry after reasoning or tool activity, which cuts the retry loop that amplified stream cutoffs
+- `config.py` now accepts a fallback OpenCode API key env var before failing startup
+
+## [v0.0.41] — 2026-06-12 — [Detalle](changelogs/v0.0.41.md)
+- Removed the last lazy `src.api.messages` import from `tool_loop.py` by writing assistant turns through `src.memory.repos.MessageRepository` directly
+- Kept the core runtime off the API facade while preserving compatibility for web and CLI callers
+- Revalidated the Python core and frontend test batches after the persistence seam change
+
+## [v0.0.40] — 2026-06-12 — [Detalle](changelogs/v0.0.40.md)
+- Removed `src.core._deps` from the active runtime path by wiring `tool_loop.py` and `orchestrator.py` directly to `src.llm.client` and `src.tools`
+- Updated the core test suite to patch the direct seams instead of the old compatibility wrapper
+- Aligned the architecture docs with the new runtime boundary
+
+## [v0.0.39] — 2026-06-12 — [Detalle](changelogs/v0.0.39.md)
+- Removed the last `window.*` checks from the session reset path in `web/static/chat-stream.js`
+- Kept the compatibility bootstraps intact but moved the active reset path to direct module calls
+- Revalidated the main Python and frontend tests after the cleanup
+
+## [v0.0.38] — 2026-06-12 — [Detalle](changelogs/v0.0.38.md)
+- Removed the last internal `src.memory.database` dependencies from `src.memory` and `src.api.database`
+- Pointed memory package exports, repository helpers, and DB checks directly at `src.memory.connection` and `src.memory.schema`
+- Aligned the web architecture docs with the current connection/schema boundary
+
+## [v0.0.37] — 2026-06-12 — [Detalle](changelogs/v0.0.37.md)
+- Removed internal runtime dependence on `src.api.database` by wiring app bootstrap and health checks directly to `src.memory`
+- Kept `src.api` and `src.memory.database` as compatibility shims only
+- Confirmed the current runtime still passes Python and JS validation after the cleanup
+
+## [v0.0.36] — 2026-06-12 — [Detalle](changelogs/v0.0.36.md)
+- Split database lifecycle into `src/memory/connection.py` and `src/memory/schema.py`
+- Kept `src/memory/database.py` as a compatibility wrapper for callers and tests
+- Updated memory and architecture docs to reflect the new persistence boundaries
+
+## [v0.0.35] — 2026-06-12 — [Detalle](changelogs/v0.0.35.md)
+- Split LLM lifecycle policy into `src/llm/policy.py` and kept `src/llm/manager.py` as a compatibility wrapper
+- Pointed the runtime `src.llm` entrypoint and client failover at the new policy module
+- Updated the LLM docs, contracts, and architecture summaries to match the new boundary
+
+## [v0.0.34] — 2026-06-12 — [Detalle](changelogs/v0.0.34.md)
+- Removed the last remaining inline-ish UI handlers by delegating debug copy actions and retry handling
+- Removed duplicate bootstrap initialization so `chat-stream.js` owns startup once
+- Updated the contracts and audit docs to reflect the narrower UI startup surface
+
+## [v0.0.33] — 2026-06-12 — [Detalle](changelogs/v0.0.33.md)
+- Removed duplicate bootstrap initialization so `chat-stream.js` owns the runtime setup once
+- Left the widget and chat-form bootstraps as compatibility globals only
+- Kept the bundle and frontend tests green after the startup path got narrower
+
+## [v0.0.32] — 2026-06-12 — [Detalle](changelogs/v0.0.32.md)
+- Removed the last inline HTML handlers from the runtime UI, including the debug copy buttons and retry button
+- Moved model selector binding into `web/static/session.js` and kept the template as pure state markup
+- Updated the legos audit and frontend architecture docs to reflect the now handler-free HTML surface
+
+## [v0.0.31] — 2026-06-12 — [Detalle](changelogs/v0.0.31.md)
+- Removed the empty `stream-renderer.js` loader and its template include
+- Trimmed the production bundle again after the dead frontend edge disappeared
+- Kept the architecture docs aligned with the now smaller runtime surface
+
+## [v0.0.30] — 2026-06-12 — [Detalle](changelogs/v0.0.30.md)
+- Reduced `web/static/app.js` to a pure assembly entry and moved all legacy globals into the dedicated bootstraps
+- Updated frontend architecture docs and the legos audit to describe bootstraps as the only compatibility surface
+- Kept the bundle build passing with the narrower entry boundary
+
+## [v0.0.29] — 2026-06-12 — [Detalle](changelogs/v0.0.29.md)
+- Split the bundled frontend entry into `web/static/app.js` and removed the obsolete `web/static/main.js` wrapper
+- Updated Vite to build from the explicit app entry and validated the bundle
+- Synchronized the frontend architecture docs and legos audit with the new entry/wrapper boundary
+
+## [v0.0.28] — 2026-06-12 — [Detalle](changelogs/v0.0.28.md)
+- Added `docs/LEGOS_AUDIT.md` with a full decoupling/backlog audit
+- Replaced sidebar `onclick="loadSession(...)"` with delegated clicks in `web/static/session.js`
+- Aligned session tests with the imported loadSession seam
+
+## [v0.0.27] — 2026-06-12 — [Detalle](changelogs/v0.0.27.md)
+- Split database lifecycle from connection reuse with a per-path initialization guard
+- Removed the unused `get_verified_models()` export from `src.api.chat`
+- Updated memory and contract docs to match the current DB and facade boundaries
+
 ## [v0.0.26] — 2026-06-12 — [Detalle](changelogs/v0.0.26.md)
 - Removed the shared `_get_repo()` registry and moved runtime callers to module-level repository singletons
 - Trimmed `src/api/_repos.py` out of the runtime path and aligned the remaining facade/tests to the direct seams

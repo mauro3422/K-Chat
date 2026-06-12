@@ -2,6 +2,8 @@
 
 import { SessionContext } from './modules/session-context.js';
 import { KairosUtils } from './modules/utils.js';
+import { KairosDebug } from './debug.js';
+import { loadSession } from './chat-stream.js';
 
 function refreshSidebar() {
   var urlBuilder = SessionContext.createSessionUrlBuilder();
@@ -36,22 +38,42 @@ function restoreActions(item) {
     '<button class="act-delete" title="Eliminar">&#128465;</button>';
 }
 
+function bindModelSelect() {
+  var select = document.getElementById('model-select');
+  if (!select) return;
+  select.value = globalThis.defaultModel || select.value;
+  select.addEventListener('change', function() {
+    globalThis.defaultModel = select.value;
+    localStorage.setItem('selected_model', select.value);
+  });
+}
+
 export const KairosSession = { refreshSidebar, confirmRename, cancelEdit, restoreActions };
 
 // Backwards-compatible globals for HTML onclick handlers
 window.KairosSession = KairosSession;
-window.refreshSidebar = KairosSession.refreshSidebar;
 
 
 document.addEventListener('htmx:afterSwap', function() {
   KairosUtils.scrollToBottom();
-  if (typeof debugVisible !== 'undefined' && debugVisible) { toggleDebug(); }
+  if (KairosDebug.debugVisible) { KairosDebug.toggleDebug(); }
 });
+
+document.addEventListener('DOMContentLoaded', bindModelSelect);
 
 document.addEventListener('click', function(e) {
   var item = e.target.closest('.session-item');
   if (!item) return;
   var sid = item.dataset.sid;
+
+  var targetIsInput = e.target && (
+    e.target.tagName === 'INPUT' ||
+    e.target.tagName === 'TEXTAREA' ||
+    (e.target.classList && e.target.classList.contains('si'))
+  );
+  if (targetIsInput) {
+    return;
+  }
 
   if (e.target.classList.contains('act-rename')) {
     var preview = item.querySelector('.session-preview');
@@ -96,6 +118,8 @@ document.addEventListener('click', function(e) {
     KairosSession.confirmRename(item, sid);
     return;
   }
+
+  loadSession(sid);
 });
 
 window.onpopstate = function(e) { if (e.state && e.state.sid) { SessionContext.setSessionId(e.state.sid); globalThis.sessionId = e.state.sid; } };

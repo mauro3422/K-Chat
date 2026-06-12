@@ -155,7 +155,6 @@ global.fetch = () => Promise.resolve({ text: () => Promise.resolve(''), json: ()
 global.sessionId = 'test-session';
 global.defaultModel = 'test-model';
 global.debugVisible = false;
-global.toggleDebug = () => {};
 
 global.KairosUtils = { escHtml: (s) => String(s), scrollToBottom: () => {} };
 global.KairosWidgets = {

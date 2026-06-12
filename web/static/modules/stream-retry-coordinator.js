@@ -19,6 +19,17 @@ export function attemptRetry(params) {
   return true;
 }
 
+export function shouldAutoRetryEmptyResponse(params) {
+  var hasContent = !!params.hasContent;
+  var hadReasoning = !!params.hadReasoning;
+  var hadToolCalls = !!params.hadToolCalls;
+  var retryController = params.retryController || RetryHandler;
+  if (hadReasoning || hadToolCalls) {
+    return false;
+  }
+  return retryController.shouldRetry(hasContent);
+}
+
 export function handleRetryFinalization(params) {
   var asstDiv = params.asstDiv;
   var input = params.input;

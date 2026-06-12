@@ -5,7 +5,8 @@ from typing import Any
 
 from fastapi import BackgroundTasks
 
-from src.api.chat import chat_stream, auto_rename_session
+from src.core import chat_stream
+from src.background_tasks import auto_rename_session
 from web.services.loop_detector import LoopDetector
 from web.services.message_persister import save_assistant_message
 from web.services.stream_error_classifier import classify_error
@@ -125,7 +126,7 @@ def build_stream_generator(
             logger.info("Client disconnected for %s", session_id)
             return
         except Exception as e:
-            error_type, error_msg = classify_error(str(e))
+            error_type, error_msg = classify_error(e)
             logger.error("Stream error for %s: [%s] %s", session_id, error_type, error_msg)
             yield serialize_stream_event("error", {"type": error_type, "message": error_msg})
             return

@@ -232,4 +232,18 @@ describe('KairosSession', () => {
     if (h) h(fakeEvent);
     expect(true).toBe(true);
   });
+
+  test('click sobre session-item carga la sesion', () => {
+    const item = makeItem('Open me');
+    global.sessionId = 'before-click';
+    const fakeEvent = {
+      target: {
+        classList: { contains: () => false },
+        closest: (sel) => (sel === '.session-item' ? item : null)
+      }
+    };
+    const h = global.document._listeners.click;
+    if (h) h(fakeEvent);
+    expect(global.sessionId).toBe('test-sid');
+  });
 });

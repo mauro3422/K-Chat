@@ -1,6 +1,17 @@
 from web.services.stream_error_classifier import classify_error, ERROR_MESSAGES
 
 
+class _Response:
+    def __init__(self, headers):
+        self.headers = headers
+
+
+class _RateLimitError(Exception):
+    def __init__(self, message, headers=None):
+        super().__init__(message)
+        self.response = _Response(headers or {})
+
+
 def test_rate_limit():
     etype, msg = classify_error("Rate limit reached for this API key")
     assert etype == "rate_limit"
@@ -10,6 +21,34 @@ def test_rate_limit():
 def test_rate_limit_case_insensitive():
     etype, _ = classify_error("RATE LIMIT exceeded")
     assert etype == "rate_limit"
+
+
+def test_rate_limit_429_code():
+    etype, _ = classify_error("HTTP 429 Too Many Requests")
+    assert etype == "rate_limit"
+
+
+def test_rate_limit_uses_reset_header_hint():
+    err = _RateLimitError(
+        "HTTP 429 Too Many Requests",
+        {"x-ratelimit-reset-requests": "6m0s"},
+    )
+    etype, msg = classify_error(err)
+    assert etype == "rate_limit"
+    assert msg == "Respuesta interrumpida por rate limit. Espera un momento antes de reintentar. Reintenta en ~6m."
+
+
+def test_rate_limit_prefers_longest_reset_hint():
+    err = _RateLimitError(
+        "HTTP 429 Too Many Requests",
+        {
+            "x-ratelimit-reset-requests": "1s",
+            "x-ratelimit-reset-tokens": "90s",
+        },
+    )
+    etype, msg = classify_error(err)
+    assert etype == "rate_limit"
+    assert msg.endswith("Reintenta en ~1m30s.")
 
 
 def test_timeout():

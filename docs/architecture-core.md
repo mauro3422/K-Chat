@@ -4,7 +4,7 @@ ARQUITECTURA DE src/core/ — K-Chat
 1. QUÉ HACE CADA ARCHIVO
 --------------------------
 __init__.py        — Punto de entrada: exporta chat() y chat_stream().
-_deps.py           — Inyección de dependencias: crea wrappers parciales de LLM con el system prompt pre-vinculado.
+_deps.py           — Legacy compatibility seam kept only for tests/edge patching.
 orchestrator.py    — Orquestador principal: gestiona historial, compressión y delega al tool loop.
 tool_loop.py       — Bucle de ejecución de herramientas: LLM → tool calls → ejecutar → repetir (max 5 turnos).
 chat_sync.py       — Wrapper síncrono simplificado: un solo turno sin herramientas (para pruebas rápidas).
@@ -20,7 +20,7 @@ Mensaje usuario → chat_stream() (orchestrator.py:47)
   → Inyecta system prompt si historial vacío
   → Append user message al historial
   → Delega a run_tool_loop_streaming() o run_tool_loop_sync() (tool_loop.py)
-    → Llama a _deps.llm_stream / _deps.llm_chat (con tools y reasoning)
+    → Llama a src.llm.client.chat_stream / src.llm.client.chat (con tools y reasoning)
     → Si LLM retorna tool_calls:
         → Ejecuta run_parallel_tools() (src.tools.runner)
         → Append assistant+tool_calls al historial
@@ -36,11 +36,11 @@ Mensaje usuario → chat_stream() (orchestrator.py:47)
 3. DEPENDENCIAS POR ARCHIVO
 -----------------------------
 __init__.py     → src.llm, src.core.chat_sync, src.core.orchestrator
-_deps.py        → src.context.build_system_prompt, src.llm.client, src.tools.loader.TOOL_MAP
+_deps.py        → seam fino hacia src.llm.client y TOOL_MAP (compatibilidad/test patching)
 orchestrator.py → src.llm.get_default_model, src.context.build_system_prompt,
-                  src.tools.runner.run_parallel_tools, src.core.tool_loop, src.core._deps
-tool_loop.py    → src.tools.TOOLS, src.core._deps, src.api.save_message (lazy import)
-chat_sync.py    → src.llm.get_default_model, src.context.build_system_prompt, src.core._deps, src.tools.TOOLS
+                  src.tools.runner.run_parallel_tools, src.core.tool_loop, src.llm.client, src.tools
+tool_loop.py    → src.tools, src.llm.client, src.memory.repos.MessageRepository
+chat_sync.py    → src.llm.get_default_model, src.context.build_system_prompt, src.llm.client, src.tools.TOOLS
 history.py      → src.core.history_parser, src.core.history_rebuilder, src.core.history_ui
 history_parser.py → (solo stdlib: json, datetime)
 history_rebuilder.py → src.memory.repos.MessageRepository, src.context.build_system_prompt,
@@ -58,6 +58,7 @@ D) chat_sync.py → Duplica lógica de inicialización de historial que también
 E) history_rebuilder.py → Singleton global _repo: dificulta testing y provoca acoplamiento global.
 F) history_parser.py → Acceso posicional a filas de BD (row[0], row[3], row[6]...): frágil ante cambios de esquema.
 G) tool_loop.py → Constants OUTPUT_CHUNK_SIZE=12 y MAX_TOOL_TURNS=5 hardcodeadas, no configurables.
+H) tool_loop.py → Persistencia de assistant tool-turns todavía se hace con un repositorio module-level; convendría inyectarlo si se quiere aislar más.
 
 
 5. LO QUE ESTÁ BIEN
@@ -80,6 +81,6 @@ G) tool_loop.py → Constants OUTPUT_CHUNK_SIZE=12 y MAX_TOOL_TURNS=5 hardcodead
 3. Convertir _repo en history_rebuilder.py a inyección de dependencia en vez de singleton global.
 4. Externalizar MAX_TOOL_TURNS y OUTPUT_CHUNK_SIZE a configuración centralizada.
 5. Crear protocolo/typing para compress_fn/should_compress_fn en vez de Callable genérico.
-6. Mover save_message fuera de tool_loop.py (lazy import anti-patrón) → pasar como dependencia.
+6. Mover save_message fuera de tool_loop.py (lazy import anti-patrón) → ya quedó resuelto usando `MessageRepository` directo.
 7. history.py es solo re-exports: considerar si vale la pena el módulo o si se puede importar directo.
 8. Unificar el flujo de append de assistant message que está duplicado en tool_loop y chat_sync.

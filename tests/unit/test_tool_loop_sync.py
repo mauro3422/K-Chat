@@ -29,7 +29,7 @@ def _empty_generator(*args, **kwargs):
     return iter([])
 
 
-@patch("src.core.tool_loop._deps.llm_chat")
+@patch("src.llm.client.chat")
 def test_sync_no_tool_calls_tagged(mock_chat):
     """No tool calls, tagged=True -- yields reasoning then content in 12-char chunks."""
     content = "Hello world! This is a test."
@@ -65,7 +65,7 @@ def test_sync_no_tool_calls_tagged(mock_chat):
     mock_chat.assert_called_once()
 
 
-@patch("src.core.tool_loop._deps.llm_chat")
+@patch("src.llm.client.chat")
 def test_sync_no_tool_calls_untagged(mock_chat):
     """No tool calls, tagged=False -- yields raw string tokens."""
     content = "Hello world! This is a test."
@@ -88,7 +88,7 @@ def test_sync_no_tool_calls_untagged(mock_chat):
     mock_chat.assert_called_once()
 
 
-@patch("src.core.tool_loop._deps.llm_chat")
+@patch("src.llm.client.chat")
 def test_sync_tool_calls_then_response(mock_chat):
     """Tool calls followed by final content -- yields through _process_sync_turn."""
     mock_chat.side_effect = [
@@ -128,7 +128,7 @@ def test_sync_tool_calls_then_response(mock_chat):
     assert mock_chat.call_count == 2
 
 
-@patch("src.core.tool_loop._deps.llm_chat")
+@patch("src.llm.client.chat")
 def test_sync_max_turns(mock_chat):
     """max_turns limit -- stops after that many tool call rounds."""
     mock_chat.side_effect = [
@@ -159,7 +159,7 @@ def test_sync_max_turns(mock_chat):
     assert "Final." in "".join(tokens)
 
 
-@patch("src.core.tool_loop._deps.llm_chat")
+@patch("src.llm.client.chat")
 def test_sync_session_id_none(mock_chat):
     """session_id=None -- skips DB save, no crash."""
     mock_chat.return_value = _make_result(content="No session.", finish_reason="stop")
@@ -178,7 +178,7 @@ def test_sync_session_id_none(mock_chat):
     mock_chat.assert_called_once()
 
 
-@patch("src.core.tool_loop._deps.llm_chat")
+@patch("src.llm.client.chat")
 def test_sync_debug_dict(mock_chat):
     """debug dict -- gets populated with tool_calls and reasoning."""
     mock_chat.side_effect = [
@@ -211,8 +211,8 @@ def test_sync_debug_dict(mock_chat):
     assert "Done." in debug["reasoning"]
 
 
-@patch("src.core.tool_loop._deps.llm_chat")
-@patch("src.core.tool_loop._deps.llm_stream")
+@patch("src.llm.client.chat")
+@patch("src.llm.client.chat_stream")
 def test_sync_empty_content_falls_to_stream(mock_stream, mock_chat):
     """When result.message.content is None/empty -- falls through to llm_stream."""
     mock_chat.return_value = _make_result(content=None, finish_reason="stop")

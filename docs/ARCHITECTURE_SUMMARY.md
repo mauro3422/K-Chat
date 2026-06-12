@@ -43,7 +43,8 @@ LLM (abstracción de modelo)
 ├── src/llm/openai_provider.py  (adapter OpenAI SDK)
 ├── src/llm/models.py           (registry, retry, fallback)
 ├── src/llm/client.py           (chat + chat_stream)
-└── src/llm/manager.py          (descubrimiento, verificación)
+├── src/llm/policy.py           (descubrimiento, verificación)
+└── src/llm/manager.py          (compatibilidad)
 
 TOOLS (sistema de herramientas)
 ├── src/tools/__init__.py       (auto-loader: TOOLS, TOOL_MAP)
@@ -54,7 +55,9 @@ TOOLS (sistema de herramientas)
 └── src/tools/*.py              (10 herramientas individuales)
 
 MEMORY (persistencia)
-├── src/memory/database.py      (SQLite WAL, PooledConnection)
+├── src/memory/connection.py    (SQLite WAL, PooledConnection)
+├── src/memory/schema.py        (init + migrations)
+├── src/memory/database.py      (compatibilidad)
 ├── src/memory/repos/           (6 repositorios tipados)
 │   ├── base.py                 (_BaseRepository + _transaction())
 │   ├── message_repository.py
@@ -96,7 +99,7 @@ WEB (dashboard)
     │
 [5] build_system_prompt(model) → SOUL.md + MEMORY.md + AGENTS.md + meta
     │
-[6] _deps.llm_stream() → LLM streaming chunks
+[6] src.llm.client.chat_stream() → LLM streaming chunks
     │
 [7] _process_chunks() → si tool_call detectado:
     │   └→ runner.run_parallel_tools() → ThreadPoolExecutor

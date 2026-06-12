@@ -8,7 +8,7 @@ from src.llm import get_default_model
 from src.context import build_system_prompt
 from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
-from src.core import _deps
+import src.tools as tools
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def chat_stream(
     loop_fn = run_tool_loop_streaming if streaming else run_tool_loop_sync
     for event in loop_fn(
         history, model, session_id, tagged, debug, phases_output,
-        used_tools, tool_detail, run_parallel_tools, _deps.TOOL_MAP
+        used_tools, tool_detail, run_parallel_tools, tools.TOOL_MAP
     ):
         yield event
 

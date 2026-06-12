@@ -41,8 +41,8 @@ def _make_tool_call_obj(name: str, args: dict, tc_id: str = "call_1"):
     return tc
 
 
-@patch("src.core._deps.llm_chat")
-@patch("src.core._deps.llm_stream")
+@patch("src.llm.client.chat")
+@patch("src.llm.client.chat_stream")
 def test_streaming_content_only(mock_stream, mock_chat):
     """Streaming path: solo contenido, sin tools."""
     from src.core import chat_stream
@@ -62,8 +62,8 @@ def test_streaming_content_only(mock_stream, mock_chat):
     mock_chat.assert_not_called()
 
 
-@patch("src.core._deps.llm_chat")
-@patch("src.core._deps.llm_stream")
+@patch("src.llm.client.chat")
+@patch("src.llm.client.chat_stream")
 def test_streaming_tool_then_content(mock_stream, mock_chat):
     """Streaming path: tool_call en stream → ejecuta tool → stream final."""
     from src.core import chat_stream
@@ -78,7 +78,7 @@ def test_streaming_tool_then_content(mock_stream, mock_chat):
     )
 
     history = [{"role": "system", "content": "test"}]
-    with patch("src.core._deps.TOOL_MAP", {"web_search": lambda **kw: "ok result"}):
+    with patch("src.tools.TOOL_MAP", {"web_search": lambda **kw: "ok result"}):
         tokens = list(chat_stream("Busca", history, model="test-model", tagged=True, streaming=True))
 
     types = [t[0] for t in tokens]
@@ -100,8 +100,8 @@ def test_streaming_tool_then_content(mock_stream, mock_chat):
     mock_chat.assert_not_called()
 
 
-@patch("src.core._deps.llm_chat")
-@patch("src.core._deps.llm_stream")
+@patch("src.llm.client.chat")
+@patch("src.llm.client.chat_stream")
 def test_streaming_multiple_tools(mock_stream, mock_chat):
     """Streaming path: multiples tool_calls en paralelo desde el stream."""
     from src.core import chat_stream
@@ -126,7 +126,7 @@ def test_streaming_multiple_tools(mock_stream, mock_chat):
         return "res"
 
     history = [{"role": "system", "content": "test"}]
-    with patch("src.core._deps.TOOL_MAP", {"web_search": tracking_tool}):
+    with patch("src.tools.TOOL_MAP", {"web_search": tracking_tool}):
         tokens = list(chat_stream("test", history, model="test-model", tagged=True, streaming=True))
 
     tcs_events = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
@@ -139,8 +139,8 @@ def test_streaming_multiple_tools(mock_stream, mock_chat):
     mock_chat.assert_not_called()
 
 
-@patch("src.core._deps.llm_chat")
-@patch("src.core._deps.llm_stream")
+@patch("src.llm.client.chat")
+@patch("src.llm.client.chat_stream")
 def test_streaming_no_tools_from_stream(mock_stream, mock_chat):
     """Streaming path: eventos de tool_call en stream pero tool_calls_output vacío (no se ejecutan tools)."""
     from src.core import chat_stream
@@ -158,8 +158,8 @@ def test_streaming_no_tools_from_stream(mock_stream, mock_chat):
     mock_chat.assert_not_called()
 
 
-@patch("src.core._deps.llm_chat")
-@patch("src.core._deps.llm_stream")
+@patch("src.llm.client.chat")
+@patch("src.llm.client.chat_stream")
 def test_streaming_content_then_tool(mock_stream, mock_chat):
     """Streaming path: contenido primero, luego tool_call en el stream."""
     from src.core import chat_stream
@@ -178,7 +178,7 @@ def test_streaming_content_then_tool(mock_stream, mock_chat):
     )
 
     history = [{"role": "system", "content": "test"}]
-    with patch("src.core._deps.TOOL_MAP", {"web_search": lambda **kw: "ok"}):
+    with patch("src.tools.TOOL_MAP", {"web_search": lambda **kw: "ok"}):
         tokens = list(chat_stream("test", history, model="test-model", tagged=True, streaming=True))
 
     types = [t[0] for t in tokens]
@@ -194,8 +194,8 @@ def test_streaming_content_then_tool(mock_stream, mock_chat):
     mock_chat.assert_not_called()
 
 
-@patch("src.core._deps.llm_chat")
-@patch("src.core._deps.llm_stream")
+@patch("src.llm.client.chat")
+@patch("src.llm.client.chat_stream")
 def test_streaming_session_id_propagates(mock_stream, mock_chat):
     """Streaming path: session_id se pasa a los tools."""
     from src.core import chat_stream
@@ -216,7 +216,7 @@ def test_streaming_session_id_propagates(mock_stream, mock_chat):
         return "ok"
 
     history = [{"role": "system", "content": "test"}]
-    with patch("src.core._deps.TOOL_MAP", {"web_search": tracking_tool}):
+    with patch("src.tools.TOOL_MAP", {"web_search": tracking_tool}):
         list(chat_stream("test", history, model="test-model", session_id="ses-s", tagged=True, streaming=True))
 
     assert captured.get("session_id") == "ses-s"

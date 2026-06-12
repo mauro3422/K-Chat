@@ -65,6 +65,26 @@ def test_chat_success(mock_build_gen, mock_save, mock_rebuild, mock_ensure, mock
 @patch("web.routers.chat.rebuild_history", return_value=[{"role": "user", "content": "hello"}])
 @patch("web.routers.chat.db_save_message")
 @patch("web.routers.chat.build_stream_generator")
+def test_chat_uses_query_model(mock_build_gen, mock_save, mock_rebuild, mock_ensure, mock_default):
+    """Querystring model should override the default model."""
+    def fake_gen():
+        yield '{"t":"content","d":"hi"}\n'
+    mock_build_gen.return_value = fake_gen
+
+    bt = BackgroundTasks()
+    result = chat("s1", bt, ChatPayload(message="hello", model=None), model="query-model")
+
+    assert isinstance(result, StreamingResponse)
+    mock_rebuild.assert_called_once_with("s1", "query-model")
+    mock_save.assert_called_once_with("s1", "user", "hello", "query-model")
+    mock_default.assert_not_called()
+
+
+@patch("web.routers.chat.get_default_model", return_value="fallback-model")
+@patch("web.routers.chat.ensure_session")
+@patch("web.routers.chat.rebuild_history", return_value=[{"role": "user", "content": "hello"}])
+@patch("web.routers.chat.db_save_message")
+@patch("web.routers.chat.build_stream_generator")
 def test_chat_uses_default_model(mock_build_gen, mock_save, mock_rebuild, mock_ensure, mock_default):
     """When model is empty, get_default_model is called."""
     def fake_gen():

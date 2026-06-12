@@ -24,7 +24,7 @@ def render_session_messages(session_id: str) -> str:
     parts = [
         f'<div id="messages-metadata" data-widget-states="{html.escape(widget_states_json)}" style="display:none;"></div>',
         '<div class="main-header">',
-        '<span class="debug-toggle" onclick="toggleDebug()">&#128202; Debug</span>',
+        '<span class="debug-toggle">&#128202; Debug</span>',
         '</div>',
         '<div id="messages">'
     ]

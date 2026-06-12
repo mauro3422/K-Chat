@@ -1,5 +1,6 @@
 # Database core
-from src.memory.database import get_conn as get_conn, init_db as init_db
+from src.memory.connection import get_conn as get_conn
+from src.memory.schema import init_db as init_db
 
 # Repositories (preferred over legacy module-level functions)
 from src.memory.repos import (

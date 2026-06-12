@@ -3,6 +3,8 @@
 This document is the working map for turning K-Chat into a stricter "legos"
 system. It focuses on contracts between layers, not on isolated bugs.
 
+For the broader architecture audit and prioritized backlog, see `docs/LEGOS_AUDIT.md`.
+
 Use it as the source of truth before refactoring. If a change crosses one of
 these boundaries, update the contract first or the change will keep breaking
 other parts of the system.
@@ -19,14 +21,15 @@ other parts of the system.
 | Boundary | Source of truth | Main consumers | Current seam / risk | Refactor target |
 |---|---|---|---|---|
 | HTTP chat stream | `web/services/chat_stream.py`, `web/services/stream_contract.py`, `web/routers/chat.py` | `web/static/modules/*`, browser UI | Stream event shape used to be implicit; server and client now share the event contract modules | Shared event schema + contract tests |
-| Assistant/tool persistence | `src.api.messages`, `src.memory.repos.*` | `src/core`, `web/services/message_persister.py`, tools | `src/tools/_tool_persister.py` used raw SQL; now the combined write path lives in `ToolCallRepository.record_execution()` | One persistence path through repositories/facade |
+| Assistant/tool persistence | `src.memory.repos.*`, `src.api.messages` | `src/core`, `web/services/message_persister.py`, tools | `src/tools/_tool_persister.py` used raw SQL; `tool_loop.py` now writes assistant tool-turns directly through `MessageRepository` | One persistence path through repositories/facade |
 | Tool execution loop | `src/core/tool_loop.py`, `src/constants.py` | `src/core/orchestrator.py`, `src/core/chat_sync.py`, `src.tools.runner` | `max_turns` and loop policy are duplicated in more than one place | Single loop policy module with shared constants |
-| LLM selection and fallback | `src/llm/manager.py`, `src/llm/models.py` | `src.core`, `src.api.chat`, `src.compressor`, `src.background_tasks` | `_deps.py` wires hidden partials; fallback policy is split | Explicit provider/fallback interface |
+| LLM selection and fallback | `src/llm/policy.py`, `src/llm/models.py` | `src.core`, `src.llm`, `src.compressor`, `src.background_tasks` | `_deps.py` wires hidden partials; fallback policy is split | Explicit provider/fallback interface |
+| Model metadata catalog | `web/services/model_catalog.py`, `~/.local/share/opencode-delegate/model_registry.json` (or `KAIROS_MODEL_REGISTRY`) | `web/routers/pages.py`, `web/templates/chat.html` | Model selector used to show raw ids only; richer capabilities were not visible | Cached metadata helper with graceful fallback to ids |
 | API facade | `src/api/__init__.py`, `src/api/*` | `web/routers/*`, `web/services/*`, CLI | Facade is now a compatibility layer; most internal callers use domain modules directly | Split by domain contracts, not by file growth |
 | Widget rendering/state | `web/static/modules/content-handler.js`, `web/services/message_renderer.py`, `web/services/widget_contract.py`, `web/static/modules/widgets/contract.js`, `src.memory.repos.widget_state_repository` | browser, DB, tool outputs | Render state, widget code, and widget versions were split across Python and JS with no shared schema | Formal widget contract with version/state fields |
 | Retry / abort / timeout | `web/static/modules/retry-handler.js`, `web/static/modules/stream-orchestrator.js`, `web/services/chat_stream.py` | browser stream handling, server stream cleanup | Retry state used to be a singleton; now it is held by `RetryController` instances per stream | One stream lifecycle policy and isolated retry state |
 | Frontend module state | `web/static/modules/*` | browser entry points, tests | Several modules rely on globals on `window` for compatibility | Reduce globals to compatibility wrappers only |
-| Database lifecycle | `src/memory/database.py`, `src/memory/migrations.py`, `src/memory/repos/*` | all persistence paths | Connection management, init, and migrations are concentrated in one module | Separate lifecycle, schema, and repository responsibilities |
+| Database lifecycle | `src/memory/connection.py`, `src/memory/schema.py`, `src/memory/migrations.py`, `src/memory/repos/*` | all persistence paths | Connection management, init, and migrations were concentrated in one module; now they are split | Separate lifecycle, schema, and repository responsibilities |
 
 ## Contract Details
 
@@ -40,12 +43,12 @@ do because many modules depend on them.
 
 | Function | Contract |
 |---|---|
-| `src.api.chat_stream(...)` | Main backend conversation generator. Must preserve history mutation, debug snapshot behavior, and streaming token shape. |
-| `src.api.save_message(...)` | Canonical message write path. Must accept `MessageRecord` or legacy args. |
+| `src.core.orchestrator.chat_stream(...)` | Main backend conversation generator. Must preserve history mutation, debug snapshot behavior, and streaming token shape. |
+| `src.api.save_message(...)` | Canonical message write path for compatibility. New code should prefer the concrete repository boundary. |
 | `src.api.get_session_messages(...)` | Session history read path for UI rendering. |
-| `src.api.rebuild_history(...)` | Reconstructs LLM-ready history from DB state. |
-| `src.api.filter_messages_for_ui(...)` | Produces UI-safe message list. |
-| `src.api.match_tools_to_msgs(...)` | Associates tool calls with assistant turns. |
+| `src.core.history.rebuild_history(...)` | Reconstructs LLM-ready history from DB state. |
+| `src.core.history.filter_messages_for_ui(...)` | Produces UI-safe message list. |
+| `src.core.history.match_tools_to_msgs(...)` | Associates tool calls with assistant turns. |
 | `src.api.save_widget_state(...)` / `db_save_widget(...)` | Persist widget runtime state and official widget code. |
 | `src.api.get_widget_states(...)` / `db_get_widget(...)` | Read widget state/code for render and version history. |
 
@@ -148,6 +151,24 @@ do because many modules depend on them.
 - Expose a narrow provider/fallback service.
 - Remove hidden partial wiring where a function can accept explicit dependencies instead.
 
+### 4b. Model Metadata Catalog
+
+**Shape today**
+- The model selector can now show richer labels when a local registry is available.
+- The registry provides context window, output limit, modality support, reasoning/tooling flags, costs, and release metadata.
+
+**What must stay true**
+- Missing registry data must degrade to raw model ids.
+- Selector labels should stay concise and readable in a plain `<select>`.
+
+**Recommended seam**
+- Keep metadata loading in one helper with file/env fallback.
+- Do not make the UI depend on a network lookup for model labels.
+
+**Current source of truth**
+- `web/services/model_catalog.py`
+- `~/.local/share/opencode-delegate/model_registry.json`
+
 ### 5. API Facade
 
 **Shape today**
@@ -160,7 +181,7 @@ do because many modules depend on them.
 
 **Recommended seam**
 - Keep the `__init__` re-export file as a compatibility layer only.
-- Prefer direct imports from `src.api.chat`, `src.api.session`, `src.api.messages`, `src.api.history`, `src.api.tools`, `src.api.widgets`, `src.api.debug`, and `src.api.database`.
+- Prefer direct imports from `src.core`, `src.llm`, `src.memory.connection`, `src.memory.schema`, `src.api.session`, `src.api.messages`, `src.api.history`, `src.api.tools`, `src.api.widgets`, and `src.api.debug`.
 
 ### 6. Widgets
 
@@ -207,6 +228,10 @@ do because many modules depend on them.
 **Shape today**
 - Some modules still depend on `window` aliases for compatibility.
 - Module-local state and compatibility globals coexist.
+- The debug panel toggle is now bound via DOM listeners instead of a global `toggleDebug()` hook.
+- Sidebar session selection is now handled by delegated clicks in `web/static/session.js`; the template no longer carries `onclick="loadSession(...)"`.
+- The model selector is bound in `web/static/session.js`; the template only provides state markup and the persisted value.
+- Debug copy buttons are wired via delegated clicks in `web/static/debug.js`, not inline handlers.
 
 **What must stay true**
 - Globals should be compatibility shims only.

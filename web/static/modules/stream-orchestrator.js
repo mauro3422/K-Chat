@@ -5,7 +5,17 @@ import C from './dom-contracts.js';
 import { KairosStream } from './stream-dispatcher.js';
 import { StreamContext } from './stream-context.js';
 import { executeStreamFetch } from './stream-fetcher.js';
-import { attemptRetry } from './stream-retry-coordinator.js';
+import { attemptRetry, shouldAutoRetryEmptyResponse } from './stream-retry-coordinator.js';
+import { KairosDebug, refreshDebug } from '../debug.js';
+import { SessionContext } from './session-context.js';
+
+function refreshSidebar() {
+  var urlBuilder = SessionContext.createSessionUrlBuilder();
+  fetch(urlBuilder.sidebar()).then(function(r){ return r.text(); }).then(function(h){
+    var el = document.getElementById('session-list');
+    if (el) el.innerHTML = h;
+  }).catch(function(err) { console.error('Sidebar refresh failed:', err); });
+}
 
 export const StreamOrchestrator = {
 
@@ -136,7 +146,23 @@ export const StreamOrchestrator = {
 
     hasSuccessfulTools = asstDiv.querySelectorAll('.tc-item.ok').length > 0;
     if (!hasContent) {
-      if (attemptRetry({
+      var hadReasoning = context.getReasoningEls().length > 0;
+      var hadToolCalls = asstDiv.querySelectorAll('.' + C.TC_ITEM).length > 0;
+
+      if (!shouldAutoRetryEmptyResponse({
+        hasContent: hasContent,
+        hadReasoning: hadReasoning,
+        hadToolCalls: hadToolCalls,
+        retryController: retryController
+      })) {
+        StreamErrorHandler.markCallingPillsError(asstDiv);
+        StreamErrorHandler.showRetryMessage(
+          asstDiv,
+          'La respuesta quedó vacía después de razonamiento o herramientas. No se reintentó automáticamente.'
+        );
+        logUI('stream_empty_no_retry', 'sin contenido con razonamiento/herramientas');
+        retryController.resetRetryCount();
+      } else if (attemptRetry({
         asstDiv: asstDiv,
         form: form,
         input: input,
@@ -149,14 +175,16 @@ export const StreamOrchestrator = {
         return;
       }
 
-      StreamErrorHandler.markCallingPillsError(asstDiv);
-      StreamErrorHandler.showRetryMessage(asstDiv, 'La respuesta estuvo vacía después de ' + retryController.getMaxRetries() + ' reintentos. Puede ser un problema temporal del modelo.');
-      logUI('stream_empty_final', 'sin contenido después de ' + retryController.getMaxRetries() + ' reintentos');
-      retryController.resetRetryCount();
+      if (retryController.getRetryCount() >= retryController.getMaxRetries()) {
+        StreamErrorHandler.markCallingPillsError(asstDiv);
+        StreamErrorHandler.showRetryMessage(asstDiv, 'La respuesta estuvo vacía después de ' + retryController.getMaxRetries() + ' reintentos. Puede ser un problema temporal del modelo.');
+        logUI('stream_empty_final', 'sin contenido después de ' + retryController.getMaxRetries() + ' reintentos');
+        retryController.resetRetryCount();
+      }
     } else {
       retryController.resetRetryCount();
       refreshSidebar();
-      if (typeof debugVisible !== 'undefined' && debugVisible) refreshDebug();
+      if (KairosDebug.debugVisible) refreshDebug();
     }
 
     KairosUtils.finalizeStream(input);

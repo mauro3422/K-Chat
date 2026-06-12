@@ -24,6 +24,7 @@
 | `services/message_persister.py` | Serializes phases + debug info and writes assistant message + debug to DB |
 | `services/message_renderer.py` | Renders full session HTML: fetches messages, matches tools, extracts widget code, builds form |
 | `services/stream_error_classifier.py` | Pattern-matches error strings into categories (`rate_limit`, `timeout`, `network`, `model`, `unknown`) |
+| `static/app.js` | Bundled frontend entry. Assembles the runtime and delegates compatibility globals to bootstraps. |
 | `static/modules/widgets/bootstrap.js` | Compatibility bootstrap for `window.KairosWidgets` |
 | `static/modules/stream-bootstrap.js` | Compatibility bootstrap for `window.StreamOrchestrator` |
 | `static/modules/chat-form-bootstrap.js` | Compatibility bootstrap for `window.KairosForm` |
@@ -108,7 +109,7 @@ StreamingResponse(generate(), media_type="application/x-ndjson")
 | Pydantic | `chat.py`, `widgets.py` (payload models) |
 | Uvicorn | `server.py` (`__main__`) |
 | `src.api` | Backward-compatible facade for routers/services still in transition |
-| `src.memory.database` | `health.py` (DB ping) |
+| `src.memory.connection` | `health.py` (DB ping) |
 | `dependencies.manage` | `server.py` (SearXNG lifecycle) |
 
 ### Internal (`web/`)
@@ -147,6 +148,6 @@ message_renderer.py← ui_utils.py
 | **`message_renderer.py` duplicates logic** | Extracts widgets via regex *and* calls `render_msg_with_phases` — widget extraction could be a service. |
 | **No auth on `/chat/{session_id}`** | Anyone with a session UUID can post messages. Only rate limiting protects the endpoint. |
 | **`_max_backend_logs = 100` hardcoded** | Should be configurable or at least a constant at module level with a clear name. |
-| **`health.py` imports at call time** | `from src.memory.database import get_conn` inside the function — inconsistent with other modules. |
+| **`health.py` imports at call time** | `from src.memory.connection import get_conn` inside the function — inconsistent with other modules. |
 | **No tests in `web/`** | No test files found; the architecture would benefit from integration tests for the streaming flow. |
 | **CSP `unsafe-inline`** | Required for inline scripts/styles but weakens XSS protection; consider nonces or hashes. |

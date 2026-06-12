@@ -10,7 +10,8 @@
 | `providers.py` | Registro de providers (dict nombre→clase) + singleton lazy `_get_provider()` |
 | `model_state.py` | Estado thread-safe: modelos fallidos, verificados, caché de modelos. Lógica de fallback por prioridad |
 | `models.py` | Re-exporta de `providers` y `model_state`. Wrapper `_api_call()` con backoff exponencial |
-| `manager.py` | Lógica de negocio: verificación de modelos (async), selección por prioridad, refresh de lista verificada |
+| `policy.py` | Lógica de negocio: verificación de modelos (async), selección por prioridad, refresh de lista verificada |
+| `manager.py` | Wrapper de compatibilidad para la política LLM |
 | `client.py` | Puntos de entrada `chat()` y `chat_stream()`: resolución de modelo, failover, streaming, procesamiento de tool calls |
 
 ## 2. Provider Pattern
@@ -35,7 +36,7 @@ Flujo cuando un modelo falla:
 
 ```
 client._with_fallback()
-  → exception → manager._mark_and_refresh(model)
+  → exception → policy._mark_and_refresh(model)
     → mark_model_failed(model)        # agrega a _failed_models
     → get_verified_models(force=True)  # re-verifica todos los free models
     → _switch_model(model)             # busca siguiente en PRIORITY que no esté en _failed_models
@@ -51,13 +52,14 @@ Stream tiene su propio fallback en `_try_stream()` con la misma lógica.
 ## 4. Dependencias
 
 ```
-__init__.py ──→ client, models, manager
+__init__.py ──→ client, models, policy, manager
 protocol.py ──→ (ninguna)
 openai_provider.py ──→ openai, config
 providers.py ──→ protocol, openai_provider
 model_state.py ──→ (ninguna, solo stdlib)
 models.py ──→ providers, model_state
-manager.py ──→ models
+policy.py ──→ models
+manager.py ──→ policy, models
 client.py ──→ models, manager
 ```
 

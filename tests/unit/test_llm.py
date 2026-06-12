@@ -1,8 +1,9 @@
 from unittest.mock import patch, MagicMock
 
+import pytest
 
 from src.llm import chat
-from src.llm.models import _failed_models
+from src.llm.models import _failed_models, _api_call
 from src.context import build_system_prompt
 
 def test_fallback_switch_updates_system_prompt():
@@ -67,3 +68,18 @@ def test_fallback_switch_updates_system_prompt():
         mock_provider.chat.assert_called_once()
         assert mock_provider.chat.call_args.kwargs.get("model") == "deepseek-v4-flash-free"
         assert "Active model: deepseek-v4-flash-free" in messages2[0]["content"]
+
+
+def test_api_call_raises_rate_limit_without_retries():
+    class DummyRateLimitError(Exception):
+        status_code = 429
+
+    with patch("src.llm.models._get_provider") as mock_get_provider:
+        mock_provider = MagicMock()
+        mock_provider.chat.side_effect = DummyRateLimitError("HTTP 429 Too Many Requests")
+        mock_get_provider.return_value = mock_provider
+
+        with pytest.raises(DummyRateLimitError):
+            _api_call(model="big-pickle", messages=[])
+
+        mock_provider.chat.assert_called_once_with(model="big-pickle", messages=[])

@@ -8,17 +8,7 @@ global.KairosUtils = { escHtml: (s) => String(s).replace(/&/g,'&amp;').replace(/
 global.KairosWidgets = { debug: {}, log: () => {} };
 global.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
 
-await import('../web/static/debug.js');
-// debug.js assigns individual functions to window, not KairosDebug object
-const KairosDebug = {
-  logUI: window.logUI,
-  logStream: window.logStream,
-  toggleDebug: window.toggleDebug,
-  copyText: window.copyText,
-  copyUILog: window.copyUILog,
-  copyStreamLog: window.copyStreamLog,
-  copyWidgetLog: window.copyWidgetLog,
-};
+const { KairosDebug } = await import('../web/static/debug.js');
 
 describe('KairosDebug', () => {
   test('logUI guarda evento en uiEvents', async () => {
@@ -77,6 +67,11 @@ describe('KairosDebug', () => {
   test('toggleDebug sin DOM no lanza error', () => {
     global.document.getElementById = () => null;
     expect(() => { KairosDebug.toggleDebug(); KairosDebug.toggleDebug(); }).not.toThrow();
+  });
+
+  test('toggleDebug queda expuesto como alias global', () => {
+    expect(globalThis.toggleDebug).toBe(KairosDebug.toggleDebug);
+    expect(window.toggleDebug).toBe(KairosDebug.toggleDebug);
   });
 
   test('copyText sin pre muestra []', () => {

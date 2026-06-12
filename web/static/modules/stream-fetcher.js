@@ -91,8 +91,11 @@ export function executeStreamFetch(params) {
     return readLoop();
   })
   .catch(function(err) {
-    console.error('Chat request failed:', err);
-    if (StreamErrorHandler) StreamErrorHandler.handler('error', {type: 'network', message: 'Connection failed'});
+    var isAbort = err && (err.name === 'AbortError' || String(err.message || '').toLowerCase().indexOf('aborted') >= 0);
+    if (!isAbort) {
+      console.error('Chat request failed:', err);
+      if (StreamErrorHandler) StreamErrorHandler.handler('error', {type: 'network', message: 'Connection failed'});
+    }
     throw err;
   });
 }

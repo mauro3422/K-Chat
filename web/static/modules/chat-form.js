@@ -7,6 +7,7 @@ import { SessionContext } from './session-context.js';
 var lastUserMessageText = '';
 var currentController = null;
 var currentRetryController = createRetryController();
+var retryClickBound = false;
 
 function retryLastMessage() {
   var lastAsstMsg = document.querySelector('.msg.assistant:last-child');
@@ -35,6 +36,15 @@ function retryLastMessage() {
 }
 
 function init() {
+  if (!retryClickBound) {
+    retryClickBound = true;
+    document.addEventListener('click', function(event) {
+      var target = event.target && event.target.closest ? event.target.closest('.error-retry-btn') : null;
+      if (!target) return;
+      event.preventDefault();
+      retryLastMessage();
+    });
+  }
   document.addEventListener('submit', function onSubmit(e) {
     var form = e.target;
     if (form.id !== 'chat-form') return;

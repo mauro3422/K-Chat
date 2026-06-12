@@ -15,8 +15,8 @@ The system is organized in layers with clear boundaries:
            ▼                              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  API Facade (src/api/)                                      │
-│  Single entry point for all web routers.                   │
-│  Lazy repository singletons, all DB ops through this.      │
+│  Compatibility surface for older callers.                  │
+│  New code imports domain modules directly.                 │
 └──────────┬──────────────────────────────┬───────────────────┘
            │                              │
            ▼                              ▼
@@ -65,7 +65,7 @@ User → Form POST → web/routers/chat.py → web/services/chat_stream.py
                           │    └→ context/builder.py          │
                           │       └→ context/files.py         │
                           │       └→ context/templates.py     │
-                          │  _deps.llm_stream()               │
+                          │  src.llm.client.chat_stream()     │
                           │  for chunk in stream:             │
                           │    _process_chunks()              │
                           │    if tool_calls:                 │
@@ -103,7 +103,7 @@ User → Form POST → web/routers/chat.py → web/services/chat_stream.py
 
 ```
 User input → src/cli.py → core.chat_sync.chat()
-                            └→ _deps.llm_chat(history, model, tools=TOOLS)
+                            └→ src.llm.client.chat(history, model, tools=TOOLS)
                             └→ tool_loop.run_tool_loop_sync()
                                   └→ _process_sync_turn() (max 5 turns)
                                   └→ save_message() per turn
@@ -116,6 +116,7 @@ User input → src/cli.py → core.chat_sync.chat()
 - Public functions are grouped by domain: `save_message()`, `rebuild_history()`, `get_sessions()`, `rename_session()`, `delete_session()`, `get_session_messages()`, `filter_messages_for_ui()`, `match_tools_to_msgs()`, `save_widget_state()`, `db_save_widget()`, `db_get_widget()`, `db_get_widget_versions()`, `db_get_widget_by_version()`, `save_debug_info()`, `get_debug_info()`, `get_tool_history()`, `chat_stream()`.
 - Sub-modules: `messages.py`, `session.py`, `widgets.py`, `debug.py`, `tools.py`, `history.py`, `chat.py`, `database.py`.
 - Repository singletons now live in each domain module; there is no shared `_get_repo()` cache layer anymore.
+- `src.core._deps` remains only as a narrow compatibility/test seam; runtime code now calls `src.llm.client` and `src.tools` directly.
 
 ### `src/core/orchestrator.py` — The Brain
 - `chat_stream()`: Main streaming generator. Manages the full lifecycle of a conversation turn (84 lines).
@@ -158,7 +159,8 @@ User input → src/cli.py → core.chat_sync.chat()
 - `openai_provider.py`: `OpenAIProvider` — OpenAI/OpenCode SDK wrapper. Lazy `_get_provider()` singleton.
 - `models.py`: Model registry, `PRIORITY`/`FALLBACK_MODEL` constants, `_api_call()` with retry, `_switch_model()`, `_PROVIDER_REGISTRY` dict and `register_provider()` function for dynamic provider registration.
 - `client.py`: `chat()` and `chat_stream()` with error handling, tool delta processing, debug usage tracking.
-- `manager.py`: Model discovery, verification (`verify_model`), priority selection, free/paid filtering.
+- `policy.py`: Model discovery, verification (`verify_model`), priority selection, free/paid filtering.
+- `manager.py`: Compatibility wrapper for legacy LLM imports/tests.
 - `__init__.py`: Module facade exposing unified interface.
 
 ### `src/tools/` — Tool System
@@ -173,7 +175,9 @@ User input → src/cli.py → core.chat_sync.chat()
 - Individual tools (10): Each exports `DEFINITION` (dict) + `run(**kwargs)`. New tool = new file.
 
 ### `src/memory/` — Persistence Layer
-- `database.py`: SQLite connection factory (WAL mode, busy timeout). `PooledConnection` wrapper (no-op close). `init_db()` with `PRAGMA foreign_keys = ON`. `DatabaseEngine` Protocol for swappable backends. `get_engine()` / `set_engine()` for engine injection.
+- `connection.py`: SQLite connection factory (WAL mode, busy timeout). `PooledConnection` wrapper (no-op close). `DatabaseEngine` Protocol for swappable backends. `get_engine()` / `set_engine()` for engine injection.
+- `schema.py`: `init_db()` and per-path schema initialization / migration execution.
+- `database.py`: Compatibility wrapper that re-exports the public connection/schema entry points.
 - `sqlite_engine.py`: `SQLiteEngine` — default SQLite implementation of `DatabaseEngine` with WAL mode and busy timeout.
 - `repos/`: 6 repository classes in separate files, all inheriting from `_BaseRepository`.
   - `base.py`: `_BaseRepository` with `_get_conn()` and `_transaction()` context manager (commit on success, rollback on exception, uses engine if available).

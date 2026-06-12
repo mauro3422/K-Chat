@@ -15,9 +15,9 @@
       <img src="/static/logo.png" alt="Kairos Logo" class="brand-logo">
       <h2>Kairos</h2>
     </div>
-    <select id="model-select" class="model-select" onchange="defaultModel=this.value; localStorage.setItem('selected_model', this.value)">
+    <select id="model-select" class="model-select">
       {% for m in models %}
-        <option value="{{ m }}">{{ m }}</option>
+        <option value="{{ m.id }}" title="{{ m.label }}">{{ m.label }}</option>
       {% endfor %}
     </select>
     <a href="/" class="btn-new">+ Nueva</a>
@@ -29,7 +29,7 @@
 </aside>
 <main id="main">
   <div class="main-header">
-    <span class="debug-toggle" onclick="toggleDebug()">&#128202; Debug</span>
+    <span class="debug-toggle" id="debug-toggle">&#128202; Debug</span>
   </div>
   <div id="messages"><div class="empty-state">Envia un mensaje para empezar</div></div>
   <form id="chat-form">
@@ -41,26 +41,14 @@
 <div id="debug-panel" class="debug-panel">
   <div class="debug-header">
     <h3>Debug</h3>
-    <span class="debug-close" onclick="toggleDebug()">&times;</span>
+    <span class="debug-close" id="debug-close">&times;</span>
   </div>
   <div id="debug-content" class="debug-body">Envia un mensaje para ver el debug</div>
 </div>
 </div>
 <script>
 globalThis.sessionId = "{{ session_id }}";
-var defaultModel = "{{ model }}";
-// Placeholder until chat-stream.js module loads
-window.loadSession = function() { console.log('Loading session...'); };
-// Recuperar el modelo guardado del usuario en localStorage
-if (localStorage.getItem('selected_model')) {
-  defaultModel = localStorage.getItem('selected_model');
-}
-document.addEventListener('DOMContentLoaded', function() {
-  var select = document.getElementById('model-select');
-  if (select) {
-    select.value = defaultModel;
-  }
-});
+globalThis.defaultModel = localStorage.getItem('selected_model') || "{{ model }}";
 </script>
 <script type="module">
   import { SessionContext } from '/static/modules/session-context.js';
@@ -84,12 +72,10 @@ document.addEventListener('DOMContentLoaded', function() {
 <script type="module" src="/static/modules/reasoning-handler.js?v=2"></script>
 <script type="module" src="/static/modules/content-handler.js?v=2"></script>
 <script type="module" src="/static/modules/tool-call-renderer.js?v=2"></script>
-<script type="module" src="/static/modules/stream-renderer.js?v=5"></script>
 <script type="module" src="/static/modules/retry-handler.js?v=2"></script>
 <script type="module" src="/static/modules/stream-error-handler.js?v=2"></script>
 <script type="module" src="/static/debug.js?v=14"></script>
 <script type="module" src="/static/modules/stream-bootstrap.js?v=1"></script>
-<script type="module" src="/static/modules/stream-orchestrator.js?v=2"></script>
+<script type="module" src="/static/modules/stream-orchestrator.js?v=3"></script>
 <script type="module" src="/static/modules/chat-form-bootstrap.js?v=1"></script>
-<script type="module" src="/static/chat-stream.js?v=29"></script>
 </body></html>

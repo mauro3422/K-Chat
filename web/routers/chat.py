@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.api.chat import get_default_model
+from src.llm import get_default_model
 from src.api.history import rebuild_history
 from src.api.messages import save_message as db_save_message
 from src.api.session import ensure_session
@@ -21,12 +21,17 @@ class ChatPayload(BaseModel):
 
 
 @router.post("/chat/{session_id}")
-def chat(session_id: str, background_tasks: BackgroundTasks, payload: ChatPayload) -> Response:
+def chat(
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    payload: ChatPayload,
+    model: str | None = None,
+) -> Response:
     if not session_id or not session_id.strip():
         raise HTTPException(400, "Invalid session_id")
     if not payload.message.strip():
         return ""
-    model = payload.model or get_default_model()
+    model = payload.model or model or get_default_model()
 
     ensure_session(session_id)
     try:

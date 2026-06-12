@@ -27,10 +27,10 @@ export function loadSession(sid) {
   globalThis.sessionId = sid;
   window.history.replaceState({sid: sid}, '', '/sessions/' + sid);
 
-  if (window.KairosWidgets && typeof KairosWidgets.reset === 'function') {
+  if (typeof KairosWidgets.reset === 'function') {
     KairosWidgets.reset();
   }
-  if (window.KairosForm && typeof KairosForm.reset === 'function') {
+  if (typeof KairosForm.reset === 'function') {
     KairosForm.reset();
   }
 

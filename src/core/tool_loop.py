@@ -4,13 +4,15 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from src.tools import TOOLS
-from src.core import _deps
+import src.tools as tools
+from src.llm import client as llm_client
 from src.constants import MAX_TOOL_TURNS
+from src.memory.repos import MessageRepository
 
 logger = logging.getLogger(__name__)
 
 OUTPUT_CHUNK_SIZE = 12
+_MESSAGE_REPO = MessageRepository()
 
 
 @dataclass
@@ -52,13 +54,12 @@ def _append_assistant_with_tools(history: list[dict[str, Any]], content: str | N
 
 def _save_assistant_tool_calls(session_id: str | None, content: str | None, model: str, tool_calls_list: list[dict[str, Any]]) -> None:
     if session_id:
-        from src.api.messages import save_message
-        save_message(
-            session_id,
-            "assistant",
-            content,
+        _MESSAGE_REPO.save(
+            session_id=session_id,
+            role="assistant",
+            content=content,
             model=model,
-            tool_calls=json.dumps(tool_calls_list, ensure_ascii=False)
+            tool_calls=json.dumps(tool_calls_list, ensure_ascii=False),
         )
 
 
@@ -131,9 +132,9 @@ def _process_llm_stream(
 ) -> Generator[Any, None, tuple[list[tuple[str, str]], list[Any], list[Any], str]]:
     reasoning_out: list[Any] = []
     tool_calls_out: list[Any] = []
-    stream_iter = _deps.llm_stream(
+    stream_iter = llm_client.chat_stream(
         history, model, reasoning_output=reasoning_out, tagged=True,
-        tools=TOOLS, tool_calls_output=tool_calls_out, debug=debug
+        tools=tools.TOOLS, tool_calls_output=tool_calls_out, debug=debug
     )
     accumulated: list[tuple[str, str]] = []
     phase_reasoning = ""
@@ -230,7 +231,7 @@ def _process_sync_turn(
     tool_calls = result.message.tool_calls or []
     yield from _execute_tools(ctx, turn, phase_tool_ids, tool_calls, result.message.content, phase_reasoning)
 
-    result = _deps.llm_chat(ctx.history, ctx.model, tools=TOOLS)
+    result = llm_client.chat(ctx.history, ctx.model, tools=tools.TOOLS)
     return turn, phase_reasoning, result
 
 
@@ -252,7 +253,7 @@ def _yield_stream_fallback(
     history: list[dict[str, Any]], model: str, tagged: bool
 ) -> Generator[Any, None, str]:
     reasoning_out: list[str] = []
-    for item in _deps.llm_stream(history, model, reasoning_output=reasoning_out, tagged=tagged):
+    for item in llm_client.chat_stream(history, model, reasoning_output=reasoning_out, tagged=tagged):
         if tagged:
             tipo, token = item
             yield (tipo, token)
@@ -286,7 +287,7 @@ def run_tool_loop_sync(
     phase_tool_ids = []
     final_reasoning = ""
 
-    result = _deps.llm_chat(ctx.history, ctx.model, tools=TOOLS, debug=ctx.debug)
+    result = llm_client.chat(ctx.history, ctx.model, tools=tools.TOOLS, debug=ctx.debug)
     while result.finish_reason == "tool_calls" and turn < ctx.max_turns:
         turn, phase_reasoning, result = yield from _process_sync_turn(
             ctx, turn, phase_reasoning, phase_tool_ids, result,
@@ -309,10 +310,12 @@ def run_tool_loop_sync(
         "tool_calls": [],
     })
     if ctx.session_id:
-        from src.api.messages import save_message
-        save_message(
-            ctx.session_id, "assistant", content_str,
-            model=ctx.model, tool_calls="[]"
+        _MESSAGE_REPO.save(
+            session_id=ctx.session_id,
+            role="assistant",
+            content=content_str,
+            model=ctx.model,
+            tool_calls="[]",
         )
 
     if ctx.debug is not None:

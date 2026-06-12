@@ -15,7 +15,7 @@ __all__ = [
 
 _models_lock: threading.Lock = threading.Lock()
 
-PRIORITY: list[str] = ["big-pickle", "deepseek-v4-flash-free"]
+PRIORITY: list[str] = ["deepseek-v4-flash-free", "big-pickle"]
 FALLBACK_MODEL: str = "deepseek-v4-flash-free"
 
 _cached_models: list[Any] | None = None

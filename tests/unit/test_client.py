@@ -244,6 +244,7 @@ class TestChat:
 
     def test_retries_on_exception(self, mock_models, mock_manager):
         mock_models.is_model_failed.return_value = False
+        mock_models._is_rate_limit_error.return_value = False
         mock_manager._mark_and_refresh.return_value = "backup"
         mock_choice = MagicMock()
         mock_response = MagicMock()
@@ -254,7 +255,7 @@ class TestChat:
 
         assert result is mock_choice
         assert mock_models._api_call.call_count == 2
-        mock_manager._mark_and_refresh.assert_called_once_with("gpt-4")
+        mock_manager._mark_and_refresh.assert_called_once_with("gpt-4", refresh=True)
 
     def test_populates_debug(self, mock_models, mock_manager):
         mock_manager.get_default_model.return_value = "default"
@@ -452,6 +453,7 @@ class TestChatStream:
 
     def test_retries_on_stream_error(self, mock_models, mock_manager):
         mock_models.is_model_failed.return_value = False
+        mock_models._is_rate_limit_error.return_value = False
         mock_manager._mark_and_refresh.return_value = "backup"
 
         delta = _make_delta(content="Retried")
@@ -462,7 +464,7 @@ class TestChatStream:
         results, _ = _collect(gen)
         assert results == ["Retried"]
         assert mock_models._api_call.call_count == 2
-        mock_manager._mark_and_refresh.assert_called_once_with("gpt-4")
+        mock_manager._mark_and_refresh.assert_called_once_with("gpt-4", refresh=True)
 
     def test_updates_debug(self, mock_models, mock_manager):
         mock_manager.get_default_model.return_value = "default"

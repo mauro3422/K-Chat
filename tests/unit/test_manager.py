@@ -177,8 +177,10 @@ class TestGetVerifiedModels:
 
 class TestGetDefaultModel:
     @patch("src.llm.manager.models.is_model_failed")
+    @patch("src.llm.manager.models.get_verified_models_safe")
     @patch("src.llm.manager.get_free_models")
-    def test_returns_priority_model_when_available(self, mock_get_free, mock_failed):
+    def test_returns_priority_model_when_available(self, mock_get_free, mock_get_verified, mock_failed):
+        mock_get_verified.return_value = None
         mock_m1 = MagicMock()
         mock_m1.id = "big-pickle"
         mock_m2 = MagicMock()
@@ -188,11 +190,13 @@ class TestGetDefaultModel:
 
         result = get_default_model()
 
-        assert result == "big-pickle"
+        assert result == "deepseek-v4-flash-free"
 
     @patch("src.llm.manager.models.is_model_failed")
+    @patch("src.llm.manager.models.get_verified_models_safe")
     @patch("src.llm.manager.get_free_models")
-    def test_skips_failed_model(self, mock_get_free, mock_failed):
+    def test_skips_failed_model(self, mock_get_free, mock_get_verified, mock_failed):
+        mock_get_verified.return_value = None
         mock_m1 = MagicMock()
         mock_m1.id = "big-pickle"
         mock_m2 = MagicMock()
@@ -213,8 +217,10 @@ class TestGetDefaultModel:
         assert result == "deepseek-v4-flash-free"
 
     @patch("src.llm.manager.models.is_model_failed")
+    @patch("src.llm.manager.models.get_verified_models_safe")
     @patch("src.llm.manager.get_free_models")
-    def test_allows_big_pickle_even_when_not_in_free(self, mock_get_free, mock_failed):
+    def test_prefers_deepseek_even_when_big_pickle_is_available(self, mock_get_free, mock_get_verified, mock_failed):
+        mock_get_verified.return_value = None
         mock_m1 = MagicMock()
         mock_m1.id = "deepseek-v4-flash-free"
         mock_get_free.return_value = [mock_m1]
@@ -222,7 +228,19 @@ class TestGetDefaultModel:
 
         result = get_default_model()
 
-        assert result == "big-pickle"
+        assert result == "deepseek-v4-flash-free"
+
+    @patch("src.llm.manager.models.is_model_failed")
+    @patch("src.llm.manager.models.get_verified_models_safe")
+    @patch("src.llm.manager.get_free_models")
+    def test_prefers_verified_cache_when_available(self, mock_get_free, mock_get_verified, mock_failed):
+        mock_get_verified.return_value = ["deepseek-v4-flash-free"]
+        mock_failed.return_value = False
+
+        result = get_default_model()
+
+        mock_get_free.assert_not_called()
+        assert result == "deepseek-v4-flash-free"
 
 
 class TestMarkAndRefresh:
@@ -250,4 +268,17 @@ class TestMarkAndRefresh:
 
         mock_verify.assert_called_once_with(force_refresh=True)
         mock_mark.assert_called_once_with("big-pickle")
+        assert result == "fallback"
+
+    @patch("src.llm.manager.models._switch_model")
+    @patch("src.llm.manager.models.mark_model_failed")
+    @patch("src.llm.manager.get_verified_models")
+    def test_can_skip_refresh(self, mock_verify, mock_mark, mock_switch):
+        mock_switch.return_value = "fallback"
+
+        result = _mark_and_refresh("big-pickle", refresh=False)
+
+        mock_verify.assert_not_called()
+        mock_mark.assert_called_once_with("big-pickle")
+        mock_switch.assert_called_once_with("big-pickle")
         assert result == "fallback"

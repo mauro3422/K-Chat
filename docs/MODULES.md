@@ -24,7 +24,8 @@ llm/
   openai_provider.py  → OpenAI/OpenCode SDK provider implementation
   models.py           → Model registry, provider registry, _api_call with retry
   client.py           → chat() and chat_stream() with fallback, tool delta processing
-  manager.py          → Model discovery, verification, selection
+  policy.py           → Model discovery, verification, selection
+  manager.py          → Compatibility wrapper
 
 tools/
   __init__.py         → Auto-loader: TOOLS, TOOL_MAP, TOOL_DEFINITIONS
@@ -136,7 +137,7 @@ support/
 **Public Interface:**
 - `chat(message, history, model) → str` — calls `llm_chat`, returns response content
 
-**Depends on:** `src.core._deps`
+**Depends on:** `src.llm.client`, `src.tools`
 
 ---
 
@@ -204,18 +205,27 @@ support/
 
 ---
 
-## `src/llm/manager.py`
+## `src/llm/policy.py`
 
-**Responsibility:** Model lifecycle management.
+**Responsibility:** Model lifecycle policy management.
 
 **Public Interface:**
 - `get_default_model() → str` — selects from priority list
-- `get_models()`, `get_free_models()`, `get_paid_models()` — API model lists
+- `get_models()`, `get_free_models()` — API model lists
 - `get_verified_models() → list` — health-checked free models
 - `verify_model(model) → bool` — tests model with a minimal prompt
 - `_mark_and_refresh(model) → str` — marks failed, returns alternative
 
-**Depends on:** `src.llm.models`, `config`
+**Depends on:** `src.llm.models`
+
+## `src/llm/manager.py`
+
+**Responsibility:** Compatibility wrapper for legacy LLM imports.
+
+**Public Interface:**
+- Same as `src/llm/policy.py`
+
+**Depends on:** `src.llm.policy`
 
 ---
 
@@ -247,15 +257,33 @@ support/
 
 ---
 
-## `src/memory/database.py`
+## `src/memory/connection.py`
 
-**Responsibility:** SQLite connection factory and schema initialization.
+**Responsibility:** SQLite connection factory and engine injection.
 
 **Public Interface:**
 - `get_conn() → Connection` — WAL mode, busy timeout, `PooledConnection` wrapper
-- `init_db()` — creates tables, runs all migrations, enables foreign keys
+- `get_engine()`, `set_engine()` — engine injection seam
 
 **Depends on:** `config`
+
+## `src/memory/schema.py`
+
+**Responsibility:** Schema initialization and migrations.
+
+**Public Interface:**
+- `init_db()` — creates tables, runs all migrations, enables foreign keys
+
+**Depends on:** `src.memory.connection`, `src.memory.migrations`
+
+## `src/memory/database.py`
+
+**Responsibility:** Backward-compatible database facade.
+
+**Public Interface:**
+- Re-exports `get_conn()`, `init_db()`, `get_engine()`, `set_engine()`
+
+**Depends on:** `src.memory.connection`, `src.memory.schema`
 
 ---
 
@@ -280,7 +308,7 @@ support/
 - Each uses `IF NOT EXISTS` / `try/except OperationalError` for idempotency
 - Last three: add FK references + indexes on all `session_id` columns
 
-**Depends on:** `src.memory.database`
+**Depends on:** `src.memory.connection`, `src.memory.schema`
 
 ---
 

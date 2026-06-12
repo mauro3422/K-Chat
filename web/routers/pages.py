@@ -5,10 +5,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
-from src.api.chat import get_default_model
+from src.llm import get_default_model
 from src.api.session import get_sessions
 from src.llm.model_state import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
 from web.services.message_renderer import render_session_messages
+from web.services.model_catalog import format_model_label
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
@@ -29,6 +30,10 @@ def get_available_model_ids() -> list[str]:
     return models
 
 
+def get_available_models() -> list[dict[str, str]]:
+    return [{"id": model_id, "label": format_model_label(model_id)} for model_id in get_available_model_ids()]
+
+
 @router.get("/favicon.ico")
 def favicon() -> FileResponse:
     return FileResponse(Path(__file__).parent.parent / "static" / "logo.png")
@@ -40,7 +45,7 @@ def home(request: Request) -> HTMLResponse:
     resp = templates.TemplateResponse(request, "chat.html", {
         "session_id": str(uuid.uuid4()),
         "model": get_default_model(),
-        "models": models
+        "models": get_available_models(),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp
@@ -52,7 +57,7 @@ def session_page(request: Request, session_id: str) -> HTMLResponse:
     resp = templates.TemplateResponse(request, "chat.html", {
         "session_id": session_id,
         "model": get_default_model(),
-        "models": models
+        "models": get_available_models(),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp

@@ -6,4 +6,3 @@
 import { KairosForm } from './chat-form.js';
 
 window.KairosForm = KairosForm;
-KairosForm.init();

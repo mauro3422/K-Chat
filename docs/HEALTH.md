@@ -11,7 +11,7 @@ This document analyzes the current codebase against SOLID principles and the pro
 | C | — |
 | D | — |
 
-All P1–P3 items completed. The codebase is fully healthy. Test suite: 102 Python tests + 73 JS tests, all passing.
+All P1–P3 items completed in the original analysis. The codebase is in a healthier state, but the current work has focused on reducing compatibility seams and documenting the remaining ones clearly.
 
 ### Bug fixes applied post-analysis
 
@@ -65,7 +65,7 @@ Mostly not applicable — the codebase is procedural/functional, not class-hiera
 
 ### ~~Issue: `src/core/__init__.py` and `src/llm/__init__.py` use `sys.modules[__name__].__class__`~~ ✅ Fixed
 
-Both files now use regular imports. Tests patch `src.core.llm_chat`, `src.core.llm_stream`, and `src.core.TOOL_MAP` directly on the module namespace, which works because all code accesses them via `import src.core; src.core.llm_chat(...)`.
+Both files now use regular imports. The remaining `_deps` seam is narrow and mostly exists for compatibility/test patching; the runtime should be treated as the direct imports in `src.llm.client` and `src.core.tool_loop`.
 
 ---
 

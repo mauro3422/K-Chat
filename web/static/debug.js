@@ -9,6 +9,7 @@ function timeToMs(t) {
 }
 
 let debugVisible = false;
+let debugControlsBound = false;
 const streamEvents = [];
 let streamEvId = 0;
 const uiEvents = [];
@@ -48,11 +49,34 @@ function renderStreamLog() {
 function toggleDebug() {
   debugVisible = !debugVisible;
   window.debugVisible = debugVisible;
+  globalThis.debugVisible = debugVisible;
   var p = document.getElementById('debug-panel');
   var m = document.getElementById('main');
   if (p) p.classList.toggle('open', debugVisible);
   if (m) m.classList.toggle('shifted', debugVisible);
   if (debugVisible) refreshDebug();
+}
+
+function bindDebugControls() {
+  if (debugControlsBound) return;
+  debugControlsBound = true;
+  document.addEventListener('click', function(event) {
+    var copyTarget = event.target && event.target.closest ? event.target.closest('.db-copy') : null;
+    if (copyTarget) {
+      var action = copyTarget.getAttribute('data-copy-action');
+      if (action === 'all') copyAllDebug(copyTarget);
+      else if (action === 'text') copyText(copyTarget);
+      else if (action === 'stream') copyStreamLog(copyTarget);
+      else if (action === 'ui') copyUILog(copyTarget);
+      else if (action === 'widgets') copyWidgetLog(copyTarget);
+      else if (action === 'backend') copyBackendLogs(copyTarget);
+      return;
+    }
+    var target = event.target && event.target.closest ? event.target.closest('.debug-toggle, .debug-close') : null;
+    if (!target) return;
+    event.preventDefault();
+    toggleDebug();
+  });
 }
 
 function copyStreamLog(el) {
@@ -97,15 +121,15 @@ function refreshDebug() {
   var urlBuilder = SessionContext.createSessionUrlBuilder();
   fetch(urlBuilder.debug()).then(function(r) { return r.json(); }).then(function(d) {
     var h = '';
-    h += '<div class="db-section"><strong>Modelo:</strong> ' + (d.model || '-') + ' <span class="db-copy" onclick="copyAllDebug(this)" style="margin-left:8px">copy ALL</span></div>';
-    h += '<div class="db-section"><strong>Razonamiento:</strong><span class="db-copy" onclick="copyText(this)">copy</span><pre class="db-pre">' + escHtml(d.reasoning || '(ninguno)') + '</pre></div>';
-    h += '<div class="db-section"><strong>Tools:</strong><span class="db-copy" onclick="copyText(this)">copy</span><pre class="db-pre">' + escHtml(JSON.stringify(d.tool_calls || [], null, 2)) + '</pre></div>';
-    h += '<div class="db-section"><strong>System Prompt:</strong><span class="db-copy" onclick="copyText(this)">copy</span><pre class="db-pre">' + escHtml((d.system_prompt || '').substring(0, 2000)) + '</pre></div>';
-    h += '<details class="db-section"><summary>History (' + ((d.history_before||[]).length) + ')</summary><span class="db-copy" onclick="copyText(this)">copy</span><pre class="db-pre">' + escHtml(JSON.stringify(d.history_before || [], null, 2)) + '</pre></details>';
-    h += '<details class="db-section" open><summary>Stream</summary><span class="db-copy" onclick="copyStreamLog(this)">copy</span><div id="stream-log" class="sl-container"></div></details>';
-    h += '<details class="db-section"><summary>UI</summary><span class="db-copy" onclick="copyUILog(this)">copy</span><div id="ui-log" class="sl-container"></div></details>';
-    h += '<details class="db-section" open><summary>Widgets</summary><span class="db-copy" onclick="copyWidgetLog(this)">copy</span><div id="widget-log" class="sl-container"></div></details>';
-    h += '<details class="db-section"><summary>Backend Logs</summary><span class="db-copy" onclick="copyBackendLogs(this)">copy</span><div id="backend-log" class="sl-container">Cargando...</div></details>';
+    h += '<div class="db-section"><strong>Modelo:</strong> ' + (d.model || '-') + ' <button type="button" class="db-copy" data-copy-action="all" style="margin-left:8px">copy ALL</button></div>';
+    h += '<div class="db-section"><strong>Razonamiento:</strong><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml(d.reasoning || '(ninguno)') + '</pre></div>';
+    h += '<div class="db-section"><strong>Tools:</strong><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml(JSON.stringify(d.tool_calls || [], null, 2)) + '</pre></div>';
+    h += '<div class="db-section"><strong>System Prompt:</strong><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml((d.system_prompt || '').substring(0, 2000)) + '</pre></div>';
+    h += '<details class="db-section"><summary>History (' + ((d.history_before||[]).length) + ')</summary><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml(JSON.stringify(d.history_before || [], null, 2)) + '</pre></details>';
+    h += '<details class="db-section" open><summary>Stream</summary><button type="button" class="db-copy" data-copy-action="stream">copy</button><div id="stream-log" class="sl-container"></div></details>';
+    h += '<details class="db-section"><summary>UI</summary><button type="button" class="db-copy" data-copy-action="ui">copy</button><div id="ui-log" class="sl-container"></div></details>';
+    h += '<details class="db-section" open><summary>Widgets</summary><button type="button" class="db-copy" data-copy-action="widgets">copy</button><div id="widget-log" class="sl-container"></div></details>';
+    h += '<details class="db-section"><summary>Backend Logs</summary><button type="button" class="db-copy" data-copy-action="backend">copy</button><div id="backend-log" class="sl-container">Cargando...</div></details>';
     dc.innerHTML = h;
     renderStreamLog();
     renderUILog();
@@ -113,6 +137,8 @@ function refreshDebug() {
     refreshBackendLogs();
   }).catch(function(e) { if(dc) dc.textContent = 'Error: ' + e; });
 }
+
+export { refreshDebug };
 
 function refreshBackendLogs() {
   var el = document.getElementById('backend-log');
@@ -271,22 +297,21 @@ function refreshWidgetInfo() {
 export const KairosDebug = {
   logStream, logUI, toggleDebug,
   copyStreamLog, copyUILog, copyText, copyWidgetLog,
-  refreshDebug, copyBackendLogs, copyAllDebug,
+  refreshDebug, copyBackendLogs, copyAllDebug, bindDebugControls,
   get debugVisible() { return debugVisible; }
 };
 
-// Backwards-compatible window aliases for inline onclick handlers in dynamic HTML.
-// These reference functions from the KairosDebug module but must remain global
-// because onclick="toggleDebug()" / onclick="copyText(this)" etc. are injected
-// as innerHTML strings (see refreshDebug).
+// Backwards-compatible window aliases for legacy debug callers.
 window.logStream = KairosDebug.logStream;
 window.logUI = KairosDebug.logUI;
-window.toggleDebug = KairosDebug.toggleDebug;
 window.refreshDebug = KairosDebug.refreshDebug;
-window.copyStreamLog = KairosDebug.copyStreamLog;
-window.copyUILog = KairosDebug.copyUILog;
-window.copyText = KairosDebug.copyText;
-window.copyWidgetLog = KairosDebug.copyWidgetLog;
-window.copyBackendLogs = KairosDebug.copyBackendLogs;
-window.copyAllDebug = KairosDebug.copyAllDebug;
+window.toggleDebug = KairosDebug.toggleDebug;
+globalThis.toggleDebug = KairosDebug.toggleDebug;
 window.debugVisible = debugVisible;
+globalThis.debugVisible = debugVisible;
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bindDebugControls);
+} else {
+  bindDebugControls();
+}

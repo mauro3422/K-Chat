@@ -5,7 +5,9 @@
 | Archivo | Qué hace |
 |---------|----------|
 | `__init__.py` | Re-exporta todo el API público del módulo memory |
-| `database.py` | Gestiona conexiones SQLite con pool por hilo y ejecuta migraciones |
+| `connection.py` | Gestiona conexiones SQLite con pool por hilo y engine inyectable |
+| `schema.py` | Inicialización del esquema y ejecución de migraciones |
+| `database.py` | Wrapper de compatibilidad para `get_conn()` / `init_db()` |
 | `migrations.py` | Define 9 migraciones secuenciales del esquema |
 | `sqlite_engine.py` | Implementación concreta del protocolo `DatabaseEngine` para SQLite |
 | `repos/__init__.py` | Agrupa todos los repos en un dataclass `Repositories` y expone `get_repos()` |
@@ -33,11 +35,11 @@ class DatabaseEngine(Protocol):
 Es un **Protocol** (structural subtyping). Cualquier clase con esos 5 métodos es válida.
 La única implementación es `SQLiteEngine` que envuelve `sqlite3`.
 
-**Flujo en `database.py`:**
-- Variable global `_engine: DatabaseEngine | None` permite inyectar un engine (testing/mocking).
+**Flujo en `connection.py` + `schema.py`:**
+- `connection.py` mantiene el `threading.local` y el engine inyectable.
 - Si `_engine is None`, se usa `sqlite3` directamente (modo legacy).
 - `get_conn()` retorna un `PooledConnection` cuyo `.close()` es no-op (la conexión se reutiliza por hilo via `threading.local`).
-- `init_db()` ejecuta las migraciones pendientes leyendo `schema_version`.
+- `schema.py` ejecuta las migraciones pendientes leyendo `schema_version` y marca esa ruta como inicializada.
 
 ---
 
@@ -113,4 +115,4 @@ _BaseRepository
 - **`get_engine()` como global mutable**: el engine se inyecta vía variable global, no vía DI container.
 - **No hay validación de esquema**: las migraciones no verifican integridad del esquema final.
 - **Tipos `Any` en exceso**: `conn: Any` en todos los repos pierde type safety.
-- **`init_db()` se llama en `get_conn()`**: cada conexión potencialmente re-ejecuta migraciones (aunque es idempotente, es overhead innecesario).
+- **`init_db()` y `get_conn()` siguen mezclados en el mismo módulo**: ahora la inicialización está guardada por ruta, pero el lifecycle todavía podría separarse más si se quisiera una frontera más estricta.
