@@ -196,6 +196,20 @@ def _migration_009_add_indexes(conn: Any, engine: Any) -> None:
     engine.execute(conn, "CREATE INDEX IF NOT EXISTS idx_widget_versions_session_id ON widget_versions (session_id)")
 
 
+def _migration_010_memory_index(conn, engine):
+    engine.execute(conn, """
+        CREATE TABLE IF NOT EXISTS memory_index (
+            session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (session_id, key)
+        )
+    """)
+    engine.execute(conn, "CREATE INDEX IF NOT EXISTS idx_memory_index_key ON memory_index (key)")
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -206,4 +220,5 @@ MIGRATIONS = (
     _migration_007_saved_widgets_global,
     _migration_008_add_token_counts,
     _migration_009_add_indexes,
+    _migration_010_memory_index,
 )

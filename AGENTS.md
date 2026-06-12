@@ -20,3 +20,8 @@ Agent rules:
   - `get_tool_history(limit=5)` — `save_widget(widget_id, code)`
   - `get_widget_code(widget_id)` — `update_widget(widget_id, code)`
 - Call multiple tools in parallel when possible.
+- **DB Direct Access**: All session data persists in `memory/kairos_memory.db` (SQLite). Query it directly instead of asking the user for logs.
+  - `sqlite3 memory/kairos_memory.db "SELECT ..."` — session messages, debug_info, widgets, tool_calls
+  - `curl localhost:8000/sessions/{id}/debug` — debug info via API
+  - `curl localhost:8000/api/logs?level=E` — server errors
+  - See `.opencode/skills/db-query/SKILL.md` for ready-to-use queries
