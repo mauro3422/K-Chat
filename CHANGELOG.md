@@ -2,15 +2,16 @@
 
 > **Regla**: Este archivo es solo el índice. El detalle de cada versión está en `changelogs/vX.Y.Z.md`.
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
+> Las entradas describen el estado del proyecto en el momento de cada release.
 
 ## [v0.0.45] — 2026-06-12 — [Detalle](changelogs/v0.0.45.md)
 - Officialized the new `execute_command` tool and the improved `list_files` tool in the public docs and tests
-- Updated the active tool architecture docs to reflect the 12-tool registry
-- Continued the historical hygiene pass by aligning the current release notes with the live runtime
+- Updated the tool architecture docs to reflect the 12-tool registry at that point in time
+- Continued the historical hygiene pass by aligning the release notes with the runtime state of that release
 
 ## [v0.0.44] — 2026-06-12 — [Detalle](changelogs/v0.0.44.md)
-- Removed the last active compatibility shims from `src.core`, `src.llm`, `src.api`, and `src.memory`
-- Aligned the public docs and README with the actual runtime modules and boundaries
+- Removed the remaining compatibility shims from `src.core`, `src.llm`, `src.api`, and `src.memory`
+- Aligned the public docs and README with the runtime modules and boundaries at that release
 - Verified the cleaned runtime with the focused Python test batch
 
 ## [v0.0.43] — 2026-06-12 — [Detalle](changelogs/v0.0.43.md)
