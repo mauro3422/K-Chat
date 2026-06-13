@@ -6,10 +6,10 @@
 
 | Módulo | Rol |
 |--------|------|
-| `app.js` | Entry point del bundle. Ensambla el runtime y conecta los módulos principales. |
+| `app.js` | Entry point del bundle. Ensambla el runtime y pasa deps explícitas a las superficies de transición. |
 | `session-context.js` | CRUD de sesiones, sidebar refresh y binding del selector de modelo via HTMX + fetch. |
-| `debug-panel.js` | Panel de debug: log de eventos stream/UI, inspección de razonamiento/tools/system prompt, logs backend. |
-| `session-page.js` | Navegación de sesión, sidebar refresh y carga de sesiones. |
+| `debug-panel.js` | Panel de debug. Es una superficie de transición para compatibilidad y render del panel. |
+| `session-page.js` | Navegación de sesión, sidebar refresh y carga de sesiones. Superficie de transición. |
 | `utils.js` | Utilidades globales: `escHtml`, `scrollToBottom`, `showToast`, handlers de error global. |
 | `markdown-renderer.js` | Renderiza Markdown vía `marked` + `DOMPurify`, detecta/extrae widgets HTML inline, maneja footnotes. |
 | **`stream-dispatcher.js`** | **Event bus central**: `on/emit/off` para eventos `content`, `reasoning`, `tool_call`, `error`, `heartbeat`. |
@@ -43,17 +43,17 @@
 stream-fetcher.js          ← fetch() + ReadableStream, parsea JSON lines
      │ msg = {t: "content"|"reasoning"|"tool_call"|"heartbeat"|"error", d: "..."}
      ▼
-stream-dispatcher.js       ← emit(msg.t, msg.d, shared-state.js)
+stream-dispatcher.js       ← emit(msg.t, msg.d, state)
      │
      ├─→ reasoning-handler  ← crea <details class="reasoning">, append token
-     ├─→ content-handler    ← acumula token en shared-state.contentTexts[phase],
+     ├─→ content-handler    ← acumula token en el estado del stream,
      │                       detecta widgets, parsea markdown, sanitiza con DOMPurify
      ├─→ tool-call-renderer ← renderiza pills calling/ok/error por tool
      ├─→ stream-error-handler ← captura errores type+message
      └─→ stream-lifecycle    ← maneja heartbeat/end/timeout
 ```
 
-**State compartido** (en `shared-state.js`, creado en `stream-orchestrator.js`):
+**State del stream**:
 ```js
 { asstDiv, bodyDivs[], reasoningEls[], contentTexts[], reasoningText, firstToken }
 ```
@@ -93,10 +93,10 @@ KairosStream.off('content', callback);
 
 | Módulo | Usa globals |
 |--------|-------------|
-| `app.js` | sólo ensambla; los bootstraps exponen los globals |
-| `session-context.js` | `sessionId`, `KairosUtils` |
-| `debug-panel.js` | `KairosDebugPanel`, `KairosWidgets`, `sessionId`, `debugVisible` |
-| `session-page.js` | `sessionId`, `KairosWidgets`, `KairosForm`, `KairosMarkdown` |
+| `app.js` | sólo ensambla; inyecta deps explícitas en las superficies de transición |
+| `session-context.js` | `KairosUtils` |
+| `debug-panel.js` | `KairosDebugPanel`, `KairosWidgets`, `debugVisible` |
+| `session-page.js` | `KairosWidgets`, `KairosForm`, `KairosMarkdown` |
 | `utils.js` | — (raíz) |
 | `markdown-renderer.js` | `KairosWidgets`, `marked`, `DOMPurify` |
 | `stream-dispatcher.js` | `logger.js` (logStream, logUI) |
@@ -104,21 +104,19 @@ KairosStream.off('content', callback);
 | `stream-fetcher.js` | `KairosStream`, `logger.js` |
 | `stream-lifecycle.js` | `KairosStream`, `logger.js` |
 | `stream-retry-coordinator.js` | `RetryHandler`, `StreamErrorHandler`, `KairosUtils` |
-| `chat-form.js` | `sessionId`, `defaultModel`, `KairosUtils`, `StreamOrchestrator`, `RetryHandler` |
+| `chat-form.js` | `KairosUtils`, `StreamOrchestrator`, `RetryHandler` |
 | `retry-handler.js` | `KairosUtils`, `logger.js` |
 | `stream-error-handler.js` | `KairosUtils`, `logger.js` |
 | `content-handler.js` | `KairosStream`, `KairosMarkdown`, `KairosWidgets`, `KairosUtils`, `DOMPurify`, `logger.js` |
-| `content-renderer.js` | `KairosMarkdown`, `KairosWidgets`, `KairosUtils` |
 | `reasoning-handler.js` | `KairosStream`, `logger.js` |
 | `reasoning-state.js` | (ninguno) |
-| `shared-state.js` | (ninguno) |
 | `dom-contracts.js` | (ninguno) |
 | `logger.js` | — (raíz del logging) |
-| `asr-mic.js` | `sessionId`, `KairosUtils` |
+| `asr-mic.js` | `KairosUtils` |
 | `widget-container-renderer.js` | `KairosWidgets`, `KairosUtils` |
 | `tool-call-renderer.js` | `KairosStream`, `KairosUtils`, `logger.js` |
 
-**Observación**: `logStream`, `logUI`, `sessionId`, `defaultModel` ya se concentran en módulos importados explícitamente; no dependen de bootstraps históricos.
+**Observación**: `logStream`, `logUI` y las dependencias de navegación/sesión ya se inyectan desde `app.js` o se importan explícitamente; los bootstraps históricos ya no son el camino normal.
 
 **Nota de ubicación**: `app.js` está en la raíz de `web/static/`; el resto de módulos están en `web/static/modules/`.
 
@@ -130,15 +128,15 @@ KairosStream.off('content', callback);
 - **State compartido explícito** en vez de globals — el `state` viaja como parámetro.
 - **DOMPurify** para sanitización de HTML renderizado.
 - **Debug panel** potente: logs de stream/UI/widgets, inspección de razonamiento y system prompt.
-- **Compatibilidad HTML inline**: ya no es parte del flujo normal; quedaron sólo globals/bootstraps de transición.
+- **Compatibilidad HTML inline**: ya no es parte del flujo normal; quedó acotada a superficies de transición.
 
 ## 7. Lo que podría mejorar
 
-- **Globals implícitos**: `logStream`, `logUI`, `sessionId` se usan sin import. Si algún módulo se carga solo, falla silenciosamente. Deberían importarse explícitamente.
+- **Globals implícitos**: el riesgo real ya no está en el runtime principal, sino en las superficies de transición. Si esas superficies crecen otra vez, conviene volver a inyectar deps explícitas.
 - **`content-handler.js` re-renderiza markdown en cada token** (con cache `rawText`). En respuestas largas, el coste acumulado puede ser significativo. Un debounce o throttling ayudaría.
 - **`stream-renderer.js` fue eliminado**: su lógica se distribuyó en `content-handler.js`, `reasoning-handler.js`, `tool-call-renderer.js`.
 - **Nombres inconsistentes**: `KairosStream` (dispatcher), `KairosForm`, `KairosMarkdown` vs `StreamOrchestrator`, `StreamErrorHandler` — mitad con prefijo `Kairos`, mitad sin él.
-- **`chat-form.js`** tiene acoplamiento directo al DOM (`document.getElementById`). Podría inyectarse el DOM o usar un patrón más desacoplado.
+- **`chat-form.js`** todavía tiene acoplamiento directo al DOM porque es una superficie de transición.
 - **Retry state es singleton global**: si el usuario abriera múltiples chats (futuro), los reintentos colisionarían.
 - **No hay `AbortController` propagado al retry**: el `scheduleRetry` hace `form.dispatchEvent('submit')` que crea un nuevo controller, pero el anterior no se limpia explícitamente.
 - **Event bus sin `off` automático**: los handlers se registran al importar el módulo y nunca se desregistran. En HMR o SPA navigation prolongada podría acumular listeners.

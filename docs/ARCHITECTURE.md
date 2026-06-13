@@ -234,6 +234,8 @@ User input → src/cli.py → core.orchestrator.chat_stream()
 - `ui_utils.py`: HTML rendering of individual messages with reasoning, phases, and tool pills. `render_msg_with_phases()`.
 
 ### `web/static/modules/` — Frontend Streaming Modules (Vanilla JS, 36 modules)
+These modules are mostly the runtime frontend, but a few files still act as transition surfaces for compatibility. New work should prefer explicit init objects, direct DOM helpers, and narrow seams rather than reintroducing globals.
+
 - `stream-dispatcher.js`: `KairosStream` — event emitter with `on()` / `emit()`. Central dispatcher for reasoning, content, tool_call, error events.
 - `reasoning-handler.js`: Handles `reasoning` events — creates `<details class="reasoning">` elements per phase, accumulates thinking text.
 - `content-handler.js`: Handles `content` events — manages per-phase body divs, detects inline widgets (`html-widget` code blocks + `[Widget: key]` tags), renders markdown via `KairosMarkdown`, initializes widgets via `KairosWidgets`.
