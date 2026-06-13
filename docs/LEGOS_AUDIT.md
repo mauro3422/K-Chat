@@ -172,6 +172,7 @@ Best next cut:
 - `web/static/modules/stream-completion.js` isolates the stream success post-processing path from `stream-orchestrator.js`.
 - `web/static/modules/stream-error-handler.js` now builds retry/error UI with DOM nodes instead of `innerHTML`.
 - `web/static/modules/tool-call-renderer.js` now renders tool pills with DOM nodes instead of `innerHTML`.
+- `web/static/modules/reasoning-handler.js` now creates the initial reasoning block with DOM nodes instead of `innerHTML`.
 
 ## Prioritized backlog
 

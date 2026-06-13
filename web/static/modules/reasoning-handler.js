@@ -32,7 +32,12 @@ export function registerReasoningHandler() {
         var newDet = document.createElement('details');
         newDet.className = C.REASONING;
         newDet.open = true;
-        newDet.innerHTML = '<summary>Razonando...</summary><div class="' + C.RT + '"></div>';
+        var summary = document.createElement('summary');
+        summary.textContent = 'Razonando...';
+        var rt = document.createElement('div');
+        rt.className = C.RT;
+        newDet.appendChild(summary);
+        newDet.appendChild(rt);
 
         if (state.reasoningEls.length > 0) {
           var prev = state.reasoningEls[state.reasoningEls.length - 1];
