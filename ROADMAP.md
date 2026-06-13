@@ -188,6 +188,7 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Historial tipado**: `HistoryMessage` como contrato estable; `rebuild_history()` exige `messages_repo` explícito
 - [x] **Sesión y memoria**: cascade delete movido al repositorio; `conn_fn` salió del contrato de sesión
 - [x] **Session delete explícito**: `delete_session()` y `SessionRepository.delete_cascade()` ya exigen `repos` explícito, sin fallback de resolución
+- [x] **Memory lifecycle split**: el loop de migraciones salió de `schema.py` y quedó en `migration_runner.py`
 - [x] **Contexto puro**: `load_context()` ya no escribe archivos; la generación de `TOOLS.md` quedó como paso explícito
 - [x] **Tools y web**: el loader ya no dispara build al importar; routers y servicios web usan imports directos
 - [x] **Session page hardening**: acciones de sesión renderizadas por DOM API y navegación encapsulada tras dependencia explícita

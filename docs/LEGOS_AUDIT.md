@@ -98,11 +98,12 @@ Current state:
 - `src/memory/connection_pool.py` guards per-thread pooled connections
 - `src/memory/connection_pool.py` is the runtime connection entrypoint
 - `src/memory/schema.py` guards init per DB path
+- `src/memory/migration_runner.py` runs pending schema migrations and schema_version updates
 - `src/memory/repos/*` are the actual persistence units
 - `src/memory/repos/base.py` owns transaction behavior
 
 What still bothers me:
-- `schema.py` still knows about migration execution
+- `schema.py` still owns the version-table bootstrap and init orchestration
 - `delete_session()` in the API layer still coordinates cross-repo cleanup
 
 Best next cut:
@@ -198,7 +199,7 @@ Best next cut:
 2. Keep shrinking legacy globals and transition surfaces where practical.
 3. ~~Split `src/llm/policy.py` into smaller policy objects or modules.~~ ✅ DONE
 4. Finish reducing the last frontend transition surfaces in `session-page.js`, `debug-panel.js`, `chat-form.js`, and `stream-orchestrator.js`.
-5. Split `memory connection + schema + repos` into lifecycle pieces.
+5. Split `memory connection + schema + migration runner + repos` into lifecycle pieces.
 
 ### P1
 

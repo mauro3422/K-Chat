@@ -22,6 +22,7 @@
 - **Tool history**: `get_tool_history` ya no resuelve `get_repos()` internamente y recibe `_repos` explícito
 - **Message render**: `render_session_messages()` y la ruta `/sessions/{session_id}/messages` reciben `repos` explícito; el home/session page dejó de hacer discovery de modelos
 - **Session delete**: `delete_session()` y `SessionRepository.delete_cascade()` ya no resuelven repositorios por su cuenta
+- **Memory lifecycle**: el loop de migraciones salió de `schema.py` y quedó en `migration_runner.py`
 - **Bootstraps**: `app.js` inyecta navegación explícita en `session-page.js` y `chat-form.js`
 - **Bootstrap DOM**: `app.js` toma `sessionId` desde `#app[data-session-id]` y setea la config inicial de ASR por código
 - **Widgets messaging bootstrap**: `startMessageHandler()` quedó explícito y `app.js` le pasa `eventTarget` y `locationOrigin`

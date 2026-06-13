@@ -5,6 +5,7 @@ from typing import Any
 from src.memory.connection_pool import configure_connection as _configure_connection, get_raw_conn as _get_raw_conn
 from src.memory.db_path import resolve_db_path as _get_db_path
 from src.memory.engine_state import get_engine
+from src.memory.migration_runner import run_pending_migrations
 from src.memory.lifecycle import mark_initialized as _mark_initialized
 from src.memory.sqlite_engine import SQLiteEngine
 from src.memory.migrations import MIGRATIONS
@@ -32,14 +33,7 @@ def init_db_for_path(db_path: str) -> None:
             current = 0
 
         engine = get_engine() or SQLiteEngine()
-        for i, migration in enumerate(MIGRATIONS[current:], start=current + 1):
-            migration(conn, engine)
-            cursor.execute("DELETE FROM schema_version")
-            cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (i,))
-            if get_engine() is not None:
-                get_engine().commit(conn)
-            else:
-                conn.commit()
+        run_pending_migrations(conn, engine, MIGRATIONS, current)
         _mark_initialized(db_path)
     finally:
         engine = get_engine()

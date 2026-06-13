@@ -150,36 +150,13 @@ All log messages, error strings, docstrings and code comments have been translat
 
 ### Issue: Migration logic mixed with schema creation
 
-The `init_db()` function does both:
-1. `CREATE TABLE IF NOT EXISTS`
-2. `ALTER TABLE ADD COLUMN` (6 times, wrapped in try/except)
-3. Full table migration for `saved_widgets` (86 lines)
+The old `init_db()` loop mixed version tracking and migration execution. That loop now lives in `src/memory/migration_runner.py`, while `schema.py` keeps the version-table bootstrap and init orchestration.
 
-**Recommendation:** Extract to `src/memory/migrations.py`:
+**Remaining seam:** if we want the last split, move the version-table bootstrap out of `schema.py` too.
+
+**Recommendation:** keep `schema.py` thin and let `migration_runner.py` own pending migration execution:
 ```python
-# migrations.py
-MIGRATIONS = [
-    _migration_001_initial_schema,
-    _migration_002_add_reasoning,
-    _migration_003_add_turn,
-    _migration_004_add_phases,
-    _migration_005_add_tool_calls,
-    _migration_006_add_tool_call_id,
-    _migration_007_saved_widgets_global,
-    _migration_008_add_token_counts,
-]
-
-def init_db():
-    conn = get_conn()
-    cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER)")
-    cursor.execute("SELECT version FROM schema_version")
-    row = cursor.fetchone()
-    current = row[0] if row else 0
-    for i, migration in enumerate(MIGRATIONS[current:], start=current+1):
-        migration(cursor)
-        cursor.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", (i,))
-        conn.commit()
+from src.memory.migration_runner import run_pending_migrations
 ```
 
 ---
@@ -219,7 +196,7 @@ Both `src/core/__init__.py` and `src/llm/__init__.py` are package markers only. 
 
 1. **Delete `src/tool_runner.py`**
 2. **Move inline imports to top** — `pages.py`, `orchestrator.py`
-3. **Extract `src/memory/migrations.py`** — separate from connection lifecycle
+3. **Extract `src/memory/migration_runner.py`** — separate migration execution from schema bootstrap
 4. **Translate remaining Spanish logs/comments**
 5. **Split `src/core/orchestrator.py`** into explicit orchestration and loop seams
 6. **Extract error classification** to `web/services/chat_stream.py`

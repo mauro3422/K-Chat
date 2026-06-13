@@ -36,7 +36,7 @@ The system is organized in layers with clear boundaries:
 │protocol│  │loader.py │  │ connection_pool.py │  │ builder.py │
 │provider│  │runner.py │  │ schema.py     │  │ files.py   │
 │models  │  │16 tools  │  │ repos/        │  │ templates  │
-│model   │  │search_   │  │ migrations.py │  │ tools_docs │
+│model   │  │search_   │  │ migration_runner.py │  │ tools_docs │
 │state   │  │files     │  │              │  │ runtime.py │
 │retry.py│  │edit_file │  │              │  │            │
 │client  │  │analyze   │  │              │  │            │
@@ -186,7 +186,8 @@ User input → src/cli.py → core.orchestrator.chat_stream()
 - `lifecycle.py`: Initialized-path registry so connection pooling can bootstrap each DB path once.
 - `connection_pool.py`: SQLite connection creation/configuration and thread-local pooled connections.
 - `connection_pool.py`: pooled SQLite connections and engine wiring.
-- `schema.py`: `init_db()` and per-path schema initialization / migration execution.
+- `schema.py`: `init_db()` and per-path schema initialization / version bootstrap.
+- `migration_runner.py`: pending migration execution and `schema_version` updates.
 - `sqlite_engine.py`: `SQLiteEngine` — default SQLite implementation of `DatabaseEngine` with WAL mode and busy timeout.
 - `repos/`: 7 repository classes in separate files, all inheriting from `_BaseRepository`.
   - `base.py`: `_BaseRepository` with `_get_conn()` and `_transaction()` context manager (commit on success, rollback on exception, uses engine if available).

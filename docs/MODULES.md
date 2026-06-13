@@ -57,7 +57,8 @@ memory/
   db_path.py          → Resolves the memory DB path
   engine_state.py     → DatabaseEngine protocol + engine registry
   connection_pool.py  → Thread-local pooled connections and SQLite setup
-  schema.py           → init_db + migrations
+  schema.py           → init_db + schema_version bootstrap
+  migration_runner.py → pending migration execution
   repos/              → 7 repos: Message, Session, ToolCall, WidgetState, Debug, SavedWidget, MemoryIndex
   migrations.py       → 9 idempotent migrations (001→009)
 
@@ -421,12 +422,21 @@ Use the direct modules instead:
 
 ## `src/memory/schema.py`
 
-**Responsibility:** Schema initialization and migrations.
+**Responsibility:** Schema initialization and version bootstrap.
 
 **Public Interface:**
-- `init_db()` — creates tables, runs all migrations, enables foreign keys
+- `init_db()` — creates tables, ensures `schema_version`, delegates pending migrations, enables foreign keys
 
-**Depends on:** `src.memory.connection_pool`, `src.memory.lifecycle`, `src.memory.migrations`
+**Depends on:** `src.memory.connection_pool`, `src.memory.lifecycle`, `src.memory.migration_runner`, `src.memory.migrations`
+
+## `src/memory/migration_runner.py`
+
+**Responsibility:** Execute pending schema migrations and persist `schema_version`.
+
+**Public Interface:**
+- `run_pending_migrations(conn, engine, migrations, current_version, schema_table="schema_version") → None`
+
+**Depends on:** stdlib only
 
 ## `src/memory/lifecycle.py`
 
