@@ -9,9 +9,9 @@ from src.core.history import (
 )
 
 
-def rebuild_history(session_id: str, model: str) -> list[dict[str, Any]]:
+def rebuild_history(session_id: str, model: str, message_repo: Any = None) -> list[dict[str, Any]]:
     """Reconstruye el historial de mensajes de una sesión para el modelo."""
-    return _rebuild_history(session_id, model)
+    return _rebuild_history(session_id, model, message_repo)
 
 
 def filter_messages_for_ui(raw_msgs: list) -> list:

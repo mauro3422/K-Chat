@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import './setup.js';
 
-global.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ className: '', dataset: {}, innerHTML: '', style: {}, children: [], appendChild: function() {}, removeChild: function() {}, classList: { add: function() {} } }) };
+global.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}, createElement: () => ({ className: '', dataset: {}, innerHTML: '', style: {}, children: [], appendChild: function() {}, removeChild: function() {}, classList: { add: function() {} } }) };
 global.window = { addEventListener: () => {}, widgetStates: {} };
 global.logUI = () => {};
 global.sessionId = 'test';
@@ -70,13 +70,13 @@ describe('Widget Init — WeakMap tracking', () => {
         var scope = makeScope(container);
 
         // First call initializes
-        window.KairosWidgets.initAll(scope);
+        iframeModule.initAll(scope);
 
         // Simulate content-handler destroying/recreating container: clear DOM attributes
         container.dataset = {};
 
         // Second call should still skip because WeakMap has the state
-        window.KairosWidgets.initAll(scope);
+        iframeModule.initAll(scope);
 
         var widget = KairosWidgets.debug['w-domclear'];
         expect(widget).toBeDefined();
@@ -89,7 +89,7 @@ describe('Widget Init — WeakMap tracking', () => {
         var scope = makeScope(container);
 
         // Initialize
-        window.KairosWidgets.initAll(scope);
+        iframeModule.initAll(scope);
 
         var wm = iframeModule.getInitializedWidgets();
         expect(wm.has(container)).toBe(true);
@@ -120,7 +120,7 @@ describe('Widget Init — WeakMap tracking', () => {
         // Set up observer so lazy path is taken
         setWidgetObserver({ observe: function() {} });
 
-        window.KairosWidgets.initAll(scope);
+        iframeModule.initAll(scope);
 
         var wm = iframeModule.getInitializedWidgets();
         var state = wm.get(container);
@@ -154,7 +154,7 @@ describe('Widget Init — WeakMap tracking', () => {
         // No observer set (null) -> immediate path
         setWidgetObserver(null);
 
-        window.KairosWidgets.initAll(scope);
+        iframeModule.initAll(scope);
 
         var wm = iframeModule.getInitializedWidgets();
         var state = wm.get(container);

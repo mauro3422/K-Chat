@@ -47,8 +47,11 @@ def render_session_messages(session_id: str) -> str:
 
     parts.append(
         '<form id="chat-form">'
+        '<div class="input-row">'
         '<input type="text" id="msg-input" placeholder="Escribe un mensaje..." autofocus>'
+        '<button type="button" id="asr-mic-btn" class="asr-mic-idle" title="Grabar voz (Speech-to-Text)">🎤</button>'
         '<button type="submit">Send</button>'
+        '</div>'
         '<span id="spinner" class="htmx-indicator"></span>'
         '</form>'
     )

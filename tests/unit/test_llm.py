@@ -3,12 +3,13 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from src.llm.client import chat
-from src.llm.models import _failed_models, _api_call
+from src.llm.model_state import clear_failed_models, is_model_failed
+from src.llm.models import _api_call
 from src.context import build_system_prompt
 
 @patch("src.llm.retry.time.sleep")
 def test_fallback_switch_updates_system_prompt(mock_sleep):
-    _failed_models.clear()
+    clear_failed_models()
     
     # Mocking choice response
     mock_response = MagicMock()
@@ -53,7 +54,7 @@ def test_fallback_switch_updates_system_prompt(mock_sleep):
         assert "Active model: deepseek-v4-flash-free" in messages[0]["content"]
         
         # Verify it was added to failed models
-        assert "big-pickle" in _failed_models
+        assert is_model_failed("big-pickle")
         
         # Now a subsequent call should automatically bypass big-pickle
         mock_provider.chat.reset_mock()

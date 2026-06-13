@@ -3,23 +3,33 @@
 ## 1. Qué hace cada módulo
 
 | Módulo | Rol |
-|--------|-----|
+|--------|------|
 | `app.js` | Entry point del bundle. Ensambla el runtime y delega globals de compatibilidad a los bootstraps. |
-| `session.js` | CRUD de sesiones, sidebar refresh y binding del selector de modelo via HTMX + fetch. |
+| `session-context.js` | CRUD de sesiones, sidebar refresh y binding del selector de modelo via HTMX + fetch. |
 | `debug.js` | Panel de debug: log de eventos stream/UI, inspección de razonamiento/tools/system prompt, logs backend. |
 | `chat-stream.js` | Bootstrap: inicializa `KairosWidgets`, `KairosForm`, provee `loadSession()` para SPA-like navigation. |
 | `utils.js` | Utilidades globales: `escHtml`, `scrollToBottom`, `showToast`, handlers de error global. |
 | `markdown-renderer.js` | Renderiza Markdown vía `marked` + `DOMPurify`, detecta/extrae widgets HTML inline, maneja footnotes. |
-| **`stream-dispatcher.js`** | **Event bus central**: `on/emit/off` para eventos `content`, `reasoning`, `tool_call`, `error`. |
+| **`stream-dispatcher.js`** | **Event bus central**: `on/emit/off` para eventos `content`, `reasoning`, `tool_call`, `error`, `heartbeat`. |
 | `stream-orchestrator.js` | Orquesta un stream completo: crea `errorHandler`, timeout, llama `executeStreamFetch`, maneja retry final y limpieza. |
 | `stream-fetcher.js` | Ejecuta `fetch` POST al backend, lee el stream SSE línea a línea, emite eventos al dispatcher. |
+| `stream-lifecycle.js` | Maneja el ciclo de vida del stream: inicio, heartbeats, fin, limpieza. |
 | `stream-retry-coordinator.js` | Intermediario entre orchestrator y retry-handler: decide si reintentar y delega a `scheduleRetry`. |
 | `chat-form.js` | Captura submit del form, crea DOM del mensaje usuario/asistente, dispara `StreamOrchestrator.startStream`. |
+| `chat-form-bootstrap.js` | Bootstrap de compatibilidad para `KairosForm`. |
 | `retry-handler.js` | Estado de reintentos: count, max (3), delay backoff (2s * intento), `shouldRetry`, `scheduleRetry`. |
 | `stream-error-handler.js` | Crea closures para capturar errores del stream, marca pills de tool como error, muestra card de reintento. |
 | `content-handler.js` | Listener de `content`: acumula tokens, detecta widgets (`html-widget`/`[Widget:]`), re-renderiza markdown por fase. |
+| `content-renderer.js` | Renderizado modular de contenido markdown con detección de widgets. |
 | `reasoning-handler.js` | Listener de `reasoning`: crea `<details>` colapsable por fase de razonamiento, acumula tokens. |
+| `reasoning-state.js` | Estado compartido de razonamiento entre fases. |
 | `tool-call-renderer.js` | Listener de `tool_call`: renderiza pills de herramientas (calling → ok/error) agrupadas por fase. |
+| `shared-state.js` | Estado compartido del stream (asstDiv, bodyDivs, phase state). |
+| `dom-contracts.js` | Contratos DOM para elementos del chat. |
+| `logger.js` | Logging de UI y stream para el panel de debug. |
+| `asr-mic.js` | Integración de micrófono y ASR. |
+| `widget-container-renderer.js` | Renderizado de contenedores de widgets. |
+| `stream-bootstrap.js` | Bootstrap de compatibilidad para `window.StreamOrchestrator`. |
 
 ## 2. Sistema de streaming: Flujo token → DOM
 
@@ -28,18 +38,19 @@
      │
      ▼
 stream-fetcher.js          ← fetch() + ReadableStream, parsea JSON lines
-     │ msg = {t: "content"|"reasoning"|"tool_call", d: "..."}
+     │ msg = {t: "content"|"reasoning"|"tool_call"|"heartbeat"|"error", d: "..."}
      ▼
-stream-dispatcher.js       ← emit(msg.t, msg.d, state)
+stream-dispatcher.js       ← emit(msg.t, msg.d, shared-state.js)
      │
      ├─→ reasoning-handler  ← crea <details class="reasoning">, append token
-     ├─→ content-handler    ← acumula token en state.contentTexts[phase],
+     ├─→ content-handler    ← acumula token en shared-state.contentTexts[phase],
      │                       detecta widgets, parsea markdown, sanitiza con DOMPurify
      ├─→ tool-call-renderer ← renderiza pills calling/ok/error por tool
-     └─→ stream-error-handler ← captura errores type+message
+     ├─→ stream-error-handler ← captura errores type+message
+     └─→ stream-lifecycle    ← maneja heartbeat/end/timeout
 ```
 
-**State compartido** (creado en `orchestrator.js`):
+**State compartido** (en `shared-state.js`, creado en `stream-orchestrator.js`):
 ```js
 { asstDiv, bodyDivs[], reasoningEls[], contentTexts[], reasoningText, firstToken }
 ```
@@ -71,7 +82,7 @@ KairosStream.emit('content', token, state);
 KairosStream.off('content', callback);
 ```
 
-- **Eventos**: `reasoning`, `content`, `tool_call`, `error`
+- **Eventos**: `reasoning`, `content`, `tool_call`, `error`, `heartbeat`
 - **Patrón**: Pub/sub síncrono, listeners en array, try/catch individual por listener
 - **Registros default** en el dispatcher: `logStream()` y `logUI()` para debug
 
@@ -80,21 +91,29 @@ KairosStream.off('content', callback);
 | Módulo | Usa globals |
 |--------|-------------|
 | `app.js` | sólo ensambla; los bootstraps exponen los globals |
-| `session.js` | `sessionId`, `KairosUtils` |
+| `session-context.js` | `sessionId`, `KairosUtils` |
 | `debug.js` | `KairosUtils`, `KairosWidgets`, `sessionId`, `debugVisible` |
 | `chat-stream.js` | `sessionId`, `defaultModel`, `KairosWidgets`, `KairosForm`, `KairosMarkdown` |
 | `utils.js` | — (raíz) |
 | `markdown-renderer.js` | `KairosWidgets`, `marked`, `DOMPurify` |
-| `stream-dispatcher.js` | `logStream`, `logUI` (son de debug.js, en scope global vía window) |
-| `stream-orchestrator.js` | `logUI`, `RetryHandler`, `StreamErrorHandler`, `KairosStream`, `KairosUtils`, `refreshSidebar`, `refreshDebug` |
-| `stream-fetcher.js` | `KairosStream`, `logUI` |
+| `stream-dispatcher.js` | `logger.js` (logStream, logUI) |
+| `stream-orchestrator.js` | `logger.js`, `RetryHandler`, `StreamErrorHandler`, `KairosStream`, `KairosUtils`, `refreshSidebar`, `refreshDebug` |
+| `stream-fetcher.js` | `KairosStream`, `logger.js` |
+| `stream-lifecycle.js` | `KairosStream`, `logger.js` |
 | `stream-retry-coordinator.js` | `RetryHandler`, `StreamErrorHandler`, `KairosUtils` |
 | `chat-form.js` | `sessionId`, `defaultModel`, `KairosUtils`, `StreamOrchestrator`, `RetryHandler` |
-| `retry-handler.js` | `KairosUtils`, `logUI` |
-| `stream-error-handler.js` | `KairosUtils`, `logUI` |
-| `content-handler.js` | `KairosStream`, `KairosMarkdown`, `KairosWidgets`, `KairosUtils`, `DOMPurify`, `logUI` |
-| `reasoning-handler.js` | `KairosStream`, `logUI` |
-| `tool-call-renderer.js` | `KairosStream`, `KairosUtils`, `logUI` |
+| `retry-handler.js` | `KairosUtils`, `logger.js` |
+| `stream-error-handler.js` | `KairosUtils`, `logger.js` |
+| `content-handler.js` | `KairosStream`, `KairosMarkdown`, `KairosWidgets`, `KairosUtils`, `DOMPurify`, `logger.js` |
+| `content-renderer.js` | `KairosMarkdown`, `KairosWidgets`, `KairosUtils` |
+| `reasoning-handler.js` | `KairosStream`, `logger.js` |
+| `reasoning-state.js` | (ninguno) |
+| `shared-state.js` | (ninguno) |
+| `dom-contracts.js` | (ninguno) |
+| `logger.js` | — (raíz del logging) |
+| `asr-mic.js` | `sessionId`, `KairosUtils` |
+| `widget-container-renderer.js` | `KairosWidgets`, `KairosUtils` |
+| `tool-call-renderer.js` | `KairosStream`, `KairosUtils`, `logger.js` |
 
 **Observación**: `logStream`, `logUI`, `sessionId`, `defaultModel` se usan sin import — dependen de que el bundle exponga las compatibilidades históricas.
 

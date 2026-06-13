@@ -7,6 +7,7 @@ import C from '../dom-contracts.js';
 import stateManager from './state-manager.js';
 import { INLINE_WIDGET_BLOCK_RE, INLINE_WIDGET_TAG_RE, normalizeWidgetCode } from './contract.js';
 import { getLogger } from '../logger.js';
+import { logUI } from '../log-ui.js';
 var clog = getLogger('widgets-core');
 let _registry = {};
 let _debug = {};

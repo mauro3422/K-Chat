@@ -18,30 +18,14 @@ export function openEditor(container, id, key, code) {
 
     var editorDiv = document.createElement('div');
     editorDiv.className = 'widget-editor-container';
-    editorDiv.style.padding = '8px';
-    editorDiv.style.background = '#161b22';
-    editorDiv.style.border = '1px solid #30363d';
-    editorDiv.style.borderRadius = '0 0 8px 8px';
 
     var textarea = document.createElement('textarea');
+    textarea.className = 'widget-editor-textarea';
     textarea.value = KairosWidgets._registry[id] || code;
-    textarea.style.width = '100%';
-    textarea.style.height = '300px';
-    textarea.style.background = '#0d1117';
-    textarea.style.color = '#00ff99';
-    textarea.style.fontFamily = 'monospace';
-    textarea.style.fontSize = '12px';
-    textarea.style.border = '1px solid #00ff99';
-    textarea.style.borderRadius = '4px';
-    textarea.style.padding = '8px';
-    textarea.style.boxSizing = 'border-box';
     editorDiv.appendChild(textarea);
 
     var actionsDiv = document.createElement('div');
-    actionsDiv.style.display = 'flex';
-    actionsDiv.style.justifyContent = 'flex-end';
-    actionsDiv.style.gap = '8px';
-    actionsDiv.style.marginTop = '8px';
+    actionsDiv.className = 'widget-editor-actions';
 
     var btnSave = createToolbarButton({
         label: 'GUARDAR VERSIÓN',

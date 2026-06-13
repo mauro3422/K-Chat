@@ -221,10 +221,20 @@ def test_empty_message(mock_chat, make_choice):
     assert any("OK" in c for c in contents)
 
 
-@patch("src.core.chat_sync.llm_chat")
-def test_chat_non_streaming(mock_chat, make_choice):
+def _mock_stream(response_text):
+    def _gen(message_user, history, **kwargs):
+        if not history:
+            history.append({"role": "system", "content": "sys prompt"})
+        history.append({"role": "user", "content": message_user})
+        history.append({"role": "assistant", "content": response_text})
+        yield response_text
+    return _gen
+
+
+@patch("src.core.orchestrator.chat_stream")
+def test_chat_non_streaming(mock_chat_stream):
     """chat() returns response and updated history."""
-    mock_chat.return_value = make_choice(content="Respuesta de prueba")
+    mock_chat_stream.side_effect = _mock_stream("Respuesta de prueba")
     from src.core.chat_sync import chat
 
     resp, history = chat("Hola", None)

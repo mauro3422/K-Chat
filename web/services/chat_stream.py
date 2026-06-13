@@ -24,12 +24,15 @@ def build_stream_generator(
     history: list[dict[str, Any]],
     model: str,
     background_tasks: BackgroundTasks,
+    chat_stream_fn: Callable[..., Generator[Any, None, None]] | None = None,
     loop_detector: LoopDetector | None = None,
     retry_handler: StreamRetryHandler | None = None,
     save_fn: Callable | None = None,
     rename_fn: Callable | None = None,
 ) -> Callable[..., Generator[str, None, None]]:
     """Builds the NDJSON generator for the chat stream."""
+    _chat_stream = chat_stream_fn or chat_stream
+
     def generate() -> Generator[str, None, None]:
         full_reasoning = ""
         full_content = ""
@@ -40,15 +43,16 @@ def build_stream_generator(
         logger.info("Starting chat for session %s with model %s", session_id, model)
 
         def _save_with_retry(desc: str = "") -> bool:
-            for attempt in range(2):
+            max_attempts = 3
+            for attempt in range(max_attempts):
                 try:
                     _save(session_id, full_content, full_reasoning, phases_output, debug_info, model)
                     logger.info("Save OK%s: %d chars", f" ({desc})" if desc else "", len(full_content))
                     return True
                 except Exception as e:
-                    logger.warning("Save failed%s (attempt %d/2): %s", f" ({desc})" if desc else "", attempt + 1, e)
-                    if attempt == 0:
-                        time.sleep(0.5)
+                    logger.warning("Save failed%s (attempt %d/%d): %s", f" ({desc})" if desc else "", attempt + 1, max_attempts, e)
+                    if attempt < max_attempts - 1:
+                        time.sleep(1.0 * (2 ** attempt))
             return False
 
         detector = loop_detector or LoopDetector()
@@ -59,7 +63,7 @@ def build_stream_generator(
         save_interval = 30
 
         try:
-            for tipo, token in chat_stream(message, history, model, session_id=session_id, tagged=True, debug=debug_info, phases_output=phases_output):
+            for tipo, token in _chat_stream(message, history, model, session_id=session_id, tagged=True, debug=debug_info, phases_output=phases_output):
                 now = time.monotonic()
 
                 if tipo == "heartbeat":
@@ -128,6 +132,19 @@ def build_stream_generator(
         except Exception as e:
             error_type, error_msg = classify_error(e)
             logger.error("Stream error for %s: [%s] %s", session_id, error_type, error_msg)
+            if retry_handler is not None and retry_handler.can_retry and (full_content or full_reasoning):
+                try:
+                    for rtipo, rtoken in retry_handler.attempt_recovery(
+                        history, full_content, full_reasoning, model, session_id,
+                    ):
+                        if rtipo == "reasoning":
+                            full_reasoning += rtoken
+                        elif rtipo == "content":
+                            full_content += rtoken
+                        yield serialize_stream_event(rtipo, rtoken)
+                    return
+                except Exception as recover_err:
+                    logger.error("Recovery also failed for %s: %s", session_id, recover_err)
             yield serialize_stream_event("error", {"type": error_type, "message": error_msg})
             return
         finally:

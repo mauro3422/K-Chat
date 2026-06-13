@@ -22,7 +22,9 @@ core/
 llm/
   protocol.py         → LLMProvider Protocol (runtime-checkable)
   openai_provider.py  → OpenAI/OpenCode SDK provider implementation
-  models.py           → Model registry, provider registry, _api_call with retry
+  models.py           → Model registry, provider registry
+  model_state.py      → Thread-safe ModelState class (failed/verified/cached models)
+  retry.py            → execute_with_retry() with exponential backoff
   client.py           → chat() and chat_stream() with fallback, tool delta processing
   policy.py           → Model discovery, verification, selection
   __init__.py         → package marker only
@@ -43,7 +45,12 @@ memory/
   migrations.py       → 9 idempotent migrations (001→009)
 
 context/
-  context.py          → System prompt builder, context loader, TOOLS.md generator (lazy)
+  __init__.py         → Re-exports load_context, build_system_prompt, _build_tools_md
+  builder.py          → System prompt builder, context loader
+  files.py            → Markdown file loader/creator
+  templates.py        → Default templates (SOUL, MEMORY, AGENTS)
+  tools_docs.py       → TOOLS.md auto-generator (lazy)
+  runtime.py          → Runtime context injection
 
 web/
   routers/chat.py     → Streaming POST endpoint (ChatPayload, NDJSON, error classification)
@@ -51,15 +58,31 @@ web/
   routers/sessions.py → Rename, delete
   routers/widgets.py  → Widget API (WidgetStatePayload, SaveWidgetPayload)
   routers/debug.py    → Debug info + backend log buffer (_local_only guard)
+  routers/health.py   → GET /health (DB, LLM status, uptime)
+  routers/asr.py      → Audio/ASR endpoints
+  routers/logs.py     → Log query endpoints
   services/chat_stream.py
                       → NDJSON stream generator, auto-rename (background)
+  services/message_persister.py
+                      → Persists assistant message + debug info
   services/message_renderer.py
                       → Full HTML message list rendering with widget display
+  services/stream_error_classifier.py
+                      → Classify errors (rate_limit, timeout, network, model, unknown)
+  services/loop_detector.py
+                      → Detects infinite tool-call loops
+  services/file_logger.py
+                      → Persistent file logging
+  services/stream_retry_handler.py
+                      → Coordinates stream retry logic
+  services/asr_service.py
+                      → Audio/ASR processing
   ui_utils.py         → HTML message rendering (phases, reasoning, tool pills)
-  logging.py          → BackendLogHandler (ring buffer on kairos.*)
+  logging_handler.py  → BackendLogHandler (ring buffer on kairos.*)
 
 support/
   config.py           → Environment variables
+  constants.py        → Shared policy constants (MAX_TOOL_TURNS=25, LLM_MAX_RETRIES=3)
   compressor.py       → History compression when > 40 msgs / 6k tokens
   background_tasks.py → Auto-rename session via LLM
   handler_cli.py      → CLI commands (/model, /clear, /help)
@@ -72,13 +95,7 @@ support/
 
 **Responsibility:** Domain modules for sessions, messages, widgets, debug, tools, history, chat and database access.
 
-**Public Interface (19+ functions):**
-- `ensure_session(session_id)`, `rename_session(...)`, `delete_session(...)`, `get_sessions(limit)`
-- `save_message(...)`, `get_session_messages(...)`, `get_history(...)`, `get_tool_history(...)`
-- `rebuild_history(...)`, `filter_messages_for_ui(...)`, `match_tools_to_msgs(...)`
-- `save_widget_state(...)`, `db_save_widget(...)`, `db_get_widget(...)`, `db_get_widget_versions(...)`, `db_get_widget_by_version(...)`
-- `save_debug_info(...)`, `get_debug_info(...)`
-- `chat_stream(...)` — delegates to `orchestrator.chat_stream()`
+**Public Interface:** Package marker only. Functions are grouped by domain in sub-modules: `messages.py`, `session.py`, `widgets.py`, `debug.py`, `tools.py`, `history.py`, `chat.py`.
 
 **Depends on:** `src.memory.repos`, `src.core.orchestrator`, `src.core.history`
 
@@ -103,7 +120,7 @@ support/
 
 ## `src/core/tool_loop.py`
 
-**Responsibility:** Tool call orchestrator — manages reasoning → tool → response cycles (max 5 turns).
+**Responsibility:** Tool call orchestrator — manages reasoning → tool → response cycles (max 25 turns).
 
 **Public Interface:**
 - `run_tool_loop_streaming(...) → Generator` — streaming path
@@ -351,7 +368,7 @@ support/
 
 **Internals:**
 - `_local_only` guard (skipped when `TESTING=true`)
-- `BackendLogHandler` in `web/logging.py`: captures `kairos.*` logger into a ring buffer
+- `BackendLogHandler` in `web/logging_handler.py`: captures `kairos.*` logger into a ring buffer
 
 **Depends on:** `src.api`, `web.logging`
 

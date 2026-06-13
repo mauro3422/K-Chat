@@ -18,19 +18,6 @@ export function createToolbar(container, id, key, code, hashId) {
 
     var toolbar = document.createElement('div');
     toolbar.className = 'widget-toolbar';
-    toolbar.style.display = 'flex';
-    toolbar.style.flexWrap = 'wrap';
-    toolbar.style.justifyContent = 'space-between';
-    toolbar.style.alignItems = 'center';
-    toolbar.style.gap = '4px';
-    toolbar.style.background = '#10141b';
-    toolbar.style.border = '1px solid #30363d';
-    toolbar.style.borderBottom = 'none';
-    toolbar.style.borderRadius = '8px 8px 0 0';
-    toolbar.style.padding = '6px 12px';
-    toolbar.style.fontSize = '11px';
-    toolbar.style.fontFamily = 'monospace';
-    toolbar.style.color = '#00ff99';
 
     var leftSide = document.createElement('div');
     leftSide.className = 'widget-toolbar-left';
@@ -48,8 +35,6 @@ export function createToolbar(container, id, key, code, hashId) {
 
     var rightSide = document.createElement('div');
     rightSide.className = 'widget-toolbar-right';
-    rightSide.style.display = 'flex';
-    rightSide.style.gap = '8px';
 
     if (key) {
         var btnEdit = createToolbarButton({

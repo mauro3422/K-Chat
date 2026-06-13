@@ -4,6 +4,15 @@
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 > Las entradas describen el estado del proyecto en el momento de cada release.
 
+## [v0.0.52] — 2026-06-12 — [Detalle](changelogs/v0.0.52.md)
+- **Lego refactor**: ModelState class, policy split (4 sub-modules), repos injection in tool_loop/orchestrator/router
+- **Data access**: `sqlite3.Row` named access, history_parser migration, `chat_sync` delegation
+- **Retry**: Save retry exponential backoff, mid-stream recovery, StreamRetryHandler wired, rate limiter del bug fixed
+- **Frontend**: 78 inline CSS→classes, logUI/logStream extracted to standalone module (17 modules migrated), globals removed, `shared-state.js` created
+- **Tools**: `git_operation` added (16 tools total), `MemoryIndexRepository` created
+- **Tests**: 523 Python + 167 Vitest passing, 0 ESLint errors
+- **Docs**: README, ARCHITECTURE, MODULES, AGENTS all updated
+
 ## [v0.0.45] — 2026-06-12 — [Detalle](changelogs/v0.0.45.md)
 - Officialized the new `execute_command` tool and the improved `list_files` tool in the public docs and tests
 - Updated the tool architecture docs to reflect the 12-tool registry at that point in time

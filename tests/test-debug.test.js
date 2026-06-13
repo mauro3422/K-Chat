@@ -69,9 +69,8 @@ describe('KairosDebug', () => {
     expect(() => { KairosDebug.toggleDebug(); KairosDebug.toggleDebug(); }).not.toThrow();
   });
 
-  test('toggleDebug queda expuesto como alias global', () => {
-    expect(globalThis.toggleDebug).toBe(KairosDebug.toggleDebug);
-    expect(window.toggleDebug).toBe(KairosDebug.toggleDebug);
+  test('toggleDebug es una función exportada', () => {
+    expect(typeof KairosDebug.toggleDebug).toBe('function');
   });
 
   test('copyText sin pre muestra []', () => {

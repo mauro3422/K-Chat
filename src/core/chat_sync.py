@@ -1,17 +1,25 @@
-from src.context import build_system_prompt
-from src.llm.policy import get_default_model
-from src.llm.client import chat as llm_chat
-from src.tools import TOOLS
+"""Synchronous chat wrapper. Delegates to orchestrator.chat_stream()."""
+from collections.abc import Generator
 from typing import Any
 
+from src.core import orchestrator
 
-def chat(message_user: str, history: list[dict[str, Any]] | None = None) -> tuple[str, list[dict[str, Any]]]:
-    """Processes a message with text and memory. Returns response and updated history."""
-    model = get_default_model()
+
+def chat(
+    message_user: str,
+    history: list[dict[str, Any]] | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Synchronous, non-streaming chat. Returns (response_text, updated_history).
+
+    If history is None, a fresh system prompt is auto-generated.
+    """
     if history is None:
-        history = [build_system_prompt(model)]
-    history.append({"role": "user", "content": message_user})
-    choice = llm_chat(history, model, build_prompt_fn=build_system_prompt, tools=TOOLS)
-    response = choice.message.content or ""
-    history.append({"role": "assistant", "content": response})
+        history = []
+
+    tokens: list[str] = []
+    for event in orchestrator.chat_stream(message_user, history, streaming=False, tagged=False):
+        if isinstance(event, str):
+            tokens.append(event)
+
+    response = "".join(tokens)
     return response, history

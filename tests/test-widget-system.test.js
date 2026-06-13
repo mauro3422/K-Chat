@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import './setup.js';
 
-global.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ className: '', dataset: {}, innerHTML: '', style: {}, children: [], appendChild: function() {}, removeChild: function() {}, classList: { add: function() {} } }) };
+global.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {}, createElement: () => ({ className: '', dataset: {}, innerHTML: '', style: {}, children: [], appendChild: function() {}, removeChild: function() {}, classList: { add: function() {} } }) };
 global.window = { addEventListener: () => {}, widgetStates: {} };
 global.logUI = () => {};
 global.sessionId = 'test';

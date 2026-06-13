@@ -41,17 +41,16 @@ function restoreActions(item) {
 function bindModelSelect() {
   var select = document.getElementById('model-select');
   if (!select) return;
-  select.value = globalThis.defaultModel || select.value;
+  select.value = localStorage.getItem('selected_model') || select.value;
   select.addEventListener('change', function() {
-    globalThis.defaultModel = select.value;
     localStorage.setItem('selected_model', select.value);
   });
 }
 
 export const KairosSession = { refreshSidebar, confirmRename, cancelEdit, restoreActions };
 
-// Backwards-compatible globals for HTML onclick handlers
-window.KairosSession = KairosSession;
+// Backwards-compatible globals for HTML onclick handlers — removed, no legacy callers
+// window.KairosSession = KairosSession;
 
 
 document.addEventListener('htmx:afterSwap', function() {

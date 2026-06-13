@@ -5,4 +5,4 @@
  */
 import { KairosForm } from './chat-form.js';
 
-window.KairosForm = KairosForm;
+// window.KairosForm = KairosForm; // removed — no legacy callers

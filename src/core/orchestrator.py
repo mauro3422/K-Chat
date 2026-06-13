@@ -8,6 +8,7 @@ from src.llm.policy import get_default_model
 from src.context import build_system_prompt
 from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
+from src.memory.repos import Repositories
 import src.tools as tools
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ def chat_stream(
     streaming: bool = True,
     compress_fn: Callable[[list[dict[str, Any]], str], None] | None = None,
     should_compress_fn: Callable[[list[dict[str, Any]]], bool] | None = None,
+    repos: 'Repositories | None' = None,
 ) -> Generator[Any, None, None]:
     """Same as chat() but yields tokens. history must be a mutable list."""
     if model is None:
@@ -89,7 +91,8 @@ def chat_stream(
     loop_fn = run_tool_loop_streaming if streaming else run_tool_loop_sync
     for event in loop_fn(
         history, model, session_id, tagged, debug, phases_output,
-        used_tools, tool_detail, run_parallel_tools, tools.TOOL_MAP
+        used_tools, tool_detail, run_parallel_tools, tools.TOOL_MAP,
+        repos=repos,
     ):
         yield event
 

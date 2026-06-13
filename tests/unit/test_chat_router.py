@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
@@ -55,7 +55,7 @@ def test_chat_success(mock_build_gen, mock_save, mock_rebuild, mock_ensure, mock
     assert result.media_type == "application/x-ndjson"
 
     mock_ensure.assert_called_once_with("s1")
-    mock_rebuild.assert_called_once_with("s1", "my-model")
+    mock_rebuild.assert_called_once_with("s1", "my-model", ANY)
     mock_save.assert_called_once_with("s1", "user", "hello", "my-model")
     mock_default.assert_not_called()  # model was provided
 
@@ -75,7 +75,7 @@ def test_chat_uses_query_model(mock_build_gen, mock_save, mock_rebuild, mock_ens
     result = chat("s1", bt, ChatPayload(message="hello", model=None), model="query-model")
 
     assert isinstance(result, StreamingResponse)
-    mock_rebuild.assert_called_once_with("s1", "query-model")
+    mock_rebuild.assert_called_once_with("s1", "query-model", ANY)
     mock_save.assert_called_once_with("s1", "user", "hello", "query-model")
     mock_default.assert_not_called()
 
@@ -96,7 +96,7 @@ def test_chat_uses_default_model(mock_build_gen, mock_save, mock_rebuild, mock_e
 
     assert isinstance(result, StreamingResponse)
     mock_default.assert_called_once()
-    mock_rebuild.assert_called_once_with("s1", "fallback-model")
+    mock_rebuild.assert_called_once_with("s1", "fallback-model", ANY)
 
 
 @patch("web.routers.chat.rebuild_history", side_effect=Exception("DB fail"))

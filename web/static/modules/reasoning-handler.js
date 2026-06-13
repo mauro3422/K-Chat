@@ -1,4 +1,5 @@
 import C from './dom-contracts.js';
+import { logUI } from './log-ui.js';
 import { KairosStream } from './stream-dispatcher.js';
 
 export function registerReasoningHandler() {

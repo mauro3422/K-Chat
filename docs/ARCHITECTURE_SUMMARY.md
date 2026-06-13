@@ -1,6 +1,6 @@
 # Resumen Ejecutivo — Arquitectura K-Chat
 
-**Versión:** 0.0.17 | **Fecha:** 2026-06-11 | **LOC total:** ~14.154 (src: 3.775 · web: 2.630 · tests: 7.749)
+**Versión:** 0.0.51 | **Fecha:** 2026-06-11 | **LOC total:** ~14.154 (src: 3.775 · web: 2.630 · tests: 7.749)
 
 ---
 
@@ -12,7 +12,7 @@ K-Chat (nombre interno: Kairos) es un asistente conversacional con capacidades d
 
 **Capacidades clave:**
 - Chat con streaming NDJSON (razonamiento → herramientas → contenido)
-- 12 herramientas auto-descubiertas (fetch_url, web_search, read_file, write_file, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, list_files, execute_command)
+- 15 herramientas auto-descubiertas (fetch_url, web_search, read_file, write_file, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, list_files, execute_command, search_files, edit_file, analyze_code)
 - Sistema de widgets versionados con persistencia de estado por sesión
 - Auto-rename de sesiones vía LLM en background
 - Compresión automática de historial (>40 msgs / >6k tokens)
@@ -33,10 +33,9 @@ API FACADE
 
 CORE (cerebro)
 ├── src/core/orchestrator.py    (chat loop principal)
-├── src/core/tool_loop.py       (ciclo razonamiento↔herramientas, max 5 turns)
+├── src/core/tool_loop.py       (ciclo razonamiento↔herramientas, max 25 turns)
 ├── src/core/history.py         (reconstrucción + filtrado UI)
 ├── src/core/chat_sync.py       (wrapper síncrono CLI)
-└── src/core/_deps.py           (removed)
 
 LLM (abstracción de modelo)
 ├── src/llm/protocol.py         (LLMProvider Protocol)
@@ -51,7 +50,7 @@ TOOLS (sistema de herramientas)
 ├── src/tools/loader.py         (importlib filesystem scan)
 ├── src/tools/_path_helpers.py  (path traversal guard)
 ├── src/tools/_widget_helpers.py
-└── src/tools/*.py              (12 herramientas individuales)
+└── src/tools/*.py              (15 herramientas individuales)
 
 MEMORY (persistencia)
 ├── src/memory/connection.py    (SQLite WAL, PooledConnection)
@@ -74,10 +73,10 @@ CONTEXT (ensamblaje de prompt)
 └── src/context/tools_docs.py   (TOOLS.md auto-generado)
 
 WEB (dashboard)
-├── web/routers/                (chat, pages, sessions, widgets, debug, health)
-├── web/services/               (chat_stream, message_persister, error_classifier, renderer)
-├── web/static/modules/         (12 módulos ES: stream-dispatcher, handlers, forms, utils)
-└── web/logging.py              (BackendLogHandler ring buffer)
+├── web/routers/                (chat, pages, sessions, widgets, debug, health, asr, logs)
+├── web/services/               (chat_stream, message_persister, error_classifier, renderer, loop_detector, file_logger, stream_retry_handler, asr_service)
+├── web/static/modules/         (26 módulos ES: stream-dispatcher, handlers, forms, utils, widgets)
+└── web/logging_handler.py      (BackendLogHandler ring buffer)
 ```
 
 **Dirección de dependencias:** `entry → api → core → llm/tools/memory/context → config`. Sin dependencias circulares en runtime; cualquier compatibilidad vieja quedó confinada a facades o fue eliminada.
@@ -131,7 +130,6 @@ WEB (dashboard)
 | **Auto-discovery** | `importlib` scan en `tools/loader.py` |
 | **Event Emitter** | `KairosStream` en frontend (on/emit) |
 | **Dataclass** | `ToolLoopContext` (11 params → 1 objeto), `StreamState`, `MessageRecord` |
-| **Legacy Compatibility** | `_deps.py` — eliminado; ya no forma parte del runtime |
 | **Shim** | `history.py` — backward compat gradual |
 | **Strategy** | `execute_action` meta-tool (una interfaz, N acciones) |
 | **Rate Limiting** | Per-session (tools) + per-IP (HTTP) con LRU eviction |
@@ -153,7 +151,7 @@ WEB (dashboard)
 | Compresión | Automática (>40 msgs / >6k tokens) | Control de costo sin intervención manual |
 | Seguridad | CSP + SSRF guard + path traversal + rate limit | Defense in depth |
 | Config | `.env` + Markdown | Mínimo overhead de configuración |
-| Testing | 470 tests (Python + JS) + Vitest + Playwright | Cobertura amplia multi-capa |
+| Testing | 519 Python + ~340 E2E (Playwright) | Cobertura amplia multi-capa |
 
 ---
 
@@ -162,15 +160,15 @@ WEB (dashboard)
 | Área | Métrica | Score | Estado |
 |------|---------|-------|--------|
 | **Código Python** | Ruff 0 errores, Pyright 0 errores | 10/10 | Limpio |
-| **Tests Python** | 431 tests, todos coleccionan | 9/10 | Sin E2E automatizado en CI completo |
-| **Tests JS** | ~110 tests (Vitest), ESLint 0 | 8/10 | Playwright setup inicial |
+| **Tests Python** | 519 tests, todos coleccionan | 9/10 | Sin E2E automatizado en CI completo |
+| **Tests JS** | 22 E2E test suites (Playwright) | 8/10 | Playwright setup inicial |
 | **Seguridad** | CSP, SSRF, XSS, rate limit, path guard | 9/10 | Audit v0.0.15 |
 | **Documentación** | ARCHITECTURE.md, MODULES.md, API_REFERENCE.md | 8/10 | Auto-generada |
 | **Arquitectura** | Sin circular deps en runtime, compatibilidad reducida | 9/10 | Refactor acumulado |
 | **DB** | 6 repos, 9 migraciones, FK constraints | 9/10 | Transactions con rollback |
-| **Frontend** | ES modules, event dispatcher, 12 módulos | 8/10 | Vanilla JS (sin type safety) |
+| **Frontend** | ES modules, event dispatcher, 26 módulos | 8/10 | Vanilla JS (sin type safety) |
 | **Infra** | Docker, CI pipeline, health check | 7/10 | Básico pero funcional |
-| **Deuda técnica** | v0.0.17 debt fixes, dead code cleanup | 8/10 | En mejora continua |
+| **Deuda técnica** | v0.0.51 debt fixes, dead code cleanup | 8/10 | En mejora continua |
 | **Overall** | | **8.5/10** | Sólido para v0.x |
 
 ---

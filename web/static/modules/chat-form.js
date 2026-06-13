@@ -8,6 +8,10 @@ var lastUserMessageText = '';
 var currentController = null;
 var currentRetryController = createRetryController();
 var retryClickBound = false;
+function getDefaultModel() {
+  try { return localStorage.getItem('selected_model') || 'deepseek-v4-flash-free'; }
+  catch(e) { return 'deepseek-v4-flash-free'; }
+}
 
 function retryLastMessage() {
   var lastAsstMsg = document.querySelector('.msg.assistant:last-child');
@@ -87,7 +91,7 @@ function init() {
       controller: currentController,
       retryController: currentRetryController,
       sessionId: SessionContext.getSessionId(),
-      defaultModel: defaultModel
+      defaultModel: getDefaultModel()
     });
   });
 }

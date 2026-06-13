@@ -1,3 +1,5 @@
+import { KairosDebug } from '../debug.js';
+
 var _loggers = {};
 var _logBuffer = [];
 var _flushTimer = null;
@@ -33,8 +35,10 @@ class Logger {
     else console.log('[' + this.name + ']', msg, data || '');
 
     // Also feed into existing debug panel
-    if (typeof window.logUI === 'function') {
-      window.logUI('[' + level + '][' + this.name + ']', String(msg).substring(0, 120));
+    try {
+      KairosDebug.logUI('[' + level + '][' + this.name + ']', String(msg).substring(0, 120));
+    } catch (e) {
+      // Silently skip UI logging
     }
 
     this._scheduleFlush();

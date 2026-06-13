@@ -7,6 +7,7 @@ import { StreamContext } from './stream-context.js';
 import { executeStreamFetch } from './stream-fetcher.js';
 import { attemptRetry, shouldAutoRetryEmptyResponse } from './stream-retry-coordinator.js';
 import { KairosDebug, refreshDebug } from '../debug.js';
+import { logUI } from './log-ui.js';
 import { SessionContext } from './session-context.js';
 
 function refreshSidebar() {

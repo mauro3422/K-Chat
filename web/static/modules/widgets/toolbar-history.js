@@ -17,20 +17,11 @@ export function toggleHistoryList(container, id, key) {
     }
 
     var historyDiv = document.createElement('div');
-    historyDiv.className = 'widget-history-list';
-    historyDiv.style.background = '#10141b';
-    historyDiv.style.border = '1px solid #00ffff';
-    historyDiv.style.borderRadius = '4px';
-    historyDiv.style.padding = '8px';
-    historyDiv.style.marginTop = '4px';
-    historyDiv.style.fontSize = '10px';
-    historyDiv.style.fontFamily = 'monospace';
+    historyDiv.className = 'widget-history-container';
 
     var title = document.createElement('div');
-    title.textContent = '⏳ VERSIONES DISPONIBLES:';
-    title.style.color = '#00ffff';
-    title.style.fontWeight = 'bold';
-    title.style.marginBottom = '6px';
+    title.className = 'widget-history-title';
+    title.textContent = 'VERSIONES DISPONIBLES:';
     historyDiv.appendChild(title);
 
     fetch(urlBuilder.widgetVersions(key))
@@ -43,11 +34,7 @@ export function toggleHistoryList(container, id, key) {
             } else {
                 data.versions.forEach(function renderVersionItem(v) {
                     var item = document.createElement('div');
-                    item.style.display = 'flex';
-                    item.style.justifyContent = 'space-between';
-                    item.style.padding = '4px';
-                    item.style.borderBottom = '1px solid #21262d';
-                    item.style.cursor = 'pointer';
+                    item.className = 'widget-history-item';
 
                     var leftText = document.createElement('span');
                     leftText.style.color = '#c9d1d9';

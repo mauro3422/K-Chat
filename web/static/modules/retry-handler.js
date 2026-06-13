@@ -1,5 +1,6 @@
 import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
+import { logUI } from './log-ui.js';
 
 function delay(ms) {
   return new Promise(function(resolve) { setTimeout(resolve, ms); });

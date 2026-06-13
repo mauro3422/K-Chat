@@ -1,5 +1,6 @@
 import { SessionContext } from './modules/session-context.js';
 import { KairosUtils } from './modules/utils.js';
+import { logUI, logStream, setDebugVisible, getStreamEvents, getUIEvents } from './modules/log-ui.js';
 
 function timeToMs(t) {
   if (!t) return null;
@@ -10,30 +11,12 @@ function timeToMs(t) {
 
 let debugVisible = false;
 let debugControlsBound = false;
-const streamEvents = [];
-let streamEvId = 0;
-const uiEvents = [];
-let uiEvId = 0;
-
-function logStream(tipo, data) {
-  streamEvents.push({id: ++streamEvId, t: tipo, d: typeof data === 'string' ? data : JSON.stringify(data), at: new Date().toISOString().slice(11,23)});
-  if (streamEvents.length > 500) streamEvents.shift();
-  if (debugVisible) renderStreamLog();
-}
-
-function logUI(label, detail) {
-  uiEvents.push({id: ++uiEvId, label: label, detail: String(detail || '').substring(0, 160), at: new Date().toISOString().slice(11,23)});
-  if (uiEvents.length > 60) uiEvents.shift();
-  if (debugVisible) renderUILog();
-  if (typeof KairosWidgets !== 'undefined' && label.indexOf('[W]') === 0) {
-    setTimeout(refreshWidgetInfo, 50);
-  }
-}
 
 function renderUILog() {
   var el = document.getElementById('ui-log');
   if (!el) return;
-  el.innerHTML = uiEvents.map(function(e) {
+  var events = getUIEvents();
+  el.innerHTML = events.map(function(e) {
     return '<div class="sl-item"><span class="sl-idx">#' + e.id + '</span><span class="sl-ts">' + e.at + '</span><span class="sl-tag">' + e.label + '</span><span class="sl-data">' + escHtml(e.detail) + '</span></div>';
   }).join('');
 }
@@ -41,15 +24,15 @@ function renderUILog() {
 function renderStreamLog() {
   var el = document.getElementById('stream-log');
   if (!el) return;
-  el.innerHTML = streamEvents.map(function(e) {
+  var events = getStreamEvents();
+  el.innerHTML = events.map(function(e) {
     return '<div class="sl-item sl-' + e.t.replace('_','-') + '"><span class="sl-ts">' + e.at + '</span><span class="sl-tag">' + e.t + '</span><span class="sl-data">' + escHtml((e.d || '').substring(0, 500)) + '</span></div>';
   }).join('');
 }
 
 function toggleDebug() {
   debugVisible = !debugVisible;
-  window.debugVisible = debugVisible;
-  globalThis.debugVisible = debugVisible;
+  setDebugVisible(debugVisible);
   var p = document.getElementById('debug-panel');
   var m = document.getElementById('main');
   if (p) p.classList.toggle('open', debugVisible);
@@ -80,12 +63,12 @@ function bindDebugControls() {
 }
 
 function copyStreamLog(el) {
-  var txt = streamEvents.map(function(e){ return e.id + ' ' + e.at + ' ' + e.t + ' ' + e.d; }).join('\n');
+  var txt = getStreamEvents().map(function(e){ return e.id + ' ' + e.at + ' ' + e.t + ' ' + e.d; }).join('\n');
   copyToClipboard(txt, el);
 }
 
 function copyUILog(el) {
-  var txt = uiEvents.map(function(e){ return e.id + ' ' + e.at + ' ' + e.label + ' ' + e.detail; }).join('\n');
+  var txt = getUIEvents().map(function(e){ return e.id + ' ' + e.at + ' ' + e.label + ' ' + e.detail; }).join('\n');
   copyToClipboard(txt, el);
 }
 
@@ -172,8 +155,9 @@ function copyAllDebug(el) {
   var parts = [];
   
   // Calculate stream durations
+  var allUI = getUIEvents();
   var starts = {};
-  uiEvents.forEach(function(e) {
+  allUI.forEach(function(e) {
     if (e.label === 'stream_start') {
       if (e.detail.indexOf('mensaje=') >= 0) {
         var msgPreview = e.detail.substring(0, 60);
@@ -183,7 +167,7 @@ function copyAllDebug(el) {
   });
   parts.push('=== STREAM DURATIONS ===');
   var hasDuration = false;
-  uiEvents.forEach(function(e) {
+  allUI.forEach(function(e) {
     if (e.label === 'stream_complete') {
       for (var sid in starts) {
         var s = starts[sid];
@@ -203,10 +187,11 @@ function copyAllDebug(el) {
   parts.push('');
 
   parts.push('=== UI EVENTS ===');
-  parts.push(uiEvents.map(function(e){ return e.id + ' ' + e.at + ' ' + e.label + ' ' + e.detail; }).join('\n') || '(ninguno)');
+  parts.push(allUI.map(function(e){ return e.id + ' ' + e.at + ' ' + e.label + ' ' + e.detail; }).join('\n') || '(ninguno)');
   parts.push('');
+  var allStream = getStreamEvents();
   parts.push('=== STREAM EVENTS ===');
-  parts.push(streamEvents.map(function(e){ return e.id + ' ' + e.at + ' ' + e.t + ' ' + e.d; }).join('\n') || '(ninguno)');
+  parts.push(allStream.map(function(e){ return e.id + ' ' + e.at + ' ' + e.t + ' ' + e.d; }).join('\n') || '(ninguno)');
   parts.push('');
 
   if (typeof KairosWidgets !== 'undefined') {
@@ -301,14 +286,7 @@ export const KairosDebug = {
   get debugVisible() { return debugVisible; }
 };
 
-// Backwards-compatible window aliases for legacy debug callers.
-window.logStream = KairosDebug.logStream;
-window.logUI = KairosDebug.logUI;
-window.refreshDebug = KairosDebug.refreshDebug;
-window.toggleDebug = KairosDebug.toggleDebug;
-globalThis.toggleDebug = KairosDebug.toggleDebug;
-window.debugVisible = debugVisible;
-globalThis.debugVisible = debugVisible;
+// All modules import logUI/logStream from modules/log-ui.js. No window bridge needed.
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', bindDebugControls);

@@ -19,6 +19,4 @@ def _check_rate_limit(session_id: str) -> tuple[bool, str]:
             wait = round(_RATE_WINDOW - (now - bucket[0]))
             return False, f"[ERROR]: Rate limit reached. Wait {wait}s before continuing."
         bucket.append(now)
-    if not bucket:
-        del _session_rate[session_id]
     return True, ""

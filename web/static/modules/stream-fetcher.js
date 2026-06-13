@@ -1,6 +1,7 @@
 import { StreamErrorHandler } from './stream-error-handler.js';
 import { KairosStream } from './stream-dispatcher.js';
 import { parseStreamEvent } from './stream-contract.js';
+import { logUI } from './log-ui.js';
 
 export function executeStreamFetch(params) {
   var sessionId = params.sessionId;

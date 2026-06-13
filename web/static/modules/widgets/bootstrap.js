@@ -5,8 +5,9 @@
  */
 import { KairosWidgets, initAll, startMessageHandler } from './index.js';
 
-if (!window.KairosWidgets) {
-  window.KairosWidgets = KairosWidgets;
-}
-window.KairosWidgets.initAll = initAll;
-window.KairosWidgets.startMessageHandler = startMessageHandler;
+// window assignments removed — KairosWidgets is imported directly by all consumers
+// if (!window.KairosWidgets) {
+//   window.KairosWidgets = KairosWidgets;
+// }
+// window.KairosWidgets.initAll = initAll;
+// window.KairosWidgets.startMessageHandler = startMessageHandler;

@@ -1,6 +1,6 @@
 # Kairos (K-Chat)
 
-> **v0.0.21** — Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
+> **v0.0.51** — Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
 > No JS frameworks, no complex gateways. Each piece is an independent file.
 
 ## Vision
@@ -26,8 +26,8 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 ├── SOUL.md / MEMORY.md     → Personality and user data (auto-created)
 ├── AGENTS.md / TOOLS.md    → Agent rules and tool guide (auto-generated)
 ├── src/
-│   ├── api/                → Facade package for all DB operations
-│   │   ├── __init__.py     → Public API (19+ functions)
+│   ├── api/                → Domain modules for all DB operations
+│   │   ├── __init__.py     → Package marker (empty)
 │   │   ├── messages.py     → Message CRUD
 │   │   ├── sessions.py     → Session management
 │   │   ├── widgets.py      → Widget persistence
@@ -45,7 +45,9 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   ├── llm/
 │   │   ├── protocol.py     → LLMProvider protocol definition
 │   │   ├── openai_provider.py → OpenAI-compatible provider
-│   │   ├── models.py       → API client, retry, model switching
+│   │   ├── models.py       → Model registry, provider registry
+│   │   ├── model_state.py  → Thread-safe ModelState class (failed/verified/cached)
+│   │   ├── retry.py        → execute_with_retry() with exponential backoff
 │   │   ├── client.py       → chat() and chat_stream()
 │   │   └── policy.py       → Model discovery, verification, selection
 │   ├── memory/
@@ -67,7 +69,13 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   │   ├── save_widget.py  → Save widget to DB
 │   │   ├── get_widget_code.py → Retrieve widget code
 │   │   └── update_widget.py → Update widget version
-│   ├── context.py          → System prompt builder, context loader
+│   ├── constants.py        → Shared policy constants (MAX_TOOL_TURNS, LLM_MAX_RETRIES)
+│   ├── context/
+│   │   ├── builder.py      → System prompt builder
+│   │   ├── files.py        → Markdown file loader/creator
+│   │   ├── templates.py    → Default templates for SOUL/MEMORY/AGENTS
+│   │   ├── tools_docs.py   → TOOLS.md auto-generator (lazy)
+│   │   └── runtime.py      → Runtime context injection
 │   ├── compressor.py       → History compression via LLM
 │   ├── background_tasks.py → Auto-rename sessions
 │   ├── cli.py              → CLI entry point
@@ -75,20 +83,30 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   └── paths.py            → Path resolution utilities
 ├── web/
 │   ├── server.py           → FastAPI app
-│   ├── logging.py          → Backend log handler + ring buffer
+│   ├── logging_handler.py  → Backend log handler + ring buffer
 │   ├── ui_utils.py         → HTML message renderer
 │   ├── services/
 │   │   ├── chat_stream.py  → Stream generator for web endpoint
-│   │   └── message_renderer.py → Session message HTML renderer
+│   │   ├── message_persister.py → Persists assistant messages
+│   │   ├── message_renderer.py → Session message HTML renderer
+│   │   ├── stream_error_classifier.py → Classify errors (rate_limit, timeout, etc.)
+│   │   ├── stream_contract.py → NDJSON event contract
+│   │   ├── loop_detector.py → Detects infinite tool-call loops
+│   │   ├── file_logger.py  → Persistent file logging
+│   │   ├── stream_retry_handler.py → Stream retry coordination
+│   │   └── asr_service.py  → Audio/ASR service
 │   ├── routers/
 │   │   ├── chat.py         → Streaming POST endpoint
 │   │   ├── pages.py        → HTML pages, sidebar, messages
 │   │   ├── sessions.py     → Rename, delete
 │   │   ├── widgets.py      → Widget API
-│   │   └── debug.py        → Debug info, backend logs
+│   │   ├── debug.py        → Debug info, backend logs
+│   │   ├── health.py       → GET /health endpoint
+│   │   ├── asr.py          → Audio/ASR endpoints
+│   │   └── logs.py         → Log query endpoints
 │   ├── templates/          → Jinja2 templates
 │   └── static/             → CSS, JS modules (chat, session, debug, widgets)
-├── tests/                  → 470 Python + 76 Vitest + 13 E2E tests
+├── tests/                  → 519 Python + 22 E2E tests (Playwright)
 ├── docs/
 │   ├── ARCHITECTURE.md     → System architecture and data flow
 │   ├── MODULES.md          → Module responsibilities and interfaces
@@ -99,8 +117,8 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 
 ## Features
 
-### 12 Tools
-`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`, `list_files`, `execute_command`. Auto-registered via `importlib` filesystem scan.
+### 15 Tools
+`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`, `list_files`, `execute_command`, `search_files`, `edit_file`, `analyze_code`. Auto-registered via `importlib` filesystem scan.
 
 ### Streaming with visual phases
 Each interaction is shown in sequenced phases: reasoning → tools → reasoning → tools → final response. Tools are shown as pills with spinner (calling) and checkmark (ok).

@@ -64,3 +64,16 @@ def test_attempt_recovery_returns_empty_when_exhausted():
     gen = h.attempt_recovery([], "hi", "", "gpt-4")
     items = list(gen)
     assert items == []
+
+
+class TestAttemptRecovery:
+    def test_cannot_retry_when_exhausted(self):
+        handler = StreamRetryHandler(max_retries=0)
+        assert not handler.can_retry
+
+    def test_attempt_recovery_yields_nothing_on_exhausted(self):
+        handler = StreamRetryHandler(max_retries=1)
+        handler.retry_count = 1  # simulate exhausted
+        gen = handler.attempt_recovery([], "", "", "model")
+        result = list(gen)
+        assert result == []  # yields nothing when exhausted

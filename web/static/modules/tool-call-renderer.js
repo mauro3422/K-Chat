@@ -1,6 +1,7 @@
 import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
 import { KairosStream } from './stream-dispatcher.js';
+import { logUI } from './log-ui.js';
 
 export function registerToolCallRenderer() {
   KairosStream.on('tool_call', function(dataStr, ctx) {

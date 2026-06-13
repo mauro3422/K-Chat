@@ -10,7 +10,7 @@ CONTINUATION_INSTRUCTION = (
     "Just continue naturally from the interruption point. Do NOT use tools.]"
 )
 
-DEFAULT_MAX_RETRIES = 1
+DEFAULT_MAX_RETRIES = 2
 
 
 class StreamRetryHandler:

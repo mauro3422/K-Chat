@@ -7,12 +7,11 @@ from typing import Any, Callable
 import src.tools as tools
 import src.llm.client as llm_client
 from src.constants import MAX_TOOL_TURNS
-from src.memory.repos import MessageRepository
+from src.memory.repos import Repositories
 
 logger = logging.getLogger(__name__)
 
 OUTPUT_CHUNK_SIZE = 12
-_MESSAGE_REPO = MessageRepository()
 
 
 @dataclass
@@ -27,6 +26,7 @@ class _ToolLoopContext:
     tool_detail: list[dict[str, Any]] | None = None
     run_parallel_tools_fn: Callable[..., Any] | None = None
     tool_map: dict[str, Any] | None = None
+    repos: 'Repositories | None' = None
     max_turns: int = MAX_TOOL_TURNS
 
 
@@ -52,9 +52,15 @@ def _append_assistant_with_tools(history: list[dict[str, Any]], content: str | N
     })
 
 
-def _save_assistant_tool_calls(session_id: str | None, content: str | None, model: str, tool_calls_list: list[dict[str, Any]]) -> None:
-    if session_id:
-        _MESSAGE_REPO.save(
+def _save_assistant_tool_calls(
+    session_id: str | None,
+    content: str | None,
+    model: str,
+    tool_calls_list: list[dict[str, Any]],
+    repos: 'Repositories | None' = None,
+) -> None:
+    if session_id and repos is not None:
+        repos.messages.save(
             session_id=session_id,
             role="assistant",
             content=content,
@@ -82,7 +88,7 @@ def _execute_tools(
 ) -> Generator[Any, None, None]:
     tcs_list = _build_tool_calls_list(tool_calls)
     _append_assistant_with_tools(ctx.history, content, tcs_list)
-    _save_assistant_tool_calls(ctx.session_id, content, ctx.model, tcs_list)
+    _save_assistant_tool_calls(ctx.session_id, content, ctx.model, tcs_list, ctx.repos)
 
     assert ctx.run_parallel_tools_fn is not None
     for event in ctx.run_parallel_tools_fn(
@@ -160,14 +166,15 @@ def run_tool_loop_streaming(
     tool_detail: list[dict[str, Any]],
     run_parallel_tools_fn: Any,
     tool_map: dict[str, Any],
-    max_turns: int = MAX_TOOL_TURNS
+    max_turns: int = MAX_TOOL_TURNS,
+    repos: 'Repositories | None' = None,
 ) -> Generator[Any, None, None]:
     """Tool loop for streaming path. Yields NDJSON events."""
     ctx = _ToolLoopContext(
         history=history, model=model, session_id=session_id, tagged=tagged,
         debug=debug, phases_output=phases_output, used_tools=used_tools,
         tool_detail=tool_detail, run_parallel_tools_fn=run_parallel_tools_fn,
-        tool_map=tool_map, max_turns=max_turns,
+        tool_map=tool_map, max_turns=max_turns, repos=repos,
     )
     turn = 0
     phase_reasoning = ""
@@ -273,14 +280,15 @@ def run_tool_loop_sync(
     tool_detail: list[dict[str, Any]],
     run_parallel_tools_fn: Any,
     tool_map: dict[str, Any],
-    max_turns: int = MAX_TOOL_TURNS
+    max_turns: int = MAX_TOOL_TURNS,
+    repos: 'Repositories | None' = None,
 ) -> Generator[Any, None, None]:
     """Tool loop for synchronous path (tests). Yields NDJSON events."""
     ctx = _ToolLoopContext(
         history=history, model=model, session_id=session_id, tagged=tagged,
         debug=debug, phases_output=phases_output, used_tools=used_tools,
         tool_detail=tool_detail, run_parallel_tools_fn=run_parallel_tools_fn,
-        tool_map=tool_map, max_turns=max_turns,
+        tool_map=tool_map, max_turns=max_turns, repos=repos,
     )
     turn = 0
     phase_reasoning = ""
@@ -309,8 +317,8 @@ def run_tool_loop_sync(
         "content": content_str,
         "tool_calls": [],
     })
-    if ctx.session_id:
-        _MESSAGE_REPO.save(
+    if ctx.session_id and ctx.repos is not None:
+        ctx.repos.messages.save(
             session_id=ctx.session_id,
             role="assistant",
             content=content_str,

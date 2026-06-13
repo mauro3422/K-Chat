@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import './setup.js';
 import { KairosStream } from '../web/static/modules/stream-dispatcher.js';
+import { KairosWidgets as RealKairosWidgets } from '../web/static/modules/widgets/core.js';
 
 class MockElement {
   constructor(tag) {
@@ -164,6 +165,7 @@ const mockReasoningState = { enter: () => false, exit: () => {} };
 await import('../web/static/modules/content-handler.js');
 global.KairosStream = KairosStream;
 global.window.KairosWidgets = global.KairosWidgets;
+globalThis.KairosWidgets = global.KairosWidgets;
 
 function makeState(overrides) {
   return Object.assign({
@@ -187,12 +189,12 @@ describe('content-handler', () => {
   });
 
   test('calls KairosWidgets.extract() which populates registry', () => {
-    KairosWidgets.reset();
+    RealKairosWidgets.reset();
     const state = makeState();
     KairosStream.emit('content', '```html-widget\n<div>Test</div>\n```', state);
-    const keys = Object.keys(KairosWidgets.registry);
+    const keys = Object.keys(RealKairosWidgets.registry);
     expect(keys.length).toBeGreaterThan(0);
-    expect(KairosWidgets.registry[keys[0]]).toContain('<div>Test</div>');
+    expect(RealKairosWidgets.registry[keys[0]]).toContain('<div>Test</div>');
   });
 
   test('renders widget containers as siblings for html-widget code block', () => {

@@ -5,6 +5,7 @@
  */
 export function createToolbarButton(config) {
     var btn = document.createElement('button');
+    btn.className = 'widget-toolbar-btn';
     btn.textContent = config.label;
     btn.style.background = config.background || 'transparent';
     btn.style.border = config.border || '1px solid #30363d';

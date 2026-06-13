@@ -5,4 +5,4 @@
  */
 import { StreamOrchestrator } from './stream-orchestrator.js';
 
-window.StreamOrchestrator = StreamOrchestrator;
+// window.StreamOrchestrator = StreamOrchestrator; // removed — no legacy callers

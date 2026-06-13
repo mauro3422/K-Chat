@@ -1,7 +1,7 @@
 /* eslint-disable no-redeclare, no-unused-vars */
 
 import C from './dom-contracts.js';
-import { KairosWidgets } from './widgets/core.js';
+import { KairosWidgets, initAll } from './widgets/index.js';
 
 function decodeHtml(html) {
   // Solo decodificar si contiene entidades HTML escapadas
@@ -55,7 +55,7 @@ function renderAll() {
       el.innerHTML = sanitized;
       
       // Forzar inicialización inmediata (no usar lazy loading al cargar sesión existente)
-      KairosWidgets.initAll(el, true);
+      initAll(el, true);
     }
     el.dataset.rendered = '1';
   });

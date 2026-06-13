@@ -11,8 +11,8 @@ global.sessionId = 'test-session-123';
 global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
 
 // Load module (IIFE executes, registers event listeners)
-await import('../web/static/session.js');
-const KairosSession = window.KairosSession;
+const sessionModule = await import('../web/static/session.js');
+const KairosSession = sessionModule.KairosSession;
 
 function makeItem(origName) {
   var inpObj = { value: origName || '', focus: function(){}, select: function(){}, onkeydown: null };

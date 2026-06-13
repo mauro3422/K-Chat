@@ -1,6 +1,7 @@
 /* eslint-disable no-redeclare, no-unused-vars */
 
 import { KairosUtils } from './utils.js';
+import { logUI, logStream } from './log-ui.js';
 
 const listeners = {};
 

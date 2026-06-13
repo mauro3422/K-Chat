@@ -38,17 +38,8 @@ export function createIframe(container, id, code) {
         createToolbar(container, id, key, widgetCode, hashId);
 
         var iframe = document.createElement('iframe');
-        iframe.className = 'interactive-widget-iframe';
+        iframe.className = 'widget-iframe';
         iframe.sandbox = 'allow-scripts';
-        iframe.style = iframe.style || {};
-        iframe.style.width = '100%';
-        iframe.style.height = '0';
-        iframe.style.minHeight = '60px';
-        iframe.style.border = 'none';
-        iframe.style.background = '#161b22';
-        iframe.style.borderRadius = '0 0 8px 8px';
-        iframe.style.display = 'block';
-        iframe.style.overflow = 'hidden';
 
         iframe.srcdoc = buildIframeSrc(id, widgetCode, safeStateStr);
         container.appendChild(iframe);

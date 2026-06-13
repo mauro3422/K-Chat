@@ -1,5 +1,6 @@
 import C from './dom-contracts.js';
 import { getLogger } from './logger.js';
+import { logUI } from './log-ui.js';
 import { processWidgetContainers } from './widget-container-renderer.js';
 import { KairosStream } from './stream-dispatcher.js';
 import { KairosWidgets } from './widgets/core.js';

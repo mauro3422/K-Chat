@@ -57,7 +57,7 @@ describe('chat-stream', () => {
     const prevSid = global.sessionId;
     global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
     global.document.getElementById = () => mockElement();
-    window.loadSession('custom-sid-999');
+    chatModule.loadSession('custom-sid-999');
     expect(global.sessionId).toBe('custom-sid-999');
     global.sessionId = prevSid;
   });
@@ -67,7 +67,7 @@ describe('chat-stream', () => {
     global.document.getElementById = () => mockElement();
     window._lastState = undefined;
     window._lastUrl = undefined;
-    window.loadSession('sid-replace-test');
+    chatModule.loadSession('sid-replace-test');
     expect(window._lastState).toBeDefined();
     expect(window._lastState.sid).toBe('sid-replace-test');
     expect(window._lastUrl).toContain('sid-replace-test');
@@ -77,7 +77,7 @@ describe('chat-stream', () => {
     global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
     global.document.getElementById = () => mockElement();
     window._lastUrl = undefined;
-    window.loadSession('url-test-sid');
+    chatModule.loadSession('url-test-sid');
     expect(window._lastUrl).toContain('url-test-sid');
   });
 
@@ -85,7 +85,7 @@ describe('chat-stream', () => {
     let wReset = false;
     widgetsModule.KairosWidgets.reset = () => { wReset = true; };
     global.document.getElementById = () => mockElement();
-    window.loadSession('sid-reset');
+    chatModule.loadSession('sid-reset');
     expect(wReset).toBe(true);
   });
 
@@ -93,41 +93,38 @@ describe('chat-stream', () => {
     let fReset = false;
     formModule.KairosForm.reset = () => { fReset = true; };
     global.document.getElementById = () => mockElement();
-    window.loadSession('sid-reset');
+    chatModule.loadSession('sid-reset');
     expect(fReset).toBe(true);
   });
 
-  test('DOMContentLoaded con /sessions/ invoca loadSession', () => {
+  test('DOMContentLoaded con /sessions/ invoca loadSession', async () => {
+    const sessionCtx = await import('../web/static/modules/session-context.js');
+    sessionCtx.SessionContext.setSessionId('abc-123');
     global.window.location.pathname = '/sessions/abc-123';
-    let loaded = false;
-    const origLoad = window.loadSession;
-    window.loadSession = () => { loaded = true; };
+    global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
+    global.document.getElementById = () => mockElement();
     const handler = global.document._listeners?.DOMContentLoaded;
     if (handler) handler();
-    window.loadSession = origLoad;
-    expect(loaded).toBe(true);
+    expect(global.sessionId).toBe('abc-123');
   });
 
   test('DOMContentLoaded con / no invoca loadSession', () => {
     global.window.location.pathname = '/';
-    let loaded = false;
-    const origLoad = window.loadSession;
-    window.loadSession = () => { loaded = true; };
+    const prevSid = global.sessionId;
     const handler = global.document._listeners?.DOMContentLoaded;
     if (handler) handler();
-    window.loadSession = origLoad;
-    expect(loaded).toBe(false);
+    expect(global.sessionId).toBe(prevSid);
   });
 
   test('loadSession definida', () => {
-    expect(typeof window.loadSession).toBe('function');
+    expect(typeof chatModule.loadSession).toBe('function');
   });
 
   test('loadSession llama fetch con URL correcta', async () => {
     let fetchedUrl = null;
     global.fetch = (url) => { fetchedUrl = url; return Promise.resolve({ text: () => Promise.resolve('') }); };
     global.document.getElementById = () => mockElement();
-    window.loadSession('url-test-sid');
+    chatModule.loadSession('url-test-sid');
     expect(fetchedUrl).toBe('/sessions/url-test-sid/messages');
   });
 
@@ -136,7 +133,7 @@ describe('chat-stream', () => {
     const fetchPromise = Promise.resolve({ text: () => Promise.resolve('<div id="messages"></div>') });
     global.fetch = () => fetchPromise;
     global.document.getElementById = () => mockElement();
-    window.loadSession('render-test-sid');
+    chatModule.loadSession('render-test-sid');
     await fetchPromise;
     await new Promise(r => setTimeout(r, 10));
     expect(KairosMarkdown.renderAll).toHaveBeenCalled();

@@ -33,10 +33,13 @@ The system is organized in layers with clear boundaries:
 │  LLM   │  │  Tools   │  │   Memory     │  │  Context   │
 │  Layer │  │  Layer   │  │   Layer      │  │  Layer     │
 │src/llm/│  │src/tools/│  │ src/memory/  │  │src/context │
-│protocol│  │loader.py │  │ connection.py │  │_build_tools│
-│provider│  │runner.py │  │ schema.py     │  │_md() lazy  │
-│models  │  │10 tools  │  │ repos/        │  │import tool │
-│client  │  │          │  │ migrations.py │  │definitions │
+│protocol│  │loader.py │  │ connection.py │  │ builder.py │
+│provider│  │runner.py │  │ schema.py     │  │ files.py   │
+│models  │  │15 tools  │  │ repos/        │  │ templates  │
+│model   │  │search_   │  │ migrations.py │  │ tools_docs │
+│state   │  │files     │  │              │  │ runtime.py │
+│retry.py│  │edit_file │  │              │  │            │
+│client  │  │analyze   │  │              │  │            │
 │policy  │  │          │  │              │  │            │
 └───┬────┘  └──────────┘  └──────────────┘  └────────────┘
     │
@@ -196,7 +199,7 @@ User input → src/cli.py → core.chat_sync.chat()
 
 ### `web/` — Web Dashboard
 - `server.py`: FastAPI app, static files, exception handlers (unified `{"detail": ...}` JSON format), rate limiter middleware, CSP middleware, no-cache middleware.
-- `logging.py`: `BackendLogHandler` (ring buffer on `kairos.*` logger), `get_backend_logs()`.
+- `logging_handler.py`: `BackendLogHandler` (ring buffer on `kairos.*` logger), `get_backend_logs()`.
 - `routers/chat.py`: POST streaming endpoint with `ChatPayload` Pydantic model. Handles NDJSON generation, error classification, debug persistence.
 - `routers/pages.py`: Routes for chat page, sidebar, session messages (HTML rendering with phases and widgets). `get_available_model_ids()` helper.
 - `routers/sessions.py`: Rename and delete endpoints.
@@ -207,6 +210,12 @@ User input → src/cli.py → core.chat_sync.chat()
 - `services/message_persister.py`: `save_assistant_message()` — persists assistant message and debug info to DB.
 - `services/stream_error_classifier.py`: `classify_error(error_msg)` — classifies error into type + user-friendly message (rate_limit, timeout, network, model, unknown).
 - `services/message_renderer.py`: `render_session_messages()` — full HTML message list with widgets, tool matching, XSS escaping.
+- `services/loop_detector.py`: Detects infinite tool-call loops and aborts.
+- `services/file_logger.py`: Persistent file-based logging.
+- `services/stream_retry_handler.py`: Coordinates retry logic for failed streams.
+- `services/asr_service.py`: Audio/ASR processing service.
+- `routers/asr.py`: Audio/ASR HTTP endpoints.
+- `routers/logs.py`: Log query endpoints.
 - `ui_utils.py`: HTML rendering of individual messages with reasoning, phases, and tool pills. `render_msg_with_phases()`.
 
 ### `web/static/modules/` — Frontend Streaming Modules (Vanilla JS)
@@ -233,6 +242,7 @@ NDJSON (application/x-ndjson)
 {"t":"tool_call","d":"{\"id\":\"c1\",...}"} → calling / result
 {"t":"content","d":" token"}             → final response token
 {"t":"error","d":{"type":"...","message":"..."}} → error
+{"t":"heartbeat","d":""}                 → keepalive (every 10s)
 ```
 
 ## Context Stack (System Prompt)

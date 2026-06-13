@@ -59,10 +59,8 @@ export function loadSession(sid) {
     .catch(function(err) { console.error('Failed to load messages:', err); });
 }
 
-window.loadSession = loadSession;
-
 document.addEventListener('DOMContentLoaded', function() {
   if (window.location.pathname.startsWith('/sessions/')) {
-    window.loadSession(SessionContext.getSessionId());
+    loadSession(SessionContext.getSessionId());
   }
 });

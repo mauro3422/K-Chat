@@ -5,7 +5,7 @@ import { KairosWidgets } from './widgets/core.js';
 var log = getLogger('widget-container-renderer');
 
 export function processWidgetContainers(fullText, bodyDiv, existingByKey, renderedKeys) {
-  var widgetsApi = globalThis.KairosWidgets || KairosWidgets;
+  var widgetsApi = KairosWidgets;
   // Find all standard code blocks and inline code blocks that are NOT widgets
   var ignoredRanges = [];
   var ignoredCodeBlockRegex = /```(?!html-widget)[\s\S]*?(?:```|$)/g;
