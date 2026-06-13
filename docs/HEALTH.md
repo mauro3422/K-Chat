@@ -16,7 +16,7 @@ This document analyzes the current codebase against SOLID principles and the pro
 All P1–P3 items completed. The codebase has been refactored with:
 - **DebugInfo dataclass** replacing the mutable dict bag across orchestrator, tool_loop, llm/client, and message_persister
 - **API domain modules** (`src/api/`) — web layer imports direct domain modules where appropriate, with `src/api/__init__.py` as package marker only
-- **LLMProvider protocol** aligned with OpenAIProvider implementation
+- **LLMProvider protocol** aligned with OpenAIAdapter implementation
 
 ### Bug fixes applied post-analysis
 
