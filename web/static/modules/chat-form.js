@@ -8,9 +8,34 @@ var lastUserMessageText = '';
 var currentController = null;
 var currentRetryController = createRetryController();
 var retryClickBound = false;
+
+function getNav() {
+  return {
+    location: window.location,
+    history: window.history,
+  };
+}
+
 function getDefaultModel() {
   try { return localStorage.getItem('selected_model') || 'deepseek-v4-flash-free'; }
   catch(e) { return 'deepseek-v4-flash-free'; }
+}
+
+function buildMessageNode(roleClass, label, bodyClass, bodyText) {
+  var msg = document.createElement('div');
+  msg.className = 'msg ' + roleClass;
+
+  var labelDiv = document.createElement('div');
+  labelDiv.className = 'msg-label';
+  labelDiv.textContent = label;
+
+  var bodyDiv = document.createElement('div');
+  bodyDiv.className = bodyClass;
+  bodyDiv.textContent = bodyText;
+
+  msg.appendChild(labelDiv);
+  msg.appendChild(bodyDiv);
+  return msg;
 }
 
 function retryLastMessage() {
@@ -68,18 +93,21 @@ function init() {
 
     lastUserMessageText = text;
 
-    var oldUrl = window.location.pathname;
-    if (oldUrl === '/') { window.history.replaceState({sid:SessionContext.getSessionId()}, '', '/sessions/' + SessionContext.getSessionId()); }
+    var nav = getNav();
+    var oldUrl = nav.location.pathname;
+    if (oldUrl === '/') { nav.history.replaceState({sid:SessionContext.getSessionId()}, '', '/sessions/' + SessionContext.getSessionId()); }
 
     input.disabled = true;
     document.getElementById('spinner').textContent = '...';
 
-    document.getElementById('messages').insertAdjacentHTML('beforeend',
-      '<div class="msg user"><div class="msg-label">Tu</div><div class="' + C.MSG_BODY + '">' + KairosUtils.escHtml(text) + '</div></div>');
-    var asstDiv = document.createElement('div');
-    asstDiv.className = 'msg assistant';
-    asstDiv.innerHTML = '<div class="msg-label">Kairos</div><div class="' + C.MSG_BODY_MD() + '">Pensando...</div>';
-    document.getElementById('messages').appendChild(asstDiv);
+    var messages = document.getElementById('messages');
+    if (messages) {
+      messages.appendChild(buildMessageNode('user', 'Tu', C.MSG_BODY, text));
+    }
+    var asstDiv = buildMessageNode('assistant', 'Kairos', C.MSG_BODY_MD(), 'Pensando...');
+    if (messages) {
+      messages.appendChild(asstDiv);
+    }
     KairosUtils.scrollToBottom();
 
     StreamOrchestrator.startStream({

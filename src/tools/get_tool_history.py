@@ -1,5 +1,3 @@
-from src.memory.repos import get_repos
-
 DEFINITION = {
     "type": "function",
     "function": {
@@ -22,9 +20,11 @@ DEFINITION = {
 def run(**kwargs) -> str:
     limit = int(kwargs.get("limit", kwargs.get("max_results", kwargs.get("count", kwargs.get("n", 5)))))
     _session_id = kwargs.get("_session_id")
-    _repos = kwargs.pop("_repos", get_repos())
+    _repos = kwargs.get("_repos")
     if not _session_id:
         return "No active session."
+    if _repos is None:
+        return "[ERROR] Missing repositories."
     try:
         rows = _repos.tool_calls.get_history(_session_id, limit=min(limit, 20))
     except Exception:

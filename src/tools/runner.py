@@ -8,14 +8,14 @@ from src.tools._rate_limiter import _check_rate_limit
 from src.tools._tool_parser import _parse_tool_call
 from src.tools._tool_persister import _persist_tool_results
 from src.config_loader import DEFAULT_CONFIG
-from src.memory.repos import get_repos, Repositories
+from src.memory.repos import Repositories
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 _POLL_INTERVAL: float = 0.5
 
 
-def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: Repositories | None = None) -> Generator[Any, None, None]:
+def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: Repositories) -> Generator[Any, None, None]:
     with ThreadPoolExecutor(max_workers=max(1, len(tcs_info))) as pool:
         futs = {}
         for tc, name, args in tcs_info:
@@ -62,10 +62,10 @@ def _prepare_tool_calls(
     used_tools: list[str],
     tagged: bool,
     phase_tool_ids: list[str],
-    repos: Repositories | None = None,
+    repos: Repositories,
 ) -> Generator[Any, None, list[tuple[Any, str, dict[str, Any]]]]:
     tcs_info: list[tuple[Any, str, dict[str, Any]]] = []
-    tool_call_repo = (repos or get_repos()).tool_calls
+    tool_call_repo = repos.tool_calls
     for tc in tool_calls:
         name, args, error = _parse_tool_call(tc, tool_map)
         if error:
@@ -95,9 +95,9 @@ def run_parallel_tools(
     tool_detail: list[dict[str, Any]],
     used_tools: list[str],
     phase_tool_ids: list[str],
+    repos: Repositories,
     tagged: bool = False,
     tool_map: dict[str, Any] | None = None,
-    repos: Repositories | None = None,
 ) -> Generator[Any, None, None]:
     import src.tools
     if tool_map is None:
@@ -108,7 +108,7 @@ def run_parallel_tools(
     )
 
     results: dict[str, tuple[str, str]] = {}
-    tool_call_repo = (repos or get_repos()).tool_calls
+    tool_call_repo = repos.tool_calls
 
     ok, msg = _check_rate_limit(session_id)
     if not ok:

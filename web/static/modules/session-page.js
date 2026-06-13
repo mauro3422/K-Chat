@@ -45,6 +45,19 @@ function setActionButtons(actions, buttonsHtml, buttons) {
   }
 }
 
+function setMainHtml(main, html) {
+  if (!main) return;
+  if (typeof document.createElement === 'function') {
+    var template = document.createElement('template');
+    if (template && 'innerHTML' in template && typeof main.replaceChildren === 'function') {
+      template.innerHTML = html;
+      main.replaceChildren(template.content.cloneNode(true));
+      return;
+    }
+  }
+  main.innerHTML = html;
+}
+
 function setPreviewInput(preview, value) {
   if (!preview) return null;
   if (typeof preview.appendChild === 'function') {
@@ -210,7 +223,7 @@ function loadSession(sid, deps) {
     .then(function(h) {
       var main = document.getElementById('main');
       if (main) {
-        main.innerHTML = h;
+        setMainHtml(main, h);
         var meta = document.getElementById('messages-metadata');
         if (meta) {
           try {

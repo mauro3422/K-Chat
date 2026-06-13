@@ -9,6 +9,16 @@ import { createToolbarButton } from './ui-helpers.js';
 import { createIframe } from './iframe-builder.js';
 import { KairosWidgets } from './core.js';
 
+function clearContainer(container) {
+    if (container && typeof container.replaceChildren === 'function') {
+        container.replaceChildren();
+        return;
+    }
+    if (container) {
+        container.textContent = '';
+    }
+}
+
 export function openEditor(container, id, key, code) {
     var iframe = container.querySelector('iframe');
     if (iframe) iframe.style.display = 'none';
@@ -40,7 +50,7 @@ export function openEditor(container, id, key, code) {
             .then(function parseSaveResponse(r) { return r.json(); })
             .then(function onSaveSuccess(data) {
                 KairosWidgets._registry[id] = newCode;
-                container.innerHTML = '';
+                clearContainer(container);
                 container.dataset.initialized = '';
                 createIframe(container, id, newCode);
             }).catch(function onSaveError(err) {

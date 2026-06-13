@@ -22,7 +22,7 @@ export class RetryController {
     this.count++;
     this.showRetryNotice(this.count, reason);
     var bodyDiv = asstDiv.querySelector('.' + C.MSG_BODY);
-    if (bodyDiv) bodyDiv.innerHTML = '';
+    if (bodyDiv) bodyDiv.textContent = '';
     var toRemove = asstDiv.querySelectorAll('.' + C.REASONING + ', .' + C.TOOL_CALLS);
     for (var r = 0; r < toRemove.length; r++) {
       toRemove[r].remove();
