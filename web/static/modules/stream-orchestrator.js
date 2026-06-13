@@ -10,6 +10,7 @@ import { KairosDebugPanel } from './debug-panel.js';
 import { logUI } from './log-ui.js';
 import { SessionContext } from './session-context.js';
 import { refreshSidebar } from './sidebar-refresh.js';
+import { handleSuccessfulStream } from './stream-completion.js';
 
 export const StreamOrchestrator = {
 
@@ -176,9 +177,11 @@ export const StreamOrchestrator = {
         retryController.resetRetryCount();
       }
     } else {
-      retryController.resetRetryCount();
-      refreshSidebar();
-      if (KairosDebugPanel.debugVisible) KairosDebugPanel.refreshDebug();
+      handleSuccessfulStream({
+        retryController: retryController,
+        refreshSidebar: refreshSidebar,
+        debugPanel: KairosDebugPanel
+      });
     }
 
     KairosUtils.finalizeStream(input);

@@ -29,12 +29,12 @@ class TestOpenAIAdapterConstructor:
             assert provider.supports_reasoning is True
 
 
-class TestOpenAIProviderChat:
+class TestOpenAIAdapterChat:
     def test_calls_completions_create(self):
-        with patch("src.llm.openai_provider.OpenAI") as mock_openai:
+        with patch("src.llm.adapters.openai_adapter.OpenAI") as mock_openai:
             mock_client = MagicMock()
             mock_openai.return_value = mock_client
-            provider = OpenAIProvider(api_key="key", base_url="https://url")
+            provider = OpenAIAdapter(api_key="key", base_url="https://url")
 
             request = UnifiedRequest(
                 messages=[{"role": "user", "content": "Hi"}],
@@ -52,7 +52,7 @@ class TestOpenAIProviderChat:
             )
 
     def test_returns_unified_response(self):
-        with patch("src.llm.openai_provider.OpenAI") as mock_openai:
+        with patch("src.llm.adapters.openai_adapter.OpenAI") as mock_openai:
             mock_client = MagicMock()
             mock_openai.return_value = mock_client
             mock_response = MagicMock()
@@ -63,7 +63,7 @@ class TestOpenAIProviderChat:
             mock_response.usage = MagicMock(prompt_tokens=10, completion_tokens=5, total_tokens=15)
             mock_client.chat.completions.create.return_value = mock_response
 
-            provider = OpenAIProvider(api_key="key", base_url="https://url")
+            provider = OpenAIAdapter(api_key="key", base_url="https://url")
             request = UnifiedRequest(messages=[{"role": "user", "content": "Hi"}], model="gpt-4")
             result = provider.chat(request)
 
@@ -73,14 +73,14 @@ class TestOpenAIProviderChat:
             assert result.usage.prompt_tokens == 10
 
 
-class TestOpenAIProviderChatStream:
+class TestOpenAIAdapterChatStream:
     def test_calls_completions_create_with_stream(self):
-        with patch("src.llm.openai_provider.OpenAI") as mock_openai:
+        with patch("src.llm.adapters.openai_adapter.OpenAI") as mock_openai:
             mock_client = MagicMock()
             mock_openai.return_value = mock_client
             mock_client.chat.completions.create.return_value = iter([])
 
-            provider = OpenAIProvider(api_key="key", base_url="https://url")
+            provider = OpenAIAdapter(api_key="key", base_url="https://url")
             request = UnifiedRequest(
                 messages=[{"role": "user", "content": "Hi"}],
                 model="gpt-4",
@@ -98,26 +98,26 @@ class TestOpenAIProviderChatStream:
             )
 
     def test_returns_generator(self):
-        with patch("src.llm.openai_provider.OpenAI") as mock_openai:
+        with patch("src.llm.adapters.openai_adapter.OpenAI") as mock_openai:
             mock_client = MagicMock()
             mock_openai.return_value = mock_client
             mock_client.chat.completions.create.return_value = iter([])
 
-            provider = OpenAIProvider(api_key="key", base_url="https://url")
+            provider = OpenAIAdapter(api_key="key", base_url="https://url")
             request = UnifiedRequest(messages=[], model="gpt-4")
             result = provider.chat_stream(request)
 
             assert isinstance(result, Generator) or hasattr(result, "__next__")
 
 
-class TestOpenAIProviderListModels:
+class TestOpenAIAdapterListModels:
     def test_returns_model_list(self):
-        with patch("src.llm.openai_provider.OpenAI") as mock_openai:
+        with patch("src.llm.adapters.openai_adapter.OpenAI") as mock_openai:
             mock_client = MagicMock()
             mock_openai.return_value = mock_client
             mock_client.models.list.return_value = [MagicMock(id="model-a"), MagicMock(id="model-b")]
 
-            provider = OpenAIProvider(api_key="key", base_url="https://url")
+            provider = OpenAIAdapter(api_key="key", base_url="https://url")
             result = provider.list_models()
 
             assert result == ["model-a", "model-b"]

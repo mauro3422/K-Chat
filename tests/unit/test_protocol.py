@@ -11,8 +11,8 @@ class TestLLMProviderProtocol:
         assert hasattr(LLMProvider, "__instancecheck__")
 
     def test_openai_provider_satisfies(self):
-        from src.llm.openai_provider import OpenAIProvider
-        assert isinstance(OpenAIProvider(), LLMProvider)
+        from src.llm.adapters.openai_adapter import OpenAIAdapter
+        assert isinstance(OpenAIAdapter(api_key="test", base_url="https://test"), LLMProvider)
 
     def test_mock_with_all_methods_passes(self):
         class MockProvider:
