@@ -1,5 +1,6 @@
 import { SessionContext } from './modules/session-context.js';
 import { KairosUtils } from './modules/utils.js';
+import { KairosWidgets } from './modules/widgets/index.js';
 import { logUI, logStream, setDebugVisible, getStreamEvents, getUIEvents } from './modules/log-ui.js';
 
 function timeToMs(t) {
@@ -79,7 +80,7 @@ function copyText(el) {
 }
 
 function copyWidgetLog(el) {
-  if (typeof KairosWidgets === 'undefined') { el.textContent = '[]'; return; }
+  if (!KairosWidgets.debug || Object.keys(KairosWidgets.debug).length === 0) { el.textContent = '[]'; return; }
   var widgetDebug = KairosWidgets.debug;
   var lines = [];
   for (var wid in widgetDebug) {
@@ -194,7 +195,7 @@ function copyAllDebug(el) {
   parts.push(allStream.map(function(e){ return e.id + ' ' + e.at + ' ' + e.t + ' ' + e.d; }).join('\n') || '(ninguno)');
   parts.push('');
 
-  if (typeof KairosWidgets !== 'undefined') {
+  if (KairosWidgets.debug && Object.keys(KairosWidgets.debug).length > 0) {
     var widgetDebug = KairosWidgets.debug;
     parts.push('=== WIDGETS ===');
     for (var wid in widgetDebug) {
@@ -252,7 +253,7 @@ function escHtml(s) { return KairosUtils.escHtml(s); }
 
 function refreshWidgetInfo() {
   var el = document.getElementById('widget-log');
-  if (!el || typeof KairosWidgets === 'undefined') return;
+  if (!el || !KairosWidgets.debug) return;
   var widgetDebug = KairosWidgets.debug;
   if (Object.keys(widgetDebug).length === 0) {
     el.innerHTML = '<div class="sl-item">(sin widgets aun)</div>';

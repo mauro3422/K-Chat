@@ -24,7 +24,6 @@ KairosForm.init();
 
 export function loadSession(sid) {
   SessionContext.setSessionId(sid);
-  globalThis.sessionId = sid;
   window.history.replaceState({sid: sid}, '', '/sessions/' + sid);
 
   if (typeof KairosWidgets.reset === 'function') {

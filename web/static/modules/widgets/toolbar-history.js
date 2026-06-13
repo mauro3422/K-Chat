@@ -37,12 +37,12 @@ export function toggleHistoryList(container, id, key) {
                     item.className = 'widget-history-item';
 
                     var leftText = document.createElement('span');
-                    leftText.style.color = '#c9d1d9';
+                    leftText.className = 'widget-history-text';
                     leftText.textContent = 'V' + v.version + ': ' + (v.description || 'Sin descripción');
                     item.appendChild(leftText);
 
                     var link = document.createElement('span');
-                    link.style.color = '#00ffff';
+                    link.className = 'widget-history-link';
                     link.textContent = '[CARGAR]';
                     item.appendChild(link);
 
@@ -70,7 +70,7 @@ export function toggleHistoryList(container, id, key) {
             }
         }).catch(function onHistoryError(err) {
             var errorDiv = document.createElement('div');
-            errorDiv.style.color = '#ff3366';
+            errorDiv.className = 'widget-history-error';
             errorDiv.textContent = 'Error: ' + err.message;
             historyDiv.appendChild(errorDiv);
         });

@@ -165,7 +165,7 @@ class TestSessionRepository:
 
         repo.delete("sess_1")
 
-        assert mock_conn.cursor.return_value.execute.call_count == 7
+        assert mock_conn.cursor.return_value.execute.call_count == 8
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
@@ -184,7 +184,7 @@ class TestSessionRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_check_should_rename_empty_name_one_message(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.side_effect = [("",), (1,)]
+        mock_cursor.fetchone.side_effect = [{"name": ""}, {"COUNT(*)": 1}]
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
 
@@ -193,7 +193,7 @@ class TestSessionRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_check_should_rename_none_name(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.side_effect = [(None,), (1,)]
+        mock_cursor.fetchone.side_effect = [{"name": None}, {"COUNT(*)": 1}]
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
 
@@ -202,7 +202,7 @@ class TestSessionRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_check_should_rename_already_named(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.return_value = ("My Session",)
+        mock_cursor.fetchone.return_value = {"name": "My Session"}
         mock_get_conn.return_value = mock_conn
         repo = SessionRepository()
 
@@ -283,7 +283,7 @@ class TestWidgetStateRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_get_states(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchall.return_value = [("w1", '{"x":1}'), ("w2", '{"y":2}')]
+        mock_cursor.fetchall.return_value = [{"widget_id": "w1", "state": '{"x":1}'}, {"widget_id": "w2", "state": '{"y":2}'}]
         mock_get_conn.return_value = mock_conn
         repo = WidgetStateRepository()
 
@@ -309,7 +309,7 @@ class TestDebugRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_get_info_found(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.return_value = ("m1", "thinking", "sys prompt", "[]", "[]")
+        mock_cursor.fetchone.return_value = {"model": "m1", "reasoning": "thinking", "system_prompt": "sys prompt", "tool_calls": "[]", "history_before": "[]"}
         mock_get_conn.return_value = mock_conn
         repo = DebugRepository()
 
@@ -337,9 +337,7 @@ class TestDebugRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_get_info_parses_json(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.return_value = (
-            "m1", "", "", '[{"name":"test"}]', '[{"role":"user"}]'
-        )
+        mock_cursor.fetchone.return_value = {"model": "m1", "reasoning": "", "system_prompt": "", "tool_calls": '[{"name":"test"}]', "history_before": '[{"role":"user"}]'}
         mock_get_conn.return_value = mock_conn
         repo = DebugRepository()
 
@@ -353,7 +351,7 @@ class TestSavedWidgetRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_save_new_widget(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.return_value = (1,)
+        mock_cursor.fetchone.return_value = {"MAX(version)": 1}
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 
@@ -366,7 +364,7 @@ class TestSavedWidgetRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_save_existing_widget_increments_version(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.return_value = (4,)
+        mock_cursor.fetchone.return_value = {"MAX(version)": 4}
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 
@@ -378,7 +376,7 @@ class TestSavedWidgetRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_get_found(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.return_value = ("code v1", 1, "desc", "2024-01-01")
+        mock_cursor.fetchone.return_value = {"code": "code v1", "version": 1, "description": "desc", "updated_at": "2024-01-01"}
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 
@@ -406,7 +404,7 @@ class TestSavedWidgetRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_get_versions(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchall.return_value = [(2, "desc2", "t2"), (1, "desc1", "t1")]
+        mock_cursor.fetchall.return_value = [{"version": 2, "description": "desc2", "created_at": "t2"}, {"version": 1, "description": "desc1", "created_at": "t1"}]
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 
@@ -420,7 +418,7 @@ class TestSavedWidgetRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_get_by_version_found(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.return_value = ("code v2", "desc2", "t2")
+        mock_cursor.fetchone.return_value = {"code": "code v2", "description": "desc2", "created_at": "t2"}
         mock_get_conn.return_value = mock_conn
         repo = SavedWidgetRepository()
 

@@ -81,9 +81,9 @@ def test_message_tokens_persistence():
         cursor.execute("SELECT prompt_tokens, completion_tokens, total_tokens FROM messages WHERE session_id = ?", (session_id,))
         row = cursor.fetchone()
         assert row is not None
-        assert row[0] == 100
-        assert row[1] == 20
-        assert row[2] == 120
+        assert row["prompt_tokens"] == 100
+        assert row["completion_tokens"] == 20
+        assert row["total_tokens"] == 120
     finally:
         conn.close()
 

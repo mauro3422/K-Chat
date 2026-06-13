@@ -1,10 +1,8 @@
 """Tool history operations."""
 
-from src.memory.repos import ToolCallRepository
-
-_TOOL_CALL_REPO = ToolCallRepository()
+from src.memory.repos import get_repos
 
 
 def get_tool_history(session_id: str, limit: int = 10) -> list:
     """Obtiene el historial de tool calls de una sesión."""
-    return _TOOL_CALL_REPO.get_history(session_id, limit)
+    return get_repos().tool_calls.get_history(session_id, limit)

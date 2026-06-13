@@ -18,9 +18,9 @@ def normalize_inline_widget_code(code: str) -> str:
 def extract_inline_widget_states(messages: Iterable[Sequence[Any]]) -> dict[str, str]:
     """Extract inline widget code blocks as persisted widget code entries, ignoring patterns inside standard code blocks."""
     combined_text = "\n".join(
-        str(row[1])
+        str(row["content"])
         for row in messages
-        if len(row) > 1 and row[0] == "assistant" and row[1]
+        if len(row) > 1 and row["role"] == "assistant" and row["content"]
     )
 
     # Find ignored ranges (standard code blocks and inline code blocks)

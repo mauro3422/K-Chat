@@ -1,4 +1,4 @@
-import { KairosDebug } from '../debug.js';
+import { logUI } from './log-ui.js';
 
 var _loggers = {};
 var _logBuffer = [];
@@ -36,7 +36,7 @@ class Logger {
 
     // Also feed into existing debug panel
     try {
-      KairosDebug.logUI('[' + level + '][' + this.name + ']', String(msg).substring(0, 120));
+      logUI('[' + level + '][' + this.name + ']', String(msg).substring(0, 120));
     } catch (e) {
       // Silently skip UI logging
     }

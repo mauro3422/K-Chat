@@ -41,7 +41,11 @@ class DebugRepository(_BaseRepository):
             row = cursor.fetchone()
             if not row:
                 return {}
-            model, reasoning, system_prompt, tool_calls, history_before = row
+            model = row["model"]
+            reasoning = row["reasoning"]
+            system_prompt = row["system_prompt"]
+            tool_calls = row["tool_calls"]
+            history_before = row["history_before"]
             return {
                 "model": model,
                 "reasoning": reasoning,

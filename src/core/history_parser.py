@@ -9,12 +9,12 @@ logger = logging.getLogger(__name__)
 def _parse_rows(rows: list[Any]) -> list[dict[str, Any]]:
     raw_msgs = []
     for row in rows:
-        role = row[0]
-        content = row[1]
-        created_at = row[3]
-        tool_calls = row[6] if len(row) > 6 else None
-        tool_call_id = row[7] if len(row) > 7 else None
-        reasoning = row[4] if len(row) > 4 else None
+        role = row["role"]
+        content = row["content"]
+        created_at = row["created_at"]
+        tool_calls = row["tool_calls"] if "tool_calls" in row.keys() else None
+        tool_call_id = row["tool_call_id"] if "tool_call_id" in row.keys() else None
+        reasoning = row["reasoning"] if "reasoning" in row.keys() else None
 
         if role == "system":
             continue

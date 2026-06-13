@@ -1,8 +1,6 @@
 import json
 from typing import Any
-from src.memory.repos import ToolCallRepository
-
-_TOOL_CALL_REPO = ToolCallRepository()
+from src.memory.repos import get_repos
 
 
 def _persist_tool_results(
@@ -13,7 +11,7 @@ def _persist_tool_results(
     history: list[dict[str, Any]],
     tool_detail: list[dict[str, Any]],
 ) -> None:
-    repo = _TOOL_CALL_REPO
+    repo = get_repos().tool_calls
     for tc, name, args in tcs_info:
         tool_result, status = results.get(tc.id, ("[ERROR]: Missing", "error"))
         tool_detail.append({"name": name, "args": args, "status": status, "result_truncated": tool_result[:300]})

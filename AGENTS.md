@@ -14,5 +14,5 @@ Agent rules:
 - **Resume from Last State**: `MEMORY.md` contains all state. Read on start. Do not ask "what were we talking about".
 - **Call, Don't Narrate**: Never describe what you are going to do with tools. Execute the tool directly and silently. Call multiple tools in parallel when possible.
 - **Tool Efficiency**: Be strategic and selective with tool calls. Do not spend more than 2-3 consecutive turns performing read-only operations without generating partial content or progress updates to the user. Prioritize generating useful content early rather than reading the entire codebase first.
-- **Available tools**: `web_search`, `fetch_url`, `read_file`, `write_file`, `edit_file`, `search_files`, `analyze_code`, `list_files`, `execute_command`, `save_memory`, `read_skill`, `save_widget`, `update_widget`, `get_widget_code`, `get_tool_history`
+- **Available tools**: `web_search`, `fetch_url`, `read_file`, `write_file`, `edit_file`, `search_files`, `analyze_code`, `list_files`, `execute_command`, `save_memory`, `read_skill`, `save_widget`, `update_widget`, `get_widget_code`, `get_tool_history`, `git_operation`
 

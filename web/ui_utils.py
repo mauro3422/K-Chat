@@ -1,7 +1,7 @@
 import html
 from typing import Any
 
-def render_msg_with_phases(role: str, content: str, reasoning: str, matched_tools: list[tuple[str, str, str, Any, int]], ts: Any | None = None, phases: list[dict[str, Any]] | None = None) -> str:
+def render_msg_with_phases(role: str, content: str, reasoning: str, matched_tools: list[dict[str, Any]], ts: Any | None = None, phases: list[dict[str, Any]] | None = None) -> str:
     parts = []
     label = "Tu" if role == "user" else "Kairos"
     parts.append(f'<div class="msg {role}">')
@@ -10,9 +10,9 @@ def render_msg_with_phases(role: str, content: str, reasoning: str, matched_tool
     if role == "assistant" and phases:
         tools_by_turn = {}
         for t in matched_tools:
-            name, inp, status, t_ts, turn = t
-            tools_by_turn.setdefault(turn, []).append((name, status))
-        
+            turn = t.get("turn", 0)
+            tools_by_turn.setdefault(turn, []).append((t["tool_name"], t["status"]))
+
         has_any_phase_content = any(phase.get("content") for phase in phases)
 
         for idx, phase in enumerate(phases):
@@ -38,7 +38,7 @@ def render_msg_with_phases(role: str, content: str, reasoning: str, matched_tool
                     cls = "tc-item " + status
                     parts.append(f'<span class="{cls}">{icon} {html.escape(name)}</span>')
                 parts.append('</div>')
-        
+
         if not has_any_phase_content:
             body_cls = 'msg-body md-content'
             parts.append(f'<div class="{body_cls}">{html.escape(content)}</div>')
@@ -56,10 +56,10 @@ def render_msg_with_phases(role: str, content: str, reasoning: str, matched_tool
 
         if role == "assistant" and matched_tools:
             parts.append('<div class="tool-calls">')
-            for name, inp, status, t_ts, turn in matched_tools:
-                icon = "&#10003;" if status == "ok" else "&#10007;"
-                cls = "tc-item " + status
-                parts.append(f'<span class="{cls}">{icon} {html.escape(name)}</span>')
+            for t in matched_tools:
+                icon = "&#10003;" if t["status"] == "ok" else "&#10007;"
+                cls = "tc-item " + t["status"]
+                parts.append(f'<span class="{cls}">{icon} {html.escape(t["tool_name"])}</span>')
             parts.append('</div>')
 
     parts.append(f'<div class="msg-ts">{str(ts)[:16]}</div>')

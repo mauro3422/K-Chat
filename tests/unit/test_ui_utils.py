@@ -7,31 +7,29 @@ def test_match_tools_to_msgs_empty():
 
 def test_match_tools_to_msgs_basic():
     """Test matching tool calls to assistant messages chronologically."""
-    # msgs format: (role, content, model, ts, reasoning, phases_str)
     msgs = [
-        ("user", "Hello", "model", 10, None, None),
-        ("assistant", "Hi there", "model", 20, "reasoning", "[]"),
-        ("user", "Do search", "model", 30, None, None),
-        ("assistant", "Here is search result", "model", 50, "reasoning", "[]"),
+        {"role": "user", "content": "Hello", "created_at": 10},
+        {"role": "assistant", "content": "Hi there", "created_at": 20},
+        {"role": "user", "content": "Do search", "created_at": 30},
+        {"role": "assistant", "content": "Here is search result", "created_at": 50},
     ]
-    # all_tools format: (name, inp, status, t_ts, turn)
     all_tools = [
-        ("web_search", "query1", "ok", 15, 1),
-        ("web_search", "query2", "ok", 40, 1),
-        ("save_memory", "mem1", "ok", 45, 1),
+        {"tool_name": "web_search", "input": "query1", "status": "ok", "created_at": 15, "turn": 1},
+        {"tool_name": "web_search", "input": "query2", "status": "ok", "created_at": 40, "turn": 1},
+        {"tool_name": "save_memory", "input": "mem1", "status": "ok", "created_at": 45, "turn": 1},
     ]
 
     matched = _match_tools_to_msgs(msgs, all_tools)
 
-    # Message at ts=20 should match tools <= 20 (only tool at t_ts=15)
+    # Message at ts=20 should match tools <= 20 (only tool at created_at=15)
     assert len(matched[20]) == 1
-    assert matched[20][0][0] == "web_search"
-    assert matched[20][0][1] == "query1"
+    assert matched[20][0]["tool_name"] == "web_search"
+    assert matched[20][0]["input"] == "query1"
 
-    # Message at ts=50 should match tools <= 50 that weren't matched before (t_ts=40, 45)
+    # Message at ts=50 should match tools <= 50 that weren't matched before (created_at=40, 45)
     assert len(matched[50]) == 2
-    assert matched[50][0][1] == "query2"
-    assert matched[50][1][1] == "mem1"
+    assert matched[50][0]["input"] == "query2"
+    assert matched[50][1]["input"] == "mem1"
 
 def testrender_msg_with_phases_user():
     """Test rendering of a user message."""
@@ -44,7 +42,7 @@ def testrender_msg_with_phases_user():
 def testrender_msg_with_phases_assistant_legacy():
     """Test rendering of a legacy assistant message (no phases, only content/reasoning)."""
     matched_tools = [
-        ("web_search", "query1", "ok", 15, 1)
+        {"tool_name": "web_search", "input": "query1", "status": "ok", "created_at": 15, "turn": 1}
     ]
     html_out = render_msg_with_phases(
         "assistant",
@@ -72,8 +70,8 @@ def testrender_msg_with_phases_assistant_sequential():
     # - Turn 1 (idx 1): web_search
     # - Turn 2 (idx 2): save_memory
     matched_tools = [
-        ("web_search", "query1", "ok", 15, 1),
-        ("save_memory", "mem1", "error", 18, 2)
+        {"tool_name": "web_search", "input": "query1", "status": "ok", "created_at": 15, "turn": 1},
+        {"tool_name": "save_memory", "input": "mem1", "status": "error", "created_at": 18, "turn": 2}
     ]
     html_out = render_msg_with_phases(
         "assistant",
@@ -111,7 +109,7 @@ def testrender_msg_with_phases_assistant_sequential():
 def testrender_msg_with_phases_fallback_empty_phases():
     """Test retrocompatibility when phases key is empty list."""
     matched_tools = [
-        ("web_search", "query1", "ok", 15, 1)
+        {"tool_name": "web_search", "input": "query1", "status": "ok", "created_at": 15, "turn": 1}
     ]
     html_out = render_msg_with_phases(
         "assistant",

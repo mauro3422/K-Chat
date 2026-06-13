@@ -9,12 +9,14 @@ vi.mock('../web/static/modules/markdown-renderer.js', () => ({
 const _utils = { escHtml: (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') };
 
 global.KairosUtils = _utils;
-global.sessionId = 'chat-stream-sid';
 global.defaultModel = 'test-model';
 global.KairosStream = { on() {}, emit() {} };
 global.fetch = () => Promise.resolve({ text: () => Promise.resolve('<div id="messages">content</div>') });
 global.logUI = () => {};
 global.logStream = () => {};
+
+const sessionContextModule = await import('../web/static/modules/session-context.js');
+sessionContextModule.SessionContext.setSessionId('chat-stream-sid');
 
 const widgetsModule = await import('../web/static/modules/widgets/index.js');
 const formModule = await import('../web/static/modules/chat-form.js');
@@ -50,16 +52,16 @@ function mockElement() {
 describe('chat-stream', () => {
 
   test('sessionId configurado', () => {
-    expect(global.sessionId).toBe('chat-stream-sid');
+    expect(sessionContextModule.SessionContext.getSessionId()).toBe('chat-stream-sid');
   });
 
   test('loadSession cambia sessionId', () => {
-    const prevSid = global.sessionId;
+    const prevSid = sessionContextModule.SessionContext.getSessionId();
     global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
     global.document.getElementById = () => mockElement();
     chatModule.loadSession('custom-sid-999');
-    expect(global.sessionId).toBe('custom-sid-999');
-    global.sessionId = prevSid;
+    expect(sessionContextModule.SessionContext.getSessionId()).toBe('custom-sid-999');
+    sessionContextModule.SessionContext.setSessionId(prevSid);
   });
 
   test('loadSession llama replaceState', () => {
@@ -105,15 +107,15 @@ describe('chat-stream', () => {
     global.document.getElementById = () => mockElement();
     const handler = global.document._listeners?.DOMContentLoaded;
     if (handler) handler();
-    expect(global.sessionId).toBe('abc-123');
+    expect(sessionCtx.SessionContext.getSessionId()).toBe('abc-123');
   });
 
   test('DOMContentLoaded con / no invoca loadSession', () => {
     global.window.location.pathname = '/';
-    const prevSid = global.sessionId;
+    const prevSid = sessionContextModule.SessionContext.getSessionId();
     const handler = global.document._listeners?.DOMContentLoaded;
     if (handler) handler();
-    expect(global.sessionId).toBe(prevSid);
+    expect(sessionContextModule.SessionContext.getSessionId()).toBe(prevSid);
   });
 
   test('loadSession definida', () => {

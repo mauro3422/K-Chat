@@ -37,6 +37,7 @@ def _get_raw_conn(db_path: str):
     if _engine is not None:
         return _engine.connect()
     raw_conn = sqlite3.connect(db_path, check_same_thread=False)
+    raw_conn.row_factory = sqlite3.Row
     raw_conn.execute("PRAGMA journal_mode=WAL")
     raw_conn.execute("PRAGMA busy_timeout=5000")
     return raw_conn

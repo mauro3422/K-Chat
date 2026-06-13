@@ -29,7 +29,7 @@ class WidgetStateRepository(_BaseRepository):
             cursor = conn.cursor()
             cursor.execute('SELECT widget_id, state FROM widget_states WHERE session_id = ?', (session_id,))
             rows = cursor.fetchall()
-            return {row[0]: row[1] for row in rows}
+            return {row["widget_id"]: row["state"] for row in rows}
         except Exception:
             logger.exception("Failed to get widget states for %s", session_id)
             return {}

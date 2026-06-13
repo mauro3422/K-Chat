@@ -102,8 +102,8 @@ class TestMigration007SavedWidgetsGlobal:
         engine = MagicMock()
         engine.execute.return_value.fetchone.return_value = ("saved_widgets",)
         engine.execute.return_value.fetchall.return_value = [
-            (0, "widget_id", "TEXT", 0, None, 0),
-            (1, "session_id", "TEXT", 0, None, 1),
+            {"cid": 0, "name": "widget_id", "type": "TEXT", "notnull": 0, "dflt_value": None, "pk": 0},
+            {"cid": 1, "name": "session_id", "type": "TEXT", "notnull": 0, "dflt_value": None, "pk": 1},
         ]
         _migration_007_saved_widgets_global(conn, engine)
         assert engine.execute.call_count >= 10

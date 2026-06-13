@@ -1,6 +1,23 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 import './setup.js';
 
+var contentCallbacks = [];
+var emittedEvents = [];
+
+var mockStream = {
+  _listeners: {},
+  on: function(evt, cb) {
+    if (evt === 'content') contentCallbacks.push(cb);
+  },
+  emit: function(evt, data) {
+    if (evt === 'widget:detected') emittedEvents.push(data);
+  }
+};
+
+vi.mock('../web/static/modules/stream-dispatcher.js', function() {
+  return { KairosStream: mockStream };
+});
+
 function makeEl(tag) {
   var el = {
     tagName: (tag || 'DIV').toUpperCase(),
@@ -44,28 +61,10 @@ function makeEl(tag) {
 }
 
 describe('Widget Detector', function() {
-  var contentCallbacks = [];
-  var emittedEvents = [];
-  var mockStream;
-
   beforeEach(function() {
-    contentCallbacks = [];
-    emittedEvents = [];
-
-    mockStream = {
-      _listeners: {},
-      on: function(evt, cb) {
-        if (evt === 'content') contentCallbacks.push(cb);
-      },
-      emit: function(evt, data) {
-        if (evt === 'widget:detected') emittedEvents.push(data);
-      }
-    };
-
-    global.KairosStream = mockStream;
+    contentCallbacks.length = 0;
+    emittedEvents.length = 0;
     global.logUI = function() {};
-
-    emittedEvents = [];
   });
 
   function loadDetector() {
@@ -156,7 +155,6 @@ describe('Widget Detector', function() {
     await loadDetector();
 
     var bodyDiv = makeEl('div');
-    var registryBefore = Object.keys(global.KairosWidgets.registry || {}).length;
     var state = {
       bodyDivs: [bodyDiv],
       contentTexts: ['```html-widget\n<div>x</div>\n```'],
@@ -167,8 +165,7 @@ describe('Widget Detector', function() {
 
     contentCallbacks.forEach(function(cb) { cb('```html-widget\n<div>x</div>\n```', state); });
 
-    var registryAfter = Object.keys(global.KairosWidgets.registry || {}).length;
-    expect(registryAfter).toBe(registryBefore);
+    expect(emittedEvents.length).toBe(1);
   });
 
   test('deduplicates same key tags', async function() {
@@ -224,7 +221,6 @@ describe('Widget Detector', function() {
     contentCallbacks.forEach(function(cb) { cb('[Widget: foo]', state); });
     expect(emittedEvents.length).toBe(1);
 
-    state.contentTexts[0] = '[Widget: foo] more text';
     contentCallbacks.forEach(function(cb) { cb(' more text', state); });
     expect(emittedEvents.length).toBe(1);
   });

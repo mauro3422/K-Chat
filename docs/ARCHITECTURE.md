@@ -35,7 +35,7 @@ The system is organized in layers with clear boundaries:
 │src/llm/│  │src/tools/│  │ src/memory/  │  │src/context │
 │protocol│  │loader.py │  │ connection.py │  │ builder.py │
 │provider│  │runner.py │  │ schema.py     │  │ files.py   │
-│models  │  │15 tools  │  │ repos/        │  │ templates  │
+│models  │  │16 tools  │  │ repos/        │  │ templates  │
 │model   │  │search_   │  │ migrations.py │  │ tools_docs │
 │state   │  │files     │  │              │  │ runtime.py │
 │retry.py│  │edit_file │  │              │  │            │
@@ -162,6 +162,12 @@ User input → src/cli.py → core.chat_sync.chat()
 - `models.py`: Model registry, `PRIORITY`/`FALLBACK_MODEL` constants, `_api_call()` with retry, `_switch_model()`, `_PROVIDER_REGISTRY` dict and `register_provider()` function for dynamic provider registration.
 - `client.py`: `chat()` and `chat_stream()` with error handling, tool delta processing, debug usage tracking.
 - `policy.py`: Model discovery, verification (`verify_model`), priority selection, free/paid filtering.
+- `model_state.py`: `ModelState` — thread-safe model state tracking & failover singleton.
+- `retry.py`: `execute_with_retry()` — retry logic for LLM calls with exponential backoff and rate limit handling.
+- `discovery.py`: Model discovery and listing (filters free/paid models from API).
+- `verifier.py`: `verify_model()` — model verification and health checks with minimal prompt.
+- `selector.py`: `_get_default_model_candidates()` — default model selection logic from verified models.
+- `failover.py`: `_mark_and_refresh()` — model failover coordination (marks failed, returns alternative).
 - `__init__.py`: Package marker only.
 
 ### `src/tools/` — Tool System
@@ -173,13 +179,15 @@ User input → src/cli.py → core.chat_sync.chat()
 - `_tool_persister.py`: `_persist_tool_result()` and `_persist_tool_results()` — saves tool call logs and tool response messages to DB.
 - `_path_helpers.py`: `validate_path()` — path traversal guard using `os.path.realpath` + `commonpath`.
 - `_widget_helpers.py`: `sanitize_widget_id()`, `validate_widget_args()`.
-- Individual tools (10): Each exports `DEFINITION` (dict) + `run(**kwargs)`. New tool = new file.
+- `_analyzers.py`: Code analysis helpers (language detection, AST analysis, regex patterns) shared between tools.
+- `_validators.py`: Cross-language syntax validators (Python, JS, HTML, CSS, JSON, YAML) shared between tools.
+- Individual tools (16): `execute_command`, `list_files`, `search_files`, `edit_file`, `analyze_code`, `git_operation`. Each exports `DEFINITION` (dict) + `run(**kwargs)`. New tool = new file.
 
 ### `src/memory/` — Persistence Layer
 - `connection.py`: SQLite connection factory (WAL mode, busy timeout). `PooledConnection` wrapper (no-op close). `DatabaseEngine` Protocol for swappable backends. `get_engine()` / `set_engine()` for engine injection.
 - `schema.py`: `init_db()` and per-path schema initialization / migration execution.
 - `sqlite_engine.py`: `SQLiteEngine` — default SQLite implementation of `DatabaseEngine` with WAL mode and busy timeout.
-- `repos/`: 6 repository classes in separate files, all inheriting from `_BaseRepository`.
+- `repos/`: 7 repository classes in separate files, all inheriting from `_BaseRepository`.
   - `base.py`: `_BaseRepository` with `_get_conn()` and `_transaction()` context manager (commit on success, rollback on exception, uses engine if available).
   - `message_repository.py`: `MessageRepository` + `MessageRecord` dataclass.
   - `session_repository.py`: `SessionRepository` — ensure, rename, delete, get_all, check_should_rename.
@@ -187,6 +195,7 @@ User input → src/cli.py → core.chat_sync.chat()
   - `widget_state_repository.py`: `WidgetStateRepository` — save_state, get_states, delete_session_widget_states.
   - `debug_repository.py`: `DebugRepository` — save_info, get_info, delete_session_debug.
   - `saved_widget_repository.py`: `SavedWidgetRepository` — save, get, get_versions, get_by_version.
+  - `memory_index_repository.py`: `MemoryIndexRepository` — upsert/lookup memory index entries.
   - `__init__.py`: `Repositories` dataclass + `get_repos(conn)` factory function for shared-connection use cases.
 - `migrations.py`: 9 migration functions from `_migration_001_initial_schema` to `_migration_009_add_indexes`. Idempotent via `IF NOT EXISTS` and `try/except OperationalError`.
 

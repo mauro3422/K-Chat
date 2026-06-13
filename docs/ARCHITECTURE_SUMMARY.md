@@ -1,6 +1,6 @@
 # Resumen Ejecutivo — Arquitectura K-Chat
 
-**Versión:** 0.0.51 | **Fecha:** 2026-06-11 | **LOC total:** ~14.154 (src: 3.775 · web: 2.630 · tests: 7.749)
+**Versión:** 0.0.52 | **Fecha:** 2026-06-11 | **LOC total:** ~14.154 (src: 3.775 · web: 2.630 · tests: 7.749)
 
 ---
 
@@ -12,7 +12,7 @@ K-Chat (nombre interno: Kairos) es un asistente conversacional con capacidades d
 
 **Capacidades clave:**
 - Chat con streaming NDJSON (razonamiento → herramientas → contenido)
-- 15 herramientas auto-descubiertas (fetch_url, web_search, read_file, write_file, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, list_files, execute_command, search_files, edit_file, analyze_code)
+- 16 herramientas auto-descubiertas (fetch_url, web_search, read_file, write_file, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, list_files, execute_command, search_files, edit_file, analyze_code, git_operation)
 - Sistema de widgets versionados con persistencia de estado por sesión
 - Auto-rename de sesiones vía LLM en background
 - Compresión automática de historial (>40 msgs / >6k tokens)
@@ -50,12 +50,12 @@ TOOLS (sistema de herramientas)
 ├── src/tools/loader.py         (importlib filesystem scan)
 ├── src/tools/_path_helpers.py  (path traversal guard)
 ├── src/tools/_widget_helpers.py
-└── src/tools/*.py              (15 herramientas individuales)
+└── src/tools/*.py              (16 herramientas individuales)
 
 MEMORY (persistencia)
 ├── src/memory/connection.py    (SQLite WAL, PooledConnection)
 ├── src/memory/schema.py        (init + migrations)
-├── src/memory/repos/           (6 repositorios tipados)
+├── src/memory/repos/           (7 repositorios tipados)
 │   ├── base.py                 (_BaseRepository + _transaction())
 │   ├── message_repository.py
 │   ├── session_repository.py
@@ -123,7 +123,7 @@ WEB (dashboard)
 |--------|-----------|
 | **Facade** | `src/api/` — único entry point para web routers |
 | **Protocol (duck typing)** | `LLMProvider`, `DatabaseEngine` — intercambiables |
-| **Repository** | 6 repos en `src/memory/repos/`, base abstracta `_BaseRepository` |
+| **Repository** | 7 repos en `src/memory/repos/`, base abstracta `_BaseRepository` |
 | **Context Manager** | `_transaction()` con rollback automático |
 | **Provider/Registry** | `_PROVIDER_REGISTRY` + `register_provider()` para LLMs dinámicos |
 | **Lazy Singleton** | `_get_provider()`, `_get_conn()` |
@@ -151,7 +151,7 @@ WEB (dashboard)
 | Compresión | Automática (>40 msgs / >6k tokens) | Control de costo sin intervención manual |
 | Seguridad | CSP + SSRF guard + path traversal + rate limit | Defense in depth |
 | Config | `.env` + Markdown | Mínimo overhead de configuración |
-| Testing | 519 Python + ~340 E2E (Playwright) | Cobertura amplia multi-capa |
+| Testing | 523 Python + 22 E2E (Playwright) | Cobertura amplia multi-capa |
 
 ---
 
@@ -165,7 +165,7 @@ WEB (dashboard)
 | **Seguridad** | CSP, SSRF, XSS, rate limit, path guard | 9/10 | Audit v0.0.15 |
 | **Documentación** | ARCHITECTURE.md, MODULES.md, API_REFERENCE.md | 8/10 | Auto-generada |
 | **Arquitectura** | Sin circular deps en runtime, compatibilidad reducida | 9/10 | Refactor acumulado |
-| **DB** | 6 repos, 9 migraciones, FK constraints | 9/10 | Transactions con rollback |
+| **DB** | 7 repos, 9 migraciones, FK constraints | 9/10 | Transactions con rollback |
 | **Frontend** | ES modules, event dispatcher, 26 módulos | 8/10 | Vanilla JS (sin type safety) |
 | **Infra** | Docker, CI pipeline, health check | 7/10 | Básico pero funcional |
 | **Deuda técnica** | v0.0.51 debt fixes, dead code cleanup | 8/10 | En mejora continua |

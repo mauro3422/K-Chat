@@ -10,7 +10,7 @@ def filter_messages_for_ui(raw_msgs: list[tuple[Any, ...]]) -> list[tuple[Any, .
     msgs = []
     current_assistant_group = []
     for msg in raw_msgs:
-        role = msg[0]
+        role = msg["role"]
         if role == "user":
             if current_assistant_group:
                 msgs.append(current_assistant_group[-1])
@@ -36,15 +36,15 @@ def match_tools_to_msgs(msgs: list[tuple[Any, ...]], all_tools: list[tuple[Any, 
     con los correspondientes mensajes 'assistant' de la UI.
     """
     msg_tools = {}
-    sorted_tools = sorted(all_tools, key=lambda t: t[3])
-    assistant_indices = [i for i, (r, *_) in enumerate(msgs) if r == "assistant"]
+    sorted_tools = sorted(all_tools, key=lambda t: t["created_at"])
+    assistant_indices = [i for i, msg in enumerate(msgs) if msg["role"] == "assistant"]
     tool_ptr = 0
     for msg_idx in assistant_indices:
-        ts = msgs[msg_idx][3]
+        ts = msgs[msg_idx]["created_at"]
         matched = []
         while tool_ptr < len(sorted_tools):
             t = sorted_tools[tool_ptr]
-            if t[3] <= ts:
+            if t["created_at"] <= ts:
                 matched.append(t)
                 tool_ptr += 1
             else:

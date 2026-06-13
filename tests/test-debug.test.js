@@ -93,12 +93,9 @@ describe('KairosDebug', () => {
     expect(btn.textContent).toBe('copiado');
   });
 
-  test('copyWidgetLog sin KairosWidgets muestra []', () => {
-    const origWidgets = global.KairosWidgets;
-    global.KairosWidgets = undefined;
+  test('copyWidgetLog sin widgets debug muestra []', () => {
     const btn = { textContent: 'copy' };
     KairosDebug.copyWidgetLog(btn);
     expect(btn.textContent).toBe('[]');
-    global.KairosWidgets = origWidgets;
   });
 });

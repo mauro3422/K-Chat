@@ -4,8 +4,8 @@ from src.core.history_parser import _parse_rows, _sanitize_messages
 
 def test_parse_rows_valid():
     rows = [
-        ("user", "hola", None, "2025-01-01T10:00:00", None, None, None, None),
-        ("assistant", "respuesta", None, "2025-01-01T10:00:01", None, None, None, None),
+        {"role": "user", "content": "hola", "model": None, "created_at": "2025-01-01T10:00:00", "reasoning": None, "phases": None, "tool_calls": None, "tool_call_id": None},
+        {"role": "assistant", "content": "respuesta", "model": None, "created_at": "2025-01-01T10:00:01", "reasoning": None, "phases": None, "tool_calls": None, "tool_call_id": None},
     ]
     result = _parse_rows(rows)
     assert len(result) == 2
@@ -17,7 +17,7 @@ def test_parse_rows_valid():
 
 def test_parse_rows_incomplete_row():
     rows = [
-        ("user", "hola", None, "2025-01-01T10:00:00"),
+        {"role": "user", "content": "hola", "model": None, "created_at": "2025-01-01T10:00:00", "reasoning": None, "phases": None, "tool_calls": None, "tool_call_id": None},
     ]
     result = _parse_rows(rows)
     assert len(result) == 1

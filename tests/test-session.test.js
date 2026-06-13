@@ -5,9 +5,11 @@ vi.mock('../web/static/modules/utils.js', () => ({
   KairosUtils: { scrollToBottom: vi.fn() }
 }));
 
+const sessionContextModule = await import('../web/static/modules/session-context.js');
+sessionContextModule.SessionContext.setSessionId('test-session-123');
+
 // Override specific mocks for session tests
 global.window.onpopstate = null;
-global.sessionId = 'test-session-123';
 global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
 
 // Load module (IIFE executes, registers event listeners)
@@ -46,7 +48,7 @@ function makeItem(origName) {
 
 describe('KairosSession', () => {
   beforeEach(() => {
-    global.sessionId = 'test-session-123';
+    sessionContextModule.SessionContext.setSessionId('test-session-123');
   });
 
   test('confirmRename empty cancela sin fetch', () => {
@@ -87,15 +89,15 @@ describe('KairosSession', () => {
   });
 
   test('onpopstate restaura sessionId', () => {
-    global.sessionId = 'before';
+    sessionContextModule.SessionContext.setSessionId('before');
     window.onpopstate({ state: { sid: 'restored-sid-456' } });
-    expect(global.sessionId).toBe('restored-sid-456');
+    expect(sessionContextModule.SessionContext.getSessionId()).toBe('restored-sid-456');
   });
 
   test('onpopstate sin sid no cambia', () => {
-    global.sessionId = 'unchanged';
+    sessionContextModule.SessionContext.setSessionId('unchanged');
     window.onpopstate({ state: {} });
-    expect(global.sessionId).toBe('unchanged');
+    expect(sessionContextModule.SessionContext.getSessionId()).toBe('unchanged');
   });
 
   test('htmx:afterSwap llama scrollToBottom', async () => {
@@ -235,7 +237,7 @@ describe('KairosSession', () => {
 
   test('click sobre session-item carga la sesion', () => {
     const item = makeItem('Open me');
-    global.sessionId = 'before-click';
+    sessionContextModule.SessionContext.setSessionId('before-click');
     const fakeEvent = {
       target: {
         classList: { contains: () => false },
@@ -244,6 +246,6 @@ describe('KairosSession', () => {
     };
     const h = global.document._listeners.click;
     if (h) h(fakeEvent);
-    expect(global.sessionId).toBe('test-sid');
+    expect(sessionContextModule.SessionContext.getSessionId()).toBe('test-sid');
   });
 });

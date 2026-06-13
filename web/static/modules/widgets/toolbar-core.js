@@ -94,8 +94,6 @@ function fetchVersionLabel(key, leftSide) {
         .then(function(data) {
             var vSpan = document.createElement('span');
             vSpan.className = 'widget-v-label';
-            vSpan.style.color = '#00ffff';
-            vSpan.style.marginLeft = '8px';
             vSpan.textContent = '[V' + data.version + ']';
             leftSide.appendChild(vSpan);
         }).catch(function(){});

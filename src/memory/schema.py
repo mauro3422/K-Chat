@@ -43,7 +43,7 @@ def init_db_for_path(db_path: str) -> None:
         try:
             cursor.execute("SELECT version FROM schema_version LIMIT 1")
             row = cursor.fetchone()
-            current = row[0] if row else 0
+            current = row["version"] if row else 0
         except Exception:
             logger.exception("Failed to read schema version")
             current = 0

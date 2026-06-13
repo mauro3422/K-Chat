@@ -23,7 +23,7 @@ class SavedWidgetRepository(_BaseRepository):
                 'SELECT MAX(version) FROM widget_versions WHERE widget_id = ?',
                 (widget_id,)
             )
-            next_version = cursor.fetchone()[0]
+            next_version = cursor.fetchone()["MAX(version)"]
             cursor.execute('''
                 INSERT INTO saved_widgets (session_id, widget_id, code, version, description, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -60,10 +60,10 @@ class SavedWidgetRepository(_BaseRepository):
             if row:
                 return {
                     "widget_id": widget_id,
-                    "code": row[0],
-                    "version": row[1],
-                    "description": row[2],
-                    "updated_at": row[3]
+                    "code": row["code"],
+                    "version": row["version"],
+                    "description": row["description"],
+                    "updated_at": row["updated_at"]
                 }
             return None
         except Exception:
@@ -82,9 +82,9 @@ class SavedWidgetRepository(_BaseRepository):
             rows = cursor.fetchall()
             return [
                 {
-                    "version": row[0],
-                    "description": row[1],
-                    "created_at": row[2]
+                    "version": row["version"],
+                    "description": row["description"],
+                    "created_at": row["created_at"]
                 }
                 for row in rows
             ]
@@ -106,9 +106,9 @@ class SavedWidgetRepository(_BaseRepository):
                 return {
                     "widget_id": widget_id,
                     "version": version,
-                    "code": row[0],
-                    "description": row[1],
-                    "created_at": row[2]
+                    "code": row["code"],
+                    "description": row["description"],
+                    "created_at": row["created_at"]
                 }
             return None
         except Exception:

@@ -1,6 +1,6 @@
 # Kairos (K-Chat)
 
-> **v0.0.51** — Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
+> **v0.0.52** — Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
 > No JS frameworks, no complex gateways. Each piece is an independent file.
 
 ## Vision
@@ -117,8 +117,8 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 
 ## Features
 
-### 15 Tools
-`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`, `list_files`, `execute_command`, `search_files`, `edit_file`, `analyze_code`. Auto-registered via `importlib` filesystem scan.
+### 16 Tools
+`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`, `list_files`, `execute_command`, `search_files`, `edit_file`, `analyze_code`, `git_operation`. Auto-registered via `importlib` filesystem scan.
 
 ### Streaming with visual phases
 Each interaction is shown in sequenced phases: reasoning → tools → reasoning → tools → final response. Tools are shown as pills with spinner (calling) and checkmark (ok).

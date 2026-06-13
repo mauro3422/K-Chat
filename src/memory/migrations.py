@@ -164,7 +164,7 @@ def _migration_007_saved_widgets_global(conn: Any, engine: Any) -> None:
         result = engine.execute(conn, "PRAGMA table_info(saved_widgets)")
         columns = result.fetchall()
         for col in columns:
-            if col[1] == 'session_id' and col[5] > 0:
+            if col["name"] == 'session_id' and col["pk"] > 0:
                 needs_migration = True
                 break
 

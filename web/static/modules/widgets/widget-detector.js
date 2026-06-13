@@ -28,53 +28,46 @@ export function registerWidgetDetector() {
       var fullText = state.contentTexts[phaseIdx] || '';
       if (!fullText) return;
 
-      // Find all standard code blocks and inline code blocks that are NOT widgets
+      // Parse all code blocks in one pass to avoid the closing ``` of a widget
+      // block being misinterpreted as the opening of a non-widget block.
       var ignoredRanges = [];
-      var ignoredCodeBlockRegex = /```(?!html-widget)[\s\S]*?(?:```|$)/g;
-      var matchRange;
-      while ((matchRange = ignoredCodeBlockRegex.exec(fullText)) !== null) {
-        ignoredRanges.push({ start: matchRange.index, end: matchRange.index + matchRange[0].length });
+      var rawMatches = [];
+      var codeBlockRegex = /```([\w-]+)(?:\s+([\w-]+))?\s*\n([\s\S]*?)\n```/g;
+      var codeMatch;
+      while ((codeMatch = codeBlockRegex.exec(fullText)) !== null) {
+        var lang = codeMatch[1];
+        var key = codeMatch[2] || null;
+        var code = codeMatch[3].trim();
+        var start = codeMatch.index;
+        var end = start + codeMatch[0].length;
+        if (lang === 'html-widget') {
+          rawMatches.push({ index: start, end: end, key: key, code: code });
+        } else {
+          ignoredRanges.push({ start: start, end: end });
+        }
       }
       var inlineRegex = /`[^`\n]+`/g;
-      while ((matchRange = inlineRegex.exec(fullText)) !== null) {
-        ignoredRanges.push({ start: matchRange.index, end: matchRange.index + matchRange[0].length });
+      while ((codeMatch = inlineRegex.exec(fullText)) !== null) {
+        ignoredRanges.push({ start: codeMatch.index, end: codeMatch.index + codeMatch[0].length });
       }
 
       function isIgnored(idx) {
         for (var i = 0; i < ignoredRanges.length; i++) {
           var range = ignoredRanges[i];
-          if (idx >= range.start && idx < range.end) {
-            return true;
-          }
+          if (idx >= range.start && idx < range.end) return true;
         }
         return false;
       }
 
-      var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```/g;
       var tagRegex = /\[Widget:?\s*([\w\-]+)\]/gi;
-      var rawMatches = [];
-      var match;
-
-      while ((match = widgetRegex.exec(fullText)) !== null) {
-        if (!isIgnored(match.index)) {
+      var tagMatch;
+      while ((tagMatch = tagRegex.exec(fullText)) !== null) {
+        if (!isIgnored(tagMatch.index)) {
           rawMatches.push({
-            index: match.index,
-            end: match.index + match[0].length,
-            key: match[1] || null,
-            code: match[2],
-            full: match[0]
-          });
-        }
-      }
-
-      while ((match = tagRegex.exec(fullText)) !== null) {
-        if (!isIgnored(match.index)) {
-          rawMatches.push({
-            index: match.index,
-            end: match.index + match[0].length,
-            key: match[1],
+            index: tagMatch.index,
+            end: tagMatch.index + tagMatch[0].length,
+            key: tagMatch[1],
             code: '',
-            full: match[0],
             fromTag: true
           });
         }

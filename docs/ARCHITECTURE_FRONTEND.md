@@ -30,6 +30,9 @@
 | `asr-mic.js` | Integración de micrófono y ASR. |
 | `widget-container-renderer.js` | Renderizado de contenedores de widgets. |
 | `stream-bootstrap.js` | Bootstrap de compatibilidad para `window.StreamOrchestrator`. |
+| `log-ui.js` | Logging de eventos UI para el panel de debug. |
+| `stream-context.js` | Gestión del contexto del stream (sesión, modelo, estado). |
+| `stream-contract.js` | Contratos de eventos y tipos del protocolo NDJSON/SSE. |
 
 ## 2. Sistema de streaming: Flujo token → DOM
 
@@ -117,10 +120,12 @@ KairosStream.off('content', callback);
 
 **Observación**: `logStream`, `logUI`, `sessionId`, `defaultModel` se usan sin import — dependen de que el bundle exponga las compatibilidades históricas.
 
+**Nota de ubicación**: `app.js`, `chat-stream.js`, `debug.js` están en la raíz de `web/static/`, no en `web/static/modules/`. El resto de módulos están en `web/static/modules/`.
+
 ## 6. Lo que está bien
 
 - **Separación clara de responsabilidades**: fetch, dispatch, render, retry, error — cada uno su módulo.
-- **Event bus simple y efectivo**: 4 eventos cubren todo el protocolo SSE.
+- **Event bus simple y efectivo**: 5 eventos cubren todo el protocolo SSE.
 - **Retry con backoff exponencial** (2s, 4s, 6s) y distinción auth/rate_limit vs errores recuperables.
 - **State compartido explícito** en vez de globals — el `state` viaja como parámetro.
 - **DOMPurify** para sanitización de HTML renderizado.

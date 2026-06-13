@@ -1,6 +1,4 @@
-from src.memory.repos import ToolCallRepository
-
-_TOOL_CALL_REPO = ToolCallRepository()
+from src.memory.repos import get_repos
 
 DEFINITION = {
     "type": "function",
@@ -27,12 +25,12 @@ def run(**kwargs) -> str:
     if not _session_id:
         return "No active session."
     try:
-        rows = _TOOL_CALL_REPO.get_history(_session_id, limit=min(limit, 20))
+        rows = get_repos().tool_calls.get_history(_session_id, limit=min(limit, 20))
     except Exception:
         return "[ERROR] Could not retrieve the tool history."
     if not rows:
         return "No tools have been used in this session yet."
     lines = []
-    for name, inp, status, ts, *_ in rows:
-        lines.append(f"[{name}] ({status}) input: {inp} - {ts}")
+    for row in rows:
+        lines.append(f"[{row['tool_name']}] ({row['status']}) input: {row['input']} - {row['created_at']}")
     return "\n".join(lines)

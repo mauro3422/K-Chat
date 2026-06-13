@@ -30,7 +30,11 @@ def render_session_messages(session_id: str) -> str:
     ]
 
     for row in msgs:
-        role, content, model, ts, reasoning, phases_str = row[:6]
+        role = row["role"]
+        content = row["content"]
+        ts = row["created_at"]
+        reasoning = row["reasoning"]
+        phases_str = row["phases"]
         matched = msg_tool_map.get(ts, []) if role == "assistant" else []
         phases = None
         if phases_str and phases_str != "[]":
@@ -48,7 +52,7 @@ def render_session_messages(session_id: str) -> str:
     parts.append(
         '<form id="chat-form">'
         '<div class="input-row">'
-        '<input type="text" id="msg-input" placeholder="Escribe un mensaje..." autofocus>'
+        '<textarea id="msg-input" placeholder="Escribe un mensaje..." autofocus rows="1"></textarea>'
         '<button type="button" id="asr-mic-btn" class="asr-mic-idle" title="Grabar voz (Speech-to-Text)">🎤</button>'
         '<button type="submit">Send</button>'
         '</div>'

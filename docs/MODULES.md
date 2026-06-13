@@ -40,8 +40,7 @@ tools/
 memory/
   connection.py       → Connection factory (WAL, busy timeout), engine injection
   schema.py           → init_db + migrations
-  repos/              → 6 repos: Message, Session, ToolCall, WidgetState, Debug, SavedWidget
-  repos/              → 6 repos: Message, Session, ToolCall, WidgetState, Debug, SavedWidget
+  repos/              → 7 repos: Message, Session, ToolCall, WidgetState, Debug, SavedWidget, MemoryIndex
   migrations.py       → 9 idempotent migrations (001→009)
 
 context/

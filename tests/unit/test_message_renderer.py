@@ -22,7 +22,7 @@ def test_render_session_messages_empty():
 
 def test_render_session_messages_plain_user():
     """A plain user message should be rendered with correct CSS classes and label."""
-    msgs = [("user", "Hello world", "model1", 1000.0, "", "[]")]
+    msgs = [{"role": "user", "content": "Hello world", "created_at": 1000.0, "reasoning": "", "phases": "[]"}]
     with (
         patch("web.services.message_renderer.get_session_messages", return_value=msgs),
         patch("web.services.message_renderer.filter_messages_for_ui", return_value=msgs),
@@ -40,12 +40,12 @@ def test_render_session_messages_plain_user():
 
 def test_render_session_messages_assistant_legacy():
     """Legacy assistant message (no phases) renders tool calls and reasoning."""
-    msgs = [("assistant", "Response text", "model1", 2000.0, "Deep thought", "[]")]
+    msgs = [{"role": "assistant", "content": "Response text", "created_at": 2000.0, "reasoning": "Deep thought", "phases": "[]"}]
     with (
         patch("web.services.message_renderer.get_session_messages", return_value=msgs),
         patch("web.services.message_renderer.filter_messages_for_ui", return_value=msgs),
-        patch("web.services.message_renderer.get_tool_history", return_value=[("web_search", "query", "ok", 1500, 1)]),
-        patch("web.services.message_renderer.match_tools_to_msgs", return_value={2000.0: [("web_search", "query", "ok", 1500, 1)]}),
+        patch("web.services.message_renderer.get_tool_history", return_value=[{"tool_name": "web_search", "input": "query", "status": "ok", "created_at": 1500, "turn": 1}]),
+        patch("web.services.message_renderer.match_tools_to_msgs", return_value={2000.0: [{"tool_name": "web_search", "input": "query", "status": "ok", "created_at": 1500, "turn": 1}]}),
         patch("web.services.message_renderer.get_widget_states", return_value={}),
     ):
         html_out = render_session_messages("test-sid")
@@ -61,7 +61,7 @@ def test_render_session_messages_assistant_legacy():
 
 def test_render_session_messages_xss_escaping():
     """User content with HTML/script tags should be HTML-escaped in output."""
-    msgs = [("user", '<script>alert("xss")</script>', "model1", 3000.0, "", "[]")]
+    msgs = [{"role": "user", "content": '<script>alert("xss")</script>', "created_at": 3000.0, "reasoning": "", "phases": "[]"}]
     with (
         patch("web.services.message_renderer.get_session_messages", return_value=msgs),
         patch("web.services.message_renderer.filter_messages_for_ui", return_value=msgs),
@@ -78,9 +78,9 @@ def test_render_session_messages_xss_escaping():
 def test_render_session_messages_multiple():
     """Multiple messages of alternating roles render in order."""
     msgs = [
-        ("user", "First", "m1", 1.0, "", "[]"),
-        ("assistant", "Second", "m1", 2.0, "", "[]"),
-        ("user", "Third", "m1", 3.0, "", "[]"),
+        {"role": "user", "content": "First", "created_at": 1.0, "reasoning": "", "phases": "[]"},
+        {"role": "assistant", "content": "Second", "created_at": 2.0, "reasoning": "", "phases": "[]"},
+        {"role": "user", "content": "Third", "created_at": 3.0, "reasoning": "", "phases": "[]"},
     ]
     with (
         patch("web.services.message_renderer.get_session_messages", return_value=msgs),
@@ -113,7 +113,7 @@ def test_render_session_messages_widget_states_metadata():
 def test_render_session_messages_with_phases():
     """Messages with phases data render phase-structured HTML."""
     phases = json.dumps([{"reasoning": "Step 1", "content": "Part A"}])
-    msgs = [("assistant", "Part A", "model1", 4000.0, "", phases)]
+    msgs = [{"role": "assistant", "content": "Part A", "created_at": 4000.0, "reasoning": "", "phases": phases}]
     with (
         patch("web.services.message_renderer.get_session_messages", return_value=msgs),
         patch("web.services.message_renderer.filter_messages_for_ui", return_value=msgs),

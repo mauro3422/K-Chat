@@ -7,6 +7,7 @@ from src.memory.repos.debug_repository import DebugRepository
 from src.memory.repos.message_repository import MessageRepository
 from src.memory.repos.saved_widget_repository import SavedWidgetRepository
 from src.memory.repos.tool_call_repository import ToolCallRepository
+from src.memory.repos.memory_index_repository import MemoryIndexRepository
 from src.memory.repos.widget_state_repository import WidgetStateRepository
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class SessionRepository(_BaseRepository):
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
-            for repo_cls in [MessageRepository, ToolCallRepository, DebugRepository, WidgetStateRepository, SavedWidgetRepository]:
+            for repo_cls in [MessageRepository, ToolCallRepository, DebugRepository, WidgetStateRepository, SavedWidgetRepository, MemoryIndexRepository]:
                 repo_cls(self._conn).delete_by_session(session_id, cursor)
             cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
             conn.commit()
@@ -74,9 +75,9 @@ class SessionRepository(_BaseRepository):
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sessions WHERE session_id = ?", (session_id,))
             row = cursor.fetchone()
-            if row and (row[0] == '' or row[0] is None):
+            if row and (row['name'] == '' or row['name'] is None):
                 cursor.execute("SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user'", (session_id,))
-                count = cursor.fetchone()[0]
+                count = cursor.fetchone()["COUNT(*)"]
                 return count == 1
             return False
         except Exception:

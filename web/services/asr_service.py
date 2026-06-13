@@ -13,12 +13,6 @@ import subprocess
 import tempfile
 import wave
 from concurrent.futures import ThreadPoolExecutor
-import io
-import logging
-import os
-import subprocess
-import tempfile
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import speech_recognition as sr

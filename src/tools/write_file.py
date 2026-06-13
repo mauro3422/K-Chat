@@ -40,6 +40,10 @@ def run(**kwargs) -> str:
 
         with open(resolved, "w", encoding="utf-8") as f:
             f.write(content)
+        from src.tools._validators import validate_file
+        vresult = validate_file(resolved, content)
+        if vresult['status'] in ('warning', 'error'):
+            return f"[OK] File written correctly to '{path}'. {vresult['message']}"
         return f"[OK] File written correctly to '{path}'."
     except Exception:
         return f"[ERROR] Could not write the file to '{path}'."

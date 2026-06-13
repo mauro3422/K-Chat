@@ -25,7 +25,7 @@ class MemoryIndexRepository(_BaseRepository):
             "SELECT value FROM memory_index WHERE session_id = ? AND key = ?",
             (session_id, key),
         ).fetchone()
-        return row[0] if row else None
+        return row["value"] if row else None
 
     def get_all(self, session_id: str) -> list[dict[str, str]]:
         conn = self._get_conn()
@@ -33,7 +33,7 @@ class MemoryIndexRepository(_BaseRepository):
             "SELECT key, value FROM memory_index WHERE session_id = ? ORDER BY key",
             (session_id,),
         ).fetchall()
-        return [{"key": row[0], "value": row[1]} for row in rows]
+        return [{"key": row["key"], "value": row["value"]} for row in rows]
 
     def delete(self, session_id: str, key: str) -> None:
         with self._transaction() as conn:

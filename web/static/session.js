@@ -121,4 +121,4 @@ document.addEventListener('click', function(e) {
   loadSession(sid);
 });
 
-window.onpopstate = function(e) { if (e.state && e.state.sid) { SessionContext.setSessionId(e.state.sid); globalThis.sessionId = e.state.sid; } };
+window.onpopstate = function(e) { if (e.state && e.state.sid) { SessionContext.setSessionId(e.state.sid); } };

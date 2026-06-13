@@ -11,8 +11,8 @@ def test_normalize_inline_widget_code_repairs_optional_chain_assignment():
 
 def test_extract_inline_widget_states_uses_code_prefix():
     msgs = [
-        ("assistant", "Before\n```html-widget calc\nobj?.foo.bar = 42;\n```\nAfter", None, None, None, None),
-        ("user", "ignore", None, None, None, None),
+        {"role": "assistant", "content": "Before\n```html-widget calc\nobj?.foo.bar = 42;\n```\nAfter"},
+        {"role": "user", "content": "ignore"},
     ]
 
     states = extract_inline_widget_states(msgs)

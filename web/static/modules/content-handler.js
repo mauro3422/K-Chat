@@ -38,7 +38,7 @@ export function registerContentHandler() {
         return;
       }
 
-      var widgetsApi = globalThis.KairosWidgets || KairosWidgets;
+      var widgetsApi = KairosWidgets;
 
       if (state._toolTurnSinceLastContent) {
         state._toolTurnSinceLastContent = false;
