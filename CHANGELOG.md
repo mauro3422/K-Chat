@@ -11,6 +11,7 @@
 - **Error UI**: `showRetryMessage()` y los pills de error ya se dibujan con DOM nodes en vez de `innerHTML`
 - **Tool UI**: `tool-call-renderer.js` dejó de construir pills con `innerHTML`
 - **Reasoning UI**: `reasoning-handler.js` dejó de crear el `details` inicial con `innerHTML`
+- **Content render**: `content-handler.js` ya no asigna `innerHTML` directamente en el loop principal
 - **LLM docs**: `llm/` quedó alineado con `adapters/openai_adapter.py` y sin referencias vivas a `openai_provider.py`
 - **Health doc**: `docs/HEALTH.md` también quedó alineado con `OpenAIAdapter`
 - **Docs**: ROADMAP y LEGOS_AUDIT alineados con el estado real del refactor

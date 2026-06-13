@@ -9,6 +9,27 @@ import { KairosMarkdown } from './markdown-renderer.js';
 import { KairosUtils } from './utils.js';
 var log = getLogger('content-handler');
 
+function setSegmentContent(targetSeg, html, incompleteTail) {
+  if (!targetSeg) return;
+  var renderedHtml = html || '';
+  if (incompleteTail) {
+    renderedHtml += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteTail) + '</code></pre>';
+  }
+
+  if (typeof document.createElement === 'function') {
+    var template = document.createElement('template');
+    if (template && 'innerHTML' in template) {
+      template.innerHTML = renderedHtml;
+      if (typeof targetSeg.replaceChildren === 'function' && template.content) {
+        targetSeg.replaceChildren(template.content.cloneNode(true));
+        return;
+      }
+    }
+  }
+
+  targetSeg.innerHTML = renderedHtml;
+}
+
 export function registerContentHandler() {
 
   KairosStream.on('content', function(token, ctx) {
@@ -129,10 +150,7 @@ export function registerContentHandler() {
             html += segText;
           }
         }
-        if (i === widgetMatches.length && incompleteTail) {
-          html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteTail) + '</code></pre>';
-        }
-        targetSeg.innerHTML = html;
+        setSegmentContent(targetSeg, html, i === widgetMatches.length ? incompleteTail : '');
       }
 
       initAll(bodyDiv);
