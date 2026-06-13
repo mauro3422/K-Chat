@@ -23,6 +23,8 @@
 - **Message render**: `render_session_messages()` y la ruta `/sessions/{session_id}/messages` reciben `repos` explícito; el home/session page dejó de hacer discovery de modelos
 - **Session delete**: `delete_session()` y `SessionRepository.delete_cascade()` ya no resuelven repositorios por su cuenta
 - **Bootstraps**: `app.js` inyecta navegación explícita en `session-page.js` y `chat-form.js`
+- **Bootstrap DOM**: `app.js` toma `sessionId` desde `#app[data-session-id]` y setea la config inicial de ASR por código
+- **Widgets messaging bootstrap**: `startMessageHandler()` quedó explícito y `app.js` le pasa `eventTarget` y `locationOrigin`
 - **Delete cancel**: el cancel de borrado en `session-page.js` ahora restaura un clon del nodo en vez de `outerHTML`
 - **Frontend transición**: `session-page.js`, `chat-form.js`, `retry-handler.js` y `widgets/toolbar-editor.js` dejaron de depender de `innerHTML` directo en rutas críticas
 - **LLM docs**: `llm/` quedó alineado con `adapters/openai_adapter.py` y sin referencias vivas a `openai_provider.py`

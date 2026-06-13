@@ -6,6 +6,8 @@ import './modules/asr-mic.js';
 import { initSessionPage } from './modules/session-page.js';
 import { KairosForm } from './modules/chat-form.js';
 import { KairosDebugPanel } from './modules/debug-panel.js';
+import { setAsrTransportConfig } from './modules/asr/contract.js';
+import { startMessageHandler } from './modules/widgets/index.js';
 
 const nav = {
   location: window.location,
@@ -18,7 +20,11 @@ const nav = {
   },
 };
 
-SessionContext.init(window.__SESSION_ID);
+const appRoot = document.getElementById('app');
+const sessionId = appRoot ? appRoot.dataset.sessionId : '';
+SessionContext.init(sessionId);
+setAsrTransportConfig({ transport: 'websocket' });
+startMessageHandler({ eventTarget: window, locationOrigin: window.location.origin, Observer: window.IntersectionObserver });
 initSessionPage({ nav });
 KairosDebugPanel.bindDebugControls();
 KairosForm.init({ nav });

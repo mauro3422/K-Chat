@@ -42,7 +42,7 @@ def test_home_page():
     response = client.get("/")
     assert response.status_code == 200
     assert "Kairos" in response.text
-    assert "__SESSION_ID" in response.text or "current=" in response.text
+    assert 'data-session-id="' in response.text
 
 
 def test_session_page():

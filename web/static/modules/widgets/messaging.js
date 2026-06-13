@@ -11,9 +11,13 @@ import stateManager from './state-manager.js';
 import { isWidgetCodeEntry } from './contract.js';
 import { ApiClient } from '../api-client.js';
 
-export function startMessageHandler() {
-    if (window.IntersectionObserver && !getWidgetObserver()) {
-        setWidgetObserver(new IntersectionObserver(function(entries) {
+export function startMessageHandler(deps) {
+    var eventTarget = deps && deps.eventTarget ? deps.eventTarget : window;
+    var locationOrigin = deps && deps.locationOrigin ? deps.locationOrigin : window.location.origin;
+    var Observer = deps && deps.Observer ? deps.Observer : IntersectionObserver;
+
+    if (Observer && !getWidgetObserver()) {
+        setWidgetObserver(new Observer(function(entries) {
             for (var j = 0; j < entries.length; j++) {
                 var entry = entries[j];
                 if (entry.isIntersecting) {
@@ -31,10 +35,10 @@ export function startMessageHandler() {
         }, { rootMargin: '100px' }));
     }
 
-    window.addEventListener('message', function(event) {
+    eventTarget.addEventListener('message', function(event) {
         var isWidgetMessage = event.data && (event.data.type === 'resize-iframe' || event.data.type === 'save-widget-state' || event.data.type === 'widget-error');
-        if (isWidgetMessage && event.origin !== 'null' && event.origin !== window.location.origin) return;
-        if (!isWidgetMessage && event.origin !== window.location.origin) return;
+        if (isWidgetMessage && event.origin !== 'null' && event.origin !== locationOrigin) return;
+        if (!isWidgetMessage && event.origin !== locationOrigin) return;
         if (!event.data) return;
 
         if (event.data.type === 'resize-iframe') {

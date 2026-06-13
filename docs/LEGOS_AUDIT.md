@@ -166,6 +166,8 @@ Best next cut:
 - `src.tools` stopped auto-building the registry on import.
 - `web/static/modules/session-page.js` now renders action buttons through DOM APIs and accepts explicit navigation deps, reducing direct `window` coupling.
 - `web/static/modules/session-page.js` now parses the main HTML into fragments instead of assigning `innerHTML` directly.
+- `web/static/app.js` now reads `sessionId` from `#app[data-session-id]` and sets ASR transport config in code instead of via template globals.
+- `web/static/modules/widgets/messaging.js` now receives its event target and origin explicitly from `app.js`.
 - `web/static/modules/debug-panel.js` now renders the main log lists and widget/backend panes via DOM nodes instead of `innerHTML`.
 - `web/static/modules/debug-panel.js` now builds the full debug panel body with DOM nodes instead of string concatenation.
 - `web/static/modules/sidebar-refresh.js` centralizes sidebar refresh so session, stream and lifecycle share one seam.

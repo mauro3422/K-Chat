@@ -194,6 +194,9 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Session page HTML parsing**: el render principal ya arma fragmentos DOM sin asignar `innerHTML` directo
 - [x] **Session page snapshot DOM**: el cancel de borrado ya restaura un clon del nodo, no `outerHTML`
 - [x] **Bootstrap nav injection**: `app.js` inyecta navegación explícita en `session-page.js` y `chat-form.js`
+- [x] **Bootstrap session id**: `app.js` toma la sesión desde `#app[data-session-id]` en vez de `window.__SESSION_ID`
+- [x] **Bootstrap ASR config**: la config inicial de ASR se setea por código en `app.js`, no desde el template
+- [x] **Widgets messaging bootstrap**: `startMessageHandler()` quedó explícito y `app.js` le pasa `eventTarget` y `locationOrigin`
 - [x] **Shared render helpers**: `markdown-renderer.js`, `sidebar-refresh.js` y `content-handler.js` ya pintan con fragmentos DOM en vez de asignar `innerHTML`
 - [x] **Widget iframe builder**: `iframe-builder.js` ya monta loading/error con nodos DOM
 - [x] **Debug panel hardening**: logs UI/stream/widgets/backend renderizados por DOM API, sin `innerHTML` en los listados principales

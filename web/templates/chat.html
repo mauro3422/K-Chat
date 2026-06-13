@@ -8,7 +8,7 @@
 <script src="/static/marked.min.js?v=7"></script>
 <script src="/static/purify.min.js?v=7"></script>
 </head><body>
-<div id="app">
+<div id="app" data-session-id="{{ session_id }}">
 <aside id="sidebar">
   <div class="sidebar-header">
     <div class="brand-container">
@@ -48,12 +48,5 @@
   <div id="debug-content" class="debug-body">Envia un mensaje para ver el debug</div>
 </div>
 </div>
-<script>
-window.__SESSION_ID = "{{ session_id }}";
-window.__ASR_USE_WEBSOCKET__ = true;
-window.__ASR_CONFIG__ = {
-  transport: 'websocket',
-};
-</script>
 <script type="module" src="/static/dist/assets/app.js"></script>
 </body></html>
