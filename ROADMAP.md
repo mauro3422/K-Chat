@@ -201,6 +201,7 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Content render seam**: `content-handler.js` delega el render principal en `replaceChildren`
 - [x] **Markdown render seam**: `markdown-renderer.js` ya no usa `innerHTML` directo en `renderAll()`
 - [x] **Markdown fallback cleanup**: `markdown-renderer.js` centralizó el fallback HTML en una sola función
+- [x] **Sidebar render seam**: `sidebar-refresh.js` usa `replaceChildren` para pintar el sidebar
 - [x] **LLM docs sync**: mapas y arquitectura de `llm/` alineados con `adapters/openai_adapter.py`
 - [x] **Health doc sync**: `docs/HEALTH.md` ya nombra `OpenAIAdapter` en vez de `OpenAIProvider`
 - [x] **Frontend de transición acotado**: compatibilidad legacy aislada en `session-page.js`, `debug-panel.js` y `stream-orchestrator.js`

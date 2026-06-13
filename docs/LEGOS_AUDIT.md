@@ -175,6 +175,7 @@ Best next cut:
 - `web/static/modules/reasoning-handler.js` now creates the initial reasoning block with DOM nodes instead of `innerHTML`.
 - `web/static/modules/content-handler.js` now delegates the main render pass to `setSegmentContent()` with `replaceChildren`.
 - `web/static/modules/markdown-renderer.js` now uses `setRenderedHtml()` in `renderAll()` instead of assigning `innerHTML` directly.
+- `web/static/modules/sidebar-refresh.js` now paints the sidebar via `replaceChildren()` instead of direct `innerHTML`.
 
 ## Prioritized backlog
 
