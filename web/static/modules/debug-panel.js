@@ -45,22 +45,58 @@ function copyToClipboard(text, el) {
   });
 }
 
+function clearElement(el) {
+  while (el.firstChild) {
+    el.removeChild(el.firstChild);
+  }
+}
+
+function createLogItem(className, parts) {
+  var row = document.createElement('div');
+  row.className = className;
+  parts.forEach(function(part) {
+    var span = document.createElement('span');
+    span.className = part.className;
+    span.textContent = part.text;
+    row.appendChild(span);
+  });
+  return row;
+}
+
+function createSingleLogItem(className, text) {
+  var row = document.createElement('div');
+  row.className = className;
+  row.textContent = text;
+  return row;
+}
+
 function renderUILog() {
   var el = document.getElementById('ui-log');
   if (!el) return;
   var events = getUIEvents();
-  el.innerHTML = events.map(function(e) {
-    return '<div class="sl-item"><span class="sl-idx">#' + e.id + '</span><span class="sl-ts">' + e.at + '</span><span class="sl-tag">' + e.label + '</span><span class="sl-data">' + escHtml(e.detail) + '</span></div>';
-  }).join('');
+  clearElement(el);
+  events.forEach(function(e) {
+    el.appendChild(createLogItem('sl-item', [
+      { className: 'sl-idx', text: '#' + e.id },
+      { className: 'sl-ts', text: e.at },
+      { className: 'sl-tag', text: e.label },
+      { className: 'sl-data', text: e.detail }
+    ]));
+  });
 }
 
 function renderStreamLog() {
   var el = document.getElementById('stream-log');
   if (!el) return;
   var events = getStreamEvents();
-  el.innerHTML = events.map(function(e) {
-    return '<div class="sl-item sl-' + e.t.replace('_','-') + '"><span class="sl-ts">' + e.at + '</span><span class="sl-tag">' + e.t + '</span><span class="sl-data">' + escHtml((e.d || '').substring(0, 500)) + '</span></div>';
-  }).join('');
+  clearElement(el);
+  events.forEach(function(e) {
+    el.appendChild(createLogItem('sl-item sl-' + e.t.replace('_','-'), [
+      { className: 'sl-ts', text: e.at },
+      { className: 'sl-tag', text: e.t },
+      { className: 'sl-data', text: (e.d || '').substring(0, 500) }
+    ]));
+  });
 }
 
 function refreshWidgetInfo() {
@@ -68,7 +104,8 @@ function refreshWidgetInfo() {
   if (!el || !KairosWidgets.debug) return;
   var widgetDebug = KairosWidgets.debug;
   if (Object.keys(widgetDebug).length === 0) {
-    el.innerHTML = '<div class="sl-item">(sin widgets aun)</div>';
+    clearElement(el);
+    el.appendChild(createSingleLogItem('sl-item', '(sin widgets aun)'));
     return;
   }
   var lines = [];
@@ -82,7 +119,11 @@ function refreshWidgetInfo() {
       lines.push(new Date(e.t).toISOString().slice(11,23) + ' ' + e.label + ' ' + e.detail);
     });
   }
-  el.innerHTML = '<pre class="db-pre">' + escHtml(lines.join('\n')) + '</pre>';
+  clearElement(el);
+  var pre = document.createElement('pre');
+  pre.className = 'db-pre';
+  pre.textContent = lines.join('\n');
+  el.appendChild(pre);
 }
 
 function refreshBackendLogs() {
@@ -90,15 +131,21 @@ function refreshBackendLogs() {
   if (!el) return;
   ApiClient.loadBackendLogs().then(function(r) { return r.json(); }).then(function(data) {
     var logs = data.logs || [];
-    el.innerHTML = logs.map(function(log) {
+    clearElement(el);
+    logs.forEach(function(log) {
       var ts = new Date(log.ts * 1000).toISOString().slice(11, 23);
       var levelClass = 'sl-info';
       if (log.level === 'ERROR') levelClass = 'sl-error';
       else if (log.level === 'WARNING') levelClass = 'sl-warning';
-      return '<div class="sl-item ' + levelClass + '"><span class="sl-ts">' + ts + '</span><span class="sl-tag">' + log.level + '</span><span class="sl-data">' + escHtml(log.message) + '</span></div>';
-    }).join('');
+      el.appendChild(createLogItem('sl-item ' + levelClass, [
+        { className: 'sl-ts', text: ts },
+        { className: 'sl-tag', text: log.level },
+        { className: 'sl-data', text: log.message }
+      ]));
+    });
   }).catch(function(e) {
-    el.innerHTML = '<div class="sl-item sl-error">Error cargando logs: ' + escHtml(e.message) + '</div>';
+    clearElement(el);
+    el.appendChild(createSingleLogItem('sl-item sl-error', 'Error cargando logs: ' + e.message));
   });
 }
 

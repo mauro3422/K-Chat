@@ -165,6 +165,7 @@ Best next cut:
 - `load_context()` made pure; writing `TOOLS.md` moved into an explicit snapshot step.
 - `src.tools` stopped auto-building the registry on import.
 - `web/static/modules/session-page.js` now renders action buttons through DOM APIs and accepts explicit navigation deps, reducing direct `window` coupling.
+- `web/static/modules/debug-panel.js` now renders the main log lists and widget/backend panes via DOM nodes instead of `innerHTML`.
 
 ## Prioritized backlog
 
