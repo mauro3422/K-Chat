@@ -154,7 +154,7 @@ User input → src/cli.py → core.orchestrator.chat_stream()
 
 ### `src/llm/` — Model Abstraction
 - `protocol.py`: `LLMProvider` runtime-checkable Protocol. Defines `chat()`, `chat_stream()`, `list_models()`.
-- `openai_provider.py`: `OpenAIProvider` — OpenAI/OpenCode SDK wrapper. Lazy `_get_provider()` singleton.
+- `adapters/openai_adapter.py`: `OpenAIAdapter` — OpenAI/OpenCode SDK wrapper. Registry-backed provider implementation.
 - `api_call.py`: `_api_call()` with retry.
 - `client.py`: `chat()` and `chat_stream()` with error handling, tool delta processing, debug usage tracking.
 - `discovery.py`, `verifier.py`, `selector.py`, `failover.py`: model discovery, verification, selection, and failover.

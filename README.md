@@ -43,12 +43,12 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   │   └── history.py      → History reconstruction and UI filtering
 │   ├── llm/
 │   │   ├── protocol.py     → LLMProvider protocol definition
-│   │   ├── openai_provider.py → OpenAI-compatible provider
-│   │   ├── models.py       → Model registry, provider registry
+│   │   ├── adapters/       → OpenAI-compatible provider adapters
+│   │   ├── providers.py    → Provider registry
 │   │   ├── model_state.py  → Thread-safe ModelState class (failed/verified/cached)
 │   │   ├── retry.py        → execute_with_retry() with exponential backoff
 │   │   ├── client.py       → chat() and chat_stream()
-│   │   └── policy.py       → Model discovery, verification, selection
+│   │   └── discovery/selection/failover modules
 │   ├── memory/
 │   │   ├── connection.py   → SQLite connection management
 │   │   ├── schema.py       → Schema init + migrations bootstrap

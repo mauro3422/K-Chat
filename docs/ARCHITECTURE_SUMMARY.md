@@ -45,7 +45,7 @@ CORE (cerebro)
 
 LLM (abstracción de modelo)
 ├── src/llm/protocol.py         (LLMProvider Protocol)
-├── src/llm/openai_provider.py  (adapter OpenAI SDK)
+├── src/llm/adapters/openai_adapter.py  (adapter OpenAI SDK)
 ├── src/llm/api_call.py         (_api_call retry wrapper)
 ├── src/llm/client.py           (chat + chat_stream)
 ├── src/llm/discovery.py        (model discovery/listing)

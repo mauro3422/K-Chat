@@ -195,6 +195,7 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Sidebar refresh shared**: `refreshSidebar()` unificado en `sidebar-refresh.js` para session, stream y lifecycle
 - [x] **Debug listeners injectable**: `bindDebugControls()` usa `eventTarget` inyectable en vez de depender de `window` directo
 - [x] **Stream completion helper**: el post-success del stream salió de `stream-orchestrator.js` a `stream-completion.js`
+- [x] **LLM docs sync**: mapas y arquitectura de `llm/` alineados con `adapters/openai_adapter.py`
 - [x] **Frontend de transición acotado**: compatibilidad legacy aislada en `session-page.js`, `debug-panel.js` y `stream-orchestrator.js`
 - [x] **Docs alineadas**: roadmap, audit lego y changelog actualizados con el estado real del refactor
 

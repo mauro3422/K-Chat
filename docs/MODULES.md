@@ -33,7 +33,7 @@ core/
 
 llm/
   protocol.py         → LLMProvider Protocol (runtime-checkable)
-  openai_provider.py  → OpenAI/OpenCode SDK provider implementation
+  adapters/openai_adapter.py  → OpenAI/OpenCode SDK provider implementation
   model_state.py      → Thread-safe ModelState class (failed/verified/cached models)
   api_call.py         → `_api_call()` wrapper with retry
   retry.py            → execute_with_retry() with exponential backoff
@@ -356,16 +356,16 @@ Use the direct modules instead:
 
 ---
 
-## `src/llm/openai_provider.py`
+## `src/llm/adapters/openai_adapter.py`
 
 **Responsibility:** OpenAI/OpenCode SDK adapter.
 
 **Public Interface:**
-- `class OpenAIProvider` — implements `LLMProvider`
-- `OpenAIProvider.list_models() → list[str]`
-- `_get_provider() → OpenAI` — lazy singleton
+- `class OpenAIAdapter` — implements `LLMProvider`
+- `OpenAIAdapter.list_models() → list[str]`
+- registration happens through `src.llm.adapters`
 
-**Depends on:** `src.config_loader`, `src.llm.providers`, `src.llm.model_state`
+**Depends on:** `src.config_loader`, `src.llm.protocol`, `src.llm.adapters`
 
 ---
 

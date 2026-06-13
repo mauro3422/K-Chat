@@ -8,7 +8,7 @@
 |---|---|---|
 | `__init__.py` | Package marker only |
 | `protocol.py` | Define `LLMProvider` Protocol (interfaz con `chat`, `chat_stream`, `list_models`) |
-| `openai_provider.py` | Implementación concreta de `LLMProvider` usando el SDK de OpenAI |
+| `adapters/openai_adapter.py` | Implementación concreta de `LLMProvider` usando el SDK de OpenAI |
 | `providers.py` | Registro de providers (dict nombre→clase) + singleton lazy `_get_provider()` |
 | `model_state.py` | Estado thread-safe: modelos fallidos, verificados, caché de modelos. Lógica de fallback por prioridad con `_switch_model()`. |
 | `api_call.py` | Wrapper `_api_call()` con backoff exponencial |
@@ -27,7 +27,7 @@ protocol.py (Protocol)
 
 providers.py (Registry)
     ├── _PROVIDER_REGISTRY: dict[str, type[LLMProvider]]
-    ├── register_provider("openai", OpenAIProvider)  ← se registra al importar
+    ├── register_provider("openai", OpenAIAdapter)  ← se registra al importar
     └── _get_provider() → singleton lazy, lee LLM_PROVIDER env
 ```
 
@@ -55,12 +55,12 @@ Stream tiene su propio fallback en `_try_stream()` con la misma lógica.
 ```
 __init__.py ──→ (package marker only)
 protocol.py ──→ (ninguna)
-openai_provider.py ──→ openai, config
-providers.py ──→ protocol, openai_provider
+adapters/openai_adapter.py ──→ openai, config
+providers.py ──→ protocol, adapters
 model_state.py ──→ (ninguna, solo stdlib)
 api_call.py ──→ providers, retry
-discovery.py ──→ model_state, openai_provider
-verifier.py ──→ openai_provider
+discovery.py ──→ model_state, adapters
+verifier.py ──→ adapters
 selector.py ──→ model_state
 failover.py ──→ model_state, discovery
 retry.py ──→ (ninguna, solo stdlib + time)
