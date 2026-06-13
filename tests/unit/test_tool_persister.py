@@ -1,5 +1,5 @@
 """Tests for _tool_persister.py"""
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from src.tools._tool_persister import _persist_tool_results
 
@@ -120,21 +120,3 @@ def test_empty_session_id_skips_db():
         repos=repos,
     )
     repos.tool_calls.record_execution.assert_not_called()
-
-
-def test_fallback_get_repos():
-    tc = MagicMock(); tc.id = "call_1"
-    with patch("src.tools._tool_persister.get_repos") as mock_get:
-        mock_repos = MagicMock()
-        mock_get.return_value = mock_repos
-        _persist_tool_results(
-            tcs_info=[(tc, "test", {})],
-            results={"call_1": ("ok", "success")},
-            session_id="s1",
-            turn=1,
-            history=[],
-            tool_detail=[],
-            repos=None,
-        )
-        mock_get.assert_called_once()
-        mock_repos.tool_calls.record_execution.assert_called_once()

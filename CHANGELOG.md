@@ -15,6 +15,7 @@
 - **Markdown render**: `markdown-renderer.js` dejó de usar `innerHTML` directo en `renderAll()`
 - **Markdown fallback**: `markdown-renderer.js` centralizó el fallback HTML en una sola función
 - **Sidebar render**: `sidebar-refresh.js` dejó de insertar el sidebar con `innerHTML` directo
+- **Tool persister**: `_persist_tool_results()` ahora exige `repos` explícito y no resuelve el repositorio por su cuenta
 - **LLM docs**: `llm/` quedó alineado con `adapters/openai_adapter.py` y sin referencias vivas a `openai_provider.py`
 - **Health doc**: `docs/HEALTH.md` también quedó alineado con `OpenAIAdapter`
 - **Docs**: ROADMAP y LEGOS_AUDIT alineados con el estado real del refactor
