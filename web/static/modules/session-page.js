@@ -6,10 +6,64 @@ import { KairosWidgets } from './widgets/index.js';
 import { KairosForm } from './chat-form.js';
 import stateManager from './widgets/state-manager.js';
 
+function getNav(deps) {
+  if (deps && deps.nav) return deps.nav;
+  return {
+    location: window.location,
+    history: window.history,
+    onDomReady: function(cb) { document.addEventListener('DOMContentLoaded', cb); },
+    onPopState: function(cb) { window.addEventListener('popstate', cb); },
+  };
+}
+
 function refreshSidebar() {
   ApiClient.sidebar().then(function(h){
     document.getElementById('session-list').innerHTML = h;
   }).catch(function(err) { console.error('Sidebar refresh failed:', err); });
+}
+
+function createActionButton(className, title, label) {
+  var button = document.createElement('button');
+  button.className = className;
+  button.title = title;
+  button.textContent = label;
+  return button;
+}
+
+function escapeHtmlAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function setActionButtons(actions, buttonsHtml, buttons) {
+  if (!actions) return;
+  if (typeof actions.replaceChildren === 'function') {
+    actions.replaceChildren.apply(actions, buttons);
+    return;
+  }
+  if ('innerHTML' in actions) {
+    actions.innerHTML = buttonsHtml;
+  }
+}
+
+function setPreviewInput(preview, value) {
+  if (!preview) return null;
+  if (typeof preview.appendChild === 'function') {
+    preview.textContent = '';
+    var input = document.createElement('input');
+    input.className = 'si';
+    input.type = 'text';
+    input.value = value;
+    preview.appendChild(input);
+    return input;
+  }
+  if ('innerHTML' in preview) {
+    preview.innerHTML = '<input class="si" type="text" value="' + escapeHtmlAttr(value) + '">';
+  }
+  return preview.querySelector ? preview.querySelector('.si') : null;
 }
 
 function confirmRename(item, sid) {
@@ -31,9 +85,16 @@ function cancelEdit(item) {
 }
 
 function restoreActions(item) {
-  item.querySelector('.session-actions').innerHTML =
+  var actions = item.querySelector('.session-actions');
+  setActionButtons(
+    actions,
     '<button class="act-rename" title="Renombrar">&#9998;</button>' +
-    '<button class="act-delete" title="Eliminar">&#128465;</button>';
+    '<button class="act-delete" title="Eliminar">&#128465;</button>',
+    [
+      createActionButton('act-rename', 'Renombrar', '✎'),
+      createActionButton('act-delete', 'Eliminar', '🗑')
+    ]
+  );
 }
 
 function bindModelSelect() {
@@ -56,15 +117,16 @@ function loadInitialWidgetStates() {
   }
 }
 
-function initSessionPage() {
+function initSessionPage(deps) {
+  var nav = getNav(deps);
   loadInitialWidgetStates();
   document.addEventListener('htmx:afterSwap', function() {
     KairosUtils.scrollToBottom();
   });
-  document.addEventListener('DOMContentLoaded', bindModelSelect);
-  document.addEventListener('DOMContentLoaded', function() {
-    if (window.location.pathname.startsWith('/sessions/')) {
-      loadSession(SessionContext.getSessionId());
+  nav.onDomReady(bindModelSelect);
+  nav.onDomReady(function() {
+    if (nav.location.pathname.startsWith('/sessions/')) {
+      loadSession(SessionContext.getSessionId(), deps);
     }
   });
   document.addEventListener('click', function(e) {
@@ -82,11 +144,18 @@ function initSessionPage() {
     if (e.target.classList.contains('act-rename')) {
       var preview = item.querySelector('.session-preview');
       item.dataset.origName = preview.textContent;
-      preview.innerHTML = '<input class="si" type="text" value="' + item.dataset.origName.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '">';
-      item.querySelector('.session-actions').innerHTML =
+      var input = setPreviewInput(preview, item.dataset.origName);
+      var renameActions = item.querySelector('.session-actions');
+      setActionButtons(
+        renameActions,
         '<button class="act-confirm act-ok" title="Guardar">&#10003;</button>' +
-        '<button class="act-cancel" title="Cancelar">&#10005;</button>';
-      var inp = preview.querySelector('.si');
+        '<button class="act-cancel" title="Cancelar">&#10005;</button>',
+        [
+          createActionButton('act-confirm act-ok', 'Guardar', '✓'),
+          createActionButton('act-cancel', 'Cancelar', '✕')
+        ]
+      );
+      var inp = input || (preview.querySelector ? preview.querySelector('.si') : null);
       inp.focus(); inp.select();
       inp.onkeydown = function(ev) {
         if (ev.key === 'Enter') { confirmRename(item, sid); }
@@ -97,9 +166,16 @@ function initSessionPage() {
     if (e.target.classList.contains('act-delete')) {
       item.dataset.origHTML = item.outerHTML;
       item.querySelector('.session-preview').textContent = 'Eliminar?';
-      item.querySelector('.session-actions').innerHTML =
+      var deleteActions = item.querySelector('.session-actions');
+      setActionButtons(
+        deleteActions,
         '<button class="act-confirm act-del" title="Confirmar">&#10003;</button>' +
-        '<button class="act-cancel" title="Cancelar">&#10005;</button>';
+        '<button class="act-cancel" title="Cancelar">&#10005;</button>',
+        [
+          createActionButton('act-confirm act-del', 'Confirmar', '✓'),
+          createActionButton('act-cancel', 'Cancelar', '✕')
+        ]
+      );
       return;
     }
     if (e.target.classList.contains('act-cancel')) {
@@ -109,7 +185,7 @@ function initSessionPage() {
     }
     if (e.target.classList.contains('act-confirm') && item.querySelector('.act-del')) {
       ApiClient.deleteSession(sid).then(function() {
-        if (SessionContext.getSessionId() === sid) { window.location.href = '/'; }
+        if (SessionContext.getSessionId() === sid) { nav.location.href = '/'; }
         else { item.remove(); }
       }).catch(function(err) { console.error('Delete failed:', err); });
       return;
@@ -120,12 +196,13 @@ function initSessionPage() {
     }
     loadSession(sid);
   });
-  window.addEventListener('popstate', function(e) { if (e.state && e.state.sid) { SessionContext.setSessionId(e.state.sid); } });
+  nav.onPopState(function(e) { if (e.state && e.state.sid) { SessionContext.setSessionId(e.state.sid); } });
 }
 
-function loadSession(sid) {
+function loadSession(sid, deps) {
+  var nav = getNav(deps);
   SessionContext.setSessionId(sid);
-  window.history.replaceState({sid: sid}, '', '/sessions/' + sid);
+  nav.history.replaceState({sid: sid}, '', '/sessions/' + sid);
   if (typeof KairosWidgets.reset === 'function') {
     KairosWidgets.reset();
   }

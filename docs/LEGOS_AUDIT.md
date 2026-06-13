@@ -164,6 +164,7 @@ Best next cut:
 - `HistoryMessage` introduced as the stable row/DTO boundary for history parsing and rendering.
 - `load_context()` made pure; writing `TOOLS.md` moved into an explicit snapshot step.
 - `src.tools` stopped auto-building the registry on import.
+- `web/static/modules/session-page.js` now renders action buttons through DOM APIs and accepts explicit navigation deps, reducing direct `window` coupling.
 
 ## Prioritized backlog
 

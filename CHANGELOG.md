@@ -7,7 +7,7 @@
 ## [v0.0.54] — 2026-06-13 — [Detalle](changelogs/v0.0.54.md)
 - **Lego hardening**: runtime sin wrappers viejos, historial tipado con `HistoryMessage`, sesión/memoria con contratos explícitos
 - **Contexto**: `load_context()` quedó pura; `TOOLS.md` se genera fuera del flujo de lectura
-- **Web/frontend**: routers y servicios usan imports directos; transiciones legacy quedaron acotadas
+- **Web/frontend**: routers y servicios usan imports directos; transiciones legacy quedaron acotadas, y `session-page.js` dejó de reconstruir acciones con `innerHTML`
 - **Docs**: ROADMAP y LEGOS_AUDIT alineados con el estado real del refactor
 
 ## [v0.0.53] — 2026-06-13 — [Detalle](changelogs/v0.0.53.md)
