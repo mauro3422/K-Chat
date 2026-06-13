@@ -2,10 +2,16 @@ import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
 import { KairosDebugPanel } from './debug-panel.js';
 
+function clearElement(el) {
+  while (el.firstChild) {
+    el.removeChild(el.firstChild);
+  }
+}
+
 export function markPillAsError(pill) {
   pill.className = C.TC_ITEM_ERROR;
   var toolName = pill.getAttribute('data-tool') || 'tool';
-  pill.innerHTML = '&#10007; ' + KairosUtils.escHtml(toolName);
+  pill.textContent = '✗ ' + toolName;
   KairosDebugPanel.logUI('tool_error', toolName);
 }
 
@@ -16,12 +22,27 @@ export function markCallingPillsError(asstDiv) {
 export function showRetryMessage(asstDiv, reason) {
   var bodyDiv = asstDiv.querySelector('.' + C.MSG_BODY);
   if (bodyDiv) {
-      bodyDiv.innerHTML =
-      '<div class="' + C.ERROR_CARD + '">' +
-        '<div class="error-header">&#9888; Respuesta interrumpida</div>' +
-        '<div class="error-detail">' + KairosUtils.escHtml(reason) + '</div>' +
-        '<button type="button" class="error-retry-btn">Reintentar envío</button>' +
-      '</div>';
+    clearElement(bodyDiv);
+    var card = document.createElement('div');
+    card.className = C.ERROR_CARD;
+
+    var header = document.createElement('div');
+    header.className = 'error-header';
+    header.textContent = '⚠ Respuesta interrumpida';
+
+    var detail = document.createElement('div');
+    detail.className = 'error-detail';
+    detail.textContent = reason;
+
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'error-retry-btn';
+    button.textContent = 'Reintentar envío';
+
+    card.appendChild(header);
+    card.appendChild(detail);
+    card.appendChild(button);
+    bodyDiv.appendChild(card);
   }
 }
 

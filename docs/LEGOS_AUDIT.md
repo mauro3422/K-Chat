@@ -170,6 +170,7 @@ Best next cut:
 - `web/static/modules/sidebar-refresh.js` centralizes sidebar refresh so session, stream and lifecycle share one seam.
 - `web/static/modules/debug-panel.js` can receive an injected event target for ASR listeners instead of binding to `window` directly.
 - `web/static/modules/stream-completion.js` isolates the stream success post-processing path from `stream-orchestrator.js`.
+- `web/static/modules/stream-error-handler.js` now builds retry/error UI with DOM nodes instead of `innerHTML`.
 
 ## Prioritized backlog
 
