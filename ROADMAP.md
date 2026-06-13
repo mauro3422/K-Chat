@@ -191,6 +191,7 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Tools y web**: el loader ya no dispara build al importar; routers y servicios web usan imports directos
 - [x] **Session page hardening**: acciones de sesión renderizadas por DOM API y navegación encapsulada tras dependencia explícita
 - [x] **Debug panel hardening**: logs UI/stream/widgets/backend renderizados por DOM API, sin `innerHTML` en los listados principales
+- [x] **Debug panel core render**: `refreshDebug()` armado con DOM explícito en lugar de concatenación HTML
 - [x] **Frontend de transición acotado**: compatibilidad legacy aislada en `session-page.js`, `debug-panel.js` y `stream-orchestrator.js`
 - [x] **Docs alineadas**: roadmap, audit lego y changelog actualizados con el estado real del refactor
 

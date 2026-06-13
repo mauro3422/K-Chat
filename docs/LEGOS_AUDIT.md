@@ -166,6 +166,7 @@ Best next cut:
 - `src.tools` stopped auto-building the registry on import.
 - `web/static/modules/session-page.js` now renders action buttons through DOM APIs and accepts explicit navigation deps, reducing direct `window` coupling.
 - `web/static/modules/debug-panel.js` now renders the main log lists and widget/backend panes via DOM nodes instead of `innerHTML`.
+- `web/static/modules/debug-panel.js` now builds the full debug panel body with DOM nodes instead of string concatenation.
 
 ## Prioritized backlog
 

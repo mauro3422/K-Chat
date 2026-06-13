@@ -70,6 +70,66 @@ function createSingleLogItem(className, text) {
   return row;
 }
 
+function createCopyButton(action, label, marginLeft) {
+  var button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'db-copy';
+  button.setAttribute('data-copy-action', action);
+  button.textContent = label;
+  if (marginLeft) {
+    button.style.marginLeft = marginLeft;
+  }
+  return button;
+}
+
+function createSection(title, copyAction, options) {
+  var section = document.createElement(options && options.details ? 'details' : 'div');
+  section.className = 'db-section';
+  if (options && options.details && options.open) {
+    section.open = true;
+  }
+
+  if (options && options.summaryText) {
+    var summary = document.createElement('summary');
+    summary.textContent = options.summaryText;
+    section.appendChild(summary);
+  }
+
+  if (title) {
+    var strong = document.createElement('strong');
+    strong.textContent = title;
+    section.appendChild(strong);
+  }
+
+  if (copyAction) {
+    section.appendChild(createCopyButton(copyAction, options && options.copyLabel ? options.copyLabel : 'copy', options && options.copyMarginLeft));
+  }
+
+  if (options && options.preText !== undefined) {
+    var pre = document.createElement('pre');
+    pre.className = 'db-pre';
+    pre.textContent = options.preText;
+    section.appendChild(pre);
+  }
+
+  if (options && options.bodyNode) {
+    section.appendChild(options.bodyNode);
+  }
+
+  return section;
+}
+
+function createDetailsSection(summaryText, copyAction, options) {
+  return createSection(null, copyAction, {
+    details: true,
+    open: options && options.open,
+    summaryText: summaryText,
+    copyLabel: options && options.copyLabel,
+    preText: options && options.preText,
+    bodyNode: options && options.bodyNode,
+  });
+}
+
 function renderUILog() {
   var el = document.getElementById('ui-log');
   if (!el) return;
@@ -290,21 +350,72 @@ function refreshDebug() {
   if (!dc) return;
   dc.textContent = 'Cargando...';
   ApiClient.loadDebugInfo(SessionContext.getSessionId()).then(function(r) { return r.json(); }).then(function(d) {
-    var h = '';
-    h += '<div class="db-section"><strong>Modelo:</strong> ' + (d.model || '-') + ' <button type="button" class="db-copy" data-copy-action="all" style="margin-left:8px">copy ALL</button></div>';
-    h += '<div class="db-section"><strong>Razonamiento:</strong><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml(d.reasoning || '(ninguno)') + '</pre></div>';
-    h += '<div class="db-section"><strong>Tools:</strong><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml(JSON.stringify(d.tool_calls || [], null, 2)) + '</pre></div>';
-    h += '<div class="db-section"><strong>System Prompt:</strong><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml((d.system_prompt || '').substring(0, 2000)) + '</pre></div>';
-    h += '<details class="db-section"><summary>History (' + ((d.history_before||[]).length) + ')</summary><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml(JSON.stringify(d.history_before || [], null, 2)) + '</pre></details>';
-    h += '<div class="db-section"><strong>ASR Transport:</strong> ' + escHtml(getAsrTransportStatus()) + '</div>';
-    h += '<div class="db-section"><strong>ASR Text:</strong><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml(getAsrVisibleText()) + '</pre></div>';
-    h += '<details class="db-section" open><summary>ASR Live (' + (getAsrTelemetryBuffer().length) + ')</summary><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml(JSON.stringify(getAsrTelemetryBuffer(), null, 2)) + '</pre></details>';
-    h += '<details class="db-section"><summary>ASR (' + ((d.asr_telemetry||[]).length) + ')</summary><button type="button" class="db-copy" data-copy-action="text">copy</button><pre class="db-pre">' + escHtml(JSON.stringify(d.asr_telemetry || [], null, 2)) + '</pre></details>';
-    h += '<details class="db-section" open><summary>Stream</summary><button type="button" class="db-copy" data-copy-action="stream">copy</button><div id="stream-log" class="sl-container"></div></details>';
-    h += '<details class="db-section"><summary>UI</summary><button type="button" class="db-copy" data-copy-action="ui">copy</button><div id="ui-log" class="sl-container"></div></details>';
-    h += '<details class="db-section" open><summary>Widgets</summary><button type="button" class="db-copy" data-copy-action="widgets">copy</button><div id="widget-log" class="sl-container"></div></details>';
-    h += '<details class="db-section"><summary>Backend Logs</summary><button type="button" class="db-copy" data-copy-action="backend">copy</button><div id="backend-log" class="sl-container">Cargando...</div></details>';
-    dc.innerHTML = h;
+    clearElement(dc);
+    dc.appendChild(createSection('Modelo:', 'all', {
+      copyLabel: 'copy ALL',
+      copyMarginLeft: '8px',
+      bodyNode: document.createTextNode(' ' + (d.model || '-'))
+    }));
+    dc.appendChild(createSection('Razonamiento:', 'text', {
+      preText: d.reasoning || '(ninguno)'
+    }));
+    dc.appendChild(createSection('Tools:', 'text', {
+      preText: JSON.stringify(d.tool_calls || [], null, 2)
+    }));
+    dc.appendChild(createSection('System Prompt:', 'text', {
+      preText: (d.system_prompt || '').substring(0, 2000)
+    }));
+    dc.appendChild(createDetailsSection('History (' + ((d.history_before||[]).length) + ')', 'text', {
+      preText: JSON.stringify(d.history_before || [], null, 2)
+    }));
+    dc.appendChild(createSection('ASR Transport:', null, {
+      bodyNode: document.createTextNode(' ' + getAsrTransportStatus())
+    }));
+    dc.appendChild(createSection('ASR Text:', 'text', {
+      preText: getAsrVisibleText()
+    }));
+    dc.appendChild(createDetailsSection('ASR Live (' + (getAsrTelemetryBuffer().length) + ')', 'text', {
+      open: true,
+      preText: JSON.stringify(getAsrTelemetryBuffer(), null, 2)
+    }));
+    dc.appendChild(createDetailsSection('ASR (' + ((d.asr_telemetry||[]).length) + ')', 'text', {
+      preText: JSON.stringify(d.asr_telemetry || [], null, 2)
+    }));
+    dc.appendChild(createDetailsSection('Stream', 'stream', {
+      open: true,
+      bodyNode: (function() {
+        var node = document.createElement('div');
+        node.id = 'stream-log';
+        node.className = 'sl-container';
+        return node;
+      })()
+    }));
+    dc.appendChild(createDetailsSection('UI', 'ui', {
+      bodyNode: (function() {
+        var node = document.createElement('div');
+        node.id = 'ui-log';
+        node.className = 'sl-container';
+        return node;
+      })()
+    }));
+    dc.appendChild(createDetailsSection('Widgets', 'widgets', {
+      open: true,
+      bodyNode: (function() {
+        var node = document.createElement('div');
+        node.id = 'widget-log';
+        node.className = 'sl-container';
+        return node;
+      })()
+    }));
+    dc.appendChild(createDetailsSection('Backend Logs', 'backend', {
+      bodyNode: (function() {
+        var node = document.createElement('div');
+        node.id = 'backend-log';
+        node.className = 'sl-container';
+        node.textContent = 'Cargando...';
+        return node;
+      })()
+    }));
     renderStreamLog();
     renderUILog();
     refreshWidgetInfo();
