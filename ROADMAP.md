@@ -199,6 +199,7 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Tool call pills DOM**: `tool-call-renderer.js` dejó de pintar pills con `innerHTML`
 - [x] **Reasoning DOM**: `reasoning-handler.js` dejó de crear el bloque inicial con `innerHTML`
 - [x] **Content render seam**: `content-handler.js` delega el render principal en `replaceChildren`
+- [x] **Markdown render seam**: `markdown-renderer.js` ya no usa `innerHTML` directo en `renderAll()`
 - [x] **LLM docs sync**: mapas y arquitectura de `llm/` alineados con `adapters/openai_adapter.py`
 - [x] **Health doc sync**: `docs/HEALTH.md` ya nombra `OpenAIAdapter` en vez de `OpenAIProvider`
 - [x] **Frontend de transición acotado**: compatibilidad legacy aislada en `session-page.js`, `debug-panel.js` y `stream-orchestrator.js`

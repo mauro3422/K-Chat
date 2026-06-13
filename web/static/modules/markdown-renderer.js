@@ -26,6 +26,27 @@ function parse(text) {
   return marked.parse(cleanText);
 }
 
+function setRenderedHtml(el, sanitized) {
+  if (typeof document.createElement !== 'function') {
+    el.innerHTML = sanitized;
+    return;
+  }
+
+  var template = document.createElement('template');
+  if (!template || !('innerHTML' in template)) {
+    el.innerHTML = sanitized;
+    return;
+  }
+
+  template.innerHTML = sanitized;
+  if (typeof el.replaceChildren === 'function' && template.content) {
+    el.replaceChildren(template.content.cloneNode(true));
+    return;
+  }
+
+  el.innerHTML = sanitized;
+}
+
 function renderAll() {
   if (typeof marked === 'undefined') return;
   
@@ -52,7 +73,7 @@ function renderAll() {
       
       var parsed = parse(decoded);
       var sanitized = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsed, purifyConfig) : parsed;
-      el.innerHTML = sanitized;
+      setRenderedHtml(el, sanitized);
       
       // Forzar inicialización inmediata (no usar lazy loading al cargar sesión existente)
       initAll(el, true);
