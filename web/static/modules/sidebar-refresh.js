@@ -1,24 +1,33 @@
 import { ApiClient } from './api-client.js';
 
+function htmlToFragment(html) {
+  if (typeof document.createRange === 'function') {
+    var range = document.createRange();
+    if (range && typeof range.createContextualFragment === 'function') {
+      return range.createContextualFragment(html);
+    }
+  }
+
+  var fragment = document.createDocumentFragment();
+  var holder = document.createElement('div');
+  holder.textContent = html;
+  fragment.appendChild(holder);
+  return fragment;
+}
+
 function setSidebarHtml(el, html) {
-  if (typeof document.createElement !== 'function') {
-    el.innerHTML = html;
+  var fragment = htmlToFragment(html);
+  if (typeof el.replaceChildren === 'function') {
+    el.replaceChildren(fragment);
     return;
   }
 
-  var template = document.createElement('template');
-  if (!template || !('innerHTML' in template)) {
-    el.innerHTML = html;
-    return;
+  if (typeof el.appendChild === 'function') {
+    while (el.firstChild) {
+      el.removeChild(el.firstChild);
+    }
+    el.appendChild(fragment);
   }
-
-  template.innerHTML = html;
-  if (typeof el.replaceChildren === 'function' && template.content) {
-    el.replaceChildren(template.content.cloneNode(true));
-    return;
-  }
-
-  el.innerHTML = html;
 }
 
 export function refreshSidebar(containerId) {

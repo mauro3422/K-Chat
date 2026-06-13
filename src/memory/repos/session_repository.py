@@ -38,25 +38,19 @@ class SessionRepository(_BaseRepository):
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
 
-    def delete_cascade(self, session_id: str, repos: "Repositories" | None = None) -> None:
+    def delete_cascade(self, session_id: str, repos: "Repositories") -> None:
         """Delete a session and all related rows in one transaction."""
         conn = self._get_conn()
-        if repos is None:
-            from src.memory.repos import get_repos
-
-            r = get_repos(conn)
-        else:
-            r = repos
         try:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM widget_versions WHERE session_id = ?", (session_id,))
             for repo in (
-                r.messages,
-                r.tool_calls,
-                r.debug,
-                r.widget_states,
-                r.saved_widgets,
-                r.memory_index,
+                repos.messages,
+                repos.tool_calls,
+                repos.debug,
+                repos.widget_states,
+                repos.saved_widgets,
+                repos.memory_index,
             ):
                 repo.delete_by_session(session_id, cursor)
             self.delete(session_id, cursor=cursor)

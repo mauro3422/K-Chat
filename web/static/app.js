@@ -7,7 +7,18 @@ import { initSessionPage } from './modules/session-page.js';
 import { KairosForm } from './modules/chat-form.js';
 import { KairosDebugPanel } from './modules/debug-panel.js';
 
+const nav = {
+  location: window.location,
+  history: window.history,
+  onDomReady(cb) {
+    document.addEventListener('DOMContentLoaded', cb);
+  },
+  onPopState(cb) {
+    window.addEventListener('popstate', cb);
+  },
+};
+
 SessionContext.init(window.__SESSION_ID);
-initSessionPage();
+initSessionPage({ nav });
 KairosDebugPanel.bindDebugControls();
-KairosForm.init();
+KairosForm.init({ nav });

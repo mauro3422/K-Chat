@@ -8,14 +8,13 @@ import stateManager from './widgets/state-manager.js';
 
 import { refreshSidebar } from './sidebar-refresh.js';
 
+var deletedItemSnapshots = new WeakMap();
+
 function getNav(deps) {
-  if (deps && deps.nav) return deps.nav;
-  return {
-    location: window.location,
-    history: window.history,
-    onDomReady: function(cb) { document.addEventListener('DOMContentLoaded', cb); },
-    onPopState: function(cb) { window.addEventListener('popstate', cb); },
-  };
+  if (!deps || !deps.nav) {
+    throw new Error('initSessionPage requires nav');
+  }
+  return deps.nav;
 }
 
 function createActionButton(className, title, label) {
@@ -56,15 +55,36 @@ function setActionButtons(actions, buttonsHtml, buttons) {
 
 function setMainHtml(main, html) {
   if (!main) return;
-  if (typeof document.createElement === 'function') {
-    var template = document.createElement('template');
-    if (template && 'innerHTML' in template && typeof main.replaceChildren === 'function') {
-      template.innerHTML = html;
-      main.replaceChildren(template.content.cloneNode(true));
-      return;
+  var fragment = null;
+  if (typeof document.createRange === 'function') {
+    var range = document.createRange();
+    if (range && typeof range.createContextualFragment === 'function') {
+      fragment = range.createContextualFragment(html);
     }
   }
-  main.innerHTML = html;
+  if (!fragment && typeof DOMParser === 'function') {
+    var parsed = new DOMParser().parseFromString(html, 'text/html');
+    fragment = document.createDocumentFragment();
+    while (parsed.body.firstChild) {
+      fragment.appendChild(parsed.body.firstChild);
+    }
+  }
+  if (!fragment) {
+    fragment = document.createDocumentFragment();
+    var holder = document.createElement('div');
+    holder.textContent = html;
+    fragment.appendChild(holder);
+  }
+  if (typeof main.replaceChildren === 'function') {
+    main.replaceChildren(fragment);
+    return;
+  }
+  if (typeof main.appendChild === 'function') {
+    while (main.firstChild) {
+      main.removeChild(main.firstChild);
+    }
+    main.appendChild(fragment);
+  }
 }
 
 function setPreviewInput(preview, value) {
@@ -185,7 +205,7 @@ function initSessionPage(deps) {
       return;
     }
     if (e.target.classList.contains('act-delete')) {
-      item.dataset.origHTML = item.outerHTML;
+      deletedItemSnapshots.set(item, item.cloneNode(true));
       item.querySelector('.session-preview').textContent = 'Eliminar?';
       var deleteActions = item.querySelector('.session-actions');
       setActionButtons(
@@ -200,8 +220,13 @@ function initSessionPage(deps) {
       return;
     }
     if (e.target.classList.contains('act-cancel')) {
-      if (item.dataset.origHTML) { item.outerHTML = item.dataset.origHTML; }
-      else { cancelEdit(item); }
+      var snapshot = deletedItemSnapshots.get(item);
+      if (snapshot && item.parentNode) {
+        item.parentNode.replaceChild(snapshot, item);
+        deletedItemSnapshots.delete(item);
+      } else {
+        cancelEdit(item);
+      }
       return;
     }
     if (e.target.classList.contains('act-confirm') && item.querySelector('.act-del')) {
@@ -215,7 +240,7 @@ function initSessionPage(deps) {
       confirmRename(item, sid);
       return;
     }
-    loadSession(sid);
+    loadSession(sid, deps);
   });
   nav.onPopState(function(e) { if (e.state && e.state.sid) { SessionContext.setSessionId(e.state.sid); } });
 }

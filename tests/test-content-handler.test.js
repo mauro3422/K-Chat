@@ -19,6 +19,26 @@ function makeEl(tag) {
       child.parentNode = this;
       return child;
     },
+    replaceChildren() {
+      var nodes = Array.prototype.slice.call(arguments);
+      this.children = [];
+      this.innerHTML = '';
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node && node.children && node.tagName === '#DOCUMENT-FRAGMENT') {
+          for (var j = 0; j < node.children.length; j++) {
+            this.appendChild(node.children[j]);
+          }
+        } else if (node) {
+          this.appendChild(node);
+        }
+      }
+      this.innerHTML = this.children.map(function(child) {
+        if (child && typeof child.innerHTML === 'string' && child.innerHTML) return child.innerHTML;
+        if (child && typeof child.outerHTML === 'string') return child.outerHTML;
+        return child && typeof child.textContent === 'string' ? child.textContent : '';
+      }).join('');
+    },
     removeChild(child) {
       var idx = this.children.indexOf(child);
       if (idx >= 0) this.children.splice(idx, 1);
@@ -117,6 +137,22 @@ global.document = {
   querySelector: function() { return null; },
   querySelectorAll: function() { return []; },
   createElement: function(tag) { return makeEl(tag); },
+  createDocumentFragment: function() {
+    var frag = makeEl('fragment');
+    frag.tagName = '#DOCUMENT-FRAGMENT';
+    return frag;
+  },
+  createRange: function() {
+    return {
+      createContextualFragment: function(html) {
+        var frag = global.document.createDocumentFragment();
+        var holder = makeEl('div');
+        holder.innerHTML = html;
+        frag.appendChild(holder);
+        return frag;
+      }
+    };
+  },
   addEventListener: function() {},
   body: { appendChild: function() {} },
   _listeners: {}

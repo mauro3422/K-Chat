@@ -6,9 +6,18 @@ import { KairosWidgets, initAll } from './widgets/index.js';
 function decodeHtml(html) {
   // Solo decodificar si contiene entidades HTML escapadas
   if (html.indexOf('&lt;') >= 0 || html.indexOf('&gt;') >= 0 || html.indexOf('&quot;') >= 0) {
-    var txt = document.createElement('textarea');
-    txt.innerHTML = html;
-    return txt.value;
+    if (typeof DOMParser === 'function') {
+      var parsed = new DOMParser().parseFromString('<textarea>' + html + '</textarea>', 'text/html');
+      var textarea = parsed.querySelector('textarea');
+      if (textarea) {
+        return textarea.value;
+      }
+    }
+    return html
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
   }
   return html;
 }
@@ -26,29 +35,34 @@ function parse(text) {
   return marked.parse(cleanText);
 }
 
-function fallbackSetHtml(el, sanitized) {
-  el.innerHTML = sanitized;
+function htmlToFragment(html) {
+  if (typeof document.createRange === 'function') {
+    var range = document.createRange();
+    if (range && typeof range.createContextualFragment === 'function') {
+      return range.createContextualFragment(html);
+    }
+  }
+
+  var fragment = document.createDocumentFragment();
+  var holder = document.createElement('div');
+  holder.textContent = html;
+  fragment.appendChild(holder);
+  return fragment;
 }
 
 function setRenderedHtml(el, sanitized) {
-  if (typeof document.createElement !== 'function') {
-    fallbackSetHtml(el, sanitized);
+  var fragment = htmlToFragment(sanitized);
+  if (typeof el.replaceChildren === 'function') {
+    el.replaceChildren(fragment);
     return;
   }
 
-  var template = document.createElement('template');
-  if (!template || !('innerHTML' in template)) {
-    fallbackSetHtml(el, sanitized);
-    return;
+  if (typeof el.appendChild === 'function') {
+    while (el.firstChild) {
+      el.removeChild(el.firstChild);
+    }
+    el.appendChild(fragment);
   }
-
-  template.innerHTML = sanitized;
-  if (typeof el.replaceChildren === 'function' && template.content) {
-    el.replaceChildren(template.content.cloneNode(true));
-    return;
-  }
-
-  fallbackSetHtml(el, sanitized);
 }
 
 function renderAll() {

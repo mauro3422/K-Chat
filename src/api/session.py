@@ -33,8 +33,9 @@ def rename_session(session_id: str, name: str, session_repo: SessionRepository |
 
 def delete_session(
     session_id: str,
+    *,
+    repos: Repositories,
     session_repo: SessionRepository | None = None,
-    repos: Repositories | None = None,
     deps: SessionOpsDeps | None = None,
 ) -> None:
     """Elimina una sesión y todos sus registros hijos asociados."""

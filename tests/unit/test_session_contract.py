@@ -44,6 +44,7 @@ def test_delete_session_uses_injected_contract():
 
     delete_session(
         "sess-x",
+        repos=fake_repos,
         deps=SessionOpsDeps(
             repos=fake_repos,
         ),

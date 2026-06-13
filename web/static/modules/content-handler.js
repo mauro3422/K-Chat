@@ -16,18 +16,32 @@ function setSegmentContent(targetSeg, html, incompleteTail) {
     renderedHtml += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteTail) + '</code></pre>';
   }
 
-  if (typeof document.createElement === 'function') {
-    var template = document.createElement('template');
-    if (template && 'innerHTML' in template) {
-      template.innerHTML = renderedHtml;
-      if (typeof targetSeg.replaceChildren === 'function' && template.content) {
-        targetSeg.replaceChildren(template.content.cloneNode(true));
-        return;
-      }
+  var fragment = null;
+  if (typeof document.createRange === 'function') {
+    var range = document.createRange();
+    if (range && typeof range.createContextualFragment === 'function') {
+      fragment = range.createContextualFragment(renderedHtml);
     }
   }
 
-  targetSeg.innerHTML = renderedHtml;
+  if (!fragment) {
+    fragment = document.createDocumentFragment();
+    var holder = document.createElement('div');
+    holder.textContent = renderedHtml;
+    fragment.appendChild(holder);
+  }
+
+  if (typeof targetSeg.replaceChildren === 'function') {
+    targetSeg.replaceChildren(fragment);
+    return;
+  }
+
+  if (typeof targetSeg.appendChild === 'function') {
+    while (targetSeg.firstChild) {
+      targetSeg.removeChild(targetSeg.firstChild);
+    }
+    targetSeg.appendChild(fragment);
+  }
 }
 
 export function registerContentHandler() {

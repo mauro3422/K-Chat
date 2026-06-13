@@ -165,9 +165,11 @@ Best next cut:
 - `load_context()` made pure; writing `TOOLS.md` moved into an explicit snapshot step.
 - `src.tools` stopped auto-building the registry on import.
 - `web/static/modules/session-page.js` now renders action buttons through DOM APIs and accepts explicit navigation deps, reducing direct `window` coupling.
+- `web/static/modules/session-page.js` now parses the main HTML into fragments instead of assigning `innerHTML` directly.
 - `web/static/modules/debug-panel.js` now renders the main log lists and widget/backend panes via DOM nodes instead of `innerHTML`.
 - `web/static/modules/debug-panel.js` now builds the full debug panel body with DOM nodes instead of string concatenation.
 - `web/static/modules/sidebar-refresh.js` centralizes sidebar refresh so session, stream and lifecycle share one seam.
+- `web/static/modules/markdown-renderer.js`, `sidebar-refresh.js` and `content-handler.js` now paint with DOM fragments instead of assigning `innerHTML` directly.
 - `web/static/modules/debug-panel.js` can receive an injected event target for ASR listeners instead of binding to `window` directly.
 - `web/static/modules/stream-completion.js` isolates the stream success post-processing path from `stream-orchestrator.js`.
 - `web/static/modules/stream-error-handler.js` now builds retry/error UI with DOM nodes instead of `innerHTML`.
@@ -181,6 +183,9 @@ Best next cut:
 - `web/services/message_renderer.py` now threads `repos` through the message/tool lookup seam instead of resolving helpers implicitly.
 - `web/routers/pages.py` now uses `FALLBACK_MODEL` for the shell page instead of running model discovery during render.
 - `web/static/modules/session-page.js`, `chat-form.js`, `retry-handler.js`, and `widgets/toolbar-editor.js` now avoid direct `innerHTML` in their critical paths.
+- `src/api/session.py` and `SessionRepository.delete_cascade()` now require explicit repos for session deletion.
+- `web/static/app.js` now injects navigation explicitly into `session-page.js` and `chat-form.js`.
+- `web/static/modules/session-page.js` now restores delete cancel via cloned nodes instead of `outerHTML`.
 
 ## Prioritized backlog
 
@@ -189,7 +194,7 @@ Best next cut:
 1. Keep shrinking any leftover transition surfaces if the legacy entrypoints are still needed.
 2. Keep shrinking legacy globals and transition surfaces where practical.
 3. ~~Split `src/llm/policy.py` into smaller policy objects or modules.~~ ✅ DONE
-4. Finish reducing the last frontend transition surfaces in `session-page.js`, `debug-panel.js`, and `stream-orchestrator.js`.
+4. Finish reducing the last frontend transition surfaces in `session-page.js`, `debug-panel.js`, `chat-form.js`, and `stream-orchestrator.js`.
 5. Split `memory connection + schema + repos` into lifecycle pieces.
 
 ### P1

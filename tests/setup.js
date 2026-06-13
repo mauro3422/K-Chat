@@ -17,6 +17,25 @@ class MockElement {
   set textContent(v) { this._textContent = v; }
   get outerHTML() { return '<' + this.tagName + '>'; }
   appendChild(child) { this.children.push(child); child.parentNode = this; return child; }
+  replaceChildren(...nodes) {
+    this.children = [];
+    this._innerHTML = '';
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      if (node && node.children && node.tagName === '#DOCUMENT-FRAGMENT') {
+        for (var j = 0; j < node.children.length; j++) {
+          this.appendChild(node.children[j]);
+        }
+      } else if (node) {
+        this.appendChild(node);
+      }
+    }
+    this._innerHTML = this.children.map(function(child) {
+      if (child && typeof child._innerHTML === 'string' && child._innerHTML) return child._innerHTML;
+      if (child && typeof child.outerHTML === 'string') return child.outerHTML;
+      return child && typeof child.textContent === 'string' ? child.textContent : '';
+    }).join('');
+  }
   insertAdjacentElement(pos, el) {
     if (pos === 'beforebegin' && this.parentNode) {
       var p = this.parentNode;
@@ -137,6 +156,21 @@ global.document = {
   querySelector: () => null,
   querySelectorAll: () => [],
   createElement: (tag) => new MockElement(tag),
+  createDocumentFragment: () => {
+    var frag = new MockElement('fragment');
+    frag.tagName = '#DOCUMENT-FRAGMENT';
+    return frag;
+  },
+  createRange: () => ({
+    createContextualFragment(html) {
+      var frag = global.document.createDocumentFragment();
+      var holder = new MockElement('div');
+      holder._innerHTML = html;
+      holder.textContent = html.replace(/<[^>]+>/g, '');
+      frag.appendChild(holder);
+      return frag;
+    }
+  }),
   addEventListener: (evt, cb) => {
     global.document._listeners = global.document._listeners || {};
     global.document._listeners[evt] = cb;

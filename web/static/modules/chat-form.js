@@ -9,11 +9,11 @@ var currentController = null;
 var currentRetryController = createRetryController();
 var retryClickBound = false;
 
-function getNav() {
-  return {
-    location: window.location,
-    history: window.history,
-  };
+function getNav(deps) {
+  if (!deps || !deps.nav) {
+    throw new Error('KairosForm.init requires nav');
+  }
+  return deps.nav;
 }
 
 function getDefaultModel() {
@@ -64,7 +64,7 @@ function retryLastMessage() {
   }
 }
 
-function init() {
+function init(deps) {
   if (!retryClickBound) {
     retryClickBound = true;
     document.addEventListener('click', function(event) {
@@ -93,7 +93,7 @@ function init() {
 
     lastUserMessageText = text;
 
-    var nav = getNav();
+    var nav = getNav(deps);
     var oldUrl = nav.location.pathname;
     if (oldUrl === '/') { nav.history.replaceState({sid:SessionContext.getSessionId()}, '', '/sessions/' + SessionContext.getSessionId()); }
 

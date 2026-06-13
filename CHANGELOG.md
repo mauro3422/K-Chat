@@ -8,6 +8,8 @@
 - **Lego hardening**: runtime sin wrappers viejos, historial tipado con `HistoryMessage`, sesión/memoria con contratos explícitos
 - **Contexto**: `load_context()` quedó pura; `TOOLS.md` se genera fuera del flujo de lectura
 - **Web/frontend**: routers y servicios usan imports directos; transiciones legacy quedaron acotadas, `session-page.js` dejó de reconstruir acciones con `innerHTML`, `debug-panel.js` dejó de pintar los listados principales y el core render con `innerHTML`, `refreshSidebar()` quedó compartido, los listeners del panel son inyectables y el post-success del stream quedó separado
+- **Render helpers**: `markdown-renderer.js`, `sidebar-refresh.js` y `content-handler.js` ya usan fragmentos DOM en vez de asignar `innerHTML` directo
+- **Session page HTML**: el render principal de `session-page.js` ya parsea a fragmentos DOM y el cancel de borrado restaura un clon del nodo
 - **Error UI**: `showRetryMessage()` y los pills de error ya se dibujan con DOM nodes en vez de `innerHTML`
 - **Tool UI**: `tool-call-renderer.js` dejó de construir pills con `innerHTML`
 - **Reasoning UI**: `reasoning-handler.js` dejó de crear el `details` inicial con `innerHTML`
@@ -18,6 +20,9 @@
 - **Tool persister**: `_persist_tool_results()` ahora exige `repos` explícito y no resuelve el repositorio por su cuenta
 - **Tool history**: `get_tool_history` ya no resuelve `get_repos()` internamente y recibe `_repos` explícito
 - **Message render**: `render_session_messages()` y la ruta `/sessions/{session_id}/messages` reciben `repos` explícito; el home/session page dejó de hacer discovery de modelos
+- **Session delete**: `delete_session()` y `SessionRepository.delete_cascade()` ya no resuelven repositorios por su cuenta
+- **Bootstraps**: `app.js` inyecta navegación explícita en `session-page.js` y `chat-form.js`
+- **Delete cancel**: el cancel de borrado en `session-page.js` ahora restaura un clon del nodo en vez de `outerHTML`
 - **Frontend transición**: `session-page.js`, `chat-form.js`, `retry-handler.js` y `widgets/toolbar-editor.js` dejaron de depender de `innerHTML` directo en rutas críticas
 - **LLM docs**: `llm/` quedó alineado con `adapters/openai_adapter.py` y sin referencias vivas a `openai_provider.py`
 - **Health doc**: `docs/HEALTH.md` también quedó alineado con `OpenAIAdapter`

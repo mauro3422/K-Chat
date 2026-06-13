@@ -31,7 +31,13 @@ global.window = Object.assign(global.window || {}, {
 });
 
 var chatModule = await import('../web/static/modules/session-page.js');
-chatModule.initSessionPage();
+var testNav = {
+  location: global.window.location,
+  history: global.window.history,
+  onDomReady(cb) { global.document.addEventListener('DOMContentLoaded', cb); },
+  onPopState(cb) { global.window.addEventListener('popstate', cb); }
+};
+chatModule.initSessionPage({ nav: testNav });
 
 // Ensure KairosForm and KairosWidgets have mock reset/retry
 widgetsModule.KairosWidgets.startMessageHandler = () => {};
@@ -60,7 +66,7 @@ describe('chat-stream', () => {
     const prevSid = sessionContextModule.SessionContext.getSessionId();
     global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
     global.document.getElementById = () => mockElement();
-    chatModule.loadSession('custom-sid-999');
+    chatModule.loadSession('custom-sid-999', { nav: testNav });
     expect(sessionContextModule.SessionContext.getSessionId()).toBe('custom-sid-999');
     sessionContextModule.SessionContext.setSessionId(prevSid);
   });
@@ -70,7 +76,7 @@ describe('chat-stream', () => {
     global.document.getElementById = () => mockElement();
     window._lastState = undefined;
     window._lastUrl = undefined;
-    chatModule.loadSession('sid-replace-test');
+    chatModule.loadSession('sid-replace-test', { nav: testNav });
     expect(window._lastState).toBeDefined();
     expect(window._lastState.sid).toBe('sid-replace-test');
     expect(window._lastUrl).toContain('sid-replace-test');
@@ -80,7 +86,7 @@ describe('chat-stream', () => {
     global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
     global.document.getElementById = () => mockElement();
     window._lastUrl = undefined;
-    chatModule.loadSession('url-test-sid');
+    chatModule.loadSession('url-test-sid', { nav: testNav });
     expect(window._lastUrl).toContain('url-test-sid');
   });
 
@@ -88,7 +94,7 @@ describe('chat-stream', () => {
     let wReset = false;
     widgetsModule.KairosWidgets.reset = () => { wReset = true; };
     global.document.getElementById = () => mockElement();
-    chatModule.loadSession('sid-reset');
+    chatModule.loadSession('sid-reset', { nav: testNav });
     expect(wReset).toBe(true);
   });
 
@@ -96,7 +102,7 @@ describe('chat-stream', () => {
     let fReset = false;
     formModule.KairosForm.reset = () => { fReset = true; };
     global.document.getElementById = () => mockElement();
-    chatModule.loadSession('sid-reset');
+    chatModule.loadSession('sid-reset', { nav: testNav });
     expect(fReset).toBe(true);
   });
 
@@ -127,7 +133,7 @@ describe('chat-stream', () => {
     let fetchedUrl = null;
     global.fetch = (url) => { fetchedUrl = url; return Promise.resolve({ text: () => Promise.resolve('') }); };
     global.document.getElementById = () => mockElement();
-    chatModule.loadSession('url-test-sid');
+    chatModule.loadSession('url-test-sid', { nav: testNav });
     expect(fetchedUrl).toBe('/sessions/url-test-sid/messages');
   });
 
@@ -136,7 +142,7 @@ describe('chat-stream', () => {
     const fetchPromise = Promise.resolve({ text: () => Promise.resolve('<div id="messages"></div>') });
     global.fetch = () => fetchPromise;
     global.document.getElementById = () => mockElement();
-    chatModule.loadSession('render-test-sid');
+    chatModule.loadSession('render-test-sid', { nav: testNav });
     await fetchPromise;
     await new Promise(r => setTimeout(r, 10));
     expect(KairosMarkdown.renderAll).toHaveBeenCalled();

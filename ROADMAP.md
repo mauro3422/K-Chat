@@ -187,9 +187,14 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Runtime sin wrappers viejos**: eliminados `src/api/{llm,models,history,health}.py` y `save_message()` legacy; los callers ya van a los módulos reales
 - [x] **Historial tipado**: `HistoryMessage` como contrato estable; `rebuild_history()` exige `messages_repo` explícito
 - [x] **Sesión y memoria**: cascade delete movido al repositorio; `conn_fn` salió del contrato de sesión
+- [x] **Session delete explícito**: `delete_session()` y `SessionRepository.delete_cascade()` ya exigen `repos` explícito, sin fallback de resolución
 - [x] **Contexto puro**: `load_context()` ya no escribe archivos; la generación de `TOOLS.md` quedó como paso explícito
 - [x] **Tools y web**: el loader ya no dispara build al importar; routers y servicios web usan imports directos
 - [x] **Session page hardening**: acciones de sesión renderizadas por DOM API y navegación encapsulada tras dependencia explícita
+- [x] **Session page HTML parsing**: el render principal ya arma fragmentos DOM sin asignar `innerHTML` directo
+- [x] **Session page snapshot DOM**: el cancel de borrado ya restaura un clon del nodo, no `outerHTML`
+- [x] **Bootstrap nav injection**: `app.js` inyecta navegación explícita en `session-page.js` y `chat-form.js`
+- [x] **Shared render helpers**: `markdown-renderer.js`, `sidebar-refresh.js` y `content-handler.js` ya pintan con fragmentos DOM en vez de asignar `innerHTML`
 - [x] **Debug panel hardening**: logs UI/stream/widgets/backend renderizados por DOM API, sin `innerHTML` en los listados principales
 - [x] **Debug panel core render**: `refreshDebug()` armado con DOM explícito en lugar de concatenación HTML
 - [x] **Sidebar refresh shared**: `refreshSidebar()` unificado en `sidebar-refresh.js` para session, stream y lifecycle

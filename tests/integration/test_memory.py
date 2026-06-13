@@ -87,7 +87,7 @@ def test_session_crud():
             break
     assert found
 
-    delete_session(sid)
+    delete_session(sid, repos=get_repos())
     sessions = get_sessions()
     assert not any(s[0] == sid for s in sessions)
 
@@ -152,7 +152,7 @@ def test_get_sessions_empty():
 
 
 def test_delete_session_nonexistent():
-    delete_session("no-existe")
+    delete_session("no-existe", repos=get_repos())
 
 
 def test_rename_session_empty_name():

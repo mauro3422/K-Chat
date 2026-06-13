@@ -14,10 +14,23 @@ global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
 
 const sessionModule = await import('../web/static/modules/session-page.js');
 const KairosSession = sessionModule.KairosSessionPage;
-sessionModule.initSessionPage();
+const testNav = {
+  location: global.window.location,
+  history: global.window.history,
+  onDomReady(cb) { global.document.addEventListener('DOMContentLoaded', cb); },
+  onPopState(cb) { global.window.addEventListener('popstate', cb); }
+};
+sessionModule.initSessionPage({ nav: testNav });
 
 function makeItem(origName) {
   var inpObj = { value: origName || '', focus: function(){}, select: function(){}, onkeydown: null };
+  var parent = {
+    replaced: null,
+    replaceChild: function(node, oldNode) {
+      this.replaced = { node: node, oldNode: oldNode };
+      return node;
+    }
+  };
   var preview = {
     textContent: origName || '',
     children: [],
@@ -40,6 +53,8 @@ function makeItem(origName) {
     outerHTML: '<div class="session-item"></div>',
     preview: preview,
     actions: actions,
+    parentNode: parent,
+    cloneNode: function() { return makeItem(origName); },
     _inp: inpObj,
     querySelector: function(sel) {
       if (sel === '.session-preview') return this.preview;
@@ -162,23 +177,8 @@ describe('KairosSession', () => {
     expect(typeof item.preview.children[0].onkeydown).toBe('function');
   });
 
-  test('click delete guarda origHTML', () => {
+  test('click delete guarda snapshot', () => {
     const item = makeItem('To Delete');
-    item.dataset.origHTML = undefined;
-    const fakeEvent = {
-      target: {
-        classList: { contains: (c) => c === 'act-delete' },
-        closest: () => item
-      }
-    };
-    const h = global.document._listeners.click;
-    if (h) h(fakeEvent);
-    expect(item.dataset.origHTML).toBeDefined();
-  });
-
-  test('click delete muestra Eliminar?', () => {
-    const item = makeItem('To Delete');
-    item.dataset.origHTML = undefined;
     const fakeEvent = {
       target: {
         classList: { contains: (c) => c === 'act-delete' },
@@ -190,26 +190,44 @@ describe('KairosSession', () => {
     expect(item.preview.textContent).toBe('Eliminar?');
   });
 
-  test('click cancel restaura outerHTML', () => {
-    const restoreHTML = '<div class="restored">original</div>';
+  test('click delete muestra Eliminar?', () => {
+    const item = makeItem('To Delete');
+    const fakeEvent = {
+      target: {
+        classList: { contains: (c) => c === 'act-delete' },
+        closest: () => item
+      }
+    };
+    const h = global.document._listeners.click;
+    if (h) h(fakeEvent);
+    expect(item.preview.textContent).toBe('Eliminar?');
+  });
+
+  test('click cancel restaura snapshot', () => {
     const item = makeItem('');
-    item.dataset.origHTML = restoreHTML;
-    item.outerHTML = 'temporary';
     const fakeEvent = {
       target: {
         classList: { contains: (c) => c === 'act-cancel' },
         closest: () => item
       }
     };
+    const deleteEvent = {
+      target: {
+        classList: { contains: (c) => c === 'act-delete' },
+        closest: () => item
+      }
+    };
     const h = global.document._listeners.click;
+    if (h) h(deleteEvent);
     if (h) h(fakeEvent);
-    expect(item.outerHTML).toBe(restoreHTML);
+    expect(item.parentNode.replaced).toBeTruthy();
+    expect(item.parentNode.replaced.oldNode).toBe(item);
+    expect(item.parentNode.replaced.node).not.toBe(item);
   });
 
   test('click cancel sin origHTML restaura nombre', () => {
     const item = makeItem('Edited');
     item.dataset.origName = 'Original';
-    item.dataset.origHTML = undefined;
     const fakeEvent = {
       target: {
         classList: { contains: (c) => c === 'act-cancel' },

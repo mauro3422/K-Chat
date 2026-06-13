@@ -2,6 +2,7 @@ from fastapi import APIRouter, Form
 from fastapi.responses import HTMLResponse
 
 from src.api.session import rename_session, delete_session
+from src.memory.repos import get_repos
 
 router = APIRouter()
 
@@ -14,5 +15,5 @@ def rename(session_id: str, name: str = Form(...)) -> HTMLResponse:
 
 @router.post("/sessions/{session_id}/delete")
 def delete(session_id: str) -> HTMLResponse:
-    delete_session(session_id)
+    delete_session(session_id, repos=get_repos())
     return HTMLResponse("OK")
