@@ -15,6 +15,36 @@ import { getInitializedWidgets } from './iframe.js';
 import { getLogger } from '../logger.js';
 var cbLog = getLogger('iframe-builder');
 
+function createLoadingNode() {
+    var node = document.createElement('div');
+    node.className = 'widget-loading';
+    node.textContent = 'Cargando widget...';
+    return node;
+}
+
+function createErrorNode(key) {
+    var wrap = document.createElement('div');
+    wrap.className = 'widget-error';
+    wrap.style.color = '#ff6b6b';
+    wrap.style.padding = '16px';
+    wrap.style.background = '#161b22';
+    wrap.style.borderRadius = '8px';
+    wrap.style.borderLeft = '3px solid #ff6b6b';
+
+    var strong = document.createElement('strong');
+    strong.textContent = 'Widget "' + KairosUtils.escHtml(key) + '" no encontrado';
+    wrap.appendChild(strong);
+    wrap.appendChild(document.createElement('br'));
+
+    var span = document.createElement('span');
+    span.style.color = '#8b949e';
+    span.style.fontSize = '13px';
+    span.textContent = 'Este widget fue creado en una sesión anterior pero no se guardó oficialmente. Para persistirlo, usá save_widget en el chat.';
+    wrap.appendChild(span);
+
+    return wrap;
+}
+
 export function createIframe(container, id, code) {
     if (container.dataset.initialized) return;
     container.dataset.initialized = '1';
@@ -29,7 +59,7 @@ export function createIframe(container, id, code) {
 
     var placeholder = document.createElement('div');
     placeholder.className = 'widget-placeholder';
-    placeholder.innerHTML = '<div class="widget-loading">Cargando widget...</div>';
+    placeholder.appendChild(createLoadingNode());
     container.appendChild(placeholder);
 
     function mountIframe(widgetCode) {
@@ -73,7 +103,10 @@ export function createIframe(container, id, code) {
                 .catch(function(err) {
                     log(id, 'fetch-error', err.message);
                     cbLog.error('fetch_failed', { id: id, key: key, err: err.message });
-                    placeholder.innerHTML = '<div class="widget-error" style="color: #ff6b6b; padding: 16px; background: #161b22; border-radius: 8px; border-left: 3px solid #ff6b6b;"><strong>Widget "' + KairosUtils.escHtml(key) + '" no encontrado</strong><br><span style="color: #8b949e; font-size: 13px;">Este widget fue creado en una sesión anterior pero no se guardó oficialmente.<br>Para persistirlo, usá <code>save_widget</code> en el chat.</span></div>';
+                    if (placeholder.firstChild) {
+                        placeholder.removeChild(placeholder.firstChild);
+                    }
+                    placeholder.appendChild(createErrorNode(key));
                 });
         }
     } else {

@@ -170,6 +170,7 @@ Best next cut:
 - `web/static/modules/debug-panel.js` now builds the full debug panel body with DOM nodes instead of string concatenation.
 - `web/static/modules/sidebar-refresh.js` centralizes sidebar refresh so session, stream and lifecycle share one seam.
 - `web/static/modules/markdown-renderer.js`, `sidebar-refresh.js` and `content-handler.js` now paint with DOM fragments instead of assigning `innerHTML` directly.
+- `web/static/modules/widgets/iframe-builder.js` now mounts loading/error states with DOM nodes instead of raw HTML strings.
 - `web/static/modules/debug-panel.js` can receive an injected event target for ASR listeners instead of binding to `window` directly.
 - `web/static/modules/stream-completion.js` isolates the stream success post-processing path from `stream-orchestrator.js`.
 - `web/static/modules/stream-error-handler.js` now builds retry/error UI with DOM nodes instead of `innerHTML`.

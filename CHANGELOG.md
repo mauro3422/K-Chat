@@ -9,6 +9,7 @@
 - **Contexto**: `load_context()` quedó pura; `TOOLS.md` se genera fuera del flujo de lectura
 - **Web/frontend**: routers y servicios usan imports directos; transiciones legacy quedaron acotadas, `session-page.js` dejó de reconstruir acciones con `innerHTML`, `debug-panel.js` dejó de pintar los listados principales y el core render con `innerHTML`, `refreshSidebar()` quedó compartido, los listeners del panel son inyectables y el post-success del stream quedó separado
 - **Render helpers**: `markdown-renderer.js`, `sidebar-refresh.js` y `content-handler.js` ya usan fragmentos DOM en vez de asignar `innerHTML` directo
+- **Widget builder**: `iframe-builder.js` ya monta loading/error con nodos DOM
 - **Session page HTML**: el render principal de `session-page.js` ya parsea a fragmentos DOM y el cancel de borrado restaura un clon del nodo
 - **Error UI**: `showRetryMessage()` y los pills de error ya se dibujan con DOM nodes en vez de `innerHTML`
 - **Tool UI**: `tool-call-renderer.js` dejó de construir pills con `innerHTML`
