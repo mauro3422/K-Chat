@@ -26,15 +26,19 @@ function parse(text) {
   return marked.parse(cleanText);
 }
 
+function fallbackSetHtml(el, sanitized) {
+  el.innerHTML = sanitized;
+}
+
 function setRenderedHtml(el, sanitized) {
   if (typeof document.createElement !== 'function') {
-    el.innerHTML = sanitized;
+    fallbackSetHtml(el, sanitized);
     return;
   }
 
   var template = document.createElement('template');
   if (!template || !('innerHTML' in template)) {
-    el.innerHTML = sanitized;
+    fallbackSetHtml(el, sanitized);
     return;
   }
 
@@ -44,7 +48,7 @@ function setRenderedHtml(el, sanitized) {
     return;
   }
 
-  el.innerHTML = sanitized;
+  fallbackSetHtml(el, sanitized);
 }
 
 function renderAll() {

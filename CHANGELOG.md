@@ -13,6 +13,7 @@
 - **Reasoning UI**: `reasoning-handler.js` dejó de crear el `details` inicial con `innerHTML`
 - **Content render**: `content-handler.js` ya no asigna `innerHTML` directamente en el loop principal
 - **Markdown render**: `markdown-renderer.js` dejó de usar `innerHTML` directo en `renderAll()`
+- **Markdown fallback**: `markdown-renderer.js` centralizó el fallback HTML en una sola función
 - **LLM docs**: `llm/` quedó alineado con `adapters/openai_adapter.py` y sin referencias vivas a `openai_provider.py`
 - **Health doc**: `docs/HEALTH.md` también quedó alineado con `OpenAIAdapter`
 - **Docs**: ROADMAP y LEGOS_AUDIT alineados con el estado real del refactor
