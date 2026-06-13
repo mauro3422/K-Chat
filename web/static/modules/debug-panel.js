@@ -15,6 +15,11 @@ import {
 let debugVisible = false;
 let debugControlsBound = false;
 
+function getDebugEventTarget(deps) {
+  if (deps && deps.eventTarget) return deps.eventTarget;
+  return window;
+}
+
 function timeToMs(t) {
   if (!t) return null;
   var p = t.split(':');
@@ -433,13 +438,14 @@ function toggleDebug() {
   if (debugVisible) refreshDebug();
 }
 
-function bindDebugControls() {
+function bindDebugControls(deps) {
   if (debugControlsBound) return;
   debugControlsBound = true;
-  window.addEventListener(ASR_EVENT_TELEMETRY, function() {
+  var eventTarget = getDebugEventTarget(deps);
+  eventTarget.addEventListener(ASR_EVENT_TELEMETRY, function() {
     if (debugVisible) refreshDebug();
   });
-  window.addEventListener(ASR_EVENT_TEXT, function() {
+  eventTarget.addEventListener(ASR_EVENT_TEXT, function() {
     if (debugVisible) refreshDebug();
   });
   document.addEventListener('click', function(event) {

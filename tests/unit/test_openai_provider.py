@@ -2,14 +2,14 @@ from unittest.mock import patch, MagicMock
 from collections.abc import Generator
 import pytest
 
-from src.llm.openai_provider import OpenAIProvider
+from src.llm.adapters.openai_adapter import OpenAIAdapter
 from src.llm.protocol import UnifiedRequest
 
 
-class TestOpenAIProviderConstructor:
+class TestOpenAIAdapterConstructor:
     def test_passes_api_key_and_base_url(self):
-        with patch("src.llm.openai_provider.OpenAI") as mock_openai:
-            OpenAIProvider(api_key="my-key", base_url="https://my.url")
+        with patch("src.llm.adapters.openai_adapter.OpenAI") as mock_openai:
+            OpenAIAdapter(api_key="my-key", base_url="https://my.url")
             call_kwargs = mock_openai.call_args.kwargs
             assert call_kwargs["api_key"] == "my-key"
             assert call_kwargs["base_url"] == "https://my.url"
@@ -17,13 +17,13 @@ class TestOpenAIProviderConstructor:
             assert call_kwargs["max_retries"] == 0
 
     def test_provider_name(self):
-        with patch("src.llm.openai_provider.OpenAI"):
-            provider = OpenAIProvider(api_key="key", base_url="https://url")
+        with patch("src.llm.adapters.openai_adapter.OpenAI"):
+            provider = OpenAIAdapter(api_key="key", base_url="https://url")
             assert provider.provider_name == "openai"
 
     def test_supports_flags(self):
-        with patch("src.llm.openai_provider.OpenAI"):
-            provider = OpenAIProvider(api_key="key", base_url="https://url")
+        with patch("src.llm.adapters.openai_adapter.OpenAI"):
+            provider = OpenAIAdapter(api_key="key", base_url="https://url")
             assert provider.supports_streaming is True
             assert provider.supports_tools is True
             assert provider.supports_reasoning is True

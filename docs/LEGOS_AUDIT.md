@@ -168,6 +168,7 @@ Best next cut:
 - `web/static/modules/debug-panel.js` now renders the main log lists and widget/backend panes via DOM nodes instead of `innerHTML`.
 - `web/static/modules/debug-panel.js` now builds the full debug panel body with DOM nodes instead of string concatenation.
 - `web/static/modules/sidebar-refresh.js` centralizes sidebar refresh so session, stream and lifecycle share one seam.
+- `web/static/modules/debug-panel.js` can receive an injected event target for ASR listeners instead of binding to `window` directly.
 
 ## Prioritized backlog
 
