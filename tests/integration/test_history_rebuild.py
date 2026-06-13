@@ -33,7 +33,7 @@ def save_message(
         phases=phases,
         tool_calls=tool_calls,
         tool_call_id=tool_call_id,
-    ))
+    ), repos=get_repos())
 
 
 def test_read_write_file_tools():
@@ -119,7 +119,7 @@ def test_history_rebuild_preserves_tools():
     )
 
     # 5. Fetch messages from database
-    msgs = get_session_messages(session_id)
+    msgs = get_session_messages(session_id, repos=get_repos())
     assert len(msgs) == 4
 
     # Check that tool_calls and tool_call_id columns are retrieved correctly

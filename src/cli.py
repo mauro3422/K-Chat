@@ -8,7 +8,7 @@ from src.core.orchestrator import generate_session_id
 from src.core.orchestrator_contract import OrchestratorDeps
 from src.memory.schema import init_db
 from src.api.messages import save_message_record
-from src.memory.repos import MessageRecord
+from src.memory.repos import MessageRecord, get_repos
 from src.cli_commands import handle_command
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -54,8 +54,9 @@ def main() -> None:
                 respuesta += token
             print("\n")
 
-            save_message_record(MessageRecord(session_id=session_id, role="user", content=entry, model="kairos"))
-            save_message_record(MessageRecord(session_id=session_id, role="assistant", content=respuesta, model="kairos"))
+            repos = get_repos()
+            save_message_record(MessageRecord(session_id=session_id, role="user", content=entry, model="kairos"), repos=repos)
+            save_message_record(MessageRecord(session_id=session_id, role="assistant", content=respuesta, model="kairos"), repos=repos)
         except Exception as e:
             logger.error("Error en chat_stream: %s", e)
 

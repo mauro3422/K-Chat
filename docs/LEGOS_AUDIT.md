@@ -178,6 +178,8 @@ Best next cut:
 - `web/static/modules/sidebar-refresh.js` now paints the sidebar via `replaceChildren()` instead of direct `innerHTML`.
 - `src/tools/_tool_persister.py` now requires explicit repos instead of resolving `get_repos()` internally.
 - `src/tools/get_tool_history.py` now requires `_repos` explicitly instead of resolving `get_repos()` internally.
+- `web/services/message_renderer.py` now threads `repos` through the message/tool lookup seam instead of resolving helpers implicitly.
+- `web/routers/pages.py` now uses `FALLBACK_MODEL` for the shell page instead of running model discovery during render.
 - `web/static/modules/session-page.js`, `chat-form.js`, `retry-handler.js`, and `widgets/toolbar-editor.js` now avoid direct `innerHTML` in their critical paths.
 
 ## Prioritized backlog

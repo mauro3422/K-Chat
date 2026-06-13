@@ -1,5 +1,6 @@
 import json
 import html
+import inspect
 
 from src.core.history_ui import filter_messages_for_ui, match_tools_to_msgs
 from src.api.messages import get_session_messages
@@ -14,6 +15,13 @@ def _resolve_render_deps(deps: MessageRenderDeps | None = None) -> MessageRender
     return deps or MessageRenderDeps()
 
 
+def _call_with_repos(fn, session_id: str, repos, *args):
+    params = inspect.signature(fn).parameters
+    if 'repos' in params:
+        return fn(session_id, *args, repos=repos)
+    return fn(session_id, *args)
+
+
 def render_session_messages(session_id: str, deps: MessageRenderDeps | None = None) -> str:
     """Renders the HTML message list for a session, including widgets and phases."""
     _deps = _resolve_render_deps(deps)
@@ -24,11 +32,12 @@ def render_session_messages(session_id: str, deps: MessageRenderDeps | None = No
     get_widget_states_fn = _deps.get_widget_states_fn or get_widget_states
     extract_inline_widget_states_fn = _deps.extract_inline_widget_states_fn or extract_inline_widget_states
     render_msg_fn = _deps.render_msg_fn or render_msg_with_phases
+    repos = _deps.repos
 
-    raw_msgs = get_session_messages_fn(session_id)
+    raw_msgs = _call_with_repos(get_session_messages_fn, session_id, repos)
     msgs = filter_messages_fn(raw_msgs)
 
-    all_tools = get_tool_history_fn(session_id, 100)
+    all_tools = _call_with_repos(get_tool_history_fn, session_id, repos, 100)
     msg_tool_map = match_tools_fn(msgs, all_tools)
     widget_states = get_widget_states_fn(session_id)
     widget_states.update(extract_inline_widget_states_fn(msgs))

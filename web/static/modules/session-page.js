@@ -40,8 +40,17 @@ function setActionButtons(actions, buttonsHtml, buttons) {
     actions.replaceChildren.apply(actions, buttons);
     return;
   }
-  if ('innerHTML' in actions) {
-    actions.innerHTML = buttonsHtml;
+  if (typeof actions.appendChild === 'function') {
+    while (actions.firstChild) {
+      actions.removeChild(actions.firstChild);
+    }
+    for (var i = 0; i < buttons.length; i++) {
+      actions.appendChild(buttons[i]);
+    }
+    return;
+  }
+  if ('textContent' in actions) {
+    actions.textContent = buttonsHtml.replace(/<[^>]+>/g, '');
   }
 }
 
@@ -69,10 +78,10 @@ function setPreviewInput(preview, value) {
     preview.appendChild(input);
     return input;
   }
-  if ('innerHTML' in preview) {
-    preview.innerHTML = '<input class="si" type="text" value="' + escapeHtmlAttr(value) + '">';
+  if (typeof preview.textContent !== 'undefined') {
+    preview.textContent = '';
   }
-  return preview.querySelector ? preview.querySelector('.si') : null;
+  return null;
 }
 
 function confirmRename(item, sid) {
@@ -165,11 +174,14 @@ function initSessionPage(deps) {
         ]
       );
       var inp = input || (preview.querySelector ? preview.querySelector('.si') : null);
-      inp.focus(); inp.select();
-      inp.onkeydown = function(ev) {
-        if (ev.key === 'Enter') { confirmRename(item, sid); }
-        if (ev.key === 'Escape') { cancelEdit(item); }
-      };
+      if (inp) {
+        if (typeof inp.focus === 'function') { inp.focus(); }
+        if (typeof inp.select === 'function') { inp.select(); }
+        inp.onkeydown = function(ev) {
+          if (ev.key === 'Enter') { confirmRename(item, sid); }
+          if (ev.key === 'Escape') { cancelEdit(item); }
+        };
+      }
       return;
     }
     if (e.target.classList.contains('act-delete')) {

@@ -5,7 +5,7 @@ from src.api.messages import get_session_messages, save_message_record
 from src.api.tools import get_tool_history
 from src.api.widgets import get_widget_states
 from src.api.debug import get_debug_info
-from src.memory.repos import MessageRecord
+from src.memory.repos import MessageRecord, get_repos
 
 
 @pytest.fixture(autouse=True)
@@ -22,14 +22,14 @@ def test_schema_get_sessions():
 
 
 def test_schema_get_session_messages():
-    messages = get_session_messages("nonexistent-session")
+    messages = get_session_messages("nonexistent-session", repos=get_repos())
     assert isinstance(messages, list)
     if messages:
         assert isinstance(messages[0], tuple)
 
 
 def test_schema_get_tool_history():
-    history = get_tool_history("nonexistent-session")
+    history = get_tool_history("nonexistent-session", repos=get_repos())
     assert isinstance(history, list)
     if history:
         assert isinstance(history[0], tuple)
@@ -52,7 +52,7 @@ def test_init_db_no_exception():
 def test_ensure_session_creates_session():
     session_id = "contract-test-session"
     ensure_session(session_id)
-    messages = get_session_messages(session_id)
+    messages = get_session_messages(session_id, repos=get_repos())
     assert isinstance(messages, list)
 
 
@@ -65,8 +65,8 @@ def test_save_message_accepts_record():
         content="test message",
         model="test-model",
     )
-    save_message_record(record)
-    messages = get_session_messages(session_id)
+    save_message_record(record, repos=get_repos())
+    messages = get_session_messages(session_id, repos=get_repos())
     assert len(messages) >= 1
 
 
@@ -79,7 +79,8 @@ def test_save_message_record_explicit_contract():
             role="assistant",
             content="explicit",
             model="test-model",
-        )
+        ),
+        repos=get_repos(),
     )
-    messages = get_session_messages(session_id)
+    messages = get_session_messages(session_id, repos=get_repos())
     assert len(messages) >= 1

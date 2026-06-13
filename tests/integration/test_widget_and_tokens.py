@@ -7,7 +7,7 @@ from src.api.messages import save_message_record, get_session_messages
 from src.api.session import ensure_session
 from src.memory.schema import init_db
 from src.compressor import estimate_tokens, should_compress
-from src.memory.repos import MessageRecord
+from src.memory.repos import MessageRecord, get_repos
 
 client = TestClient(app)
 
@@ -32,7 +32,7 @@ def save_message(
         phases=phases,
         tool_calls=tool_calls,
         tool_call_id=tool_call_id,
-    ))
+    ), repos=get_repos())
 
 
 def test_widget_db_operations():
@@ -95,7 +95,7 @@ def test_message_tokens_persistence():
     )
     
     # Retrieve messages from DB
-    msgs = get_session_messages(session_id)
+    msgs = get_session_messages(session_id, repos=get_repos())
     assert len(msgs) == 1
     # Check that it saves and queries without errors
     # (role, content, model, created_at, reasoning, phases_str)

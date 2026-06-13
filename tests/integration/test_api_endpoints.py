@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from web.server import app
 from src.memory.schema import init_db
 from src.api.messages import save_message_record
-from src.memory.repos import MessageRecord
+from src.memory.repos import MessageRecord, get_repos
 from src.api.debug import save_debug_info
 from src.api.session import ensure_session
 
@@ -30,7 +30,7 @@ def save_message(
         phases=phases,
         tool_calls=tool_calls,
         tool_call_id=tool_call_id,
-    ))
+    ), repos=get_repos())
 
 
 @pytest.fixture(autouse=True)

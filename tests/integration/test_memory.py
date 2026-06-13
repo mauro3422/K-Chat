@@ -6,7 +6,7 @@ from src.api.session import ensure_session, rename_session, delete_session, get_
 from src.api.tools import get_tool_history
 from src.api.debug import save_debug_info, get_debug_info
 from src.memory.repos import ToolCallRepository
-from src.memory.repos import MessageRecord
+from src.memory.repos import MessageRecord, get_repos
 
 
 def save_message(
@@ -29,7 +29,7 @@ def save_message(
         phases=phases,
         tool_calls=tool_calls,
         tool_call_id=tool_call_id,
-    ))
+    ), repos=get_repos())
 
 
 def test_save_and_get_message():
@@ -38,7 +38,7 @@ def test_save_and_get_message():
     save_message(sid, "user", "hola", "test-model")
     save_message(sid, "assistant", "mundo", "test-model", reasoning="pensando")
 
-    rows = get_session_messages(sid)
+    rows = get_session_messages(sid, repos=get_repos())
     assert len(rows) == 2
     assert rows[0][0] == "user"
     assert rows[0][1] == "hola"
@@ -54,7 +54,7 @@ def test_history_ordering():
     save_message(sid, "assistant", "b", "m")
     save_message(sid, "user", "c", "m")
 
-    rows = get_session_messages(sid)
+    rows = get_session_messages(sid, repos=get_repos())
     assert len(rows) == 3
     assert rows[0][1] == "a"
     assert rows[1][1] == "b"
@@ -66,7 +66,7 @@ def test_get_session_messages_limit():
     ensure_session(sid)
     for i in range(10):
         save_message(sid, "user", f"msg-{i}", "m")
-    rows = get_session_messages(sid, limit=3)
+    rows = get_session_messages(sid, limit=3, repos=get_repos())
     assert len(rows) == 3
 
 
@@ -99,7 +99,7 @@ def test_tool_call_log():
     repo.log(sid, "web_search", '{"q":"test"}', "ok")
     repo.log(sid, "web_search", '{"q":"test2"}', "ok")
 
-    rows = get_tool_history(sid)
+    rows = get_tool_history(sid, repos=get_repos())
     assert len(rows) == 2
     assert rows[0][0] == "web_search"
     assert rows[0][2] == "ok"
@@ -131,7 +131,7 @@ def test_save_message_default_reasoning():
     sid = "test-reasoning"
     ensure_session(sid)
     save_message(sid, "assistant", "ok", "m")
-    rows = get_session_messages(sid)
+    rows = get_session_messages(sid, repos=get_repos())
     assert rows[0][4] == ""
 
 
@@ -140,7 +140,7 @@ def test_save_message_with_phases():
     ensure_session(sid)
     phases = '[{"reasoning": "buscando", "tool_ids": ["c1"]}]'
     save_message(sid, "assistant", "resultado", "m", reasoning="pensando", phases=phases)
-    rows = get_session_messages(sid)
+    rows = get_session_messages(sid, repos=get_repos())
     assert len(rows) == 1
     assert rows[0][4] == "pensando"
     assert json.loads(rows[0][5]) == [{"reasoning": "buscando", "tool_ids": ["c1"]}]
@@ -176,7 +176,7 @@ def test_tool_history_limit_exceeds():
     repo = ToolCallRepository()
     for i in range(3):
         repo.log(sid, "web_search", f'{{"q":"test{i}"}}"', "ok", turn=i)
-    rows = get_tool_history(sid, limit=100)
+    rows = get_tool_history(sid, limit=100, repos=get_repos())
     assert len(rows) == 3
     assert rows[0][4] == 2
 
@@ -186,5 +186,5 @@ def test_log_tool_call_with_turn():
     ensure_session(sid)
     repo = ToolCallRepository()
     repo.log(sid, "web_search", '{"q":"test"}', "ok", turn=42)
-    rows = get_tool_history(sid)
+    rows = get_tool_history(sid, repos=get_repos())
     assert rows[0][4] == 42

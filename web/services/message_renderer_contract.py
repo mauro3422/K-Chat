@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Any
+from src.memory.repos import Repositories
 
 
 @dataclass(slots=True)
@@ -18,3 +19,4 @@ class MessageRenderDeps:
     get_widget_states_fn: Callable[[str], dict[str, Any]] | None = None
     extract_inline_widget_states_fn: Callable[[list], dict[str, str]] | None = None
     render_msg_fn: Callable[..., str] | None = None
+    repos: Repositories | None = None

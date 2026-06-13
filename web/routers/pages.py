@@ -6,9 +6,10 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
 from src.llm.model_state import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
-from src.llm.selector import get_default_model
 from src.api.session import get_sessions
+from src.memory.repos import get_repos
 from web.services.message_renderer import render_session_messages
+from web.services.message_renderer_contract import MessageRenderDeps
 from web.services.model_catalog import format_model_label
 
 router = APIRouter()
@@ -43,7 +44,7 @@ def favicon() -> FileResponse:
 def home(request: Request) -> HTMLResponse:
     resp = templates.TemplateResponse(request, "chat.html", {
         "session_id": str(uuid.uuid4()),
-        "model": get_default_model(),
+        "model": FALLBACK_MODEL,
         "models": get_available_models(),
     })
     resp.headers.update(_NOCACHE_HEADERS)
@@ -54,7 +55,7 @@ def home(request: Request) -> HTMLResponse:
 def session_page(request: Request, session_id: str) -> HTMLResponse:
     resp = templates.TemplateResponse(request, "chat.html", {
         "session_id": session_id,
-        "model": get_default_model(),
+        "model": FALLBACK_MODEL,
         "models": get_available_models(),
     })
     resp.headers.update(_NOCACHE_HEADERS)
@@ -81,4 +82,4 @@ def sidebar(request: Request) -> HTMLResponse:
 
 @router.get("/sessions/{session_id}/messages", response_class=HTMLResponse)
 def session_messages(session_id: str) -> HTMLResponse:
-    return HTMLResponse(render_session_messages(session_id))
+    return HTMLResponse(render_session_messages(session_id, deps=MessageRenderDeps(repos=get_repos())))

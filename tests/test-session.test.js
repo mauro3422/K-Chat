@@ -20,13 +20,21 @@ function makeItem(origName) {
   var inpObj = { value: origName || '', focus: function(){}, select: function(){}, onkeydown: null };
   var preview = {
     textContent: origName || '',
-    innerHTML: '',
+    children: [],
+    appendChild: function(node) { this.children.push(node); this._lastChild = node; return node; },
+    removeChild: function(node) { this.children = this.children.filter(function(child) { return child !== node; }); },
+    firstChild: null,
     querySelector: function(sel) {
-      if (sel === '.si') return inpObj;
+      if (sel === '.si') return this._lastChild || inpObj;
       return null;
     }
   };
-  var actions = { innerHTML: '' };
+  var actions = {
+    children: [],
+    appendChild: function(node) { this.children.push(node); return node; },
+    removeChild: function(node) { this.children = this.children.filter(function(child) { return child !== node; }); },
+    firstChild: null
+  };
   return {
     dataset: { sid: 'test-sid', origName: origName },
     outerHTML: '<div class="session-item"></div>',
@@ -79,13 +87,14 @@ describe('KairosSession', () => {
   test('restoreActions tiene act-rename', () => {
     const item = makeItem('');
     KairosSession.restoreActions(item);
-    expect(item.actions.innerHTML).toContain('act-rename');
+    expect(item.actions.children.length).toBe(2);
+    expect(item.actions.children[0].className).toContain('act-rename');
   });
 
   test('restoreActions tiene act-delete', () => {
     const item = makeItem('');
     KairosSession.restoreActions(item);
-    expect(item.actions.innerHTML).toContain('act-delete');
+    expect(item.actions.children[1].className).toContain('act-delete');
   });
 
   test('onpopstate restaura sessionId', () => {
@@ -134,7 +143,8 @@ describe('KairosSession', () => {
     };
     const h = global.document._listeners.click;
     if (h) h(fakeEvent);
-    expect(item.preview.innerHTML).toContain('input');
+    expect(item.preview.children.length).toBe(1);
+    expect(item.preview.children[0].tagName).toBe('INPUT');
   });
 
   test('click rename asigna onkeydown al input', () => {
@@ -148,7 +158,8 @@ describe('KairosSession', () => {
     };
     const h = global.document._listeners.click;
     if (h) h(fakeEvent);
-    expect(typeof item._inp.onkeydown).toBe('function');
+    expect(item.preview.children.length).toBe(1);
+    expect(typeof item.preview.children[0].onkeydown).toBe('function');
   });
 
   test('click delete guarda origHTML', () => {

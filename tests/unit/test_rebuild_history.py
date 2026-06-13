@@ -2,7 +2,7 @@ import json
 import re
 
 from src.api.messages import save_message_record
-from src.memory.repos import MessageRecord
+from src.memory.repos import MessageRecord, get_repos
 from src.api.session import ensure_session
 from src.core.history_rebuilder import rebuild_history
 from src.memory.schema import init_db
@@ -28,7 +28,7 @@ def save_message(
         phases=phases,
         tool_calls=tool_calls,
         tool_call_id=tool_call_id,
-    ))
+    ), repos=get_repos())
 
 
 def test_rebuild_history_empty_session():
