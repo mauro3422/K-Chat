@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -20,8 +20,9 @@ class StreamRetryHandler:
     a stream needs to be restarted with continuation context.
     """
 
-    def __init__(self, max_retries: int = DEFAULT_MAX_RETRIES):
+    def __init__(self, max_retries: int = DEFAULT_MAX_RETRIES, llm_chat_stream_fn: Callable | None = None):
         self.max_retries = max_retries
+        self._llm_chat_stream_fn = llm_chat_stream_fn
         self.retry_count = 0
 
     @property
@@ -93,10 +94,12 @@ class StreamRetryHandler:
         messages = self.build_messages(history, partial_content, partial_reasoning)
 
         try:
-            from src.llm.client import chat_stream as llm_chat_stream
+            chat_stream_fn = self._llm_chat_stream_fn
+            if chat_stream_fn is None:
+                from src.llm.client import chat_stream as chat_stream_fn
 
             # Only stream content — no tool calls for continuation
-            for event in llm_chat_stream(
+            for event in chat_stream_fn(
                 messages,
                 model,
                 tagged=True,

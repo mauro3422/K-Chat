@@ -1,7 +1,7 @@
-import { StreamErrorHandler } from './stream-error-handler.js';
 import { KairosStream } from './stream-dispatcher.js';
 import { parseStreamEvent } from './stream-contract.js';
 import { logUI } from './log-ui.js';
+import { ApiClient } from './api-client.js';
 
 export function executeStreamFetch(params) {
   var sessionId = params.sessionId;
@@ -16,12 +16,7 @@ export function executeStreamFetch(params) {
   var hasContent = false;
   var tokenCount = 0;
 
-  return fetch('/chat/' + sessionId + '?model=' + encodeURIComponent(defaultModel), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({message: text}),
-    signal: controller.signal
-  }).then(function(resp) {
+  return ApiClient.chatStream(sessionId, text, defaultModel, controller).then(function(resp) {
     if (resp.status === 401) {
       errorHandler.handler('error', { type: 'auth', message: 'Error de autenticación. Verifica tu API key.' });
       throw new Error('HTTP ' + resp.status);
@@ -95,7 +90,7 @@ export function executeStreamFetch(params) {
     var isAbort = err && (err.name === 'AbortError' || String(err.message || '').toLowerCase().indexOf('aborted') >= 0);
     if (!isAbort) {
       console.error('Chat request failed:', err);
-      if (StreamErrorHandler) StreamErrorHandler.handler('error', {type: 'network', message: 'Connection failed'});
+      if (errorHandler) errorHandler.handler('error', {type: 'network', message: 'Connection failed'});
     }
     throw err;
   });

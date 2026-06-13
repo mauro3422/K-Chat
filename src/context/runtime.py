@@ -49,6 +49,16 @@ def build_context_snapshot(force: bool = False) -> ContextSnapshot:
     _TOOLS_MD_CACHE = tools_md
     return ContextSnapshot(text=_CONTEXT_CACHE, tools_md=tools_md)
 
-
 def get_context_text(force: bool = False) -> str:
     return build_context_snapshot(force=force).text
+
+
+def invalidate_context_cache() -> None:
+    """Force rebuild of context cache on next build_context_snapshot() call.
+
+    Call this after modifying any source .md file (SOUL.md, MEMORY.md, AGENTS.md)
+    to ensure the next system prompt reflects the latest changes.
+    """
+    global _CONTEXT_CACHE, _TOOLS_MD_CACHE
+    _CONTEXT_CACHE = None
+    _TOOLS_MD_CACHE = None

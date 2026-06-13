@@ -145,10 +145,24 @@ global.document = {
 };
 
 global.window = {
-  addEventListener: () => {},
+  addEventListener: (evt, cb) => {
+    global.window._listeners = global.window._listeners || {};
+    global.window._listeners[evt] = cb;
+  },
+  dispatchEvent: (event) => {
+    global.window._lastEvent = event;
+    return true;
+  },
   location: { pathname: '/', href: '' },
   history: { replaceState: () => {}, pushState: () => {} },
   navigator: { clipboard: { writeText: () => Promise.resolve() } },
+};
+
+global.CustomEvent = class CustomEvent {
+  constructor(type, init = {}) {
+    this.type = type;
+    this.detail = init.detail;
+  }
 };
 
 global.fetch = () => Promise.resolve({ text: () => Promise.resolve(''), json: () => Promise.resolve({}) });

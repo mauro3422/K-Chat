@@ -1,12 +1,12 @@
 import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
-import { KairosDebug } from '../debug.js';
+import { KairosDebugPanel } from './debug-panel.js';
 
 export function markPillAsError(pill) {
   pill.className = C.TC_ITEM_ERROR;
   var toolName = pill.getAttribute('data-tool') || 'tool';
   pill.innerHTML = '&#10007; ' + KairosUtils.escHtml(toolName);
-  KairosDebug.logUI('tool_error', toolName);
+  KairosDebugPanel.logUI('tool_error', toolName);
 }
 
 export function markCallingPillsError(asstDiv) {

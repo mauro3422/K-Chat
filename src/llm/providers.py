@@ -1,7 +1,8 @@
 import logging
-import os
+from typing import Any
 from src.llm.protocol import LLMProvider
-from src.llm.openai_provider import OpenAIProvider
+from src.llm.adapters import ADAPTERS
+from src.config_loader import DEFAULT_CONFIG
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -14,15 +15,19 @@ def register_provider(name: str, cls: type[LLMProvider]) -> None:
     _PROVIDER_REGISTRY[name] = cls
 
 
-register_provider("openai", OpenAIProvider)
+for name, cls in ADAPTERS.items():
+    register_provider(name, cls)
 
 _provider: LLMProvider | None = None
 
 
-def _get_provider() -> LLMProvider:
+def _get_provider(config: Any | None = None) -> LLMProvider:
     global _provider
     if _provider is None:
-        provider_name = os.environ.get("LLM_PROVIDER", "openai")
-        cls = _PROVIDER_REGISTRY.get(provider_name, OpenAIProvider)
-        _provider = cls()
+        cfg = config or DEFAULT_CONFIG
+        provider_name = cfg.llm_provider
+        cls = _PROVIDER_REGISTRY.get(provider_name)
+        if cls is None:
+            raise ValueError(f"Unknown LLM provider: {provider_name}")
+        _provider = cls(api_key=cfg.opencode_zen_api_key, base_url=cfg.opencode_zen_base_url)
     return _provider

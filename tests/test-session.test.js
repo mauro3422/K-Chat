@@ -12,9 +12,9 @@ sessionContextModule.SessionContext.setSessionId('test-session-123');
 global.window.onpopstate = null;
 global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
 
-// Load module (IIFE executes, registers event listeners)
-const sessionModule = await import('../web/static/session.js');
-const KairosSession = sessionModule.KairosSession;
+const sessionModule = await import('../web/static/modules/session-page.js');
+const KairosSession = sessionModule.KairosSessionPage;
+sessionModule.initSessionPage();
 
 function makeItem(origName) {
   var inpObj = { value: origName || '', focus: function(){}, select: function(){}, onkeydown: null };
@@ -90,13 +90,15 @@ describe('KairosSession', () => {
 
   test('onpopstate restaura sessionId', () => {
     sessionContextModule.SessionContext.setSessionId('before');
-    window.onpopstate({ state: { sid: 'restored-sid-456' } });
+    var handler = global.window._listeners && global.window._listeners.popstate;
+    if (handler) handler({ state: { sid: 'restored-sid-456' } });
     expect(sessionContextModule.SessionContext.getSessionId()).toBe('restored-sid-456');
   });
 
   test('onpopstate sin sid no cambia', () => {
     sessionContextModule.SessionContext.setSessionId('unchanged');
-    window.onpopstate({ state: {} });
+    var handler = global.window._listeners && global.window._listeners.popstate;
+    if (handler) handler({ state: {} });
     expect(sessionContextModule.SessionContext.getSessionId()).toBe('unchanged');
   });
 

@@ -1,6 +1,6 @@
 # Roadmap — K-Chat (Kairos)
 
-> Current version: **v0.0.23** (2026-06-10)
+> Current version: **v0.0.54** (2026-06-13)
 
 ## Philosophy
 
@@ -137,22 +137,81 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] `iframe-builder.js`: envuelve código del widget en try-catch para SyntaxError
 - [x] 470 tests Python pasan
 
+### v0.0.23–0.0.28 — Widget stability, loop detector v2, facade cleanup
+- [x] Widget rendering fixes, DOM ordering, loop detector v2
+- [x] Contract hardening, bootstrap split, facade cleanup
+- [x] Repository registry removed, DB lifecycle guard, sidebar decoupling
+
+### v0.0.29–0.0.39 — Infrastructure hardening
+- [x] Minor releases: logging, error handling, edge cases, frontend polish
+
+### v0.0.40–0.0.44 — Decoupling phase
+- [x] `chat_sync.py` delegates to `orchestrator.chat_stream()` (no more duplication)
+- [x] Lazy imports removed from `tool_loop.py` → direct `MessageRepository`
+- [x] Rate-limit retry decoupled to `src/llm/retry.py` + `src/constants.py`
+- [x] Runtime de-compatibilized: shims removed from core, llm, api, memory
+- [x] Docs aligned with actual runtime modules
+
+### v0.0.45–0.0.46 — New tools
+- [x] `execute_command`, `list_files`, `search_files`, `edit_file` as first-class tools
+- [x] All aligned with safe path policy, documented and tested
+
+### v0.0.47–0.0.49 — Repository injection chain
+- [x] `orchestrator.py`, `tool_loop.py` accept `Repositories` dataclass (no direct instantiation)
+- [x] `chat_stream_fn` inyectable en `web/services/chat_stream.py`
+- [x] `src/api/messages.py`, `src/api/session.py` sin singleton de repos
+- [x] `src/background_tasks.py` acepta `SessionRepository` inyectable
+
+### v0.0.50–0.0.51 — Tool expansion
+- [x] JS validation restored (`node --check`), brace globs `*.{py,js}`, mixed-language listings
+- [x] `analyze_code` tool: deep Python AST inspection, call flow, per-file metrics
+
+### v0.0.52 — Mega-refactor: Lego Architecture Consolidation
+- [x] **ModelState class**: Thread-safe state encapsulation (failed/verified/cached models)
+- [x] **Policy split**: `policy.py` → 4 sub-modules (discovery, verifier, selector, failover)
+- [x] **Repos injection chain**: `chat.py` → `orchestrator.py` → `tool_loop.py` → `runner.py`
+- [x] **`sqlite3.Row` row_factory**: Named column access + 38 migrations from positional
+- [x] **Frontend cleanup**: CSS extraction, global removal, `log-ui.js` module, `shared-state.js`
+- [x] **`git_operation` tool**: Safe Git ops (blocks `--force`/`--hard`), 16 tools total
+- [x] **`MemoryIndexRepository`**: New repo for `memory_index` table
+- [x] **Stream resilience**: Save retry (3 attempts, backoff), mid-stream recovery
+- [x] **24 audit issues fixed**: 3 critical, 6 high, 9 medium, 6 low
+- [x] **Tests**: 523 Python + 176 Vitest (0 failures), 0 ESLint errors
+
+### v0.0.53 — Cache invalidation (2026-06-13)
+- [x] **Context cache invalidation**: `save_memory` now invalidates `_CONTEXT_CACHE` and `_TOOLS_MD_CACHE`
+- [x] System prompt refreshes with current MEMORY.md on each user message
+- [x] SOUL.md, MEMORY.md, AGENTS.md, TOOLS.md all fresh in-session
+
+### v0.0.54 — Lego hardening de backend y transición frontend (2026-06-13)
+- [x] **Runtime sin wrappers viejos**: eliminados `src/api/{llm,models,history,health}.py` y `save_message()` legacy; los callers ya van a los módulos reales
+- [x] **Historial tipado**: `HistoryMessage` como contrato estable; `rebuild_history()` exige `messages_repo` explícito
+- [x] **Sesión y memoria**: cascade delete movido al repositorio; `conn_fn` salió del contrato de sesión
+- [x] **Contexto puro**: `load_context()` ya no escribe archivos; la generación de `TOOLS.md` quedó como paso explícito
+- [x] **Tools y web**: el loader ya no dispara build al importar; routers y servicios web usan imports directos
+- [x] **Frontend de transición acotado**: compatibilidad legacy aislada en `session-page.js`, `debug-panel.js` y `stream-orchestrator.js`
+- [x] **Docs alineadas**: roadmap, audit lego y changelog actualizados con el estado real del refactor
+
 ## Próximas features
 
-| Priority | Area | What |
-|----------|------|------|
-| 1 | **memory_search + list_memories** | Tools para consultar `MEMORY.md` de forma semántica |
-| 2 | **Nocturnal Agent** | Síntesis diaria de sesiones en `MEMORY.md` |
-| 3 | **Widget Events → AI** | Widgets enviando acciones del usuario de vuelta al AI como contexto inyectado |
-| 4 | **Scheduled Tasks** | Tareas programadas (cron-like) para automatizaciones |
-| 5 | **Session Export** | Exportar sesiones a Markdown o JSON |
-| 6 | **Cross-Session Topic Tracer** | Rastreo de temas a través de múltiples sesiones |
-| 7 | **Proactive Insights** | Insights proactivos basados en patrones de uso |
-| 8 | **run_code** | Ejecución segura de Python con sandboxing |
-| 9 | **Telegram Bot** | `bot.py` como adapter a `core.chat_stream()` |
-| 10 | **Auto-exploration skill** | Skill dedicada para que Kairos mapee y documente su propia arquitectura |
-| 11 | **Stream heartbeat** | Heartbeat cada 30s para evitar timeouts en streams largos |
-| 12 | **Widget versioning UI** | Mostrar versión actual del widget en toolbar sin fetch separado |
+| Priority | Area | What | Status |
+|----------|------|------|--------|
+| 1 | **UI modular + layout movible** | CSS partido en temas, gutter redimensionable, sidebar colapsable, layout responsive guardado en memoria | 🔥 |
+| 2 | **memory_search + list_memories** | Tools para consultar `MEMORY.md` de forma semántica (ahora con cache fresco) | 🔥 |
+| 3 | **Auto-exploration + Docs sync** | Kairos analiza la arquitectura actual y sincroniza docs/ con el código real | 🔥 |
+| 4 | **Inyección inteligente de memoria** | Sistema que inyecta recuerdos relevantes contextualmente antes de cada respuesta, basado en el tópico de la conversación | 📋 |
+| 5 | **Nocturnal Agent** | Síntesis diaria de sesiones en `MEMORY.md` con contexto fresco | 📋 |
+| 6 | **Widget Events → AI** | Widgets enviando acciones del usuario de vuelta al AI como contexto inyectado | 📋 |
+| 7 | **Cross-Session Topic Tracer** | Rastreo de temas a través de múltiples sesiones (ahora con MEMORY.md confiable) | 📋 |
+| 8 | **Temas visuales** | Matrix rain sidebar, fondos anime, burbujas custom, iconos temáticos, switcher de temas en UI | 📋 |
+| 9 | **Session Export** | Exportar sesiones a Markdown o JSON | 📋 |
+| 10 | **Scheduled Tasks** | Tareas programadas (cron-like) para automatizaciones | 📋 |
+| 11 | **Proactive Insights** | Insights proactivos basados en patrones de uso | 📋 |
+| 12 | **run_code** | Ejecución segura de Python con sandboxing | 📋 |
+| 13 | **Telegram Bot** | `bot.py` como adapter a `core.chat_stream()` | 📋 |
+| 14 | **Widget versioning UI** | Mostrar versión actual del widget en toolbar sin fetch separado | 📋 |
+
+> **Hecho**: Stream heartbeat (ya existe, 20s backend + 10s tools), cache de contexto invalidado (v0.0.53)
 
 ## Architecture Decisions
 

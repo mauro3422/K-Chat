@@ -1,11 +1,13 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-LOG_DIR = Path(os.environ.get("KAIROS_LOG_DIR", "logs"))
+from src.config_loader import DEFAULT_CONFIG
+
+LOG_DIR = Path(DEFAULT_CONFIG.kairos_log_dir)
 SERVER_LOG_DIR = LOG_DIR / "server"
 CLIENT_LOG_DIR = LOG_DIR / "client"
 
@@ -29,7 +31,7 @@ class JsonlHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             entry = self._build_entry(record)
-            path = SERVER_LOG_DIR / f"{datetime.utcnow().strftime('%Y%m%d')}.jsonl"
+            path = SERVER_LOG_DIR / f"{datetime.now(timezone.utc).strftime('%Y%m%d')}.jsonl"
             with open(path, "a") as f:
                 f.write(json.dumps(entry, default=str) + "\n")
         except Exception:
@@ -43,7 +45,7 @@ class JsonlHandler(logging.Handler):
             except Exception:
                 data = None
         return {
-            "t": datetime.utcfromtimestamp(record.created).isoformat() + "Z",
+            "t": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
             "l": record.levelname[0],
             "m": record.name,
             "msg": record.getMessage(),

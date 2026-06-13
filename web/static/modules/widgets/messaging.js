@@ -9,6 +9,7 @@ import { createIframe } from './iframe-builder.js';
 import { getWidgetObserver, setWidgetObserver } from './iframe.js';
 import stateManager from './state-manager.js';
 import { isWidgetCodeEntry } from './contract.js';
+import { ApiClient } from '../api-client.js';
 
 export function startMessageHandler() {
     if (window.IntersectionObserver && !getWidgetObserver()) {
@@ -51,12 +52,12 @@ export function startMessageHandler() {
             Object.keys(allState).forEach(function(k) {
                 if (isWidgetCodeEntry(k)) codeEntries[k] = allState[k];
             });
-            var urlBuilder = SessionContext.createSessionUrlBuilder();
-            fetch(urlBuilder.widgetState(hashId), {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ state: event.data.state, codeEntries: codeEntries })
-            }).catch(function(err) { console.error('Widget state save failed:', err); });
+            ApiClient.saveWidgetState(SessionContext.getSessionId(), hashId, event.data.state)
+              .catch(function(err) { console.error('Widget state save failed:', err); });
+            Object.keys(codeEntries).forEach(function(k) {
+              ApiClient.saveWidgetState(SessionContext.getSessionId(), k, codeEntries[k])
+                .catch(function(err) { console.error('Widget code entry save failed:', err); });
+            });
         } else if (event.data.type === 'widget-error') {
             console.error('[Widget ' + event.data.id + '] ' + event.data.message + ' (linea ' + event.data.line + ')');
             log(event.data.id, 'ERROR', event.data.message + ' L:' + event.data.line);

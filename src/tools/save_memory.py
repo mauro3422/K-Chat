@@ -3,6 +3,7 @@ import logging
 import threading
 from typing import Any
 from src.paths import CONTEXT_DIR
+from src.context.runtime import invalidate_context_cache
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -137,5 +138,7 @@ def run(**kwargs) -> str:
         err = _write_memory_file(filepath, header_lines, memories)
         if err:
             return err
+
+        invalidate_context_cache()
 
     return f"[OK] {action_msg} in MEMORY.md."

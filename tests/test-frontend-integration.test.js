@@ -23,13 +23,12 @@ const KairosWidgets = coreModule.KairosWidgets;
 const iframeBuilderModule = await import(`file://${widgetsDir}/iframe-builder.js`);
 const iframeModule = await import(`file://${widgetsDir}/iframe.js`);
 const messagingModule = await import(`file://${widgetsDir}/messaging.js`);
-await import(`file://${widgetsDir}/toolbar.js`);
 await import(`file://${widgetsDir}/index.js`);
 await import('../web/static/modules/markdown-renderer.js');
 await import('../web/static/modules/stream-dispatcher.js');
-await import('../web/static/modules/stream-bootstrap.js');
 await import('../web/static/modules/content-handler.js');
-await import('../web/static/modules/chat-form-bootstrap.js');
+const chatFormModule = await import('../web/static/modules/chat-form.js');
+const KairosForm = chatFormModule.KairosForm;
 
 describe('Frontend Integration', () => {
   test('KairosWidgets tiene extract', () => {

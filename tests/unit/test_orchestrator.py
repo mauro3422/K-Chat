@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.core.debug_info import DebugInfo
+
 
 # ---------------------------------------------------------------------------
 # _save_debug_info tests
@@ -16,41 +18,40 @@ def test_save_debug_info_debug_is_none():
 
 def test_save_debug_info_sets_history_before():
     from src.core.orchestrator import _save_debug_info
-    debug = {}
+    debug = DebugInfo()
     history = [
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "world"},
     ]
     _save_debug_info(debug, history, None)
-    assert "history_before" in debug
-    assert len(debug["history_before"]) == 2
-    assert debug["history_before"][0]["role"] == "user"
-    assert debug["history_before"][0]["content"] == "hello"
-    assert debug["phases"] == "[]"
+    assert len(debug.history_before) == 2
+    assert debug.history_before[0]["role"] == "user"
+    assert debug.history_before[0]["content"] == "hello"
+    assert debug.phases == "[]"
 
 
 def test_save_debug_info_with_phases():
     from src.core.orchestrator import _save_debug_info
-    debug = {}
+    debug = DebugInfo()
     phases = [{"reasoning": "thinking...", "tool_ids": [], "content": "result"}]
     _save_debug_info(debug, [], phases)
-    assert debug["phases"] == json.dumps(phases)
+    assert debug.phases == json.dumps(phases)
 
 
 def test_save_debug_info_phases_none():
     from src.core.orchestrator import _save_debug_info
-    debug = {}
+    debug = DebugInfo()
     _save_debug_info(debug, [], None)
-    assert debug["phases"] == "[]"
+    assert debug.phases == "[]"
 
 
 def test_save_debug_info_truncates_content():
     from src.core.orchestrator import _save_debug_info
-    debug = {}
+    debug = DebugInfo()
     long = "x" * 1000
     history = [{"role": "user", "content": long}]
     _save_debug_info(debug, history, None)
-    assert len(debug["history_before"][0]["content"]) == 500
+    assert len(debug.history_before[0]["content"]) == 500
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +95,7 @@ def test_compress_if_needed_error(caplog):
 @patch("src.core.orchestrator._compress_if_needed")
 @patch("src.core.orchestrator.run_tool_loop_streaming")
 @patch("src.core.orchestrator.build_system_prompt")
-@patch("src.core.orchestrator.get_default_model")
+@patch("src.llm.selector.get_default_model")
 def test_chat_stream_content_only(
     mock_get_model, mock_build_sp, mock_loop_stream,
     mock_compress, mock_save_debug,
@@ -124,7 +125,7 @@ def test_chat_stream_content_only(
 @patch("src.core.orchestrator._compress_if_needed")
 @patch("src.core.orchestrator.run_tool_loop_streaming")
 @patch("src.core.orchestrator.build_system_prompt")
-@patch("src.core.orchestrator.get_default_model")
+@patch("src.llm.selector.get_default_model")
 def test_chat_stream_untagged(
     mock_get_model, mock_build_sp, mock_loop_stream,
     mock_compress, mock_save_debug,
@@ -141,7 +142,7 @@ def test_chat_stream_untagged(
 @patch("src.core.orchestrator._compress_if_needed")
 @patch("src.core.orchestrator.run_tool_loop_streaming")
 @patch("src.core.orchestrator.build_system_prompt")
-@patch("src.core.orchestrator.get_default_model")
+@patch("src.llm.selector.get_default_model")
 def test_chat_stream_default_model(
     mock_get_model, mock_build_sp, mock_loop_stream,
     mock_compress, mock_save_debug,
@@ -159,7 +160,7 @@ def test_chat_stream_default_model(
 @patch("src.core.orchestrator._compress_if_needed")
 @patch("src.core.orchestrator.run_tool_loop_streaming")
 @patch("src.core.orchestrator.build_system_prompt")
-@patch("src.core.orchestrator.get_default_model")
+@patch("src.llm.selector.get_default_model")
 def test_chat_stream_empty_history(
     mock_get_model, mock_build_sp, mock_loop_stream,
     mock_compress, mock_save_debug,
@@ -177,31 +178,31 @@ def test_chat_stream_empty_history(
 @patch("src.core.orchestrator._compress_if_needed")
 @patch("src.core.orchestrator.run_tool_loop_streaming")
 @patch("src.core.orchestrator.build_system_prompt")
-@patch("src.core.orchestrator.get_default_model")
+@patch("src.llm.selector.get_default_model")
 def test_chat_stream_debug_setup(
     mock_get_model, mock_build_sp, mock_loop_stream,
     mock_compress, mock_save_debug,
 ):
     mock_loop_stream.return_value = iter([])
     from src.core.orchestrator import chat_stream
-    debug = {}
+    debug = DebugInfo()
     history = [{"role": "system", "content": "test"}]
     list(chat_stream("hi", history, model="m", session_id="sess-1",
                       debug=debug, tagged=True, streaming=True))
-    assert debug["model"] == "m"
-    assert debug["session_id"] == "sess-1"
-    assert debug["reasoning"] == ""
-    assert debug["tool_calls"] == []
-    assert debug["system_prompt"] == "test"
-    assert len(debug["history_before"]) == 2
-    assert debug["history_before"][1]["content"] == "hi"
+    assert debug.model == "m"
+    assert debug.session_id == "sess-1"
+    assert debug.reasoning == ""
+    assert debug.tool_calls == []
+    assert debug.system_prompt == "test"
+    assert len(debug.history_before) == 2
+    assert debug.history_before[1]["content"] == "hi"
 
 
 @patch("src.core.orchestrator._save_debug_info")
 @patch("src.core.orchestrator._compress_if_needed")
 @patch("src.core.orchestrator.run_tool_loop_streaming")
 @patch("src.core.orchestrator.build_system_prompt")
-@patch("src.core.orchestrator.get_default_model")
+@patch("src.llm.selector.get_default_model")
 def test_chat_stream_phases_output_cleared(
     mock_get_model, mock_build_sp, mock_loop_stream,
     mock_compress, mock_save_debug,
@@ -210,7 +211,7 @@ def test_chat_stream_phases_output_cleared(
     mock_loop_stream.return_value = iter([])
     from src.core.orchestrator import chat_stream
     list(chat_stream("hi", [{"role": "system", "content": "t"}],
-                      model="m", debug={}, phases_output=phases,
+                      model="m", debug=DebugInfo(), phases_output=phases,
                       tagged=True, streaming=True))
     assert phases == []
 
@@ -220,7 +221,7 @@ def test_chat_stream_phases_output_cleared(
 @patch("src.core.orchestrator.run_tool_loop_sync")
 @patch("src.core.orchestrator.run_tool_loop_streaming")
 @patch("src.core.orchestrator.build_system_prompt")
-@patch("src.core.orchestrator.get_default_model")
+@patch("src.llm.selector.get_default_model")
 def test_chat_stream_sync_path(
     mock_get_model, mock_build_sp, mock_loop_stream, mock_loop_sync,
     mock_compress, mock_save_debug,
@@ -239,7 +240,7 @@ def test_chat_stream_sync_path(
 @patch("src.core.orchestrator._compress_if_needed")
 @patch("src.core.orchestrator.run_tool_loop_streaming")
 @patch("src.core.orchestrator.build_system_prompt")
-@patch("src.core.orchestrator.get_default_model")
+@patch("src.llm.selector.get_default_model")
 def test_chat_stream_tool_calls(
     mock_get_model, mock_build_sp, mock_loop_stream,
     mock_compress, mock_save_debug,
@@ -267,7 +268,7 @@ def test_chat_stream_tool_calls(
 @patch("src.core.orchestrator._compress_if_needed")
 @patch("src.core.orchestrator.run_tool_loop_streaming")
 @patch("src.core.orchestrator.build_system_prompt")
-@patch("src.core.orchestrator.get_default_model")
+@patch("src.llm.selector.get_default_model")
 def test_chat_stream_loop_error_propagates(
     mock_get_model, mock_build_sp, mock_loop_stream,
     mock_compress, mock_save_debug,

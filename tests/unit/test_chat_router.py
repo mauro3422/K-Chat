@@ -55,8 +55,20 @@ def test_chat_success(mock_build_gen, mock_save, mock_rebuild, mock_ensure, mock
     assert result.media_type == "application/x-ndjson"
 
     mock_ensure.assert_called_once_with("s1")
-    mock_rebuild.assert_called_once_with("s1", "my-model", ANY)
-    mock_save.assert_called_once_with("s1", "user", "hello", "my-model")
+    # rebuild_history called with deps=HistoryRebuildDeps
+    mock_rebuild.assert_called_once()
+    args, kwargs = mock_rebuild.call_args
+    assert args[0] == "s1"
+    assert args[1] == "my-model"
+    assert "deps" in kwargs
+    # db_save_message called with MessageRecord and repos
+    mock_save.assert_called_once()
+    save_args, save_kwargs = mock_save.call_args
+    assert save_args[0].session_id == "s1"
+    assert save_args[0].role == "user"
+    assert save_args[0].content == "hello"
+    assert save_args[0].model == "my-model"
+    assert "repos" in save_kwargs
     mock_default.assert_not_called()  # model was provided
 
 
@@ -75,8 +87,19 @@ def test_chat_uses_query_model(mock_build_gen, mock_save, mock_rebuild, mock_ens
     result = chat("s1", bt, ChatPayload(message="hello", model=None), model="query-model")
 
     assert isinstance(result, StreamingResponse)
-    mock_rebuild.assert_called_once_with("s1", "query-model", ANY)
-    mock_save.assert_called_once_with("s1", "user", "hello", "query-model")
+    mock_rebuild.assert_called_once()
+    args, kwargs = mock_rebuild.call_args
+    assert args[0] == "s1"
+    assert args[1] == "query-model"
+    assert "deps" in kwargs
+    # db_save_message called with MessageRecord and repos
+    mock_save.assert_called_once()
+    save_args, save_kwargs = mock_save.call_args
+    assert save_args[0].session_id == "s1"
+    assert save_args[0].role == "user"
+    assert save_args[0].content == "hello"
+    assert save_args[0].model == "query-model"
+    assert "repos" in save_kwargs
     mock_default.assert_not_called()
 
 
@@ -96,7 +119,11 @@ def test_chat_uses_default_model(mock_build_gen, mock_save, mock_rebuild, mock_e
 
     assert isinstance(result, StreamingResponse)
     mock_default.assert_called_once()
-    mock_rebuild.assert_called_once_with("s1", "fallback-model", ANY)
+    mock_rebuild.assert_called_once()
+    args, kwargs = mock_rebuild.call_args
+    assert args[0] == "s1"
+    assert args[1] == "fallback-model"
+    assert "deps" in kwargs
 
 
 @patch("web.routers.chat.rebuild_history", side_effect=Exception("DB fail"))

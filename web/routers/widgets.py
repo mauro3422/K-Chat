@@ -10,8 +10,9 @@ from src.api.widgets import (
     db_get_widget,
     db_get_widget_versions,
     db_get_widget_by_version,
+    sanitize_widget_id,
 )
-from src.tools._widget_helpers import sanitize_widget_id
+from src.api.session import ensure_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,6 +30,7 @@ class SaveWidgetPayload(BaseModel):
 
 @router.post("/sessions/{session_id}/widgets/{widget_id}/state")
 def set_widget_state(session_id: str, widget_id: str, payload: WidgetStatePayload) -> dict[str, str]:
+    ensure_session(session_id)
     widget_id = sanitize_widget_id(widget_id)
     save_widget_state(session_id, widget_id, payload.state)
     # Persist widget code entries so they survive page refresh
@@ -40,6 +42,7 @@ def set_widget_state(session_id: str, widget_id: str, payload: WidgetStatePayloa
 
 @router.get("/sessions/{session_id}/widgets/{widget_id}/code")
 def get_widget_code(session_id: str, widget_id: str) -> Any:
+    ensure_session(session_id)
     widget = db_get_widget(widget_id)
     if not widget:
         raise HTTPException(status_code=404, detail="Widget no encontrado.")
@@ -48,12 +51,14 @@ def get_widget_code(session_id: str, widget_id: str) -> Any:
 
 @router.get("/sessions/{session_id}/widgets/{widget_id}/versions")
 def get_widget_versions(session_id: str, widget_id: str) -> dict[str, Any]:
+    ensure_session(session_id)
     versions = db_get_widget_versions(widget_id)
     return {"versions": versions}
 
 
 @router.get("/sessions/{session_id}/widgets/{widget_id}/versions/{version}/code")
 def get_widget_version_code(session_id: str, widget_id: str, version: int) -> Any:
+    ensure_session(session_id)
     widget = db_get_widget_by_version(widget_id, version)
     if not widget:
         raise HTTPException(status_code=404, detail="Versión del widget no encontrada.")
@@ -62,6 +67,7 @@ def get_widget_version_code(session_id: str, widget_id: str, version: int) -> An
 
 @router.post("/sessions/{session_id}/widgets/{widget_id}/save")
 def save_widget(session_id: str, widget_id: str, payload: SaveWidgetPayload) -> dict[str, Any]:
+    ensure_session(session_id)
     if not payload.code.strip():
         raise HTTPException(status_code=400, detail="El código no puede estar vacío.")
     

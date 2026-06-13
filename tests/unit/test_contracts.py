@@ -1,7 +1,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from src.constants import MAX_TOOL_TURNS, TOOL_HEARTBEAT_INTERVAL
+from src.constants import MAX_TOOL_TURNS, TOOL_OUTPUT_CHUNK_SIZE
+from src.config_loader import DEFAULT_CONFIG
 from src.core.tool_loop import _ToolLoopContext
 from web.services.chat_stream import build_stream_generator
 
@@ -15,13 +16,17 @@ def _bg_tasks():
 def test_tool_loop_default_turns_match_shared_constant():
     ctx = _ToolLoopContext(history=[], model="m")
     assert ctx.max_turns == MAX_TOOL_TURNS
-    assert MAX_TOOL_TURNS == 25
+    assert MAX_TOOL_TURNS == DEFAULT_CONFIG.max_tool_turns
 
 
 
 
 def test_tool_runner_heartbeat_constant_is_centralized():
-    assert TOOL_HEARTBEAT_INTERVAL == 10.0
+    assert DEFAULT_CONFIG.tool_heartbeat_interval == 10.0
+
+
+def test_tool_output_chunk_size_is_shared():
+    assert TOOL_OUTPUT_CHUNK_SIZE == 12
 
 
 @patch("web.services.chat_stream.save_assistant_message")

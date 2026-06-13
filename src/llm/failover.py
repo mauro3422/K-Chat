@@ -1,6 +1,6 @@
 import logging
 
-import src.llm.models as models
+import src.llm.model_state as models
 import src.llm.discovery as discovery
 
 logger: logging.Logger = logging.getLogger(__name__)

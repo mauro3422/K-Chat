@@ -2,7 +2,8 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-import src.llm.models as models
+import src.llm.model_state as models
+from src.llm.providers import _get_provider
 import src.llm.verifier as verifier
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ def get_models(force_refresh: bool = False) -> list[Any]:
     cached = models.get_cached_models_safe()
     if cached is None or force_refresh:
         try:
-            result = list(models._get_provider().list_models())
+            result = list(_get_provider().list_models())
             models.set_cached_models(result)
         except Exception as e:
             logger.error("Error fetching models from API: %s", e)

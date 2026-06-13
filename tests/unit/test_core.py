@@ -1,6 +1,8 @@
 import json
 from unittest.mock import patch
 
+from src.core.debug_info import DebugInfo
+
 
 
 @patch("src.llm.client.chat")
@@ -38,7 +40,7 @@ def test_tool_call_then_response(mock_chat, make_choice):
     ]
 
     history = [{"role": "system", "content": "test"}]
-    debug = {}
+    debug = DebugInfo()
     with patch("src.tools.TOOL_MAP", {"web_search": lambda **kw: "ok result"}):
         tokens = list(chat_stream("Busca algo", history, model="test-model", tagged=True, debug=debug, streaming=False))
 
@@ -58,9 +60,9 @@ def test_tool_call_then_response(mock_chat, make_choice):
     assert any(t["status"] == "ok" for t in tcs)
 
     # Debug info filled
-    assert debug["model"] == "test-model"
-    assert len(debug["tool_calls"]) >= 1
-    assert "Done thinking" in debug.get("reasoning", "")
+    assert debug.model == "test-model"
+    assert len(debug.tool_calls) >= 1
+    assert "Done thinking" in (debug.reasoning or "")
 
 
 @patch("src.llm.client.chat")
@@ -92,6 +94,8 @@ def test_tool_error(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_session_id_propagates_to_tools(mock_chat, make_choice):
     """session_id is passed as _session_id to tools."""
+    from src.api.session import ensure_session
+    ensure_session("ses-123")
     from src.core.orchestrator import chat_stream
 
     captured = {}
@@ -117,6 +121,8 @@ def test_session_id_propagates_to_tools(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_multiple_tool_calls_same_turn(mock_chat, make_choice):
     """Multiple tools called in a single turn."""
+    from src.api.session import ensure_session
+    ensure_session("ses-1")
     from src.core.orchestrator import chat_stream
 
     tools_called = []
@@ -152,6 +158,8 @@ def test_multiple_tool_calls_same_turn(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_mixed_tool_results(mock_chat, make_choice):
     """One tool succeeds, one fails in the same turn."""
+    from src.api.session import ensure_session
+    ensure_session("ses-2")
     from src.core.orchestrator import chat_stream
 
     call_count = [0]
@@ -187,6 +195,8 @@ def test_mixed_tool_results(mock_chat, make_choice):
 @patch("src.llm.client.chat")
 def test_tool_result_truncation(mock_chat, make_choice):
     """Tool result >30000 chars gets truncated."""
+    from src.api.session import ensure_session
+    ensure_session("ses-3")
     from src.core.orchestrator import chat_stream
 
     long_result = "x" * 35000
@@ -233,12 +243,13 @@ def _mock_stream(response_text):
 
 @patch("src.core.orchestrator.chat_stream")
 def test_chat_non_streaming(mock_chat_stream):
-    """chat() returns response and updated history."""
+    """Non-streaming path is just orchestrator.chat_stream(streaming=False)."""
     mock_chat_stream.side_effect = _mock_stream("Respuesta de prueba")
-    from src.core.chat_sync import chat
+    from src.core.orchestrator import chat_stream
 
-    resp, history = chat("Hola", None)
-    assert resp == "Respuesta de prueba"
+    history = []
+    tokens = list(chat_stream("Hola", history, model="test-model", streaming=False))
+    assert "Respuesta de prueba" in "".join(tokens)
     assert len(history) >= 2
     assert history[-1]["role"] == "assistant"
     assert history[-1]["content"] == "Respuesta de prueba"

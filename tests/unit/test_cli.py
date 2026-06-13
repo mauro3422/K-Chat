@@ -11,7 +11,7 @@ def mock_deps():
     with (
         patch("src.cli.get_default_model", return_value="test-model") as m_model,
         patch("src.cli.init_db") as m_init_db,
-        patch("src.cli.save_message") as m_save,
+        patch("src.cli.save_message_record") as m_save,
         patch("src.cli.chat_stream") as m_chat,
         patch("sys.stdout.reconfigure") as m_reconf,
     ):
@@ -121,10 +121,11 @@ def test_main_saves_messages(mock_deps):
         main()
     calls = mock_deps["save_message"].call_args_list
     assert len(calls) == 2
-    assert calls[0][0][1] == "user"
-    assert calls[0][0][2] == "hello"
-    assert calls[1][0][1] == "assistant"
-    assert calls[1][0][2] == "resp"
+    # save_message_record is called with MessageRecord object as first arg
+    assert calls[0][0][0].role == "user"
+    assert calls[0][0][0].content == "hello"
+    assert calls[1][0][0].role == "assistant"
+    assert calls[1][0][0].content == "resp"
 
 
 def test_main_handles_chat_exception(mock_deps):

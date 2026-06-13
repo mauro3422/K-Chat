@@ -3,17 +3,43 @@ from fastapi.testclient import TestClient
 
 from web.server import app
 from src.api.widgets import save_widget_state, get_widget_states
-from src.api.messages import save_message, get_session_messages
+from src.api.messages import save_message_record, get_session_messages
+from src.api.session import ensure_session
 from src.memory.schema import init_db
 from src.compressor import estimate_tokens, should_compress
+from src.memory.repos import MessageRecord
 
 client = TestClient(app)
+
+
+def save_message(
+    session_id,
+    role,
+    content,
+    model,
+    reasoning="",
+    phases="[]",
+    tool_calls=None,
+    tool_call_id=None,
+    **kwargs,
+):
+    return save_message_record(MessageRecord(
+        session_id=session_id,
+        role=role,
+        content=content,
+        model=model,
+        reasoning=reasoning,
+        phases=phases,
+        tool_calls=tool_calls,
+        tool_call_id=tool_call_id,
+    ))
 
 
 def test_widget_db_operations():
     """Verify that widget states can be saved and retrieved from the database."""
     init_db()
     session_id = "test-session-widget-db"
+    ensure_session(session_id)
     widget_id = "widget-calculator"
     state_data = '{"value": 42}'
     
@@ -30,6 +56,7 @@ def test_widget_endpoint_and_injection():
     """Verify the widget state API endpoint and script injection on session messages load."""
     init_db()
     session_id = "test-session-widget-api"
+    ensure_session(session_id)
     widget_id = "widget-chart"
     state_data = '{"data": [1, 2, 3]}'
     
@@ -55,6 +82,7 @@ def test_message_tokens_persistence():
     """Verify that message tokens are successfully persisted to SQLite and fetched."""
     init_db()
     session_id = "test-session-tokens-db"
+    ensure_session(session_id)
     
     save_message(
         session_id=session_id,
@@ -74,7 +102,7 @@ def test_message_tokens_persistence():
     # Wait, get_session_messages queries:
     # SELECT role, content, model, created_at, reasoning, phases FROM messages
     # Let's execute a direct sqlite query if we want to assert the token counts
-    from src.memory.connection import get_conn
+    from src.memory.connection_pool import get_conn
     conn = get_conn()
     try:
         cursor = conn.cursor()
@@ -113,6 +141,7 @@ def test_widget_injection_xss_safety():
     """Verify that malicious XSS scripts in widget states are safely escaped in metadata."""
     init_db()
     session_id = "test-session-xss"
+    ensure_session(session_id)
     widget_id = "widget-exploit"
     malicious_state = '{"payload": "<script>alert(1)</script>"}'
     

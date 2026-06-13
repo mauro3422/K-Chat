@@ -103,6 +103,18 @@ def test_convert_to_wav_success():
                 assert result == b"wav data"
 
 
+def test_ffmpeg_input_args_for_webm():
+    from web.services import asr_service
+
+    assert asr_service._ffmpeg_input_args("audio/webm;codecs=opus") == ["-f", "webm"]
+
+
+def test_ffmpeg_input_args_for_wav():
+    from web.services import asr_service
+
+    assert asr_service._ffmpeg_input_args("audio/wav") == ["-f", "wav"]
+
+
 def test_recognize_success():
     from web.services import asr_service
 

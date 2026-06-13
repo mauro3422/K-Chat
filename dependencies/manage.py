@@ -10,6 +10,7 @@ SEARXNG_DIR = Path(__file__).parent / "searxng"
 SEARXNG_SETTINGS = Path(__file__).parent.parent / ".config" / "searxng" / "settings.yml"
 SEARXNG_DEFAULT_SETTINGS = SEARXNG_DIR / "searx" / "settings.yml"
 SEARXNG_PORT = int(os.environ.get("SEARXNG_PORT", "8080"))
+SEARXNG_AUTO_INSTALL = os.environ.get("SEARXNG_AUTO_INSTALL", "false").lower() in ("1", "true")
 _is_running = False
 _process = None
 
@@ -60,6 +61,8 @@ def searxng_start() -> str | None:
         return None
 
     if not searxng_is_installed():
+        if not SEARXNG_AUTO_INSTALL:
+            return "SearXNG dependencies are not installed. Set SEARXNG_AUTO_INSTALL=1 to install them."
         err = install_searxng_deps()
         if err:
             return err

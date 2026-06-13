@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from src.handler_cli import handle_command
+from src.cli_commands import handle_command
 
 
 def test_handle_model_switch():
@@ -19,7 +19,7 @@ def test_handle_model_switch_multiple_words():
 
 
 def test_handle_model_shows_current():
-    with patch("src.handler_cli.get_default_model", return_value="default-llm"):
+    with patch("src.cli_commands.get_default_model", return_value="default-llm"):
         with patch("builtins.print") as m_print:
             result = handle_command("/model", [])
     assert result is None
@@ -27,7 +27,7 @@ def test_handle_model_shows_current():
 
 
 def test_handle_model_no_args_extra_whitespace():
-    with patch("src.handler_cli.get_default_model", return_value="def"):
+    with patch("src.cli_commands.get_default_model", return_value="def"):
         with patch("builtins.print"):
             result = handle_command("/model   ", [])
     assert result is None

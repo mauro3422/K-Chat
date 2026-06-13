@@ -5,9 +5,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
-from src.llm.policy import get_default_model
-from src.api.session import get_sessions
 from src.llm.model_state import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
+from src.llm.selector import get_default_model
+from src.api.session import get_sessions
 from web.services.message_renderer import render_session_messages
 from web.services.model_catalog import format_model_label
 
@@ -41,7 +41,6 @@ def favicon() -> FileResponse:
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request) -> HTMLResponse:
-    models = get_available_model_ids()
     resp = templates.TemplateResponse(request, "chat.html", {
         "session_id": str(uuid.uuid4()),
         "model": get_default_model(),
@@ -53,7 +52,6 @@ def home(request: Request) -> HTMLResponse:
 
 @router.get("/sessions/{session_id}", response_class=HTMLResponse)
 def session_page(request: Request, session_id: str) -> HTMLResponse:
-    models = get_available_model_ids()
     resp = templates.TemplateResponse(request, "chat.html", {
         "session_id": session_id,
         "model": get_default_model(),

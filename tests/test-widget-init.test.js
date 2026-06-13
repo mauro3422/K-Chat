@@ -11,7 +11,6 @@ const widgetsDir = new URL('../web/static/modules/widgets/', import.meta.url).pa
 const coreModule = await import(`file://${widgetsDir}/core.js`);
 const KairosWidgets = coreModule.KairosWidgets;
 const iframeBuilder = await import(`file://${widgetsDir}/iframe-builder.js`);
-await import(`file://${widgetsDir}/toolbar.js`);
 const iframeModule = await import(`file://${widgetsDir}/iframe.js`);
 await import(`file://${widgetsDir}/messaging.js`);
 await import(`file://${widgetsDir}/index.js`);

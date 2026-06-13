@@ -1,15 +1,40 @@
 import json
 
 
-from src.api.messages import save_message, get_session_messages
+from src.api.messages import save_message_record, get_session_messages
 from src.api.session import ensure_session, rename_session, delete_session, get_sessions
 from src.api.tools import get_tool_history
 from src.api.debug import save_debug_info, get_debug_info
 from src.memory.repos import ToolCallRepository
+from src.memory.repos import MessageRecord
+
+
+def save_message(
+    session_id,
+    role,
+    content,
+    model,
+    reasoning="",
+    phases="[]",
+    tool_calls=None,
+    tool_call_id=None,
+    **kwargs,
+):
+    return save_message_record(MessageRecord(
+        session_id=session_id,
+        role=role,
+        content=content,
+        model=model,
+        reasoning=reasoning,
+        phases=phases,
+        tool_calls=tool_calls,
+        tool_call_id=tool_call_id,
+    ))
 
 
 def test_save_and_get_message():
     sid = "test-session-1"
+    ensure_session(sid)
     save_message(sid, "user", "hola", "test-model")
     save_message(sid, "assistant", "mundo", "test-model", reasoning="pensando")
 
@@ -24,6 +49,7 @@ def test_save_and_get_message():
 
 def test_history_ordering():
     sid = "test-ordering"
+    ensure_session(sid)
     save_message(sid, "user", "a", "m")
     save_message(sid, "assistant", "b", "m")
     save_message(sid, "user", "c", "m")
@@ -37,6 +63,7 @@ def test_history_ordering():
 
 def test_get_session_messages_limit():
     sid = "test-limit"
+    ensure_session(sid)
     for i in range(10):
         save_message(sid, "user", f"msg-{i}", "m")
     rows = get_session_messages(sid, limit=3)
@@ -67,6 +94,7 @@ def test_session_crud():
 
 def test_tool_call_log():
     sid = "test-tools"
+    ensure_session(sid)
     repo = ToolCallRepository()
     repo.log(sid, "web_search", '{"q":"test"}', "ok")
     repo.log(sid, "web_search", '{"q":"test2"}', "ok")
@@ -79,6 +107,7 @@ def test_tool_call_log():
 
 def test_debug_info():
     sid = "test-debug"
+    ensure_session(sid)
     data = {
         "model": "big-pickle",
         "reasoning": "thinking...",
@@ -100,6 +129,7 @@ def test_empty_debug():
 
 def test_save_message_default_reasoning():
     sid = "test-reasoning"
+    ensure_session(sid)
     save_message(sid, "assistant", "ok", "m")
     rows = get_session_messages(sid)
     assert rows[0][4] == ""
@@ -107,6 +137,7 @@ def test_save_message_default_reasoning():
 
 def test_save_message_with_phases():
     sid = "test-phases"
+    ensure_session(sid)
     phases = '[{"reasoning": "buscando", "tool_ids": ["c1"]}]'
     save_message(sid, "assistant", "resultado", "m", reasoning="pensando", phases=phases)
     rows = get_session_messages(sid)
@@ -141,6 +172,7 @@ def test_rename_session_empty_name():
 
 def test_tool_history_limit_exceeds():
     sid = "test-tool-limit"
+    ensure_session(sid)
     repo = ToolCallRepository()
     for i in range(3):
         repo.log(sid, "web_search", f'{{"q":"test{i}"}}"', "ok", turn=i)
@@ -151,6 +183,7 @@ def test_tool_history_limit_exceeds():
 
 def test_log_tool_call_with_turn():
     sid = "test-turn"
+    ensure_session(sid)
     repo = ToolCallRepository()
     repo.log(sid, "web_search", '{"q":"test"}', "ok", turn=42)
     rows = get_tool_history(sid)

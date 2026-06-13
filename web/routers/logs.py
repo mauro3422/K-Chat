@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -74,7 +74,7 @@ def query_client_logs(
 def ingest_client_logs(entries: list[ClientLogEntry]):
     """Persist client-submitted log entries to a JSONL file."""
     CLIENT_LOG_DIR.mkdir(parents=True, exist_ok=True)
-    date_str = datetime.utcnow().strftime("%Y%m%d")
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     path = CLIENT_LOG_DIR / f"{date_str}.jsonl"
 
     count = 0

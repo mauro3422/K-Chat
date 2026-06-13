@@ -1,7 +1,7 @@
 
 
 
-from src.core.history import filter_messages_for_ui, match_tools_to_msgs
+from src.core.history_ui import filter_messages_for_ui, match_tools_to_msgs
 
 def test_filter_messages_for_ui_complete_turn():
     """

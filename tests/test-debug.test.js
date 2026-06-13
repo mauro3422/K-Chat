@@ -8,35 +8,36 @@ global.KairosUtils = { escHtml: (s) => String(s).replace(/&/g,'&amp;').replace(/
 global.KairosWidgets = { debug: {}, log: () => {} };
 global.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
 
-const { KairosDebug } = await import('../web/static/debug.js');
+const { KairosDebugPanel } = await import('../web/static/modules/debug-panel.js');
+KairosDebugPanel.bindDebugControls();
 
 describe('KairosDebug', () => {
   test('logUI guarda evento en uiEvents', async () => {
-    KairosDebug.logUI('test-label', 'test-detail');
+    KairosDebugPanel.logUI('test-label', 'test-detail');
     const btn = { textContent: 'copy' };
-    KairosDebug.copyUILog(btn);
+    KairosDebugPanel.copyUILog(btn);
     await new Promise(r => setTimeout(r, 10));
     expect(btn.textContent).toBe('copiado');
   });
 
   test('logUI con label vacio no lanza error', () => {
-    expect(() => KairosDebug.logUI('', '')).not.toThrow();
+    expect(() => KairosDebugPanel.logUI('', '')).not.toThrow();
   });
 
   test('logStream guarda evento en streamEvents', async () => {
-    KairosDebug.logStream('content', 'texto de prueba');
+    KairosDebugPanel.logStream('content', 'texto de prueba');
     const btn = { textContent: 'copy' };
-    KairosDebug.copyStreamLog(btn);
+    KairosDebugPanel.copyStreamLog(btn);
     await new Promise(r => setTimeout(r, 10));
     expect(btn.textContent).toBe('copiado');
   });
 
   test('logStream con data null no lanza error', () => {
-    expect(() => KairosDebug.logStream('error', null)).not.toThrow();
+    expect(() => KairosDebugPanel.logStream('error', null)).not.toThrow();
   });
 
   test('logStream con objeto data no lanza error', () => {
-    expect(() => KairosDebug.logStream('tool_call', { name: 'test', args: { x: 1 } })).not.toThrow();
+    expect(() => KairosDebugPanel.logStream('tool_call', { name: 'test', args: { x: 1 } })).not.toThrow();
   });
 
   test('toggleDebug abre panel primera vez', () => {
@@ -47,7 +48,7 @@ describe('KairosDebug', () => {
       if (id === 'main') return { classList: mainClasses };
       return null;
     };
-    KairosDebug.toggleDebug();
+    KairosDebugPanel.toggleDebug();
     expect(panelClasses._open).toBe(true);
     expect(mainClasses._shifted).toBe(true);
   });
@@ -60,42 +61,42 @@ describe('KairosDebug', () => {
       if (id === 'main') return { classList: mainClasses };
       return null;
     };
-    KairosDebug.toggleDebug();
+    KairosDebugPanel.toggleDebug();
     expect(panelClasses._open).toBe(false);
   });
 
   test('toggleDebug sin DOM no lanza error', () => {
     global.document.getElementById = () => null;
-    expect(() => { KairosDebug.toggleDebug(); KairosDebug.toggleDebug(); }).not.toThrow();
+    expect(() => { KairosDebugPanel.toggleDebug(); KairosDebugPanel.toggleDebug(); }).not.toThrow();
   });
 
   test('toggleDebug es una función exportada', () => {
-    expect(typeof KairosDebug.toggleDebug).toBe('function');
+    expect(typeof KairosDebugPanel.toggleDebug).toBe('function');
   });
 
   test('copyText sin pre muestra []', () => {
     const btn = { textContent: 'copy', parentElement: { querySelector: () => null } };
-    KairosDebug.copyText(btn);
+    KairosDebugPanel.copyText(btn);
     expect(btn.textContent).toBe('[]');
   });
 
   test('copyUILog cambia texto a copiado', async () => {
     const btn = { textContent: 'copy' };
-    KairosDebug.copyUILog(btn);
+    KairosDebugPanel.copyUILog(btn);
     await new Promise(r => setTimeout(r, 10));
     expect(btn.textContent).toBe('copiado');
   });
 
   test('copyStreamLog cambia texto a copiado', async () => {
     const btn = { textContent: 'copy' };
-    KairosDebug.copyStreamLog(btn);
+    KairosDebugPanel.copyStreamLog(btn);
     await new Promise(r => setTimeout(r, 10));
     expect(btn.textContent).toBe('copiado');
   });
 
   test('copyWidgetLog sin widgets debug muestra []', () => {
     const btn = { textContent: 'copy' };
-    KairosDebug.copyWidgetLog(btn);
+    KairosDebugPanel.copyWidgetLog(btn);
     expect(btn.textContent).toBe('[]');
   });
 });

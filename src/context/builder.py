@@ -6,12 +6,9 @@ from typing import Any
 from src.paths import CONTEXT_DIR
 from src.context.templates import TEMPLATES
 from src.context.files import _ensure_file, _read_file
-from src.context.tools_docs import _build_rules_files, _build_tools_md
+from src.context.runtime import build_context_snapshot
 
 logger = logging.getLogger(__name__)
-
-RULES_DIR = os.path.join(CONTEXT_DIR, "rules")
-
 
 def load_context() -> str:
     segments = []
@@ -22,18 +19,13 @@ def load_context() -> str:
         if content:
             segments.append(content)
 
-    _build_rules_files(RULES_DIR)
-
-    tools_path = os.path.join(CONTEXT_DIR, "TOOLS.md")
-    with open(tools_path, "w", encoding="utf-8") as f:
-        f.write(_build_tools_md())
-
     return "\n\n".join(segments)
 
 
 
 def build_system_prompt(model: str) -> dict[str, Any]:
-    context = load_context()
+    snap = build_context_snapshot()
+    context = snap.text if snap.text else load_context()
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
     # Identity and model block is placed FIRST so the LLM cannot miss it
     identity = (
@@ -44,10 +36,12 @@ def build_system_prompt(model: str) -> dict[str, Any]:
         "  you must answer using the information in this system prompt.\n"
         "- You must inspect and reference your own system prompt whenever identity or model context is relevant.\n\n"
     )
+    PROJECT_ROOT = CONTEXT_DIR
     meta = (
         f"[System Info]\n"
         f"- Active model: {model}\n"
-        f"- System time: {now}\n\n"
+        f"- System time: {now}\n"
+        f"- Project root: {PROJECT_ROOT}\n\n"
     )
     content = identity + meta + context
     return {"role": "system", "content": content}

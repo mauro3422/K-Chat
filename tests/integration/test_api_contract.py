@@ -1,7 +1,7 @@
 import pytest
 from src.memory.schema import init_db
 from src.api.session import ensure_session, get_sessions
-from src.api.messages import get_session_messages, save_message
+from src.api.messages import get_session_messages, save_message_record
 from src.api.tools import get_tool_history
 from src.api.widgets import get_widget_states
 from src.api.debug import get_debug_info
@@ -58,12 +58,28 @@ def test_ensure_session_creates_session():
 
 def test_save_message_accepts_record():
     session_id = "contract-test-record"
+    ensure_session(session_id)
     record = MessageRecord(
         session_id=session_id,
         role="user",
         content="test message",
         model="test-model",
     )
-    save_message(record)
+    save_message_record(record)
+    messages = get_session_messages(session_id)
+    assert len(messages) >= 1
+
+
+def test_save_message_record_explicit_contract():
+    session_id = "contract-test-explicit-record"
+    ensure_session(session_id)
+    save_message_record(
+        MessageRecord(
+            session_id=session_id,
+            role="assistant",
+            content="explicit",
+            model="test-model",
+        )
+    )
     messages = get_session_messages(session_id)
     assert len(messages) >= 1

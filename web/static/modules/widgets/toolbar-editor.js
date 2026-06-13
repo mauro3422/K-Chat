@@ -3,13 +3,13 @@
  *
  * Editor inline de código: apertura, guardado, cancelación y validación.
  */
+import { ApiClient } from '../api-client.js';
 import { SessionContext } from '../session-context.js';
 import { createToolbarButton } from './ui-helpers.js';
 import { createIframe } from './iframe-builder.js';
 import { KairosWidgets } from './core.js';
 
 export function openEditor(container, id, key, code) {
-    var urlBuilder = SessionContext.createSessionUrlBuilder();
     var iframe = container.querySelector('iframe');
     if (iframe) iframe.style.display = 'none';
 
@@ -36,11 +36,7 @@ export function openEditor(container, id, key, code) {
         fontSize: '11px',
         onClick: function onSaveClick() {
             var newCode = textarea.value;
-            fetch(urlBuilder.widgetSave(key), {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ code: newCode, description: 'Edición manual desde UI' })
-            })
+            ApiClient.saveWidgetCode(SessionContext.getSessionId(), key, newCode, 'Edición manual desde UI')
             .then(function parseSaveResponse(r) { return r.json(); })
             .then(function onSaveSuccess(data) {
                 KairosWidgets._registry[id] = newCode;

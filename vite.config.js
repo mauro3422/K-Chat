@@ -3,14 +3,18 @@ import { resolve } from 'path';
 
 export default defineConfig({
   root: 'web/static',
+  base: '/static/',
   build: {
-    outDir: '../../dist/static',
+    outDir: 'dist',
     emptyOutDir: true,
-      rollupOptions: {
-        input: {
-        app: resolve(__dirname, 'web/static/app.js'),
-        },
+    rollupOptions: {
+      input: resolve(__dirname, 'web/static/app.js'),
+      output: {
+        entryFileNames: 'assets/app.js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name][extname]',
       },
+    },
   },
   server: {
     proxy: {

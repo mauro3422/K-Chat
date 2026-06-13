@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import json
 import pytest
 
+from src.core.debug_info import DebugInfo
 from src.llm.client import (
     chat,
     chat_stream,
@@ -65,7 +66,25 @@ def mock_models():
 
 @pytest.fixture
 def mock_policy():
-    with patch("src.llm.client.policy") as m:
+    with patch("src.llm.client.get_default_model") as m:
+        yield m
+
+
+@pytest.fixture
+def mock_api_call():
+    with patch("src.llm.client.api_call") as m:
+        yield m
+
+
+@pytest.fixture
+def mock_retry():
+    with patch("src.llm.client.is_rate_limit_error") as m:
+        yield m
+
+
+@pytest.fixture
+def mock_failover():
+    with patch("src.llm.client._mark_and_refresh") as m:
         yield m
 
 
@@ -77,16 +96,18 @@ class TestUpdateDebugUsage:
     def test_updates_debug_dict(self):
         chunk = MagicMock()
         chunk.usage = SimpleNamespace(prompt_tokens=1, completion_tokens=2, total_tokens=3)
-        debug = {}
+        debug = DebugInfo()
         _update_debug_usage(chunk, debug)
-        assert debug == {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+        assert debug.prompt_tokens == 1
+        assert debug.completion_tokens == 2
+        assert debug.total_tokens == 3
 
     def test_skips_when_no_usage(self):
         chunk = MagicMock()
         chunk.usage = None
-        debug = {}
+        debug = DebugInfo()
         _update_debug_usage(chunk, debug)
-        assert debug == {}
+        assert debug.prompt_tokens == 0
 
     def test_no_error_when_debug_is_none(self):
         chunk = MagicMock()
@@ -173,7 +194,7 @@ class TestUpdateSystemPrompt:
 
 class TestResolveModel:
     def test_returns_default_when_model_is_none(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default-model"
+        mock_policy.return_value = "default-model"
         mock_models.is_model_failed.return_value = False
         result = _resolve_model([], None)
         assert result == "default-model"
@@ -198,129 +219,133 @@ class TestResolveModel:
 # ===================================================================
 
 class TestChat:
-    def test_returns_choice_on_success(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_returns_choice_on_success(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
         mock_choice = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        mock_models._api_call.return_value = mock_response
+        mock_api_call._api_call.return_value = mock_response
 
         result = chat([{"role": "user", "content": "Hi"}])
 
         assert result is mock_choice
-        mock_models._api_call.assert_called_once_with(
+        mock_api_call._api_call.assert_called_once_with(
             model="default", messages=[{"role": "user", "content": "Hi"}]
         )
 
-    def test_uses_provided_model(self, mock_models, mock_policy):
+    def test_uses_provided_model(self, mock_models, mock_policy, mock_api_call):
         mock_models.is_model_failed.return_value = False
         mock_choice = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        mock_models._api_call.return_value = mock_response
+        mock_api_call._api_call.return_value = mock_response
 
         chat([{"role": "user", "content": "Hi"}], model="gpt-4")
 
-        mock_policy.get_default_model.assert_not_called()
-        mock_models._api_call.assert_called_once_with(
+        mock_policy.assert_not_called()
+        mock_api_call._api_call.assert_called_once_with(
             model="gpt-4", messages=[{"role": "user", "content": "Hi"}]
         )
 
-    def test_switches_failed_model_before_call(self, mock_models, mock_policy):
+    def test_switches_failed_model_before_call(self, mock_models, mock_policy, mock_api_call):
         mock_models.is_model_failed.return_value = True
         mock_models._switch_model.return_value = "backup"
         mock_choice = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        mock_models._api_call.return_value = mock_response
+        mock_api_call._api_call.return_value = mock_response
 
         messages = [{"role": "system", "content": "Old"}]
         chat(messages, model="failed-model", build_prompt_fn=lambda m: {"role": "system", "content": f"Now {m}"})
 
         mock_models._switch_model.assert_called_once_with("failed-model")
         assert messages[0]["content"] == "Now backup"
-        mock_models._api_call.assert_called_once_with(model="backup", messages=messages)
+        mock_api_call._api_call.assert_called_once_with(model="backup", messages=messages)
 
-    def test_retries_on_exception(self, mock_models, mock_policy):
+    def test_retries_on_exception(self, mock_models, mock_policy, mock_api_call, mock_retry, mock_failover):
         mock_models.is_model_failed.return_value = False
-        mock_models._is_rate_limit_error.return_value = False
-        mock_policy._mark_and_refresh.return_value = "backup"
+        mock_retry.return_value = False
+        mock_failover.return_value = "backup"
         mock_choice = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        mock_models._api_call.side_effect = [Exception("API error"), mock_response]
+        mock_api_call._api_call.side_effect = [Exception("API error"), mock_response]
 
         result = chat([{"role": "user", "content": "Hi"}], model="gpt-4")
 
         assert result is mock_choice
-        assert mock_models._api_call.call_count == 2
-        mock_policy._mark_and_refresh.assert_called_once_with("gpt-4", refresh=True)
+        assert mock_api_call._api_call.call_count == 2
+        mock_failover.assert_called_once_with("gpt-4", refresh=True)
 
-    def test_populates_debug(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_populates_debug(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
         mock_response = MagicMock()
         mock_response.usage = SimpleNamespace(prompt_tokens=10, completion_tokens=20, total_tokens=30)
         mock_choice = MagicMock()
         mock_response.choices = [mock_choice]
-        mock_models._api_call.return_value = mock_response
+        mock_api_call._api_call.return_value = mock_response
 
-        debug = {}
+        debug = DebugInfo()
         chat([{"role": "user", "content": "Hi"}], debug=debug)
 
-        assert debug == {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+        assert debug.prompt_tokens == 10
+        assert debug.completion_tokens == 20
+        assert debug.total_tokens == 30
 
-    def test_does_not_update_debug_when_not_dict(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_does_not_update_debug_when_not_dict(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
         mock_response = MagicMock()
         mock_response.usage = SimpleNamespace(prompt_tokens=10, completion_tokens=20, total_tokens=30)
         mock_choice = MagicMock()
         mock_response.choices = [mock_choice]
-        mock_models._api_call.return_value = mock_response
+        mock_api_call._api_call.return_value = mock_response
 
         chat([{"role": "user", "content": "Hi"}], debug=None)
 
-    def test_populates_debug_on_retry(self, mock_models, mock_policy):
+    def test_populates_debug_on_retry(self, mock_models, mock_policy, mock_api_call, mock_failover):
         mock_models.is_model_failed.return_value = False
-        mock_policy._mark_and_refresh.return_value = "backup"
+        mock_failover.return_value = "backup"
         mock_response = MagicMock()
         mock_response.usage = SimpleNamespace(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         mock_choice = MagicMock()
         mock_response.choices = [mock_choice]
-        mock_models._api_call.side_effect = [Exception("fail"), mock_response]
+        mock_api_call._api_call.side_effect = [Exception("fail"), mock_response]
 
-        debug = {}
+        debug = DebugInfo()
         chat([{"role": "user", "content": "Hi"}], model="gpt-4", debug=debug)
 
-        assert debug == {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
+        assert debug.prompt_tokens == 5
+        assert debug.completion_tokens == 10
+        assert debug.total_tokens == 15
 
-    def test_updates_system_prompt_on_retry(self, mock_models, mock_policy):
+    def test_updates_system_prompt_on_retry(self, mock_models, mock_policy, mock_api_call, mock_failover):
         mock_models.is_model_failed.return_value = False
-        mock_policy._mark_and_refresh.return_value = "backup"
+        mock_failover.return_value = "backup"
         mock_choice = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        mock_models._api_call.side_effect = [Exception("fail"), mock_response]
+        mock_api_call._api_call.side_effect = [Exception("fail"), mock_response]
 
         messages = [{"role": "system", "content": "Old"}]
         chat(messages, model="gpt-4", build_prompt_fn=lambda m: {"role": "system", "content": f"Now {m}"})
 
         assert messages[0]["content"] == "Now backup"
 
-    def test_empty_messages_list(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_empty_messages_list(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
         mock_choice = MagicMock()
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
-        mock_models._api_call.return_value = mock_response
+        mock_api_call._api_call.return_value = mock_response
 
         result = chat([])
 
         assert result is mock_choice
-        mock_models._api_call.assert_called_once_with(model="default", messages=[])
+        mock_api_call._api_call.assert_called_once_with(model="default", messages=[])
 
 
 # ===================================================================
@@ -361,9 +386,11 @@ class TestProcessChunks:
     def test_updates_debug(self):
         delta = _make_delta(content="Hi")
         chunk = _make_chunk(delta, usage=SimpleNamespace(prompt_tokens=5, completion_tokens=7, total_tokens=12))
-        debug = {}
+        debug = DebugInfo()
         _collect(_process_chunks([chunk], None, None, False, debug))
-        assert debug == {"prompt_tokens": 5, "completion_tokens": 7, "total_tokens": 12}
+        assert debug.prompt_tokens == 5
+        assert debug.completion_tokens == 7
+        assert debug.total_tokens == 12
 
     def test_returns_metadata_no_content(self):
         delta = _make_delta()
@@ -395,54 +422,54 @@ class TestProcessChunks:
 # ===================================================================
 
 class TestChatStream:
-    def test_yields_content(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_yields_content(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
 
         delta = _make_delta(content="Hello")
         chunk = _make_chunk(delta)
-        mock_models._api_call.return_value = iter([chunk])
+        mock_api_call._api_call.return_value = iter([chunk])
 
         gen = chat_stream([{"role": "user", "content": "Hi"}])
         results, _ = _collect(gen)
         assert results == ["Hello"]
 
-    def test_yields_tagged(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_yields_tagged(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
 
         delta = _make_delta(content="Hi")
         chunk = _make_chunk(delta)
-        mock_models._api_call.return_value = iter([chunk])
+        mock_api_call._api_call.return_value = iter([chunk])
 
         gen = chat_stream([{"role": "user", "content": "Hi"}], tagged=True)
         results, _ = _collect(gen)
         assert ("content", "Hi") in results
 
-    def test_calls_api_with_stream_options(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_calls_api_with_stream_options(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
 
         delta = _make_delta(content="Hello")
         chunk = _make_chunk(delta)
-        mock_models._api_call.return_value = iter([chunk])
+        mock_api_call._api_call.return_value = iter([chunk])
 
         gen = chat_stream([{"role": "user", "content": "Hi"}])
         _collect(gen)
 
-        mock_models._api_call.assert_called_once_with(
+        mock_api_call._api_call.assert_called_once_with(
             model="default", messages=[{"role": "user", "content": "Hi"}],
             stream=True, stream_options={"include_usage": True}
         )
 
-    def test_resolves_model(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_resolves_model(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = True
         mock_models._switch_model.return_value = "backup"
 
         delta = _make_delta(content="OK")
         chunk = _make_chunk(delta)
-        mock_models._api_call.return_value = iter([chunk])
+        mock_api_call._api_call.return_value = iter([chunk])
 
         messages = [{"role": "system", "content": "Old"}]
         gen = chat_stream(messages, model="failed", build_prompt_fn=lambda m: {"role": "system", "content": f"Now {m}"})
@@ -451,49 +478,73 @@ class TestChatStream:
         mock_models._switch_model.assert_called_once_with("failed")
         assert messages[0]["content"] == "Now backup"
 
-    def test_retries_on_stream_error(self, mock_models, mock_policy):
+    def test_retries_on_stream_error(self, mock_models, mock_policy, mock_api_call, mock_retry, mock_failover):
         mock_models.is_model_failed.return_value = False
-        mock_models._is_rate_limit_error.return_value = False
-        mock_policy._mark_and_refresh.return_value = "backup"
+        mock_retry.return_value = False
+        mock_failover.return_value = "backup"
 
         delta = _make_delta(content="Retried")
         chunk = _make_chunk(delta)
-        mock_models._api_call.side_effect = [Exception("stream fail"), iter([chunk])]
+        mock_api_call._api_call.side_effect = [Exception("stream fail"), iter([chunk])]
 
         gen = chat_stream([{"role": "user", "content": "Hi"}], model="gpt-4")
         results, _ = _collect(gen)
         assert results == ["Retried"]
-        assert mock_models._api_call.call_count == 2
-        mock_policy._mark_and_refresh.assert_called_once_with("gpt-4", refresh=True)
+        assert mock_api_call._api_call.call_count == 2
+        mock_failover.assert_called_once_with("gpt-4", refresh=True)
 
-    def test_updates_debug(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_stream_fallback_updates_system_prompt(self, mock_models, mock_policy, mock_api_call, mock_retry, mock_failover):
+        mock_models.is_model_failed.return_value = False
+        mock_retry.return_value = False
+        mock_failover.return_value = "backup"
+
+        delta = _make_delta(content="Recovered")
+        chunk = _make_chunk(delta)
+        mock_api_call._api_call.side_effect = [Exception("stream fail"), iter([chunk])]
+
+        messages = [{"role": "system", "content": "Original"}, {"role": "user", "content": "Hi"}]
+        gen = chat_stream(
+            messages,
+            model="gpt-4",
+            build_prompt_fn=lambda m: {"role": "system", "content": f"Now {m}"},
+        )
+        results, _ = _collect(gen)
+
+        assert results == ["Recovered"]
+        assert messages[0]["content"] == "Now backup"
+        assert mock_api_call._api_call.call_count == 2
+        mock_failover.assert_called_once_with("gpt-4", refresh=True)
+
+    def test_updates_debug(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
 
         delta = _make_delta(content="Hi")
         chunk = _make_chunk(delta, usage=SimpleNamespace(prompt_tokens=10, completion_tokens=20, total_tokens=30))
-        mock_models._api_call.return_value = iter([chunk])
+        mock_api_call._api_call.return_value = iter([chunk])
 
-        debug = {}
+        debug = DebugInfo()
         gen = chat_stream([{"role": "user", "content": "Hi"}], debug=debug)
         _collect(gen)
-        assert debug == {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+        assert debug.prompt_tokens == 10
+        assert debug.completion_tokens == 20
+        assert debug.total_tokens == 30
 
-    def test_reasoning_output_list(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_reasoning_output_list(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
 
         delta = _make_delta(reasoning="thinking slowly")
         chunk = _make_chunk(delta)
-        mock_models._api_call.return_value = iter([chunk])
+        mock_api_call._api_call.return_value = iter([chunk])
 
         reasoning_out = []
         gen = chat_stream([{"role": "user", "content": "Think"}], reasoning_output=reasoning_out)
         _collect(gen)
         assert reasoning_out == ["thinking slowly"]
 
-    def test_tool_calls_output(self, mock_models, mock_policy):
-        mock_policy.get_default_model.return_value = "default"
+    def test_tool_calls_output(self, mock_models, mock_policy, mock_api_call):
+        mock_policy.return_value = "default"
         mock_models.is_model_failed.return_value = False
 
         tc = SimpleNamespace(
@@ -502,7 +553,7 @@ class TestChatStream:
         )
         delta = _make_delta(tool_calls=[tc])
         chunk = _make_chunk(delta)
-        mock_models._api_call.return_value = iter([chunk])
+        mock_api_call._api_call.return_value = iter([chunk])
 
         tool_calls_out = []
         gen = chat_stream([{"role": "user", "content": "Search"}], tool_calls_output=tool_calls_out)

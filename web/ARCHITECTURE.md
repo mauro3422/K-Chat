@@ -20,14 +20,16 @@
 | `routers/debug.py` | `GET .../debug`, `GET /debug/backend-logs` — local-only debug endpoints |
 | `routers/health.py` | `GET /health` — DB + LLM provider connectivity check |
 | `services/chat_stream.py` | Builds the NDJSON generator that wraps `chat_stream()` and persists on completion/error |
+| `services/chat_stream_contract.py` | Dependency bundle for stream hooks and retry/save wiring |
+| `services/stream_state.py` | Accumulates partial content/reasoning and persistence timing |
 | `services/stream_contract.py` | Shared NDJSON event contract for server-side stream serialization |
-| `services/message_persister.py` | Serializes phases + debug info and writes assistant message + debug to DB |
+| `services/message_persister.py` | Serializes phases + debug info and writes assistant message + debug to DB via `save_message_record()` |
 | `services/message_renderer.py` | Renders full session HTML: fetches messages, matches tools, extracts widget code, builds form |
+| `services/message_renderer_contract.py` | Optional dependency bundle for server-side HTML rendering |
+| `services/message_persister.py` | Persists assistant output, phases, and debug info with optional dependency bundle |
+| `services/message_persister_contract.py` | Optional dependency bundle for assistant persistence |
 | `services/stream_error_classifier.py` | Pattern-matches error strings into categories (`rate_limit`, `timeout`, `network`, `model`, `unknown`) |
-| `static/app.js` | Bundled frontend entry. Assembles the runtime and delegates compatibility globals to bootstraps. |
-| `static/modules/widgets/bootstrap.js` | Compatibility bootstrap for `window.KairosWidgets` |
-| `static/modules/stream-bootstrap.js` | Compatibility bootstrap for `window.StreamOrchestrator` |
-| `static/modules/chat-form-bootstrap.js` | Compatibility bootstrap for `window.KairosForm` |
+| `static/app.js` | Bundled frontend entry. Assembles the runtime. |
 
 ---
 
@@ -71,8 +73,8 @@ Client POST /chat/{session_id}
 chat.py:chat()
   ├─ Validates session_id and message
   ├─ ensure_session(session_id)          # DB
-  ├─ rebuild_history(session_id, model)  # fetches history
-  ├─ db_save_message("user", ...)        # persists user msg
+  ├─ rebuild_history(session_id, model, messages_repo=...)  # fetches history with explicit repo injection
+  ├─ db_save_message(MessageRecord(...)) # persists user msg
   │
   ▼
 chat_stream.py:build_stream_generator()
@@ -86,7 +88,7 @@ StreamingResponse(generate(), media_type="application/x-ndjson")
   │     └─ frontend parses the same event set through `web/static/modules/stream-contract.js`
   │
   ├─ On completion:
-  │     ├─ message_persister.save_assistant_message()  # writes content + phases + debug to DB
+  │     ├─ message_persister.save_assistant_message()  # writes content + phases + debug to DB via save_message_record()
   │     └─ background_tasks.add_task(auto_rename_session)  # async rename
   │
   ├─ On error:
@@ -108,8 +110,8 @@ StreamingResponse(generate(), media_type="application/x-ndjson")
 | Jinja2 | `pages.py`, `message_renderer.py` |
 | Pydantic | `chat.py`, `widgets.py` (payload models) |
 | Uvicorn | `server.py` (`__main__`) |
-| `src.api` | Backward-compatible facade for routers/services still in transition |
-| `src.memory.connection` | `health.py` (DB ping) |
+| `src.api` | Domain modules for sessions, messages, widgets, debug, tools, history |
+| `src.memory.connection_pool` | `health.py` (DB ping) |
 | `dependencies.manage` | `server.py` (SearXNG lifecycle) |
 
 ### Internal (`web/`)
@@ -119,11 +121,12 @@ server.py          ← importlib.imports all routers
 logging.py         ← debug.py
 ui_utils.py        ← message_renderer.py (via render_msg_with_phases)
 chat.py            ← chat_stream.py
-chat_stream.py     ← message_persister.py, stream_error_classifier.py, stream_contract.py
+chat_stream.py     ← message_persister.py, stream_error_classifier.py, stream_contract.py, chat_stream_contract.py, stream_state.py
 message_renderer.py← ui_utils.py
+message_renderer.py← message_renderer_contract.py
 ```
 
-`pages.py` and `message_renderer.py` both call `src.api` functions directly — no shared service layer between them.
+`pages.py` and `message_renderer.py` both call `src.api` functions directly, but `message_renderer.py` now accepts an explicit dependency bundle to keep its wiring testable.
 
 ---
 
@@ -148,6 +151,6 @@ message_renderer.py← ui_utils.py
 | **`message_renderer.py` duplicates logic** | Extracts widgets via regex *and* calls `render_msg_with_phases` — widget extraction could be a service. |
 | **No auth on `/chat/{session_id}`** | Anyone with a session UUID can post messages. Only rate limiting protects the endpoint. |
 | **`_max_backend_logs = 100` hardcoded** | Should be configurable or at least a constant at module level with a clear name. |
-| **`health.py` imports at call time** | `from src.memory.connection import get_conn` inside the function — inconsistent with other modules. |
+| **`health.py` imports at call time** | `from src.memory.connection_pool import get_conn` inside the function — inconsistent with other modules. |
 | **No tests in `web/`** | No test files found; the architecture would benefit from integration tests for the streaming flow. |
 | **CSP `unsafe-inline`** | Required for inline scripts/styles but weakens XSS protection; consider nonces or hashes. |

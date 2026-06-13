@@ -50,16 +50,15 @@ These are already close to the "lego" ideal because they have clear owners and f
 
 These modules are still mostly there to keep old callers alive:
 
-- `src/api/__init__.py`
 - `api modules for session and db were split`
 - `src/api/*` transitional modules
 - `web/static/app.js`
 - ~~`web/static/modules/widgets/bootstrap.js`~~ ✅ deleted
 - ~~`web/static/modules/stream-bootstrap.js`~~ ✅ deleted
 - ~~`web/static/modules/chat-form-bootstrap.js`~~ ✅ deleted
-- `web/static/session.js`
-- `web/static/debug.js`
-- `web/static/chat-stream.js`
+- `web/static/modules/session-page.js`
+- `web/static/modules/debug-panel.js`
+- `web/static/modules/stream-orchestrator.js`
 
 Compatibility is not bad, but it should be obvious in the code and docs that these are transition surfaces, not the model for new work.
 
@@ -68,7 +67,7 @@ Compatibility is not bad, but it should be obvious in the code and docs that the
 ### 1. API facade
 
 Current state:
-- `src/api/__init__.py` is a compatibility facade, which is correct.
+- `src/api/__init__.py` is now a package marker only.
 - The facade is still wide and flat.
 - Some callers still import through it by habit.
 
@@ -77,31 +76,34 @@ What still bothers me:
 - domain-level imports are not yet the universal norm
 
 Best next cut:
-- keep shrinking the exports in `src/api/__init__.py`
-- stop describing it as the primary entry point anywhere in the docs
+- keep imports pointed at the domain modules directly
+- stop describing the package marker as an entry point
 
 ### 2. LLM routing
 
 Current state:
-- `src/llm/policy.py` is a 6-line facade re-exporting from `discovery.py`, `verifier.py`, `selector.py`, `failover.py`
-- `src/llm/providers.py` owns `_PROVIDER_REGISTRY` and `register_provider()` (extracted from `models.py`)
-- `src/llm/model_state.py` holds shared state with `_switch_model()` (extracted from `models.py`)
+- `src/llm/discovery.py`, `src/llm/verifier.py`, `src/llm/selector.py`, `src/llm/failover.py` are split into real responsibilities
+- `src/llm/providers.py` owns `_PROVIDER_REGISTRY` and `register_provider()`
+- `src/llm/model_state.py` holds shared state with `_switch_model()`
 - `src/llm/client.py` does runtime failover
-- `models.py` is now a thin `_api_call()` wrapper
+- `src/llm/api_call.py` is the `_api_call()` wrapper
 
 **✅ Split done.** The model lifecycle is now decomposed into: discovery, verification, selection, failover, provider registry, model state.
 
 ### 3. Database lifecycle
 
 Current state:
-- `src/memory/connection.py` guards per-thread pooled connections
+- `src/memory/db_path.py` resolves the DB path
+- `src/memory/engine_state.py` owns the active engine registry
+- `src/memory/connection_pool.py` guards per-thread pooled connections
+- `src/memory/connection_pool.py` is the runtime connection entrypoint
 - `src/memory/schema.py` guards init per DB path
 - `src/memory/repos/*` are the actual persistence units
 - `src/memory/repos/base.py` owns transaction behavior
 
 What still bothers me:
-- `get_conn()` and `init_db()` still live in the same module
-- the module still knows about path resolution, engine selection, connection reuse, and migration execution
+- `schema.py` still knows about migration execution
+- `delete_session()` in the API layer still coordinates cross-repo cleanup
 
 Best next cut:
 - split lifecycle into:
@@ -117,7 +119,8 @@ This is one of the few places where further decomposition still looks valuable.
 Current state:
 - `window` is still used intentionally in a few places
 - `app.js` is the actual bundle entry and keeps the assembly logic only
-- `session.js`, `debug.js`, `chat-stream.js`, and the bootstrap modules still bridge old and new entry styles
+- `session-page.js`, `debug-panel.js`, and the stream modules now own the browser entry flow
+- the remaining legacy surface is narrower than before and is concentrated in transition modules
 
 What still bothers me:
 - `window.*` is still more common than it should be
@@ -151,34 +154,38 @@ Best next cut:
 ### Resolved since last audit
 
 - `src/config_loader.py` created with `Config` dataclass + `load_config()` + `DEFAULT_CONFIG` — replaces loose env‑var access.
-- `config.py` kept as compat shim (re-exports from `src/config_loader.py`).
-- `src/llm/policy.py` split into `discovery.py`, `verifier.py`, `selector.py`, `failover.py` — policy.py is now a 6-line facade.
-- `src/llm/providers.py` extracted from `models.py` — `_PROVIDER_REGISTRY` and `register_provider()` live here.
+- `src/llm/api_call.py`, `src/llm/discovery.py`, `src/llm/verifier.py`, `src/llm/selector.py`, `src/llm/failover.py` are the concrete LLM modules now.
+- `src/llm/providers.py` owns `_PROVIDER_REGISTRY` and `register_provider()`.
 - Injection params added to `orchestrator.chat_stream()`, `tool_loop.*`, `chat_stream.py`, and individual API domain modules — no more module-level hard imports for test‑critical seams.
 - Bootstraps `stream-bootstrap.js`, `chat-form-bootstrap.js`, `widgets/bootstrap.js` deleted.
 - `shared-state.js`, `content-renderer.js`, and 3 bootstrap files deleted (frontend module count stabilized at 36).
-- Root `config.py` kept as compat shim (was NOT removed — re-exports from `src/config_loader.py`).
+- Root `config.py` removed; `src/config_loader.py` is canonical.
+- `src/api/llm.py`, `src/api/models.py`, `src/api/history.py`, `src/api/health.py` removed from runtime; direct module imports are now the norm.
+- `HistoryMessage` introduced as the stable row/DTO boundary for history parsing and rendering.
+- `load_context()` made pure; writing `TOOLS.md` moved into an explicit snapshot step.
+- `src.tools` stopped auto-building the registry on import.
 
 ## Prioritized backlog
 
 ### P0
 
-1. Reduce the compatibility bootstraps if the legacy surface is no longer needed.
+1. Keep shrinking any leftover transition surfaces if the legacy entrypoints are still needed.
 2. Keep shrinking legacy globals and transition surfaces where practical.
 3. ~~Split `src/llm/policy.py` into smaller policy objects or modules.~~ ✅ DONE
-4. Split `memory connection + schema + repos` into lifecycle pieces.
+4. Finish reducing the last frontend transition surfaces in `session-page.js`, `debug-panel.js`, and `stream-orchestrator.js`.
+5. Split `memory connection + schema + repos` into lifecycle pieces.
 
 ### P1
 
-1. Continue shrinking `src/api/__init__.py`.
+1. Keep removing stale facade references from docs and callers.
 2. Keep moving old callers to direct domain imports.
 3. Update the stale architecture docs to match runtime reality.
 
 ### P2
 
-1. Reduce compatibility aliases in `session.js`, `debug.js`, and `chat-stream.js`.
-2. Review whether `api modules for session and db were split` still deserves to exist as a facade.
-3. Consider replacing the current `window` bridge pattern with explicit initialization objects where practical.
+1. Review whether `api modules for session and db were split` still deserves to exist as a facade.
+2. Consider replacing the current `window` bridge pattern with explicit initialization objects where practical.
+3. Keep docs and audit files synced with the runtime as the frontend surface keeps shrinking.
 
 ## What "done" looks like for this repo
 

@@ -2,11 +2,20 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+from src.llm.model_state import clear_failed_models, set_cached_models, set_verified_models
 from src.llm.discovery import get_models, get_free_models, get_verified_models
 
 
-@patch("src.llm.models._get_provider")
-@patch("src.llm.models.get_cached_models_safe")
+@pytest.fixture(autouse=True)
+def clear_llm_state():
+    clear_failed_models()
+    set_cached_models(None)
+    set_verified_models(None)
+    yield
+
+
+@patch("src.llm.discovery._get_provider")
+@patch("src.llm.discovery.models.get_cached_models_safe")
 def test_get_models_returns_cached_models(mock_get_cached, mock_get_provider):
     mock_provider = MagicMock()
     mock_model = MagicMock()
@@ -20,8 +29,8 @@ def test_get_models_returns_cached_models(mock_get_cached, mock_get_provider):
     mock_provider.list_models.assert_not_called()
 
 
-@patch("src.llm.models._get_provider")
-@patch("src.llm.models.get_cached_models_safe")
+@patch("src.llm.discovery._get_provider")
+@patch("src.llm.discovery.models.get_cached_models_safe")
 def test_get_models_fetches_from_api_when_no_cache(mock_get_cached, mock_get_provider):
     mock_provider = MagicMock()
     mock_model = MagicMock()
@@ -35,8 +44,8 @@ def test_get_models_fetches_from_api_when_no_cache(mock_get_cached, mock_get_pro
     mock_provider.list_models.assert_called_once()
 
 
-@patch("src.llm.models._get_provider")
-@patch("src.llm.models.get_cached_models_safe")
+@patch("src.llm.discovery._get_provider")
+@patch("src.llm.discovery.models.get_cached_models_safe")
 def test_get_models_handles_api_errors_using_cache_fallback(mock_get_cached, mock_get_provider):
     mock_provider = MagicMock()
     mock_model = MagicMock()

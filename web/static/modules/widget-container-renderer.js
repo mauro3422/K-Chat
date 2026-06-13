@@ -8,10 +8,12 @@ export function processWidgetContainers(fullText, bodyDiv, existingByKey, render
   var widgetsApi = KairosWidgets;
   // Find all standard code blocks and inline code blocks that are NOT widgets
   var ignoredRanges = [];
-  var ignoredCodeBlockRegex = /```(?!html-widget)[\s\S]*?(?:```|$)/g;
+  var codeBlockRegex = /```(html-widget)?[\s\S]*?(?:```|$)/g;
   var match;
-  while ((match = ignoredCodeBlockRegex.exec(fullText)) !== null) {
-    ignoredRanges.push({ start: match.index, end: match.index + match[0].length });
+  while ((match = codeBlockRegex.exec(fullText)) !== null) {
+    if (!match[1]) {
+      ignoredRanges.push({ start: match.index, end: match.index + match[0].length });
+    }
   }
   var inlineRegex = /`[^`\n]+`/g;
   while ((match = inlineRegex.exec(fullText)) !== null) {

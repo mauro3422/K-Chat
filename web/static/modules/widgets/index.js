@@ -1,8 +1,7 @@
 /**
  * Kairos Widgets — Public API
  *
- * Exporta la API pública sin tocar globals. La instalación en `window`
- * vive en `bootstrap.js` para mantener la compatibilidad separada del núcleo.
+ * Exporta la API pública sin tocar globals.
  */
 import { KairosWidgets, extract, log, reset, nextIndex } from './core.js';
 import { buildIframeSrc, createIframe } from './iframe-builder.js';

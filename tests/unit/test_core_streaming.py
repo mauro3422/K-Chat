@@ -198,6 +198,8 @@ def test_streaming_content_then_tool(mock_stream, mock_chat):
 @patch("src.llm.client.chat_stream")
 def test_streaming_session_id_propagates(mock_stream, mock_chat):
     """Streaming path: session_id se pasa a los tools."""
+    from src.api.session import ensure_session
+    ensure_session("ses-s")
     from src.core.orchestrator import chat_stream
 
     tcs = [_make_tool_call_obj("web_search", {"query": "x"}, "c1")]

@@ -1,0 +1,137 @@
+.md-content {
+  white-space: normal;
+}
+
+.md-content h1,
+.md-content h2,
+.md-content h3 {
+  margin: 8px 0 4px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.md-content h1 { font-size: 1.3em; }
+.md-content h2 { font-size: 1.15em; }
+.md-content h3 { font-size: 1.05em; }
+
+.md-content p {
+  margin: 4px 0;
+}
+
+.md-content ul,
+.md-content ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.md-content code {
+  background: var(--bg-primary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-family: var(--font-mono);
+  color: var(--text-code);
+}
+
+.md-content pre {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 6px 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.md-content pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.md-content blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 10px;
+  color: var(--text-muted);
+  margin: 6px 0;
+}
+
+.md-content table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.md-content th,
+.md-content td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.md-content th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.md-content tr:nth-child(even) {
+  background: var(--bg-stripe);
+}
+
+.md-content a {
+  color: var(--accent-link);
+  text-decoration: none;
+}
+
+.md-content a:hover {
+  text-decoration: underline;
+}
+
+.md-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 8px 0;
+}
+
+.md-content strong {
+  color: var(--text-bright);
+}
+
+.md-content del {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.md-content li:has(input[type="checkbox"]) {
+  list-style-type: none;
+  margin-left: -20px;
+}
+
+.md-content li input[type="checkbox"] {
+  margin-right: 6px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+.md-content .footnote-def {
+  font-size: 12px;
+  color: var(--text-muted);
+  border-left: 2px solid var(--border);
+  padding-left: 8px;
+  margin: 8px 0;
+}
+
+.md-content .fn-ref a {
+  font-weight: bold;
+}
+
+.md-content .fn-back {
+  text-decoration: none;
+  margin-right: 4px;
+  color: var(--accent-link);
+}

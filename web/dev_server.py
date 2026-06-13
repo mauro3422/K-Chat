@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-import os
 import socket
 import subprocess
 import time
 
 import uvicorn
+
+from src.config_loader import DEFAULT_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +31,12 @@ def _free_port_if_needed(host: str, port: int) -> None:
 
 def main() -> None:
     logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+        level=DEFAULT_CONFIG.log_level.upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    host = os.environ.get("HOST", "127.0.0.1")
-    port = int(os.environ.get("PORT", "8000"))
+    host = DEFAULT_CONFIG.host
+    port = DEFAULT_CONFIG.port
     _free_port_if_needed(host, port)
     uvicorn.run(
         "web.server:app",

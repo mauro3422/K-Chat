@@ -1,6 +1,6 @@
 # Kairos (K-Chat)
 
-> **v0.0.52** — Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
+> **v0.0.53** — Personal minimalist agent with episodic memory, parallel tools, and web dashboard.
 > No JS frameworks, no complex gateways. Each piece is an independent file.
 
 ## Vision
@@ -97,7 +97,7 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   │   └── logs.py         → Log query endpoints
 │   ├── templates/          → Jinja2 templates
 │   └── static/             → CSS, JS modules (chat, session, debug, widgets)
-├── tests/                  → 519 Python + 22 E2E tests (Playwright)
+├── tests/                  → 664 Python + 22 E2E tests (Playwright)
 ├── docs/
 │   ├── ARCHITECTURE.md     → System architecture and data flow
 │   ├── MODULES.md          → Module responsibilities and interfaces

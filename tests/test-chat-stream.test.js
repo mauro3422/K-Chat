@@ -30,7 +30,8 @@ global.window = Object.assign(global.window || {}, {
   KairosUtils: _utils
 });
 
-var chatModule = await import('../web/static/chat-stream.js');
+var chatModule = await import('../web/static/modules/session-page.js');
+chatModule.initSessionPage();
 
 // Ensure KairosForm and KairosWidgets have mock reset/retry
 widgetsModule.KairosWidgets.startMessageHandler = () => {};

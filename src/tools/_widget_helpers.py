@@ -1,10 +1,12 @@
-from src.memory.repos import SavedWidgetRepository
+def _get_saved_widget_repo(repo=None):
+    if repo is not None:
+        return repo
+    from src.memory.repos import SavedWidgetRepository
+    return SavedWidgetRepository()
 
-_SAVED_WIDGET_REPO = SavedWidgetRepository()
 
-
-def get_saved_widget_repo():
-    return _SAVED_WIDGET_REPO
+def get_saved_widget_repo(repo=None):
+    return _get_saved_widget_repo(repo)
 
 
 def sanitize_widget_id(widget_id: str) -> str:

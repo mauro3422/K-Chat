@@ -22,10 +22,11 @@ DEFINITION = {
 def run(**kwargs) -> str:
     limit = int(kwargs.get("limit", kwargs.get("max_results", kwargs.get("count", kwargs.get("n", 5)))))
     _session_id = kwargs.get("_session_id")
+    _repos = kwargs.pop("_repos", get_repos())
     if not _session_id:
         return "No active session."
     try:
-        rows = get_repos().tool_calls.get_history(_session_id, limit=min(limit, 20))
+        rows = _repos.tool_calls.get_history(_session_id, limit=min(limit, 20))
     except Exception:
         return "[ERROR] Could not retrieve the tool history."
     if not rows:

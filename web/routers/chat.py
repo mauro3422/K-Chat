@@ -4,13 +4,18 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.llm.policy import get_default_model
 from src.core.orchestrator import chat_stream as core_chat_stream
-from src.api.history import rebuild_history
-from src.api.messages import save_message as db_save_message
+from src.llm.client import chat_stream as llm_chat_stream
+from src.core.orchestrator_contract import OrchestratorDeps
+from src.core.history_rebuilder import rebuild_history
+from src.core.history_contract import HistoryRebuildDeps
+from src.llm.selector import get_default_model
+from src.api.messages import save_message_record as db_save_message
 from src.api.session import ensure_session
 from src.memory.repos import get_repos
+from src.memory.repos import MessageRecord
 from web.services.chat_stream import build_stream_generator
+from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.stream_retry_handler import StreamRetryHandler
 
 router = APIRouter()
@@ -39,13 +44,13 @@ def chat(
     ensure_session(session_id)
     repos = get_repos()
     try:
-        history = rebuild_history(session_id, model, repos.messages)
+        history = rebuild_history(session_id, model, deps=HistoryRebuildDeps(messages_repo=repos.messages))
     except Exception as e:
         logger.error("Error rebuilding history for %s: %s", session_id, e)
         raise HTTPException(500, "Error loading history")
 
     try:
-        db_save_message(session_id, "user", payload.message, model)
+        db_save_message(MessageRecord(session_id=session_id, role="user", content=payload.message, model=model), repos=repos)
     except Exception as e:
         logger.error("Error saving user message for %s: %s", session_id, e)
 
@@ -55,7 +60,9 @@ def chat(
         history,
         model,
         background_tasks,
-        chat_stream_fn=lambda *a, **kw: core_chat_stream(*a, **kw, repos=repos),
-        retry_handler=StreamRetryHandler(max_retries=2),
+        deps=StreamGeneratorDeps(
+            chat_stream_fn=lambda *a, **kw: core_chat_stream(*a, **kw, deps=OrchestratorDeps(repos=repos)),
+            retry_handler=StreamRetryHandler(max_retries=2, llm_chat_stream_fn=llm_chat_stream),
+        ),
     )
     return StreamingResponse(generate(), media_type="application/x-ndjson")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from typing import Any
 
 WIDGET_STATE_CODE_PREFIX = "_code_"
@@ -15,18 +15,33 @@ def normalize_inline_widget_code(code: str) -> str:
     return code.replace("?.", ".")
 
 
-def extract_inline_widget_states(messages: Iterable[Sequence[Any]]) -> dict[str, str]:
+def _get_message_field(message: Any, key: str, default: Any = None) -> Any:
+    if hasattr(message, key):
+        return getattr(message, key)
+    if hasattr(message, "get"):
+        try:
+            return message.get(key, default)
+        except TypeError:
+            pass
+    try:
+        return message[key]
+    except Exception:
+        return default
+
+
+def extract_inline_widget_states(messages: Iterable[Any]) -> dict[str, str]:
     """Extract inline widget code blocks as persisted widget code entries, ignoring patterns inside standard code blocks."""
     combined_text = "\n".join(
-        str(row["content"])
+        str(_get_message_field(row, "content"))
         for row in messages
-        if len(row) > 1 and row["role"] == "assistant" and row["content"]
+        if _get_message_field(row, "role") == "assistant" and _get_message_field(row, "content")
     )
 
     # Find ignored ranges (standard code blocks and inline code blocks)
     ignored_ranges: list[tuple[int, int]] = []
-    for m in re.finditer(r"```(?!html-widget)[\s\S]*?(?:```|$)", combined_text):
-        ignored_ranges.append((m.start(), m.end()))
+    for m in re.finditer(r"```(html-widget)?[\s\S]*?(?:```|$)", combined_text):
+        if not m.group(1):
+            ignored_ranges.append((m.start(), m.end()))
     for m in re.finditer(r"`[^`\n]+`", combined_text):
         ignored_ranges.append((m.start(), m.end()))
 

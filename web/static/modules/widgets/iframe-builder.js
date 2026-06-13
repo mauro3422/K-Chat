@@ -4,6 +4,7 @@
  * Genera el srcdoc HTML inyectado en cada iframe sandboxed.
  * También crea y monta iframes con soporte para widgets oficiales.
  */
+import { ApiClient } from '../api-client.js';
 import { SessionContext } from '../session-context.js';
 import { KairosUtils } from '../utils.js';
 import { fnv1a_32, log, KairosWidgets } from './core.js';
@@ -56,8 +57,7 @@ export function createIframe(container, id, code) {
             mountIframe(cachedCode);
         } else {
             log(id, 'fetch-init', 'key=' + key);
-            var urlBuilder = SessionContext.createSessionUrlBuilder();
-            fetch(urlBuilder.widgetCode(key))
+            ApiClient.loadWidgetCode(SessionContext.getSessionId(), key)
                 .then(function(r) {
                     if (!r.ok) throw new Error("No encontrado");
                     return r.json();
@@ -66,11 +66,8 @@ export function createIframe(container, id, code) {
                     log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
                     KairosWidgets._registry[id] = data.code;
                     stateManager.setCodeCache(key, data.code);
-                    fetch(urlBuilder.widgetState(widgetCodeEntryKey(key)), {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ state: data.code })
-                    }).catch(function() {});
+                    ApiClient.saveWidgetState(SessionContext.getSessionId(), widgetCodeEntryKey(key), data.code)
+                        .catch(function() {});
                     mountIframe(data.code);
                 })
                 .catch(function(err) {

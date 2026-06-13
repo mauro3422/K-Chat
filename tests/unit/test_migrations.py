@@ -164,4 +164,4 @@ class TestMigrationRegistry:
             assert callable(m)
 
     def test_migration_count(self):
-        assert len(MIGRATIONS) == 11
+        assert len(MIGRATIONS) == 12

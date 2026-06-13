@@ -29,20 +29,30 @@ ENTRY POINTS
 API FACADE
 └── src/api/                    (módulos de dominio, sin agregador)
     ├── messages.py, session.py, widgets.py, debug.py
-    ├── tools.py, history.py, chat.py
+    ├── tools.py, history_parser.py, history_rebuilder.py, history_ui.py
+    ├── session_contract.py     (dep bundle para CRUD/cascade de sesión)
+    ├── widgets_contract.py     (dep bundle para state + widgets oficiales)
+    ├── debug_contract.py       (dep bundle para debug + ASR telemetry)
+    ├── history_contract.py     (dep bundle para rebuild_history)
 
 CORE (cerebro)
 ├── src/core/orchestrator.py    (chat loop principal)
+├── src/core/orchestrator_contract.py (dep bundle para el orquestador)
 ├── src/core/tool_loop.py       (ciclo razonamiento↔herramientas, max 25 turns)
-├── src/core/history.py         (reconstrucción + filtrado UI)
-├── src/core/chat_sync.py       (wrapper síncrono CLI)
+├── src/core/history_parser.py   (parseo de rows)
+├── src/core/history_rebuilder.py (reconstrucción LLM-ready)
+├── src/core/history_ui.py       (filtrado UI + matching)
 
 LLM (abstracción de modelo)
 ├── src/llm/protocol.py         (LLMProvider Protocol)
 ├── src/llm/openai_provider.py  (adapter OpenAI SDK)
-├── src/llm/models.py           (registry, retry, fallback)
+├── src/llm/api_call.py         (_api_call retry wrapper)
 ├── src/llm/client.py           (chat + chat_stream)
-├── src/llm/policy.py           (descubrimiento, verificación)
+├── src/llm/discovery.py        (model discovery/listing)
+├── src/llm/verifier.py         (verify_model health checks)
+├── src/llm/selector.py         (default model selection)
+├── src/llm/failover.py         (model failover coordination)
+├── src/llm/providers.py        (_PROVIDER_REGISTRY, register_provider)
 
 TOOLS (sistema de herramientas)
 ├── src/tools/__init__.py       (auto-loader: TOOLS, TOOL_MAP)
@@ -53,7 +63,8 @@ TOOLS (sistema de herramientas)
 └── src/tools/*.py              (16 herramientas individuales)
 
 MEMORY (persistencia)
-├── src/memory/connection.py    (SQLite WAL, PooledConnection)
+├── src/memory/lifecycle.py    (estado de inicialización por ruta)
+├── src/memory/connection_pool.py (SQLite WAL, PooledConnection)
 ├── src/memory/schema.py        (init + migrations)
 ├── src/memory/repos/           (7 repositorios tipados)
 │   ├── base.py                 (_BaseRepository + _transaction())
@@ -72,10 +83,18 @@ CONTEXT (ensamblaje de prompt)
 ├── src/context/templates.py    (SOUL/MEMORY/AGENTS defaults)
 └── src/context/tools_docs.py   (TOOLS.md auto-generado)
 
+CONFIG
+├── src/config_loader.py        (Config dataclass, load_config, DEFAULT_CONFIG)
+├── src/paths.py                (path constants: DATA_DIR, DB_PATH, STATIC_DIR)
+├── src/constants.py            (MAX_TOOL_TURNS, LLM_MAX_RETRIES)
+├── src/compressor.py           (compresión automática de historial)
+├── src/background_tasks.py     (auto-rename vía LLM)
+└── src/handler_cli.py          (comandos CLI: /model, /clear, /help)
+
 WEB (dashboard)
 ├── web/routers/                (chat, pages, sessions, widgets, debug, health, asr, logs)
 ├── web/services/               (chat_stream, message_persister, error_classifier, renderer, loop_detector, file_logger, stream_retry_handler, asr_service)
-├── web/static/modules/         (26 módulos ES: stream-dispatcher, handlers, forms, utils, widgets)
+├── web/static/modules/         (36 módulos ES: stream-dispatcher, handlers, forms, utils, widgets)
 └── web/logging_handler.py      (BackendLogHandler ring buffer)
 ```
 
@@ -129,8 +148,8 @@ WEB (dashboard)
 | **Lazy Singleton** | `_get_provider()`, `_get_conn()` |
 | **Auto-discovery** | `importlib` scan en `tools/loader.py` |
 | **Event Emitter** | `KairosStream` en frontend (on/emit) |
-| **Dataclass** | `ToolLoopContext` (11 params → 1 objeto), `StreamState`, `MessageRecord` |
-| **Shim** | `history.py` — backward compat gradual |
+| **Dataclass** | `ToolLoopContext` (11 params → 1 objeto), `StreamGeneratorDeps`, `StreamState`, `MessageRecord` |
+| **Shim** | Ninguno en runtime; lo que queda es documentación histórica |
 | **Strategy** | `execute_action` meta-tool (una interfaz, N acciones) |
 | **Rate Limiting** | Per-session (tools) + per-IP (HTTP) con LRU eviction |
 
@@ -151,7 +170,7 @@ WEB (dashboard)
 | Compresión | Automática (>40 msgs / >6k tokens) | Control de costo sin intervención manual |
 | Seguridad | CSP + SSRF guard + path traversal + rate limit | Defense in depth |
 | Config | `.env` + Markdown | Mínimo overhead de configuración |
-| Testing | 523 Python + 22 E2E (Playwright) | Cobertura amplia multi-capa |
+| Testing | 532 Python + 22 E2E (Playwright) | Cobertura amplia multi-capa |
 
 ---
 
@@ -160,13 +179,13 @@ WEB (dashboard)
 | Área | Métrica | Score | Estado |
 |------|---------|-------|--------|
 | **Código Python** | Ruff 0 errores, Pyright 0 errores | 10/10 | Limpio |
-| **Tests Python** | 519 tests, todos coleccionan | 9/10 | Sin E2E automatizado en CI completo |
+| **Tests Python** | 532 tests, todos coleccionan | 9/10 | Sin E2E automatizado en CI completo |
 | **Tests JS** | 22 E2E test suites (Playwright) | 8/10 | Playwright setup inicial |
 | **Seguridad** | CSP, SSRF, XSS, rate limit, path guard | 9/10 | Audit v0.0.15 |
 | **Documentación** | ARCHITECTURE.md, MODULES.md, API_REFERENCE.md | 8/10 | Auto-generada |
 | **Arquitectura** | Sin circular deps en runtime, compatibilidad reducida | 9/10 | Refactor acumulado |
 | **DB** | 7 repos, 9 migraciones, FK constraints | 9/10 | Transactions con rollback |
-| **Frontend** | ES modules, event dispatcher, 26 módulos | 8/10 | Vanilla JS (sin type safety) |
+| **Frontend** | ES modules, event dispatcher, 36 módulos | 8/10 | Vanilla JS (sin type safety) |
 | **Infra** | Docker, CI pipeline, health check | 7/10 | Básico pero funcional |
 | **Deuda técnica** | v0.0.51 debt fixes, dead code cleanup | 8/10 | En mejora continua |
 | **Overall** | | **8.5/10** | Sólido para v0.x |

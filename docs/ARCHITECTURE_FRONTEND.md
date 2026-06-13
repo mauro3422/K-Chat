@@ -1,13 +1,15 @@
+> ⚠️ This document may lag behind the current version. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/MODULES.md](MODULES.md) for the latest.
+
 # Arquitectura Frontend — K-Chat
 
 ## 1. Qué hace cada módulo
 
 | Módulo | Rol |
 |--------|------|
-| `app.js` | Entry point del bundle. Ensambla el runtime y delega globals de compatibilidad a los bootstraps. |
+| `app.js` | Entry point del bundle. Ensambla el runtime y conecta los módulos principales. |
 | `session-context.js` | CRUD de sesiones, sidebar refresh y binding del selector de modelo via HTMX + fetch. |
-| `debug.js` | Panel de debug: log de eventos stream/UI, inspección de razonamiento/tools/system prompt, logs backend. |
-| `chat-stream.js` | Bootstrap: inicializa `KairosWidgets`, `KairosForm`, provee `loadSession()` para SPA-like navigation. |
+| `debug-panel.js` | Panel de debug: log de eventos stream/UI, inspección de razonamiento/tools/system prompt, logs backend. |
+| `session-page.js` | Navegación de sesión, sidebar refresh y carga de sesiones. |
 | `utils.js` | Utilidades globales: `escHtml`, `scrollToBottom`, `showToast`, handlers de error global. |
 | `markdown-renderer.js` | Renderiza Markdown vía `marked` + `DOMPurify`, detecta/extrae widgets HTML inline, maneja footnotes. |
 | **`stream-dispatcher.js`** | **Event bus central**: `on/emit/off` para eventos `content`, `reasoning`, `tool_call`, `error`, `heartbeat`. |
@@ -16,20 +18,18 @@
 | `stream-lifecycle.js` | Maneja el ciclo de vida del stream: inicio, heartbeats, fin, limpieza. |
 | `stream-retry-coordinator.js` | Intermediario entre orchestrator y retry-handler: decide si reintentar y delega a `scheduleRetry`. |
 | `chat-form.js` | Captura submit del form, crea DOM del mensaje usuario/asistente, dispara `StreamOrchestrator.startStream`. |
-| `chat-form-bootstrap.js` | Bootstrap de compatibilidad para `KairosForm`. |
 | `retry-handler.js` | Estado de reintentos: count, max (3), delay backoff (2s * intento), `shouldRetry`, `scheduleRetry`. |
 | `stream-error-handler.js` | Crea closures para capturar errores del stream, marca pills de tool como error, muestra card de reintento. |
 | `content-handler.js` | Listener de `content`: acumula tokens, detecta widgets (`html-widget`/`[Widget:]`), re-renderiza markdown por fase. |
-| `content-renderer.js` | Renderizado modular de contenido markdown con detección de widgets. |
 | `reasoning-handler.js` | Listener de `reasoning`: crea `<details>` colapsable por fase de razonamiento, acumula tokens. |
 | `reasoning-state.js` | Estado compartido de razonamiento entre fases. |
 | `tool-call-renderer.js` | Listener de `tool_call`: renderiza pills de herramientas (calling → ok/error) agrupadas por fase. |
-| `shared-state.js` | Estado compartido del stream (asstDiv, bodyDivs, phase state). |
 | `dom-contracts.js` | Contratos DOM para elementos del chat. |
 | `logger.js` | Logging de UI y stream para el panel de debug. |
-| `asr-mic.js` | Integración de micrófono y ASR. |
+| `asr/contract.js` | Contrato compartido de telemetría, texto visible y config de ASR. |
+| `asr/transcript-utils.js` | Merge, puntuación y utilidades de tokens para ASR. |
+| `asr-mic.js` | Captura de micrófono, VAD, chunking, transporte y reveal progresivo. |
 | `widget-container-renderer.js` | Renderizado de contenedores de widgets. |
-| `stream-bootstrap.js` | Bootstrap de compatibilidad para `window.StreamOrchestrator`. |
 | `log-ui.js` | Logging de eventos UI para el panel de debug. |
 | `stream-context.js` | Gestión del contexto del stream (sesión, modelo, estado). |
 | `stream-contract.js` | Contratos de eventos y tipos del protocolo NDJSON/SSE. |
@@ -95,8 +95,8 @@ KairosStream.off('content', callback);
 |--------|-------------|
 | `app.js` | sólo ensambla; los bootstraps exponen los globals |
 | `session-context.js` | `sessionId`, `KairosUtils` |
-| `debug.js` | `KairosUtils`, `KairosWidgets`, `sessionId`, `debugVisible` |
-| `chat-stream.js` | `sessionId`, `defaultModel`, `KairosWidgets`, `KairosForm`, `KairosMarkdown` |
+| `debug-panel.js` | `KairosDebugPanel`, `KairosWidgets`, `sessionId`, `debugVisible` |
+| `session-page.js` | `sessionId`, `KairosWidgets`, `KairosForm`, `KairosMarkdown` |
 | `utils.js` | — (raíz) |
 | `markdown-renderer.js` | `KairosWidgets`, `marked`, `DOMPurify` |
 | `stream-dispatcher.js` | `logger.js` (logStream, logUI) |
@@ -118,9 +118,9 @@ KairosStream.off('content', callback);
 | `widget-container-renderer.js` | `KairosWidgets`, `KairosUtils` |
 | `tool-call-renderer.js` | `KairosStream`, `KairosUtils`, `logger.js` |
 
-**Observación**: `logStream`, `logUI`, `sessionId`, `defaultModel` se usan sin import — dependen de que el bundle exponga las compatibilidades históricas.
+**Observación**: `logStream`, `logUI`, `sessionId`, `defaultModel` ya se concentran en módulos importados explícitamente; no dependen de bootstraps históricos.
 
-**Nota de ubicación**: `app.js`, `chat-stream.js`, `debug.js` están en la raíz de `web/static/`, no en `web/static/modules/`. El resto de módulos están en `web/static/modules/`.
+**Nota de ubicación**: `app.js` está en la raíz de `web/static/`; el resto de módulos están en `web/static/modules/`.
 
 ## 6. Lo que está bien
 

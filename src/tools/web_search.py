@@ -9,8 +9,10 @@ MAX_RESULTS = 20
 SEARCH_TIMEOUT = 15.0
 
 
-def _searxng_url() -> str:
-    return os.environ.get("SEARXNG_URL", "http://127.0.0.1:8080")
+def _searxng_url(config=None) -> str:
+    from src.config_loader import DEFAULT_CONFIG
+    cfg = config or DEFAULT_CONFIG
+    return cfg.searxng_url
 
 # Module-level constant, never mutated after init — thread-safe
 DEFINITION = {

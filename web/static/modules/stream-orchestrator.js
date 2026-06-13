@@ -6,13 +6,13 @@ import { KairosStream } from './stream-dispatcher.js';
 import { StreamContext } from './stream-context.js';
 import { executeStreamFetch } from './stream-fetcher.js';
 import { attemptRetry, shouldAutoRetryEmptyResponse } from './stream-retry-coordinator.js';
-import { KairosDebug, refreshDebug } from '../debug.js';
+import { KairosDebugPanel } from './debug-panel.js';
 import { logUI } from './log-ui.js';
 import { SessionContext } from './session-context.js';
+import { ApiClient } from './api-client.js';
 
 function refreshSidebar() {
-  var urlBuilder = SessionContext.createSessionUrlBuilder();
-  fetch(urlBuilder.sidebar()).then(function(r){ return r.text(); }).then(function(h){
+  ApiClient.sidebar().then(function(h){
     var el = document.getElementById('session-list');
     if (el) el.innerHTML = h;
   }).catch(function(err) { console.error('Sidebar refresh failed:', err); });
@@ -185,7 +185,7 @@ export const StreamOrchestrator = {
     } else {
       retryController.resetRetryCount();
       refreshSidebar();
-      if (KairosDebug.debugVisible) refreshDebug();
+      if (KairosDebugPanel.debugVisible) KairosDebugPanel.refreshDebug();
     }
 
     KairosUtils.finalizeStream(input);

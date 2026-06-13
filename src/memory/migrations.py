@@ -38,6 +38,7 @@ def _migration_001_initial_schema(conn: Any, engine: Any) -> None:
             system_prompt TEXT,
             tool_calls TEXT,
             history_before TEXT,
+            asr_telemetry TEXT,
             updated_at TEXT NOT NULL
         )
     ''')
@@ -234,6 +235,13 @@ def _migration_011_cleanup_orphans(conn, engine):
         """)
 
 
+def _migration_012_add_asr_telemetry(conn, engine):
+    try:
+        engine.execute(conn, "ALTER TABLE debug_info ADD COLUMN asr_telemetry TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -246,4 +254,5 @@ MIGRATIONS = (
     _migration_009_add_indexes,
     _migration_010_memory_index,
     _migration_011_cleanup_orphans,
+    _migration_012_add_asr_telemetry,
 )

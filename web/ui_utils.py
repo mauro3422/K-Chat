@@ -1,11 +1,22 @@
 import html
 from typing import Any
 
+
+def _ensure_dict(row: Any) -> dict[str, Any]:
+    """Convierte sqlite3.Row a dict si es necesario."""
+    if hasattr(row, 'keys'):
+        return dict(row)
+    return row
+
+
 def render_msg_with_phases(role: str, content: str, reasoning: str, matched_tools: list[dict[str, Any]], ts: Any | None = None, phases: list[dict[str, Any]] | None = None) -> str:
     parts = []
     label = "Tu" if role == "user" else "Kairos"
     parts.append(f'<div class="msg {role}">')
     parts.append(f'<div class="msg-label">{label}</div>')
+
+    # Asegurar que matched_tools sean dicts (no sqlite3.Row)
+    matched_tools = [_ensure_dict(t) for t in matched_tools]
 
     if role == "assistant" and phases:
         tools_by_turn = {}

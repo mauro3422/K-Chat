@@ -3,11 +3,13 @@ import sys
 from typing import Any
 
 from src.core.orchestrator import chat_stream
-from src.llm.policy import get_default_model
+from src.llm.selector import get_default_model
 from src.core.orchestrator import generate_session_id
+from src.core.orchestrator_contract import OrchestratorDeps
 from src.memory.schema import init_db
-from src.api.messages import save_message
-from src.handler_cli import handle_command
+from src.api.messages import save_message_record
+from src.memory.repos import MessageRecord
+from src.cli_commands import handle_command
 
 logger: logging.Logger = logging.getLogger(__name__)
 SALIR: tuple[str, ...] = ("salir", "exit", "quit", "/salir", "/exit", "chau", "bye")
@@ -44,7 +46,7 @@ def main() -> None:
         try:
             respuesta: str = ""
             primero: bool = True
-            for token in chat_stream(entry, history, model, session_id=session_id):
+            for token in chat_stream(entry, history, model, session_id=session_id, deps=OrchestratorDeps()):
                 if primero:
                     print("Kairos> ", end="", flush=True)
                     primero = False
@@ -52,8 +54,8 @@ def main() -> None:
                 respuesta += token
             print("\n")
 
-            save_message(session_id, "user", entry, "kairos")
-            save_message(session_id, "assistant", respuesta, "kairos")
+            save_message_record(MessageRecord(session_id=session_id, role="user", content=entry, model="kairos"))
+            save_message_record(MessageRecord(session_id=session_id, role="assistant", content=respuesta, model="kairos"))
         except Exception as e:
             logger.error("Error en chat_stream: %s", e)
 

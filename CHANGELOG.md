@@ -4,6 +4,12 @@
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 > Las entradas describen el estado del proyecto en el momento de cada release.
 
+## [v0.0.54] — 2026-06-13 — [Detalle](changelogs/v0.0.54.md)
+- **Lego hardening**: runtime sin wrappers viejos, historial tipado con `HistoryMessage`, sesión/memoria con contratos explícitos
+- **Contexto**: `load_context()` quedó pura; `TOOLS.md` se genera fuera del flujo de lectura
+- **Web/frontend**: routers y servicios usan imports directos; transiciones legacy quedaron acotadas
+- **Docs**: ROADMAP y LEGOS_AUDIT alineados con el estado real del refactor
+
 ## [v0.0.53] — 2026-06-13 — [Detalle](changelogs/v0.0.53.md)
 - **Tests**: 14 new test files (LLM, context, web, integration, smoke), 642 unit tests passing
 - **Test fixes**: Cache isolation, mock patterns, audio data validation, FALLBACK_MODEL assertions

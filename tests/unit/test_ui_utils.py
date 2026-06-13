@@ -1,5 +1,5 @@
 from web.ui_utils import render_msg_with_phases
-from src.core.history import match_tools_to_msgs as _match_tools_to_msgs
+from src.core.history_ui import match_tools_to_msgs as _match_tools_to_msgs
 
 def test_match_tools_to_msgs_empty():
     """Test matching with empty lists."""

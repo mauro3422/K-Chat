@@ -2,11 +2,11 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from src.llm.models import _api_call
+from src.llm.api_call import _api_call
 
 
-@patch("src.llm.models._get_provider")
-@patch("src.llm.models.execute_with_retry")
+@patch("src.llm.api_call._get_provider")
+@patch("src.llm.api_call.execute_with_retry")
 def test_api_call_calls_provider_chat_with_correct_args(
     mock_execute_with_retry, mock_get_provider
 ):
@@ -25,8 +25,8 @@ def test_api_call_calls_provider_chat_with_correct_args(
     mock_execute_with_retry.assert_called_once()
 
 
-@patch("src.llm.models._get_provider")
-@patch("src.llm.models.execute_with_retry")
+@patch("src.llm.api_call._get_provider")
+@patch("src.llm.api_call.execute_with_retry")
 def test_api_call_uses_retry_via_execute_with_retry(
     mock_execute_with_retry, mock_get_provider
 ):
@@ -40,7 +40,7 @@ def test_api_call_uses_retry_via_execute_with_retry(
     mock_execute_with_retry.assert_called_once()
 
 
-def test_api_call_imports_exports_model_state_aliases():
+def test_api_call_keeps_model_state_defaults():
     from src.llm.model_state import PRIORITY, FALLBACK_MODEL
 
     assert PRIORITY == ["deepseek-v4-flash-free", "big-pickle"]

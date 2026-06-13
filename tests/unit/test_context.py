@@ -144,21 +144,19 @@ def test_load_context():
 
     with patch("src.context.builder._ensure_file") as mock_ensure:
         with patch("src.context.builder._read_file", side_effect=lambda p: content_map.get(p, "")):
-            with patch("src.context.builder._build_tools_md", return_value="# Tools md content"):
-                with patch("builtins.open", mock_open()) as mock_file:
-                    from src.context import load_context
+            from src.context import load_context
 
-                    result = load_context()
+            result = load_context()
 
-                    assert mock_ensure.call_count == 3
-                    assert result == "# Soul content\n\n# Memory content\n\n# Agents content"
-
-                    written = mock_file().write.call_args[0][0]
-                    assert written == "# Tools md content"
+            assert mock_ensure.call_count == 3
+            assert result == "# Soul content\n\n# Memory content\n\n# Agents content"
 
 
 def test_build_system_prompt():
-    with patch("src.context.builder.load_context", return_value="MOCKED CONTEXT"):
+    from src.context.runtime import ContextSnapshot
+
+    with patch("src.context.builder.build_context_snapshot",
+               return_value=ContextSnapshot(text="MOCKED CONTEXT", tools_md="")):
         from src.context import build_system_prompt
 
         result = build_system_prompt("gpt-4-test")

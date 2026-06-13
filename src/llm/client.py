@@ -3,8 +3,12 @@ import json
 from types import SimpleNamespace
 from collections.abc import Callable, Generator
 from typing import Any
-import src.llm.models as models
-import src.llm.policy as policy
+import src.llm.model_state as models
+import src.llm.api_call as api_call
+from src.core.debug_info import DebugInfo
+from src.llm.failover import _mark_and_refresh
+from src.llm.selector import get_default_model
+from src.llm.retry import is_rate_limit_error
 
 logger = logging.getLogger(__name__)
 
@@ -16,18 +20,18 @@ def _update_system_prompt(messages: list[dict[str, Any]], model: str, build_prom
 
 def _resolve_model(messages: list[dict[str, Any]], model: str | None, build_prompt_fn: Callable | None = None) -> str:
     if model is None:
-        model = policy.get_default_model()
+        model = get_default_model()
     if models.is_model_failed(model):
         model = models._switch_model(model)
         _update_system_prompt(messages, model, build_prompt_fn)
     return model
 
 
-def _extract_debug_usage(response: Any, debug: dict[str, Any] | None) -> None:
-    if response and isinstance(debug, dict) and getattr(response, "usage", None):
-        debug["prompt_tokens"] = response.usage.prompt_tokens
-        debug["completion_tokens"] = response.usage.completion_tokens
-        debug["total_tokens"] = response.usage.total_tokens
+def _extract_debug_usage(response: Any, debug: DebugInfo | None) -> None:
+    if response and isinstance(debug, DebugInfo) and getattr(response, "usage", None):
+        debug.prompt_tokens = response.usage.prompt_tokens
+        debug.completion_tokens = response.usage.completion_tokens
+        debug.total_tokens = response.usage.total_tokens
 
 
 def _with_fallback(
@@ -40,25 +44,30 @@ def _with_fallback(
         return fn(model)
     except Exception as e:
         logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
-        next_model = policy._mark_and_refresh(model, refresh=not models._is_rate_limit_error(e))
+        next_model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e))
         _update_system_prompt(messages, next_model, build_prompt_fn)
         logger.info("Switching model to: %s", next_model)
         return fn(next_model)
 
 
-def _try_stream(model: str, messages: list[dict[str, Any]], **kwargs: Any) -> Any:
+def _try_stream(
+    model: str,
+    messages: list[dict[str, Any]],
+    build_prompt_fn: Callable | None = None,
+    **kwargs: Any,
+) -> Any:
     if "stream_options" not in kwargs:
         kwargs["stream_options"] = {"include_usage": True}
     try:
-        s = models._api_call(model=model, messages=messages, stream=True, **kwargs)
+        s = api_call._api_call(model=model, messages=messages, stream=True, **kwargs)
         logger.info("Stream started successfully with model: %s", model)
         return s
     except Exception as e:
         logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)
-        model = policy._mark_and_refresh(model, refresh=not models._is_rate_limit_error(e))
-        _update_system_prompt(messages, model, None)
+        model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e))
+        _update_system_prompt(messages, model, build_prompt_fn)
         logger.info("Switching stream to: %s", model)
-        return models._api_call(model=model, messages=messages, stream=True, **kwargs)
+        return api_call._api_call(model=model, messages=messages, stream=True, **kwargs)
 
 
 def _process_tool_delta(delta: Any, tool_map: dict[int, Any], reasoning_output: list[str] | None, tool_calls_output: list[Any] | None, tagged: bool) -> Generator[tuple[str, str], None, None]:
@@ -99,24 +108,24 @@ def _process_tool_delta(delta: Any, tool_map: dict[int, Any], reasoning_output: 
             tool_calls_output[:] = [v for _, v in sorted(tool_map.items())]
 
 
-def _update_debug_usage(chunk: Any, debug: dict[str, Any] | None) -> None:
+def _update_debug_usage(chunk: Any, debug: DebugInfo | None) -> None:
     usage = getattr(chunk, 'usage', None)
-    if usage and isinstance(debug, dict):
-        debug["prompt_tokens"] = usage.prompt_tokens
-        debug["completion_tokens"] = usage.completion_tokens
-        debug["total_tokens"] = usage.total_tokens
+    if usage and isinstance(debug, DebugInfo):
+        debug.prompt_tokens = usage.prompt_tokens
+        debug.completion_tokens = usage.completion_tokens
+        debug.total_tokens = usage.total_tokens
 
 
 def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_fn: Callable | None = None, **kwargs: Any) -> Any:
     debug = kwargs.pop("debug", None)
     if model is None:
-        model = policy.get_default_model()
+        model = get_default_model()
     if models.is_model_failed(model):
         model = models._switch_model(model)
         _update_system_prompt(messages, model, build_prompt_fn)
 
     def _call(m: str) -> Any:
-        response = models._api_call(model=m, messages=messages, **kwargs)
+        response = api_call._api_call(model=m, messages=messages, **kwargs)
         _extract_debug_usage(response, debug)
         return response.choices[0]
 
@@ -128,7 +137,7 @@ def _process_chunks(
     reasoning_output: list[str] | None,
     tool_calls_output: list[Any] | None,
     tagged: bool,
-    debug: dict[str, Any] | None,
+    debug: DebugInfo | None,
 ) -> Generator[Any, None, tuple[int, bool, bool]]:
     _tool_map: dict[int, Any] = {}
     chunk_count = 0
@@ -176,7 +185,7 @@ def chat_stream(
 ) -> Generator[Any, None, None]:
     debug = kwargs.pop("debug", None)
     model = _resolve_model(messages, model, build_prompt_fn)
-    stream = _try_stream(model, messages, **kwargs)
+    stream = _try_stream(model, messages, build_prompt_fn, **kwargs)
 
     chunk_count, has_content, has_reasoning = yield from _process_chunks(
         stream, reasoning_output, tool_calls_output, tagged, debug,

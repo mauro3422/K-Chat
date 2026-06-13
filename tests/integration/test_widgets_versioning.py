@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from web.server import app
 from src.memory.schema import init_db
 from src.api.widgets import db_save_widget, db_get_widget, db_get_widget_versions, db_get_widget_by_version
+from src.api.session import ensure_session
 from src.tools.save_widget import run as save_widget_run
 from src.tools.get_widget_code import run as get_widget_code_run
 from src.tools.update_widget import run as update_widget_run
@@ -15,6 +16,7 @@ def test_db_operations_saved_widgets():
     """Verify that saved_widgets and versions DB functions work correctly."""
     init_db()
     session_id = "test-session-widgets-db"
+    ensure_session(session_id)
     widget_id = "calc"
     code_v1 = "<div>V1</div>"
     code_v2 = "<div>V2</div>"
@@ -58,6 +60,7 @@ def test_widget_agent_tools():
     """Verify that agent tools (save, get, update) execute properly."""
     init_db()
     session_id = "test-session-widgets-tools"
+    ensure_session(session_id)
     widget_id = "notes-app"
     code_initial = "<p>Initial</p>"
     code_updated = "<p>Updated</p>"
@@ -91,6 +94,7 @@ def test_widget_http_endpoints():
     """Verify widget endpoints: /code, /versions, /save."""
     init_db()
     session_id = "test-session-widgets-endpoints"
+    ensure_session(session_id)
     widget_id = "game"
     code_str = "<canvas></canvas>"
 
@@ -127,6 +131,8 @@ def test_widget_portability_across_sessions():
     init_db()
     session_a = "session-a-test"
     session_b = "session-b-test"
+    ensure_session(session_a)
+    ensure_session(session_b)
     widget_id = "global-calc"
     code_v1 = "<div>Global V1</div>"
     code_v2 = "<div>Global V2</div>"

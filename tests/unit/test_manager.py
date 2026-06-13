@@ -1,31 +1,27 @@
 from unittest.mock import patch, MagicMock
 import pytest
 
-from src.llm.policy import (
-    verify_model,
-    get_verified_models,
-    get_models,
-    get_free_models,
-    get_default_model,
-    _mark_and_refresh,
-)
+from src.llm.verifier import verify_model
+from src.llm.discovery import get_verified_models, get_models, get_free_models
+from src.llm.selector import get_default_model
+from src.llm.failover import _mark_and_refresh
 
 
 class TestVerifyModel:
-    @patch("src.llm.verifier.models._api_call")
+    @patch("src.llm.verifier.api_call")
     def test_returns_true_on_success(self, mock_api_call):
-        mock_api_call.return_value = MagicMock()
+        mock_api_call._api_call.return_value = MagicMock()
         assert verify_model("deepseek-v4-flash-free") is True
-        mock_api_call.assert_called_once_with(
+        mock_api_call._api_call.assert_called_once_with(
             model="deepseek-v4-flash-free",
             messages=[{"role": "user", "content": "hi"}],
             max_tokens=2,
             timeout=2.0,
         )
 
-    @patch("src.llm.verifier.models._api_call")
+    @patch("src.llm.verifier.api_call")
     def test_returns_false_on_exception(self, mock_api_call):
-        mock_api_call.side_effect = Exception("API error")
+        mock_api_call._api_call.side_effect = Exception("API error")
         assert verify_model("bad-model") is False
 
 
@@ -38,7 +34,7 @@ class TestGetModels:
         mock_provider = MagicMock()
         mock_provider.list_models.return_value = ["model1", "model2"]
         mock_get_cache.side_effect = [None, ["model1", "model2"]]
-        with patch("src.llm.discovery.models._get_provider", return_value=mock_provider):
+        with patch("src.llm.discovery._get_provider", return_value=mock_provider):
             result = get_models()
         mock_provider.list_models.assert_called_once()
         mock_set_cache.assert_called_once_with(["model1", "model2"])
@@ -58,7 +54,7 @@ class TestGetModels:
         mock_provider = MagicMock()
         mock_provider.list_models.return_value = ["fresh1"]
         mock_get_cache.side_effect = [["cached"], ["fresh1"]]
-        with patch("src.llm.discovery.models._get_provider", return_value=mock_provider):
+        with patch("src.llm.discovery._get_provider", return_value=mock_provider):
             result = get_models(force_refresh=True)
         mock_provider.list_models.assert_called_once()
         assert result == ["fresh1"]
@@ -68,7 +64,7 @@ class TestGetModels:
         mock_provider = MagicMock()
         mock_provider.list_models.side_effect = Exception("API down")
         mock_get_cache.side_effect = [None, ["old_cache"]]
-        with patch("src.llm.discovery.models._get_provider", return_value=mock_provider):
+        with patch("src.llm.discovery._get_provider", return_value=mock_provider):
             result = get_models()
         assert result == ["old_cache"]
 
@@ -77,7 +73,7 @@ class TestGetModels:
         mock_provider = MagicMock()
         mock_provider.list_models.side_effect = Exception("API down")
         mock_get_cache.return_value = None
-        with patch("src.llm.discovery.models._get_provider", return_value=mock_provider):
+        with patch("src.llm.discovery._get_provider", return_value=mock_provider):
             with pytest.raises(Exception, match="API down"):
                 get_models()
 

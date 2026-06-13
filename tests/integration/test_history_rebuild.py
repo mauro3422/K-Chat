@@ -3,11 +3,37 @@ import json
 import tempfile
 
 
-from src.api.messages import save_message, get_session_messages
-from src.core.history import rebuild_history
+from src.api.messages import save_message_record, get_session_messages
+from src.api.session import ensure_session
+from src.core.history_rebuilder import rebuild_history
 from src.memory.schema import init_db
+from src.memory.repos import get_repos
+from src.memory.repos import MessageRecord
 from src.tools.read_file import run as read_file_run
 from src.tools.write_file import run as write_file_run
+
+
+def save_message(
+    session_id,
+    role,
+    content,
+    model,
+    reasoning="",
+    phases="[]",
+    tool_calls=None,
+    tool_call_id=None,
+    **kwargs,
+):
+    return save_message_record(MessageRecord(
+        session_id=session_id,
+        role=role,
+        content=content,
+        model=model,
+        reasoning=reasoning,
+        phases=phases,
+        tool_calls=tool_calls,
+        tool_call_id=tool_call_id,
+    ))
 
 
 def test_read_write_file_tools():
@@ -51,6 +77,7 @@ def test_read_file_pagination_and_numbering():
 def test_history_rebuild_preserves_tools():
     """Verify that saving and rebuilding history preserves tool calls and tool responses."""
     session_id = "test-session-history-tools"
+    ensure_session(session_id)
 
     # 1. Save user message
     save_message(session_id, "user", "Hola, guarda esto", "test-model")
@@ -113,7 +140,7 @@ def test_history_rebuild_preserves_tools():
     assert msgs[3][1] == "Listo, ya lo guardé en tu memoria."
 
     # 6. Rebuild history for next turn
-    history = rebuild_history(session_id, "test-model")
+    history = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     
     # Assert rebuild_history formats everything correctly for OpenAI/OpenCode API
     # First message in history is the system prompt, so we skip it
@@ -143,6 +170,7 @@ def test_history_rebuild_preserves_tools():
 def test_history_rebuild_sanitizes_orphaned_tools():
     """Verify that rebuilding history filters out assistant messages with orphaned tool calls."""
     session_id = "test-session-orphaned-tools"
+    ensure_session(session_id)
 
     # 1. Save user message
     save_message(session_id, "user", "Hola, guarda esto", "test-model")
@@ -195,7 +223,7 @@ def test_history_rebuild_sanitizes_orphaned_tools():
     )
 
     # Rebuild history
-    history = rebuild_history(session_id, "test-model")
+    history = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
 
     # The rebuilt history should contain:
     # 0. System prompt

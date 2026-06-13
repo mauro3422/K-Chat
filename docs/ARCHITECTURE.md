@@ -22,8 +22,8 @@ The system is organized in layers with clear boundaries:
            ▼                              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Core Layer (src/core/)                                     │
-│  orchestrator.py  │  tool_loop.py  │  history.py           │
-│  chat_sync.py     │  package marker only                   │
+│  orchestrator.py  │  tool_loop.py  │  history_parser.py    │
+│  package marker only                                       │
 │  Chat loop, streaming, tool phases, compression            │
 └──────────┬──────────────────────────────┬───────────────────┘
            │                              │
@@ -33,7 +33,7 @@ The system is organized in layers with clear boundaries:
 │  LLM   │  │  Tools   │  │   Memory     │  │  Context   │
 │  Layer │  │  Layer   │  │   Layer      │  │  Layer     │
 │src/llm/│  │src/tools/│  │ src/memory/  │  │src/context │
-│protocol│  │loader.py │  │ connection.py │  │ builder.py │
+│protocol│  │loader.py │  │ connection_pool.py │  │ builder.py │
 │provider│  │runner.py │  │ schema.py     │  │ files.py   │
 │models  │  │16 tools  │  │ repos/        │  │ templates  │
 │model   │  │search_   │  │ migrations.py │  │ tools_docs │
@@ -44,10 +44,12 @@ The system is organized in layers with clear boundaries:
 └───┬────┘  └──────────┘  └──────────────┘  └────────────┘
     │
     ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Config (config.py, paths.py, .env)                         │
-│  Env vars, path resolution, API key validation              │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  Config (src/config_loader.py, paths.py, .env)                      │
+│  Env vars, path resolution, API key validation                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+> **Note:** `src/config_loader.py` is the single config source of truth.
 ```
 
 ## Data Flow (Streaming)
@@ -59,7 +61,7 @@ User → Form POST → web/routers/chat.py → web/services/chat_stream.py
                           │  rebuild_history(session_id)      │
                           │    └→ history_rebuilder.py        │
                           │       └→ history_parser.py        │
-                          │  save_message(user message)       │
+                          │  save_message_record(user msg)    │
                           │  orchestrator.chat_stream()       │
                           └─────────────────┬─────────────────┘
                                             │
@@ -83,11 +85,11 @@ User → Form POST → web/routers/chat.py → web/services/chat_stream.py
                           ┌─────────────────┴─────────────────┐
                           │  message_persister.py             │
                           │    └→ save_assistant_message()    │
-                          │       └→ save_message()           │
+                          │       └→ save_message_record()    │
                           │       └→ save_debug_info()        │
                           │  auto_rename_session()            │
                           │  yield ("content", tokens...)     │
-                          │  save_message(phases=JSON)        │
+                          │  save_message_record(phases=...) │
                           └─────────────────┬─────────────────┘
                                             │
                      ┌──────────────────────┴──────────────────┐
@@ -105,21 +107,20 @@ User → Form POST → web/routers/chat.py → web/services/chat_stream.py
 ### Sync Path (CLI)
 
 ```
-User input → src/cli.py → core.chat_sync.chat()
+User input → src/cli.py → core.orchestrator.chat_stream()
                             └→ src.llm.client.chat(history, model, tools=TOOLS)
                             └→ tool_loop.run_tool_loop_sync()
                                   └→ _process_sync_turn() (max 5 turns)
-                                  └→ save_message() per turn
+                                  └→ save_message_record() per turn
 ```
 
 ## Module Responsibilities
 
 ### `src/api/` — Domain Modules
 - `__init__.py`: package marker only.
-- Public functions are grouped by domain: `save_message()`, `rebuild_history()`, `get_sessions()`, `rename_session()`, `delete_session()`, `get_session_messages()`, `filter_messages_for_ui()`, `match_tools_to_msgs()`, `save_widget_state()`, `db_save_widget()`, `db_get_widget()`, `db_get_widget_versions()`, `db_get_widget_by_version()`, `save_debug_info()`, `get_debug_info()`, `get_tool_history()`, `chat_stream()`.
-- Sub-modules: `messages.py`, `session.py`, `widgets.py`, `debug.py`, `tools.py`, `history.py`.
+- Public functions are grouped by domain: `save_message_record()` (canonical), `rebuild_history()`, `get_sessions()`, `rename_session()`, `delete_session()`, `get_session_messages()`, `filter_messages_for_ui()`, `match_tools_to_msgs()`, `save_widget_state()` / `db_save_widget()` / `db_get_widget()` / `db_get_widget_versions()` / `db_get_widget_by_version()` (all with `WidgetOpsDeps`), `save_debug_info()`, `get_debug_info()`, `get_tool_history()`.
+- Sub-modules: `messages.py`, `session.py`, `widgets.py`, `debug.py`, `tools.py`, `history_parser.py`, `history_rebuilder.py`, `history_ui.py`, `session_contract.py`, `widgets_contract.py`, `debug_contract.py`.
 - Repository singletons now live in each domain module; there is no shared `_get_repo()` cache layer anymore.
-- `src.core._deps` was removed after the runtime stopped using it; runtime code now calls `src.llm.client` and `src.tools` directly.
 
 ### `src/core/orchestrator.py` — The Brain
 - `chat_stream()`: Main streaming generator. Manages the full lifecycle of a conversation turn (84 lines).
@@ -135,35 +136,31 @@ User input → src/cli.py → core.chat_sync.chat()
 - `_process_llm_stream()`: Reads LLM stream, yields content/reasoning/tool_calls.
 - `_yield_stream_fallback()`: Fallback when streaming fails.
 
-### `src/core/history.py` — History Facade (Re-exports)
-- Re-exports all functions from `history_parser`, `history_rebuilder`, and `history_ui` for backwards compatibility.
-- Lazy singleton for `MessageRepository`.
+### `src/core/history_parser.py`, `src/core/history_rebuilder.py`, `src/core/history_ui.py`
+- `history_parser.py`: parse raw DB rows into messages.
+- `history_rebuilder.py`: rebuild LLM-ready history from parsed rows.
+- `history_ui.py`: filter messages for UI and match tool calls to assistant turns.
 
 ### `src/core/history_parser.py` — DB Row Parser
 - `_parse_rows(rows)`: Converts raw DB rows into structured message dicts with timestamps, tool_calls, and reasoning.
 - `_sanitize_messages(raw_msgs)`: Filters out orphan tool responses and empty assistant messages without valid tool calls.
 
 ### `src/core/history_rebuilder.py` — LLM History Reconstruction
-- `rebuild_history(session_id, model)`: Reconstructs a conversation from the DB for the LLM, prepending system prompt and sanitizing tool_calls/tool responses.
+- `rebuild_history(session_id, model, messages_repo=...)`: Reconstructs a conversation from the DB for the LLM, prepending system prompt and sanitizing tool_calls/tool responses.
 
 ### `src/core/history_ui.py` — UI Message Filtering
 - `filter_messages_for_ui(raw_msgs)`: Filters DB rows for UI display (removes tool messages, keeps final assistant per turn).
 - `match_tools_to_msgs(msgs, all_tools)`: Associates tool calls chronologically with assistant messages for rendering.
 
-### `src/core/chat_sync.py` — CLI Chat
-- `chat()`: Synchronous wrapper. Calls `llm_chat(history, model, tools=TOOLS)`, returns response content.
-
-### `src/core/_deps.py` — Removed seam
-- This compatibility file was removed after the runtime stopped using it.
-
 ### `src/llm/` — Model Abstraction
 - `protocol.py`: `LLMProvider` runtime-checkable Protocol. Defines `chat()`, `chat_stream()`, `list_models()`.
 - `openai_provider.py`: `OpenAIProvider` — OpenAI/OpenCode SDK wrapper. Lazy `_get_provider()` singleton.
-- `models.py`: Model registry, `PRIORITY`/`FALLBACK_MODEL` constants, `_api_call()` with retry, `_switch_model()`, `_PROVIDER_REGISTRY` dict and `register_provider()` function for dynamic provider registration.
+- `api_call.py`: `_api_call()` with retry.
 - `client.py`: `chat()` and `chat_stream()` with error handling, tool delta processing, debug usage tracking.
-- `policy.py`: Model discovery, verification (`verify_model`), priority selection, free/paid filtering.
-- `model_state.py`: `ModelState` — thread-safe model state tracking & failover singleton.
+- `discovery.py`, `verifier.py`, `selector.py`, `failover.py`: model discovery, verification, selection, and failover.
+- `model_state.py`: `ModelState` — thread-safe model state tracking, `_switch_model()` failover logic, `PRIORITY`/`FALLBACK_MODEL` constants.
 - `retry.py`: `execute_with_retry()` — retry logic for LLM calls with exponential backoff and rate limit handling.
+- `providers.py`: `_PROVIDER_REGISTRY` dict, `register_provider()` for dynamic provider registration, `_get_provider()` lazy singleton.
 - `discovery.py`: Model discovery and listing (filters free/paid models from API).
 - `verifier.py`: `verify_model()` — model verification and health checks with minimal prompt.
 - `selector.py`: `_get_default_model_candidates()` — default model selection logic from verified models.
@@ -184,13 +181,17 @@ User input → src/cli.py → core.chat_sync.chat()
 - Individual tools (16): `execute_command`, `list_files`, `search_files`, `edit_file`, `analyze_code`, `git_operation`. Each exports `DEFINITION` (dict) + `run(**kwargs)`. New tool = new file.
 
 ### `src/memory/` — Persistence Layer
-- `connection.py`: SQLite connection factory (WAL mode, busy timeout). `PooledConnection` wrapper (no-op close). `DatabaseEngine` Protocol for swappable backends. `get_engine()` / `set_engine()` for engine injection.
+- `db_path.py`: DB path resolution from config/env.
+- `engine_state.py`: `DatabaseEngine` Protocol for swappable backends. `get_engine()` / `set_engine()` for engine injection.
+- `lifecycle.py`: Initialized-path registry so connection pooling can bootstrap each DB path once.
+- `connection_pool.py`: SQLite connection creation/configuration and thread-local pooled connections.
+- `connection_pool.py`: pooled SQLite connections and engine wiring.
 - `schema.py`: `init_db()` and per-path schema initialization / migration execution.
 - `sqlite_engine.py`: `SQLiteEngine` — default SQLite implementation of `DatabaseEngine` with WAL mode and busy timeout.
 - `repos/`: 7 repository classes in separate files, all inheriting from `_BaseRepository`.
   - `base.py`: `_BaseRepository` with `_get_conn()` and `_transaction()` context manager (commit on success, rollback on exception, uses engine if available).
   - `message_repository.py`: `MessageRepository` + `MessageRecord` dataclass.
-  - `session_repository.py`: `SessionRepository` — ensure, rename, delete, get_all, check_should_rename.
+  - `session_repository.py`: `SessionRepository` — ensure, rename, delete row, get_all, check_should_rename.
   - `tool_call_repository.py`: `ToolCallRepository` — log, get_history, delete_session_tool_calls.
   - `widget_state_repository.py`: `WidgetStateRepository` — save_state, get_states, delete_session_widget_states.
   - `debug_repository.py`: `DebugRepository` — save_info, get_info, delete_session_debug.
@@ -216,31 +217,61 @@ User input → src/cli.py → core.chat_sync.chat()
 - `routers/debug.py`: Debug info and backend log buffering. `_local_only` guard (respects `TESTING` env var).
 - `routers/health.py`: `GET /health` — returns DB status, LLM provider status, uptime, and system info.
 - `services/chat_stream.py`: `build_stream_generator()` — returns NDJSON generator closure, token accumulation, background auto-rename.
-- `services/message_persister.py`: `save_assistant_message()` — persists assistant message and debug info to DB.
+- `services/chat_stream_contract.py`: `StreamGeneratorDeps` — bundles stream hooks and retry/save dependencies.
+- `services/stream_state.py`: `StreamState` — accumulates partial content/reasoning and persistence timing.
+- `services/message_persister_contract.py`: `MessagePersisterDeps` — optional dependency bundle for assistant persistence.
+- `services/message_persister.py`: `save_assistant_message()` — persists assistant message and debug info to DB via `save_message_record()`.
+- `services/message_renderer_contract.py`: `MessageRenderDeps` — optional dependency bundle for server-side HTML rendering.
 - `services/stream_error_classifier.py`: `classify_error(error_msg)` — classifies error into type + user-friendly message (rate_limit, timeout, network, model, unknown).
-- `services/message_renderer.py`: `render_session_messages()` — full HTML message list with widgets, tool matching, XSS escaping.
+- `services/message_renderer.py`: `render_session_messages(session_id, deps=None)` — full HTML message list with widgets, tool matching, XSS escaping.
 - `services/loop_detector.py`: Detects infinite tool-call loops and aborts.
 - `services/file_logger.py`: Persistent file-based logging.
 - `services/stream_retry_handler.py`: Coordinates retry logic for failed streams.
 - `services/asr_service.py`: Audio/ASR processing service.
-- `routers/asr.py`: Audio/ASR HTTP endpoints.
+- `routers/asr.py`: Audio/ASR endpoints, with WebSocket transport for live chunk transcription and HTTP fallback kept only on the server side.
 - `routers/logs.py`: Log query endpoints.
 - `ui_utils.py`: HTML rendering of individual messages with reasoning, phases, and tool pills. `render_msg_with_phases()`.
 
-### `web/static/modules/` — Frontend Streaming Modules (Vanilla JS)
+### `web/static/modules/` — Frontend Streaming Modules (Vanilla JS, 36 modules)
 - `stream-dispatcher.js`: `KairosStream` — event emitter with `on()` / `emit()`. Central dispatcher for reasoning, content, tool_call, error events.
 - `reasoning-handler.js`: Handles `reasoning` events — creates `<details class="reasoning">` elements per phase, accumulates thinking text.
 - `content-handler.js`: Handles `content` events — manages per-phase body divs, detects inline widgets (`html-widget` code blocks + `[Widget: key]` tags), renders markdown via `KairosMarkdown`, initializes widgets via `KairosWidgets`.
 - `tool-call-renderer.js`: Handles `tool_call` events — creates `.tool-calls` divs with `.tc-item` spans showing spinner (calling), ✓ (ok), or ✗ (error) per tool.
 - `stream-orchestrator.js`: Main stream rendering orchestrator. Wires `KairosStream` to handler modules and manages phase transitions.
-- `chat-form.js`: Chat form submission and input handling (simplified — input logic moved to `input-handler.js`).
-- `input-handler.js`: Input token counting, keyboard shortcuts (Enter to send, Shift+Enter for newline), and input state management.
-- `toolbar.js`: Toolbar UI buttons (simplified — session actions moved to `session-actions.js`).
-- `session-actions.js`: Session rename, delete, and navigation logic.
+- `chat-form.js`: Chat form submission and input handling with keyboard shortcuts.
 - `markdown-renderer.js`: `KairosMarkdown.parse()` — markdown to HTML conversion.
-- `utils.js`: `KairosUtils.escHtml()`, `logUI()`, `logStream()`, `showToast()`.
+- `api-client.js`: Unified frontend API client for chat, sessions, widgets, debug endpoints.
+- `asr/contract.js`: Shared ASR telemetry, visible-text, and config contract.
+- `asr/transcript-utils.js`: ASR merge, punctuation, and token utilities.
+- `asr-mic.js`: ES module for microphone capture, VAD segmentation, transcript merging, and live ASR reveal.
+- `stream-fetcher.js`: `fetch()` wrapper for NDJSON stream consumption with abort support.
+- `stream-contract.js`: Client-side NDJSON event contract types.
+- `stream-context.js`: Stream execution context with cancellation support.
+- `stream-lifecycle.js`: Stream lifecycle management (start, cancel, retry states).
+- `stream-retry-coordinator.js`: Coordinates stream retry with backoff.
 - `retry-handler.js`: Retry logic for failed streams.
 - `stream-error-handler.js`: Frontend error display logic.
+- `session-context.js`: Session context state management.
+- `reasoning-state.js`: Reasoning accumulation state.
+- `dom-contracts.js`: DOM contract types for event dispatching.
+- `widget-container-renderer.js`: Inline widget container detection + rendering.
+- `log-ui.js`: UI logging helpers.
+- `logger.js`: Structured logger for frontend.
+- `utils.js`: `KairosUtils.escHtml()`, `showToast()`, helpers.
+- `widgets/`: Widget subsystem (13 modules):
+  - `index.js`: Widget system entry — `KairosWidgets.init()`.
+  - `core.js`: Core widget lifecycle (create, update, destroy).
+  - `contract.js`: Widget event contract types.
+  - `iframe.js`: Sandboxed iframe factory.
+  - `iframe-builder.js`: Iframe document builder with CSP.
+  - `messaging.js`: `postMessage` protocol between host ↔ iframe.
+  - `state-manager.js`: Widget state persistence via `saveState()`.
+  - `widget-detector.js`: Scans DOM for `[Widget: key]` tags and inline code blocks.
+  - `toolbar-core.js`: Widget toolbar UI (version badge, edit, history, reset).
+  - `toolbar-core.js`: Toolbar core rendering.
+  - `toolbar-history.js`: Toolbar version history panel.
+  - `toolbar-editor.js`: Toolbar code editor panel.
+  - `ui-helpers.js`: Widget UI helpers.
 
 ## Wire Format
 
@@ -310,7 +341,7 @@ Widgets are self-contained HTML/CSS/JS snippets rendered in sandboxed iframes.
 | Tool internals | Split: `_rate_limiter.py`, `_tool_parser.py`, `_tool_persister.py` | Monolithic runner |
 | DB repos | `_BaseRepository` + 6 subclasses in `repos/` package | One god class |
 | DB transactions | `_transaction()` context manager with rollback | Bare commit() |
-| History | Split: `history_parser.py`, `history_rebuilder.py`, `history_ui.py` | Single history.py |
+| History | Split: `history_parser.py`, `history_rebuilder.py`, `history_ui.py` | Legacy `history.py` removed |
 | Context | Package with `builder.py`, `files.py`, `templates.py`, `tools_docs.py` | Single context.py |
 | Web services | Split: `chat_stream.py`, `message_persister.py`, `stream_error_classifier.py` | Monolithic service |
 | Frontend | Vanilla JS modules (no build) with event dispatcher | React / Vue |

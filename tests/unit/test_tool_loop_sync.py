@@ -1,7 +1,9 @@
 import json
 from unittest.mock import patch, MagicMock
 
-from src.core.tool_loop import run_tool_loop_sync, OUTPUT_CHUNK_SIZE
+from src.constants import TOOL_OUTPUT_CHUNK_SIZE
+from src.core.debug_info import DebugInfo
+from src.core.tool_loop import run_tool_loop_sync
 
 
 def _make_result(content=None, finish_reason="stop", tool_calls=None, reasoning_content=None):
@@ -60,7 +62,7 @@ def test_sync_no_tool_calls_tagged(mock_chat):
     assert full == content
 
     for i, ct in enumerate(content_tokens[:-1]):
-        assert len(ct) == OUTPUT_CHUNK_SIZE, f"chunk {i} len={len(ct)}: {ct!r}"
+        assert len(ct) == TOOL_OUTPUT_CHUNK_SIZE, f"chunk {i} len={len(ct)}: {ct!r}"
 
     mock_chat.assert_called_once()
 
@@ -195,7 +197,7 @@ def test_sync_debug_dict(mock_chat):
     ]
 
     history = [{"role": "system", "content": "test"}]
-    debug = {}
+    debug = DebugInfo()
     tool_detail = []
     list(run_tool_loop_sync(
         history=history, model="test-model", session_id=None,
@@ -205,10 +207,8 @@ def test_sync_debug_dict(mock_chat):
         tool_map={}, max_turns=5,
     ))
 
-    assert "tool_calls" in debug
-    assert "reasoning" in debug
-    assert debug["tool_calls"] is tool_detail
-    assert "Done." in debug["reasoning"]
+    assert debug.tool_calls is tool_detail
+    assert "Done." in debug.reasoning
 
 
 @patch("src.llm.client.chat")

@@ -2,7 +2,8 @@ import logging
 from contextlib import contextmanager
 from typing import Any
 
-from src.memory.connection import get_conn, get_engine
+from src.memory.connection_pool import get_conn
+from src.memory.engine_state import get_engine
 
 logger = logging.getLogger(__name__)
 

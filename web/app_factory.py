@@ -17,19 +17,20 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from dependencies import manage as deps
+from src.config_loader import DEFAULT_CONFIG
 from src.memory.schema import init_db
 
 logger = logging.getLogger(__name__)
 
 _rate_limit_store: dict[str, list[float]] = defaultdict(list)
-_RATE_LIMIT = int(os.environ.get("HTTP_RATE_LIMIT", "60"))
+_RATE_LIMIT = DEFAULT_CONFIG.http_rate_limit
 _RATE_WINDOW = 60.0
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     searxng_started = False
-    if os.environ.get("SEARXNG_AUTO_START", "false").lower() in ("1", "true"):
+    if DEFAULT_CONFIG.testing or os.environ.get("SEARXNG_AUTO_START", "false").lower() in ("1", "true"):
         err = deps.searxng_start()
         if err:
             logger.warning("SearXNG auto-start: %s", err)

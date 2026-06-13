@@ -3,6 +3,7 @@
  *
  * Creación del toolbar UI y helpers de botones.
  */
+import { ApiClient } from '../api-client.js';
 import { SessionContext } from '../session-context.js';
 import { createToolbarButton } from './ui-helpers.js';
 import { buildIframeSrc } from './iframe-builder.js';
@@ -14,7 +15,6 @@ import stateManager from './state-manager.js';
 export function createToolbar(container, id, key, code, hashId) {
     var oldToolbar = container.querySelector('.widget-toolbar');
     if (oldToolbar) return;
-    var urlBuilder = SessionContext.createSessionUrlBuilder();
 
     var toolbar = document.createElement('div');
     toolbar.className = 'widget-toolbar';
@@ -65,11 +65,8 @@ export function createToolbar(container, id, key, code, hashId) {
         onClick: function onResetClick() {
             if (confirm('¿Reiniciar estado del widget?')) {
                 stateManager.setState(hashId, null);
-                fetch(urlBuilder.widgetState(hashId), {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ state: '{}' })
-                }).then(function onResetResponse() {
+                ApiClient.saveWidgetState(SessionContext.getSessionId(), hashId, '{}')
+                    .then(function onResetResponse() {
                     var iframe = container.querySelector('iframe');
                     if (iframe) {
                         iframe.srcdoc = buildIframeSrc(id, KairosWidgets._registry[id] || code, 'null');
@@ -85,8 +82,7 @@ export function createToolbar(container, id, key, code, hashId) {
 }
 
 function fetchVersionLabel(key, leftSide) {
-    var urlBuilder = SessionContext.createSessionUrlBuilder();
-    fetch(urlBuilder.widgetCode(key))
+    ApiClient.loadWidgetCode(SessionContext.getSessionId(), key)
         .then(function(r) {
             if (!r.ok) throw new Error('not-found');
             return r.json();

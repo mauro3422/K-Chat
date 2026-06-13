@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-import os
 
-from src.memory.connection import get_conn
+from src.config_loader import DEFAULT_CONFIG
+from src.memory.connection_pool import get_conn
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ def health():
 
     # Check LLM provider
     try:
-        api_key = os.environ.get("OPENCODE_ZEN_API_KEY", "")
+        api_key = DEFAULT_CONFIG.opencode_zen_api_key
         checks["llm_provider"] = "configured" if api_key else "not_configured"
     except Exception:
         checks["llm_provider"] = "error"

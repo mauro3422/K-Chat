@@ -5,12 +5,14 @@ from typing import Any
 
 class SQLiteEngine:
     def connect(self) -> sqlite3.Connection:
-        from src.memory.connection import _get_db_path
-        db_path = _get_db_path()
+        from src.memory.db_path import resolve_db_path
+
+        db_path = resolve_db_path()
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         conn = sqlite3.connect(db_path, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
     def execute(self, conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Any:

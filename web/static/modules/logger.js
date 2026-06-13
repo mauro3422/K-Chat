@@ -1,4 +1,5 @@
 import { logUI } from './log-ui.js';
+import { ApiClient } from './api-client.js';
 
 var _loggers = {};
 var _logBuffer = [];
@@ -56,12 +57,7 @@ class Logger {
 function _flush() {
   if (_logBuffer.length === 0) return;
   var batch = _logBuffer.splice(0, Math.min(_logBuffer.length, 100));
-  fetch('/api/logs/client', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(batch),
-    keepalive: true,
-  }).catch(function() {});
+  ApiClient.sendClientLogs(batch).catch(function() {});
 }
 
 export var getLogger = factory;

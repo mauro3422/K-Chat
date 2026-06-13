@@ -1,179 +1,365 @@
 /**
- * ASR Mic Button — chunked speech-to-text via getUserMedia + Google Speech API.
+ * ASR Mic Button
  *
- * No Web Speech API.
- * 4-second chunks sent to /api/asr/transcribe.
- * Text accumulates, never shrinks, never flickers.
- *
- * Survives HTMX via event delegation.
+ * Orchestrates mic capture, VAD segmentation, WAV encoding and live ASR reveal.
+ * Low-level audio capture lives in ./asr/audio-capture.js.
  */
 
-(function () {
-  var log = console.log.bind(console, '[ASR]');
-  var C = { IDLE: 'asr-mic-idle', RECORDING: 'asr-mic-recording', TRANSCRIBING: 'asr-mic-transcribing' };
+import { AudioCapture } from './asr/audio-capture.js';
+import { VadSegmenter } from './asr/vad.js';
+import { encodeWav } from './asr/pcm-utils.js';
+import { AsrTranscriptionTransport } from './asr/transcription-transport.js';
+import { appendAsrTelemetry, setAsrVisibleText } from './asr/contract.js';
+import { mergeTranscript, punctuateTranscript, splitTokens } from './asr/transcript-utils.js';
+import { SessionContext } from './session-context.js';
 
-  var state = C.IDLE;
-  var stream = null;
-  var recorder = null;
-  var accumulatedText = '';
-  var pendingChunks = 0;    // Chunks still being processed
-  var stopped = false;       // User requested stop
+const log = console.log.bind(console, '[ASR]');
+const C = { IDLE: 'asr-mic-idle', RECORDING: 'asr-mic-recording', TRANSCRIBING: 'asr-mic-transcribing' };
 
-  var CHUNK_MS = 4000;      // 4 seconds per chunk
+const SEGMENT_OPTIONS = {
+  frameSize: 1024,
+  speechThreshold: 0.018,
+  silenceThreshold: 0.01,
+  startSilenceFrames: 2,
+  endSilenceMs: 200,
+  maxSegmentMs: 2800,
+  preRollMs: 160,
+  overlapMs: 120,
+  minSegmentMs: 180,
+};
 
-  function btn() { return document.getElementById('asr-mic-btn'); }
-  function inp() { return document.getElementById('msg-input'); }
+const BOOTSTRAP_SEGMENT_OPTIONS = {
+  frameSize: 1024,
+  speechThreshold: 0.018,
+  silenceThreshold: 0.01,
+  startSilenceFrames: 1,
+  endSilenceMs: 120,
+  maxSegmentMs: 1100,
+  preRollMs: 100,
+  overlapMs: 80,
+  minSegmentMs: 120,
+};
 
-  function setState(cls, disabled) {
-    state = cls;
-    var b = btn(); if (!b) return;
-    b.className = cls; b.disabled = !!disabled;
-    b.textContent = cls === C.IDLE ? '🎤' : cls === C.RECORDING ? '⏹️' : '⏳';
-  }
+let state = C.IDLE;
+let accumulatedText = '';
+let capture = null;
+let segmenter = null;
+let transport = null;
+let queue = [];
+let sending = false;
+let pendingSegments = 0;
+let stopRequested = false;
+let segmentMode = 'bootstrap';
+let revealTimer = null;
+let visibleText = '';
+let lastSuccessAtMs = 0;
 
-  function setInput(val) {
-    var i = inp();
-    if (!i) return;
-    i.value = val;
-    i.style.height = 'auto';
-    var h = Math.min(Math.max(42, i.scrollHeight), 300);
-    i.style.height = h + 'px';
-    i.style.overflowY = h >= 300 ? 'auto' : 'hidden';
-    i.dispatchEvent(new Event('input', { bubbles: true }));
-  }
+function btn() { return document.getElementById('asr-mic-btn'); }
+function inp() { return document.getElementById('msg-input'); }
 
-  document.addEventListener('click', function (e) {
-    var b = e.target.closest('#asr-mic-btn');
-    if (!b) return;
-    if (state === C.IDLE) start();
-    else if (state === C.RECORDING) stop();
-  });
+function recordAsrTelemetry(event) {
+  appendAsrTelemetry(event);
+}
 
-  // ── Start ──
-  async function start() {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (err) {
-      log('Mic denied:', err.message);
-      toast('❌ Necesito acceso al micrófono');
-      return;
+function setState(cls, disabled) {
+  state = cls;
+  const b = btn();
+  if (!b) return;
+  b.className = cls;
+  b.disabled = !!disabled;
+  b.textContent = cls === C.IDLE ? '🎤' : cls === C.RECORDING ? '⏹️' : '⏳';
+}
+
+function setInput(val) {
+  const i = inp();
+  if (!i) return;
+  i.value = val;
+  i.style.height = 'auto';
+  const h = Math.min(Math.max(42, i.scrollHeight), 300);
+  i.style.height = h + 'px';
+  i.style.overflowY = h >= 300 ? 'auto' : 'hidden';
+  i.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+document.addEventListener('click', function (e) {
+  const b = e.target.closest('#asr-mic-btn');
+  if (!b) return;
+  if (state === C.IDLE) start();
+  else if (state === C.RECORDING) stop();
+});
+
+async function start() {
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    accumulatedText = '';
+    visibleText = '';
+    queue = [];
+    sending = false;
+    pendingSegments = 0;
+    stopRequested = false;
+    segmentMode = 'bootstrap';
+    stopRevealTimer();
+    lastSuccessAtMs = 0;
+    setAsrVisibleText('');
+    transport = new AsrTranscriptionTransport(SessionContext.getSessionId());
+    const i = inp();
+    if (i) {
+      i.value = '';
+      i.style.height = '42px';
     }
 
-    accumulatedText = '';
-    pendingChunks = 0;
-    stopped = false;
-    var i = inp(); if (i) { i.value = ''; i.style.height = '42px'; }
+    capture = new AudioCapture(onPcmChunk);
+    const sampleRate = await capture.start(stream);
+    segmenter = new VadSegmenter(sampleRate, SEGMENT_OPTIONS);
+    applySegmentMode('bootstrap');
     setState(C.RECORDING);
-    toast('🎤 Grabando…');
+    toast('🎤 Grabando...');
+    log('Recording started at %d Hz', sampleRate);
+  } catch (err) {
+    log('Mic start failed:', err && err.message ? err.message : String(err));
+    if (stream) {
+      stream.getTracks().forEach(function (track) { track.stop(); });
+    }
+    toast('❌ Necesito acceso al micrófono');
+    await cleanup();
+  }
+}
 
-    var mime = 'audio/webm;codecs=opus';
-    if (!MediaRecorder.isTypeSupported(mime)) mime = 'audio/webm';
+function onPcmChunk(samples, sampleRate) {
+  if (!segmenter || !samples || samples.length === 0) return;
+  const segments = segmenter.push(samples, sampleRate);
+  if (segments.length > 0) {
+    enqueueSegments(segments);
+  }
+}
 
-    recorder = new MediaRecorder(stream, { mimeType: mime });
+function enqueueSegments(segments) {
+  if (!segments || segments.length === 0) return;
+  queue.push(...segments);
+  drainQueue();
+}
 
-    recorder.ondataavailable = function (e) {
-      if (e.data.size > 0) {
-        var chunk = e.data;
-        pendingChunks++;
-        // Fire and forget — each chunk sends independently
-        sendChunk(chunk);
-      }
-    };
-
-    recorder.onstop = function () {
-      log('Recorder stopped, pending=%d', pendingChunks);
-      if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
-      recorder = null;
-    };
-
-    recorder.onerror = function () {
-      log('Recorder error');
-      toast('❌ Error grabando');
-      cleanup();
-    };
-
-    // Fire ondataavailable every CHUNK_MS with that chunk's data
-    recorder.start(CHUNK_MS);
-    log('Recording started (chunks every %dms)', CHUNK_MS);
+function drainQueue() {
+  if (sending) return;
+  const segment = queue.shift();
+  if (!segment) {
+    if (stopRequested && pendingSegments === 0) {
+      finalizeResult();
+    }
+    return;
   }
 
-  // ── Send one chunk ──
-  async function sendChunk(audioBlob) {
-    log('Sending chunk (%d bytes, pending=%d)', audioBlob.size, pendingChunks);
+  sending = true;
+  pendingSegments += 1;
+  const audioBlob = encodeWav(segment.samples, segment.sampleRate);
+  const segmentDurationMs = Math.round((segment.samples.length / segment.sampleRate) * 1000);
+  const receivedAtMs = Date.now();
+  log('Sending segment (%d bytes, pending=%d)', audioBlob.size, pendingSegments);
 
-    try {
-      var res = await fetch('/api/asr/transcribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'audio/webm' },
-        body: audioBlob
+  transport.transcribe(audioBlob)
+    .then(function (data) {
+      const gapMs = lastSuccessAtMs > 0 ? Math.max(0, receivedAtMs - lastSuccessAtMs) : 0;
+      recordAsrTelemetry({
+        session_id: SessionContext.getSessionId(),
+        transport: data && data.transport ? data.transport : 'unknown',
+        bytes: audioBlob.size,
+        sample_rate: segment.sampleRate,
+        duration_ms: segmentDurationMs,
+        gap_ms: gapMs,
+        success: !!(data && data.success),
+        transcript: data && data.transcript ? data.transcript : '',
+        error: data && data.error ? data.error : '',
       });
-      var data = await res.json();
-
-      if (data.success && data.transcript) {
-        var text = data.transcript.trim();
-        if (text.length > 1) {
-          accumulatedText += (accumulatedText ? ' ' : '') + text;
-          setInput('🎤 ' + accumulatedText);
-          log('Chunk ok: %s', text.substring(0, 60));
+      if (data && data.success && data.transcript) {
+        const transcript = data.transcript.trim();
+        if (transcript.length > 1) {
+          const merged = mergeTranscript(accumulatedText, transcript);
+          accumulatedText = punctuateTranscript(merged, transcript, segmentDurationMs, gapMs);
+          lastSuccessAtMs = Date.now();
+          revealTranscript(accumulatedText);
+          if (segmentMode === 'bootstrap') {
+            applySegmentMode('normal');
+            segmentMode = 'normal';
+          }
+          log('Segment ok: %s', accumulatedText.substring(Math.max(0, accumulatedText.length - 80)));
         }
       } else {
-        log('Chunk fail:', data.error);
+        log('Segment fail:', data && data.error ? data.error : 'unknown error');
       }
-    } catch (err) {
-      log('Chunk error:', err.message);
-    } finally {
-      pendingChunks--;
-      log('Chunk done, pending=%d, stopped=%s', pendingChunks, stopped);
-      // If user stopped and all chunks processed → finalize
-      if (stopped && pendingChunks <= 0) {
-        finalizeResult();
-      }
+    })
+    .catch(function (err) {
+      recordAsrTelemetry({
+        session_id: SessionContext.getSessionId(),
+        transport: 'unknown',
+        bytes: audioBlob.size,
+        sample_rate: segment.sampleRate,
+        success: false,
+        error: err && err.message ? err.message : String(err),
+      });
+      log('Segment error:', err && err.message ? err.message : String(err));
+    })
+    .finally(function () {
+      pendingSegments -= 1;
+      sending = false;
+      log('Segment done, pending=%d, stopped=%s', pendingSegments, stopRequested);
+      drainQueue();
+    });
+}
+
+async function stop() {
+  if (state !== C.RECORDING) return;
+  stopRequested = true;
+  setState(C.TRANSCRIBING, true);
+  toast('⏳ Transcribiendo...');
+
+  const currentCapture = capture;
+  capture = null;
+  const currentSegmenter = segmenter;
+
+  try {
+    if (currentCapture) {
+      await currentCapture.stop();
     }
+  } catch (err) {
+    log('Stop error:', err && err.message ? err.message : String(err));
   }
 
-  // ── Stop ──
-  function stop() {
-    if (!recorder || recorder.state !== 'recording') return;
-    stopped = true;
-    setState(C.TRANSCRIBING, true);
-    recorder.stop();
-    log('Stop requested');
-    // Safety: if no chunks were in flight, finalize after a short timeout
-    setTimeout(function () {
-      if (pendingChunks <= 0) finalizeResult();
-    }, 8000);
+  if (currentSegmenter) {
+    enqueueSegments(currentSegmenter.flush());
+  }
+  segmenter = null;
+
+  if (pendingSegments === 0 && queue.length === 0 && !sending) {
+    finalizeResult();
+  }
+}
+
+function finalizeResult() {
+  if (accumulatedText && accumulatedText.length >= 2) {
+    stopRevealTimer();
+    visibleText = accumulatedText;
+    setAsrVisibleText(accumulatedText);
+    setInput('🎤 ' + accumulatedText);
+    toast('✅');
+  } else {
+    toast('ℹ️ No se grabó bien');
+  }
+  setState(C.IDLE);
+  pendingSegments = 0;
+  queue = [];
+  sending = false;
+  stopRequested = false;
+  stopRevealTimer();
+  lastSuccessAtMs = 0;
+  if (transport) {
+    transport.close();
+  }
+  log('Finalized: %d chars', accumulatedText.length);
+}
+
+async function cleanup() {
+  const currentCapture = capture;
+  capture = null;
+  const currentSegmenter = segmenter;
+  segmenter = null;
+  const currentTransport = transport;
+  transport = null;
+  queue = [];
+  sending = false;
+  pendingSegments = 0;
+  stopRequested = false;
+  accumulatedText = '';
+  visibleText = '';
+  setAsrVisibleText('');
+  stopRevealTimer();
+  lastSuccessAtMs = 0;
+  if (currentCapture) {
+    try { await currentCapture.stop(); } catch (e) {}
+  }
+  if (currentSegmenter) {
+    currentSegmenter.flush();
+  }
+  if (currentTransport) {
+    await currentTransport.close();
+  }
+  setState(C.IDLE);
+}
+
+function applySegmentMode(mode) {
+  if (!segmenter) return;
+  segmentMode = mode;
+  if (mode === 'bootstrap') {
+    Object.assign(segmenter.options, BOOTSTRAP_SEGMENT_OPTIONS);
+  } else {
+    Object.assign(segmenter.options, SEGMENT_OPTIONS);
+  }
+}
+
+function revealTranscript(targetText) {
+  const cleanTarget = (targetText || '').trim();
+  const current = (visibleText || '').trim();
+  if (!cleanTarget) {
+    stopRevealTimer();
+    visibleText = '';
+    setAsrVisibleText('');
+    setInput('🎤 ');
+    return;
   }
 
-  // ── Finalize ──
-  function finalizeResult() {
-    if (accumulatedText && accumulatedText.length >= 2) {
-      setInput('🎤 ' + accumulatedText);
-      toast('✅');
-    } else {
-      toast('ℹ️ No se grabó bien');
+  const currentTokens = splitTokens(current);
+  const targetTokens = splitTokens(cleanTarget);
+  let shared = 0;
+  while (shared < currentTokens.length && shared < targetTokens.length && currentTokens[shared] === targetTokens[shared]) {
+    shared += 1;
+  }
+
+  const prefix = targetTokens.slice(0, shared).join(' ');
+  const queueTokens = targetTokens.slice(shared);
+  stopRevealTimer();
+  visibleText = prefix;
+  setAsrVisibleText(prefix);
+  setInput(prefix ? '🎤 ' + prefix : '🎤 ');
+  if (queueTokens.length === 0) {
+    visibleText = cleanTarget;
+    setAsrVisibleText(cleanTarget);
+    setInput('🎤 ' + cleanTarget);
+    return;
+  }
+
+  let idx = 0;
+  const tick = function () {
+    const nextToken = queueTokens[idx];
+    idx += 1;
+    visibleText = (visibleText ? visibleText + ' ' : '') + nextToken;
+    setAsrVisibleText(visibleText);
+    setInput('🎤 ' + visibleText);
+    if (idx >= queueTokens.length) {
+      stopRevealTimer();
+      visibleText = cleanTarget;
+      setAsrVisibleText(cleanTarget);
+      setInput('🎤 ' + cleanTarget);
+      return;
     }
-    setState(C.IDLE);
-    pendingChunks = 0;
-    log('Finalized: %d chars', accumulatedText.length);
-  }
+    const delay = idx < 3 ? 28 : 65;
+    revealTimer = window.setTimeout(tick, delay);
+  };
+  revealTimer = window.setTimeout(tick, 12);
+}
 
-  function cleanup() {
-    if (recorder && recorder.state === 'recording') { try { recorder.stop(); } catch (e) {} }
-    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
-    recorder = null;
-    accumulatedText = '';
-    pendingChunks = 0;
-    stopped = false;
-    setState(C.IDLE);
+function stopRevealTimer() {
+  if (revealTimer) {
+    clearTimeout(revealTimer);
+    revealTimer = null;
   }
+}
 
-  function toast(msg) {
-    var t = document.createElement('div');
-    t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:4px;z-index:9999;font-size:14px;';
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(function(){ t.remove(); }, 3000);
-  }
+function toast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:4px;z-index:9999;font-size:14px;';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function () { t.remove(); }, 3000);
+}
 
-  log('ASR ready — chunked (4s)');
-})();
+log('ASR ready — VAD + AudioWorklet');

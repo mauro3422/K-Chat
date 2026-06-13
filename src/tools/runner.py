@@ -7,7 +7,7 @@ from typing import Any
 from src.tools._rate_limiter import _check_rate_limit
 from src.tools._tool_parser import _parse_tool_call
 from src.tools._tool_persister import _persist_tool_results
-from src.constants import TOOL_HEARTBEAT_INTERVAL
+from src.config_loader import DEFAULT_CONFIG
 from src.memory.repos import get_repos, Repositories
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -15,11 +15,11 @@ logger: logging.Logger = logging.getLogger(__name__)
 _POLL_INTERVAL: float = 0.5
 
 
-def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]]) -> Generator[Any, None, None]:
+def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: Repositories | None = None) -> Generator[Any, None, None]:
     with ThreadPoolExecutor(max_workers=max(1, len(tcs_info))) as pool:
         futs = {}
         for tc, name, args in tcs_info:
-            futs[pool.submit(tool_map[name], **args, _session_id=session_id)] = (tc, name)
+            futs[pool.submit(tool_map[name], **args, _session_id=session_id, _repos=repos)] = (tc, name)
         remaining = set(futs.keys())
         last_heartbeat = time.monotonic()
         while remaining:
@@ -46,7 +46,7 @@ def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_ma
                 remaining -= done
             if remaining:
                 now = time.monotonic()
-                if tagged and now - last_heartbeat >= TOOL_HEARTBEAT_INTERVAL:
+                if tagged and now - last_heartbeat >= DEFAULT_CONFIG.tool_heartbeat_interval:
                     yield ("heartbeat", "")
                     last_heartbeat = now
                 time.sleep(_POLL_INTERVAL)
@@ -122,6 +122,6 @@ def run_parallel_tools(
             tool_detail.append({"name": name, "args": args, "status": "error", "result_truncated": msg[:300]})
         return
 
-    yield from _execute_tool_batch(tcs_info, tool_map, session_id, tagged, results)
+    yield from _execute_tool_batch(tcs_info, tool_map, session_id, tagged, results, repos=repos)
 
-    _persist_tool_results(tcs_info, results, session_id, turn, history, tool_detail)
+    _persist_tool_results(tcs_info, results, session_id, turn, history, tool_detail, repos)

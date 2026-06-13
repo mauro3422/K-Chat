@@ -1,26 +1,55 @@
 import json
 import re
 
-from src.api.messages import save_message
-from src.core.history import rebuild_history
+from src.api.messages import save_message_record
+from src.memory.repos import MessageRecord
+from src.api.session import ensure_session
+from src.core.history_rebuilder import rebuild_history
 from src.memory.schema import init_db
 
 
+def save_message(
+    session_id,
+    role,
+    content,
+    model,
+    reasoning="",
+    phases="[]",
+    tool_calls=None,
+    tool_call_id=None,
+    **kwargs,
+):
+    return save_message_record(MessageRecord(
+        session_id=session_id,
+        role=role,
+        content=content,
+        model=model,
+        reasoning=reasoning,
+        phases=phases,
+        tool_calls=tool_calls,
+        tool_call_id=tool_call_id,
+    ))
+
+
 def test_rebuild_history_empty_session():
-    init_db()
     session_id = "test-empty-session"
-    result = rebuild_history(session_id, "test-model")
+    init_db()
+    ensure_session(session_id)
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 1
     assert result[0]["role"] == "system"
     assert "test-model" in result[0]["content"]
 
 
 def test_rebuild_history_simple():
-    init_db()
     session_id = "test-simple"
+    init_db()
+    ensure_session(session_id)
     save_message(session_id=session_id, role="user", content="Hello", model="test-model")
     save_message(session_id=session_id, role="assistant", content="Hi there!", model="test-model")
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 3
     assert result[0]["role"] == "system"
     assert result[1]["role"] == "user"
@@ -30,8 +59,9 @@ def test_rebuild_history_simple():
 
 
 def test_rebuild_history_tool_calls_with_responses():
-    init_db()
     session_id = "test-tool-with-response"
+    init_db()
+    ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_weather", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}},
         {"id": "call_time", "type": "function", "function": {"name": "get_time", "arguments": "{}"}},
@@ -39,7 +69,8 @@ def test_rebuild_history_tool_calls_with_responses():
     save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
     save_message(session_id=session_id, role="tool", content='{"temp": 22}', model="test-model", tool_call_id="call_weather")
     save_message(session_id=session_id, role="tool", content='{"time": "12:00"}', model="test-model", tool_call_id="call_time")
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 4
     assert result[0]["role"] == "system"
     assert result[1]["role"] == "assistant"
@@ -54,34 +85,40 @@ def test_rebuild_history_tool_calls_with_responses():
 
 
 def test_rebuild_history_orphan_tool_calls():
-    init_db()
     session_id = "test-orphan-tc"
+    init_db()
+    ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_orphan", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}},
     ])
     save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 1
     assert result[0]["role"] == "system"
 
 
 def test_rebuild_history_orphan_tool_response():
-    init_db()
     session_id = "test-orphan-tool-resp"
+    init_db()
+    ensure_session(session_id)
     save_message(session_id=session_id, role="tool", content="orphan result", model="test-model", tool_call_id="call_nonexistent")
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 1
     assert result[0]["role"] == "system"
 
 
 def test_rebuild_history_orphan_tool_calls_with_content_kept():
-    init_db()
     session_id = "test-orphan-tc-with-content"
+    init_db()
+    ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_orphan", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}},
     ])
     save_message(session_id=session_id, role="assistant", content="I have content even without tools", model="test-model", tool_calls=tool_calls_json)
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 2
     assert result[1]["role"] == "assistant"
     assert "tool_calls" not in result[1]
@@ -89,11 +126,13 @@ def test_rebuild_history_orphan_tool_calls_with_content_kept():
 
 
 def test_rebuild_history_reasoning():
-    init_db()
     session_id = "test-reasoning"
+    init_db()
+    ensure_session(session_id)
     save_message(session_id=session_id, role="user", content="Think step by step", model="test-model")
     save_message(session_id=session_id, role="assistant", content="Final answer", model="test-model", reasoning="Let me think...")
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 3
     assert result[2]["role"] == "assistant"
     assert result[2]["reasoning_content"] == "Let me think..."
@@ -101,12 +140,14 @@ def test_rebuild_history_reasoning():
 
 
 def test_rebuild_history_multiple_timestamps():
-    init_db()
     session_id = "test-timestamps"
+    init_db()
+    ensure_session(session_id)
     save_message(session_id=session_id, role="user", content="First", model="test-model")
     save_message(session_id=session_id, role="assistant", content="Second", model="test-model")
     save_message(session_id=session_id, role="user", content="Third", model="test-model")
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 4
     for i in range(1, 4):
         assert result[i]["content"].startswith("["), f"msg {i} missing timestamp: {result[i]['content']}"
@@ -120,11 +161,13 @@ def test_rebuild_history_multiple_timestamps():
 
 
 def test_rebuild_history_skips_system_rows():
-    init_db()
     session_id = "test-skip-system"
+    init_db()
+    ensure_session(session_id)
     save_message(session_id=session_id, role="system", content="this should be ignored", model="test-model")
     save_message(session_id=session_id, role="user", content="Hello", model="test-model")
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 2
     assert result[0]["role"] == "system"
     assert "this should be ignored" not in result[0]["content"]
@@ -133,14 +176,16 @@ def test_rebuild_history_skips_system_rows():
 
 
 def test_rebuild_history_content_none_with_tool_calls():
-    init_db()
     session_id = "test-content-none-tc"
+    init_db()
+    ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_none", "type": "function", "function": {"name": "do_something", "arguments": "{}"}},
     ])
     save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
     save_message(session_id=session_id, role="tool", content="done", model="test-model", tool_call_id="call_none")
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 3
     assert result[1]["role"] == "assistant"
     assert result[1]["content"] is None
@@ -152,15 +197,17 @@ def test_rebuild_history_content_none_with_tool_calls():
 
 
 def test_rebuild_history_partial_tool_calls_filtered():
-    init_db()
     session_id = "test-partial-tc"
+    init_db()
+    ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_matched", "type": "function", "function": {"name": "matched_func", "arguments": "{}"}},
         {"id": "call_orphan", "type": "function", "function": {"name": "orphan_func", "arguments": "{}"}},
     ])
     save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
     save_message(session_id=session_id, role="tool", content="matched result", model="test-model", tool_call_id="call_matched")
-    result = rebuild_history(session_id, "test-model")
+    from src.memory.repos import get_repos
+    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 3
     assert result[1]["role"] == "assistant"
     assert len(result[1]["tool_calls"]) == 1

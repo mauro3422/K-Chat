@@ -4,7 +4,7 @@
 <title>Kairos</title>
 <link rel="icon" type="image/png" href="/static/logo.png">
 <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-<link rel="stylesheet" href="/static/style.css?v=9">
+<link rel="stylesheet" href="/static/style.css?v=10">
 <script src="/static/marked.min.js?v=7"></script>
 <script src="/static/purify.min.js?v=7"></script>
 </head><body>
@@ -49,52 +49,11 @@
 </div>
 </div>
 <script>
-// sessionId is set by SessionContext.init below; model selection is handled in session.js
+window.__SESSION_ID = "{{ session_id }}";
+window.__ASR_USE_WEBSOCKET__ = true;
+window.__ASR_CONFIG__ = {
+  transport: 'websocket',
+};
 </script>
-<script type="module">
-  import { SessionContext } from '/static/modules/session-context.js';
-  SessionContext.init("{{ session_id }}");
-</script>
-<script type="module" src="/static/session.js?v=10"></script>
-<script type="module" src="/static/modules/utils.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/core.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/ui-helpers.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/iframe-builder.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/toolbar-core.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/toolbar-editor.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/toolbar-history.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/toolbar.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/iframe.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/messaging.js?v=2"></script>
-<script type="module" src="/static/modules/widgets/bootstrap.js?v=3"></script>
-<script type="module" src="/static/modules/markdown-renderer.js?v=9"></script>
-<script type="module" src="/static/modules/stream-dispatcher.js?v=7"></script>
-<script type="module" src="/static/modules/reasoning-handler.js?v=2"></script>
-<script type="module" src="/static/modules/content-handler.js?v=2"></script>
-<script type="module" src="/static/modules/tool-call-renderer.js?v=2"></script>
-<script type="module" src="/static/modules/chat-form-bootstrap.js?v=1"></script>
-<script type="module" src="/static/modules/asr-mic.js?v=1"></script>
-<style>
-.input-row { display: flex; gap: 6px; align-items: flex-start; width: 100%; }
-.input-row #msg-input {
-  flex: 1; resize: none; overflow-y: auto; min-height: 42px; max-height: 200px;
-  font-family: inherit; font-size: inherit; padding: 10px 12px; border-radius: 8px;
-  border: 1px solid #555; background: #1a1a2e; color: #eee; box-sizing: border-box;
-  line-height: 1.4;
-}
-.input-row #msg-input:focus { outline: none; border-color: #58a6ff; }
-#asr-mic-btn {
-  background: none; border: 1px solid #555; border-radius: 8px;
-  cursor: pointer; font-size: 1.3em; padding: 4px 10px;
-  transition: all 0.2s; line-height: 1; margin-top: 6px;
-}
-#asr-mic-btn:hover { background: #333; border-color: #888; }
-.asr-mic-recording { animation: asr-pulse 1s infinite; border-color: #f44 !important; background: #3a1111 !important; }
-.asr-mic-transcribing { opacity: 0.6; cursor: wait !important; }
-@keyframes asr-pulse { 0%,100% { box-shadow: 0 0 0 0 #f44; } 50% { box-shadow: 0 0 8px 2px #f44; } }
-</style>
-<script type="module" src="/static/debug.js?v=14"></script>
-<script type="module" src="/static/modules/stream-bootstrap.js?v=1"></script>
-<script type="module" src="/static/modules/stream-orchestrator.js?v=3"></script>
-<script type="module" src="/static/modules/chat-form-bootstrap.js?v=1"></script>
+<script type="module" src="/static/dist/assets/app.js"></script>
 </body></html>

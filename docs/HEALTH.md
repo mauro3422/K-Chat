@@ -1,3 +1,5 @@
+> ⚠️ This document may lag behind the current version. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/MODULES.md](MODULES.md) for the latest.
+
 # Code Health Analysis
 
 This document analyzes the current codebase against SOLID principles and the project's "Legos" philosophy, identifying concrete issues and recommended fixes.
@@ -6,12 +8,15 @@ This document analyzes the current codebase against SOLID principles and the pro
 
 | Grade | Area |
 |-------|------|
-| A | Tools auto-registry, widget system, memory schema, migrations, error classification, core orchestrator split, save_message() dataclass |
-| B | LLM abstraction, web routers separation, context decoupling |
+| A | Tools auto-registry, widget system, memory schema, migrations, error classification, core orchestrator split, save_message_record() explicit contract, DebugInfo dataclass, direct API domain modules, LLMProvider protocol alignment |
+| B | Frontend module system, context decoupling |
 | C | — |
 | D | — |
 
-All P1–P3 items completed in the original analysis. The codebase is in a healthier state, but the current work has focused on reducing compatibility seams and documenting the remaining ones clearly.
+All P1–P3 items completed. The codebase has been refactored with:
+- **DebugInfo dataclass** replacing the mutable dict bag across orchestrator, tool_loop, llm/client, and message_persister
+- **API domain modules** (`src/api/`) — web layer imports direct domain modules where appropriate, with `src/api/__init__.py` as package marker only
+- **LLMProvider protocol** aligned with OpenAIProvider implementation
 
 ### Bug fixes applied post-analysis
 
@@ -25,7 +30,6 @@ All P1–P3 items completed in the original analysis. The codebase is in a healt
 ### ~~Issue: `src/core/orchestrator.py` is a god file (280 lines)~~ ✅ Fixed
 
 Split into:
-- `src/core/chat_sync.py` — simple sync wrapper
 - `src/core/tool_loop.py` — streaming and sync tool loops
 - `src/core/orchestrator.py` — generator setup, compression, debug (75 lines)
 
@@ -67,17 +71,9 @@ Both files are now package markers only. The last `_deps` seam was removed after
 
 ## 4. Interface Segregation Principle (ISP)
 
-### Issue: `save_message()` has 11 parameters
+### Issue: `save_message_record()` uses an explicit record object
 
-```python
-def save_message(session_id, role, content, model=None, reasoning="", phases="[]",
-                 prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                 tool_calls=None, tool_call_id=None):
-```
-
-~~Callers often pass many defaults.~~ ✅ Fixed
-
-`save_message()` now accepts either positional/keyword arguments (backward compatible) or a `MessageRecord` dataclass as a single argument. All existing callers continue to work unchanged.
+The runtime now writes messages through `save_message_record()` and `MessageRecord`, which removes the old positional-write path.
 
 ### Issue: `chat_stream()` takes a `debug: dict` bag
 
@@ -103,9 +99,9 @@ class DebugInfo:
 
 ## 5. Dependency Inversion Principle (DIP)
 
-### ~~Issue: `src/llm/models.py` depends on `src.context`~~ ✅ Fixed
+### ~~Issue: `src/llm/api_call.py` depends on `src.context`~~ ✅ Fixed
 
-`_update_system_prompt` se movió de `models.py` a `client.py`. `models.py` ya no importa `src.context`.
+`_update_system_prompt` se mantiene en `client.py`; `api_call.py` solo encapsula la llamada al proveedor.
 
 ### Issue: `src/compressor.py` imports `src.llm.chat` directly
 
@@ -129,6 +125,7 @@ class DebugInfo:
 |------|-----|-----|
 | ~~`src/tool_runner.py`~~ | ~~1-line re-export~~ | ~~Delete~~ ✅ |
 | ~~`web/routers/__init__.py`~~ | ~~Only groups imports~~ | ~~Delete, use auto-discovery~~ ✅ |
+| ~~`src/config.py`~~ | ~~Merged into config_loader.py~~ | ~~Delete~~ ✅ |
 | `src/handler_cli.py` | Entry concern in core | Move to `src/cli/` or keep but rename to `cli_commands.py` |
 
 ### Inline imports (code smell) — mostly fixed ✅
@@ -208,7 +205,7 @@ Multiple places catch generic exceptions and only log:
 
 ### ~~Issue: `src/core/orchestrator.py` is hard to unit test~~ ✅ Fixed
 
-The orchestrator was split into `chat_sync.py`, `tool_loop.py`, and `orchestrator.py`. Tests now patch explicit seams or inject callables directly. All 102 Python tests pass.
+The orchestrator/tool loop/sync path were separated during the refactor, and the sync wrapper was later removed once it no longer had runtime consumers. Tests now patch explicit seams or inject callables directly. All 532 Python tests pass.
 
 ### ~~Issue: `src/llm/__init__.py` mocking hack makes tests fragile~~ ✅ Fixed
 
@@ -224,21 +221,21 @@ Both `src/core/__init__.py` and `src/llm/__init__.py` are package markers only. 
 2. **Move inline imports to top** — `pages.py`, `orchestrator.py`
 3. **Extract `src/memory/migrations.py`** — separate from connection lifecycle
 4. **Translate remaining Spanish logs/comments**
-5. **Split `src/core/orchestrator.py`** into `chat_sync.py`, `tool_loop.py`
+5. **Split `src/core/orchestrator.py`** into explicit orchestration and loop seams
 6. **Extract error classification** to `web/services/chat_stream.py`
 7. **Extract `StreamBuilder`** from `web/routers/chat.py` to `web/services/chat_stream.py`
 8. **Extract message renderer** from `web/routers/pages.py` to `web/services/message_renderer.py`
 9. **Split `widget-system.js`** into `web/static/modules/widgets/` folder
 10. **Auto-discover web routers** — scan `web/routers/*.py` instead of manual imports in `server.py`
 11. **Remove `web/routers/__init__.py`** — replaced by auto-discovery
-12. **Remove `src/llm/models.py` → `src.context` dependency**
-13. **Use dataclass for `save_message()`**
+12. **Remove any `src/llm/models.py` compatibility references**
+13. **Use dataclass for `save_message_record()`**
 14. **Add stream-abort stress tests** — `tests/test_stream_abort_persistence.py` (5 Python cases) and `tests/test-stress-stream-abort.js` (8 JS assertions) verify partial message persistence and DOM preservation on client abort.
 
 ### P3 — High impact, higher risk
 
 15. ~~**Remove ModuleType property hacks** from `src/core/__init__.py` and `src/llm/__init__.py`~~ ✅ Done
-16. ~~**Add connection pooling** to `src/memory/connection.py`~~ ✅ Done
+16. ~~**Add connection pooling** to `src/memory/connection_pool.py`~~ ✅ Done
 17. ~~**Add type hints across all public interfaces**~~ ✅ Done
 
 ---
@@ -252,25 +249,26 @@ web/server.py ──► web/routers/* ──► web/ui_utils.py
              │                       │
              │                       ▼
              │                 src/core/orchestrator.py
-             │                 src/core/chat_sync.py
              │                 src/core/tool_loop.py
              │                       │
              │         ┌─────────────┼─────────────┐
              │         ▼             ▼             ▼
              │    src/llm/      src/tools/    src/memory/
-             │    client.py     runner.py       schema.py
-             │    policy.py     *.py            migrations.py
-             │    models.py                     message.py
-             │                                  session.py
-             │                                  widget.py
-             │                                  saved_widgets.py
-             │                                  debug.py
+             │    client.py     runner.py       repos/
+             │    api_call.py   *.py            schema.py
+             │    providers.py                  migrations.py
+             │    model_state.py                 sqlite_engine.py
+             │    discovery.py
+             │    verifier.py
+             │    selector.py
+             │    failover.py
              │
-             └────► src/context.py ──► src/tools/__init__.py
-                    src/compressor.py ──► src.llm.client.py
-                    src/background_tasks.py ──► src.llm.chat
+             ├────► src/context/builder.py
+             │       ├── src/tools/__init__.py
+             │       └── src/paths.py
+             ├────► src/compressor.py ──► src.llm.client.py
+             └────► src/background_tasks.py ──► src.llm.client
+                    src/config_loader.py
 ```
 
-The graph shows the web layer depends on core, which depends on llm/tools/memory. Context depends on tools. This is mostly clean. ~~The remaining problematic cross-dependencies are:~~
-- ~~`src/compressor.py` → `src.llm.chat` (should use abstraction)~~ ✅ Fixed — now imports from `src.llm.client`
-- ~~`src/background_tasks.py` → `src.llm.chat` (should use abstraction)~~ ✅ Fixed — now imports from `src.llm.client`
+The graph shows the web layer depends on core, which depends on llm/tools/memory. Context depends on tools and paths. All previously problematic cross-dependencies are resolved with injection parameters or direct lazy imports.

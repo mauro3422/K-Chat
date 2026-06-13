@@ -1,14 +1,11 @@
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from src.memory.repos.base import _BaseRepository
-from src.memory.repos.debug_repository import DebugRepository
-from src.memory.repos.message_repository import MessageRepository
-from src.memory.repos.saved_widget_repository import SavedWidgetRepository
-from src.memory.repos.tool_call_repository import ToolCallRepository
-from src.memory.repos.memory_index_repository import MemoryIndexRepository
-from src.memory.repos.widget_state_repository import WidgetStateRepository
+
+if TYPE_CHECKING:
+    from src.memory.repos import Repositories
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +29,37 @@ class SessionRepository(_BaseRepository):
             cursor = conn.cursor()
             cursor.execute("UPDATE sessions SET name = ? WHERE session_id = ?", (name, session_id))
 
-    def delete(self, session_id: str) -> None:
-        """Delete a session and all its associated data."""
+    def delete(self, session_id: str, cursor: Any = None) -> None:
+        """Delete the session row itself."""
+        if cursor is not None:
+            cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+        else:
+            with self._transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+
+    def delete_cascade(self, session_id: str, repos: "Repositories" | None = None) -> None:
+        """Delete a session and all related rows in one transaction."""
         conn = self._get_conn()
+        if repos is None:
+            from src.memory.repos import get_repos
+
+            r = get_repos(conn)
+        else:
+            r = repos
         try:
             cursor = conn.cursor()
-            for repo_cls in [MessageRepository, ToolCallRepository, DebugRepository, WidgetStateRepository, SavedWidgetRepository, MemoryIndexRepository]:
-                repo_cls(self._conn).delete_by_session(session_id, cursor)
-            cursor.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+            cursor.execute("DELETE FROM widget_versions WHERE session_id = ?", (session_id,))
+            for repo in (
+                r.messages,
+                r.tool_calls,
+                r.debug,
+                r.widget_states,
+                r.saved_widgets,
+                r.memory_index,
+            ):
+                repo.delete_by_session(session_id, cursor)
+            self.delete(session_id, cursor=cursor)
             conn.commit()
         except Exception:
             conn.rollback()

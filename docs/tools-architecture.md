@@ -1,3 +1,5 @@
+> ⚠️ This document may lag behind the current version. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/MODULES.md](MODULES.md) for the latest.
+
 # Arquitectura de `src/tools/`
 
 ## 1. Qué hace cada archivo
@@ -12,18 +14,24 @@
 | `_tool_persister.py` | Inserta cada tool_call y resultado en SQLite (tablas `tool_calls` + `messages`). |
 | `_path_helpers.py` | Resuelve paths y valida que estén dentro de project_root, home o /tmp (previene path traversal). |
 | `_widget_helpers.py` | Repo singleton de widgets, sanitiza `widget_id`, valida session_id. |
+| `_analyzers.py` | Helpers de análisis: detección de lenguaje, análisis AST Python, regex para JS/TS/MD/HTML/CSS, iconos por lenguaje. |
+| `_validators.py` | Validación de sintaxis para Python (AST), JavaScript (node --check), JSON, HTML, CSS, YAML, TOML. Usado por `write_file` post-write. |
 | `execute_command.py` | Ejecuta comandos shell con timeout, cwd configurable y bloqueo básico de patrones peligrosos. |
 | `list_files.py` | `ls` mejorado con análisis de lenguaje, funciones, clases, imports y estructura de directorios. |
+| `search_files.py` | Búsqueda tipo grep con contexto, detección de función/clase, estadísticas, brace globs `*.{py,js}`. |
+| `edit_file.py` | Edición quirúrgica de líneas: reemplazar rango, insertar, eliminar. Sin reescribir archivos enteros. |
+| `analyze_code.py` | Análisis profundo Python con AST: funciones, parámetros, call graph, imports, métricas por función. |
 | `web_search.py` | Busca en SearXNG local con retry, formato de resultados, infoboxes y suggestions. |
-| `read_file.py` | Lee archivo con paginación (100 líneas max/call), formato numerado, validación de path. |
-| `write_file.py` | Crea/sobreescribe archivo, crea directorios padres si faltan, validación de path. |
 | `fetch_url.py` | Descarga página web, extrae texto con lxml, anti-SSRF, detección de binarios, retry. |
-| `save_memory.py` | Lee/escribe `MEMORY.md` con sección `## Memories`, thread-safe con lock, reparación de header corrupto. |
+| `read_file.py` | Lee archivo con paginación (100 líneas max/call), formato numerado, validación de path. |
+| `write_file.py` | Crea/sobreescribe archivo, crea directorios padres si faltan, validación de path + validación post-write. |
+| `save_memory.py` | Lee/escribe `MEMORY.md` con sección `## Memories`, thread-safe con lock, reparación de header corrupto, invalida cache de contexto. |
 | `read_skill.py` | Lee archivos `.md` de `skills/`, sanitiza nombre, lista skills disponibles si no existe. |
 | `get_tool_history.py` | Consulta historial de tool_calls de la sesión actual desde SQLite. |
+| `save_widget.py` | Guarda widget como oficial (versionado auto-incremental) en la DB. |
+| `update_widget.py` | Actualiza widget existente como nueva versión (requiere code). |
 | `get_widget_code.py` | Recupera código + metadata de un widget oficial desde la DB. |
-| `save_widget.py` | Guarda widget como oficial (versionado) en la DB. |
-| `update_widget.py` | Actualiza widget existente como nueva versión (requiere que exista previamente). |
+| `git_operation.py` | Operaciones Git seguras (status, diff, log, branch, add, commit, push, pull, clone). Bloquea `--force`/`--hard`. |
 
 ## 2. Auto-discovery (`loader.py`)
 
@@ -40,7 +48,9 @@ src/tools/
 El loader itera `os.listdir()` del directorio `src/tools/`, filtrando:
 - Excluye `__*.py` (con `startswith('__')`)
 - Excluye `runner.py` explícitamente
-- Intenta `importlib.import_module(f'src.tools.{mod_name}')`
+**Nota**: `_rate_limiter.py`, `_tool_parser.py`, `_tool_persister.py`, `_path_helpers.py`, `_widget_helpers.py`, `_analyzers.py`, `_validators.py` no empiezan con `__`, pero no exportan `DEFINITION` ni `run`, así que se descartan silenciosamente.
+
+**Total**: 16 tools auto-descubiertas (v0.0.52+).
 - Requiere `DEFINITION` (dict con schema OpenAI) y `run` (callable)
 - Extrae `tool_name` de `DEFINITION['function']['name']`
 - Registra en `TOOL_MAP[tool_name] = mod.run` y `TOOL_DEFINITIONS[tool_name] = mod.DEFINITION`
@@ -120,6 +130,7 @@ def run(param1: str, param2: int = 0, _session_id: str | None = None) -> str:
 - **Observabilidad**: Logging en cada punto, tool_calls persistidos en SQLite, status "ok"/"error" en cada resultado.
 - **Idempotencia de imports**: `__init__.py` construye `TOOLS` una vez, `loader.py` llena `TOOL_MAP` una vez. Thread-safe por diseño (single-threaded import).
 - **Reintentos**: `web_search` (2 retries) y `fetch_url` (1 retry) con backoff.
+- **Bootstrap de SearXNG**: el arranque no instala dependencias por defecto; la instalación debe activarse explícitamente con `SEARXNG_AUTO_INSTALL=1`.
 - **Truncado de seguridad**: Resultados > 30K chars y archivos > 100 líneas se cortan para evitar overflow de tokens.
 
 ## 7. Lo que podría mejorar

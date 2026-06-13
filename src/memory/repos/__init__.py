@@ -1,4 +1,3 @@
-import sqlite3
 from dataclasses import dataclass
 
 from src.memory.repos.base import _BaseRepository
@@ -22,17 +21,17 @@ class Repositories:
     memory_index: MemoryIndexRepository
 
 
-def get_repos(conn: sqlite3.Connection | None = None) -> Repositories:
-    """Get all repositories, optionally sharing a single connection."""
-    return Repositories(
-        messages=MessageRepository(conn),
-        sessions=SessionRepository(conn),
-        tool_calls=ToolCallRepository(conn),
-        widget_states=WidgetStateRepository(conn),
-        debug=DebugRepository(conn),
-        saved_widgets=SavedWidgetRepository(conn),
-        memory_index=MemoryIndexRepository(conn),
+def get_repos(conn=None) -> Repositories:
+    repos = Repositories(
+        messages=MessageRepository(conn=conn),
+        sessions=SessionRepository(conn=conn),
+        tool_calls=ToolCallRepository(conn=conn),
+        widget_states=WidgetStateRepository(conn=conn),
+        debug=DebugRepository(conn=conn),
+        saved_widgets=SavedWidgetRepository(conn=conn),
+        memory_index=MemoryIndexRepository(conn=conn),
     )
+    return repos
 
 
 __all__ = [

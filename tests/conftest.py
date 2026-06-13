@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Set a temp DB path BEFORE any module that imports config.py is loaded.
+# Set a temp DB path BEFORE any module that imports config_loader.py is loaded.
 # This ensures test DB isolation regardless of .env settings.
 os.environ["MEMORY_DB_PATH"] = "/tmp/kairos_test.db"
 os.environ["OPENCODE_ZEN_API_KEY"] = "test-key-for-tests"

@@ -1,6 +1,9 @@
 from unittest.mock import patch
 import json
 
+from src.core.debug_info import DebugInfo
+from src.memory.repos import MessageRecord
+from web.services.message_persister_contract import MessagePersisterDeps
 from web.services.message_persister import save_assistant_message
 
 
@@ -8,12 +11,12 @@ from web.services.message_persister import save_assistant_message
 @patch("web.services.message_persister.db_save_message")
 def test_save_with_full_data(mock_db_save, mock_debug_save):
     phases = [{"phase": "reasoning", "content": "thinking..."}]
-    debug = {
-        "prompt_tokens": 100,
-        "completion_tokens": 50,
-        "total_tokens": 150,
-        "phases": "already set",
-    }
+    debug = DebugInfo(
+        prompt_tokens=100,
+        completion_tokens=50,
+        total_tokens=150,
+        phases="already set",
+    )
 
     save_assistant_message(
         session_id="s1",
@@ -24,22 +27,27 @@ def test_save_with_full_data(mock_db_save, mock_debug_save):
         model="gpt-4",
     )
 
-    mock_db_save.assert_called_once_with(
-        "s1", "assistant", "Hello!", "gpt-4",
-        reasoning="thinking",
-        phases=json.dumps(phases, ensure_ascii=False),
-        prompt_tokens=100,
-        completion_tokens=50,
-        total_tokens=150,
-    )
-    mock_debug_save.assert_called_once_with("s1", debug)
+    saved_record = mock_db_save.call_args[0][0]
+    assert isinstance(saved_record, MessageRecord)
+    assert saved_record.session_id == "s1"
+    assert saved_record.role == "assistant"
+    assert saved_record.content == "Hello!"
+    assert saved_record.model == "gpt-4"
+    assert saved_record.reasoning == "thinking"
+    assert saved_record.phases == json.dumps(phases, ensure_ascii=False)
+    assert saved_record.prompt_tokens == 100
+    assert saved_record.completion_tokens == 50
+    assert saved_record.total_tokens == 150
+    saved_debug = mock_debug_save.call_args[0][1]
+    assert saved_debug["prompt_tokens"] == 100
+    assert saved_debug["phases"] == "already set"
 
 
 @patch("web.services.message_persister.save_debug_info")
 @patch("web.services.message_persister.db_save_message")
 def test_save_with_empty_debug_info(mock_db_save, mock_debug_save):
     phases = [{"phase": "answer", "content": "done"}]
-    debug = {}
+    debug = DebugInfo()
 
     save_assistant_message(
         session_id="s2",
@@ -50,14 +58,10 @@ def test_save_with_empty_debug_info(mock_db_save, mock_debug_save):
         model="gpt-4",
     )
 
-    mock_db_save.assert_called_once_with(
-        "s2", "assistant", "Response", "gpt-4",
-        reasoning="",
-        phases=json.dumps(phases, ensure_ascii=False),
-        prompt_tokens=0,
-        completion_tokens=0,
-        total_tokens=0,
-    )
+    saved_record = mock_db_save.call_args[0][0]
+    assert saved_record.content == "Response"
+    assert saved_record.reasoning == ""
+    assert saved_record.phases == json.dumps(phases, ensure_ascii=False)
     saved_debug = mock_debug_save.call_args[0][1]
     assert saved_debug["phases"] == json.dumps(phases, ensure_ascii=False)
 
@@ -65,7 +69,7 @@ def test_save_with_empty_debug_info(mock_db_save, mock_debug_save):
 @patch("web.services.message_persister.save_debug_info")
 @patch("web.services.message_persister.db_save_message")
 def test_save_with_empty_phases(mock_db_save, mock_debug_save):
-    debug = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+    debug = DebugInfo(prompt_tokens=10, completion_tokens=5, total_tokens=15)
 
     save_assistant_message(
         session_id="s3",
@@ -76,14 +80,10 @@ def test_save_with_empty_phases(mock_db_save, mock_debug_save):
         model="gpt-4",
     )
 
-    mock_db_save.assert_called_once_with(
-        "s3", "assistant", "Short reply", "gpt-4",
-        reasoning="reason",
-        phases=json.dumps([], ensure_ascii=False),
-        prompt_tokens=10,
-        completion_tokens=5,
-        total_tokens=15,
-    )
+    saved_record = mock_db_save.call_args[0][0]
+    assert saved_record.content == "Short reply"
+    assert saved_record.reasoning == "reason"
+    assert saved_record.phases == json.dumps([], ensure_ascii=False)
     saved_debug = mock_debug_save.call_args[0][1]
     assert saved_debug["phases"] == json.dumps([], ensure_ascii=False)
 
@@ -92,7 +92,7 @@ def test_save_with_empty_phases(mock_db_save, mock_debug_save):
 @patch("web.services.message_persister.db_save_message")
 def test_existing_phases_not_overwritten(mock_db_save, mock_debug_save):
     phases = [{"phase": "new"}]
-    debug = {"phases": "original_value"}
+    debug = DebugInfo(phases="original_value")
 
     save_assistant_message(
         session_id="s4",
@@ -105,3 +105,39 @@ def test_existing_phases_not_overwritten(mock_db_save, mock_debug_save):
 
     saved_debug = mock_debug_save.call_args[0][1]
     assert saved_debug["phases"] == "original_value"
+
+
+def test_save_assistant_message_with_explicit_deps():
+    captured = {}
+
+    class FakeRecord:
+        def __init__(self, **kwargs):
+            captured["record_kwargs"] = kwargs
+
+    def save_message_fn(record):
+        captured["record"] = record
+
+    def save_debug_fn(session_id, debug_info):
+        captured["debug"] = (session_id, debug_info)
+
+    debug = DebugInfo(prompt_tokens=1, completion_tokens=2, total_tokens=3)
+    phases = [{"phase": "answer", "content": "done"}]
+
+    save_assistant_message(
+        session_id="s5",
+        full_content="Ok",
+        full_reasoning="",
+        phases_output=phases,
+        debug_info=debug,
+        model="gpt-4",
+        deps=MessagePersisterDeps(
+            save_message_fn=save_message_fn,
+            save_debug_fn=save_debug_fn,
+            message_record_cls=FakeRecord,
+        ),
+    )
+
+    assert "record" in captured
+    assert captured["record_kwargs"]["session_id"] == "s5"
+    assert captured["record_kwargs"]["content"] == "Ok"
+    assert captured["debug"][0] == "s5"

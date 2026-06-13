@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 ASR_LANGUAGE = "es-AR"
 
 
-def transcribe_audio(audio_data: bytes, language: str = ASR_LANGUAGE) -> dict[str, Any]:
+def transcribe_audio(audio_data: bytes, language: str = ASR_LANGUAGE, content_type: str | None = None) -> dict[str, Any]:
     """Transcribe audio bytes using Google Speech API.
 
     Accepts any format supported by ffmpeg (WebM/Opus from MediaRecorder, WAV, etc.).
@@ -39,7 +39,7 @@ def transcribe_audio(audio_data: bytes, language: str = ASR_LANGUAGE) -> dict[st
         return {"success": False, "error": "Empty or too small audio payload"}
 
     # Convert to WAV via ffmpeg (handles WebM, OGG, WAV, etc.)
-    wav_data = _convert_to_wav(audio_data)
+    wav_data = _convert_to_wav(audio_data, content_type=content_type)
     if wav_data is None:
         # If conversion fails, try raw WAV as fallback
         wav_data = audio_data
@@ -83,7 +83,7 @@ def transcribe_audio(audio_data: bytes, language: str = ASR_LANGUAGE) -> dict[st
     }
 
 
-def _convert_to_wav(audio_data: bytes) -> bytes | None:
+def _convert_to_wav(audio_data: bytes, content_type: str | None = None) -> bytes | None:
     """Convert audio bytes to WAV PCM 16-bit mono via ffmpeg."""
     try:
         with tempfile.NamedTemporaryFile(suffix=".in", delete=False) as fin:
@@ -94,7 +94,7 @@ def _convert_to_wav(audio_data: bytes) -> bytes | None:
 
         try:
             result = subprocess.run(
-                ["ffmpeg", "-y", "-i", in_path, "-ac", "1", "-ar", "16000",
+                ["ffmpeg", "-y", *(_ffmpeg_input_args(content_type)), "-i", in_path, "-ac", "1", "-ar", "16000",
                  "-sample_fmt", "s16", out_path],
                 capture_output=True,
                 timeout=30,
@@ -128,6 +128,19 @@ def _convert_to_wav(audio_data: bytes) -> bytes | None:
     except Exception as e:
         logger.warning("Failed to create temp file for ffmpeg: %s", e)
         return None
+
+
+def _ffmpeg_input_args(content_type: str | None) -> list[str]:
+    if not content_type:
+        return []
+    content_type = content_type.lower()
+    if "webm" in content_type:
+        return ["-f", "webm"]
+    if "ogg" in content_type:
+        return ["-f", "ogg"]
+    if "wav" in content_type:
+        return ["-f", "wav"]
+    return []
 
 
 def _recognize(recognizer: sr.Recognizer, audio: sr.AudioData, language: str) -> str:

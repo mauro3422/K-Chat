@@ -5,7 +5,9 @@
 | Archivo | Qué hace |
 |---------|----------|
 | `__init__.py` | Re-exporta todo el API público del módulo memory |
-| `connection.py` | Gestiona conexiones SQLite con pool por hilo y engine inyectable |
+| `lifecycle.py` | Guarda el estado de inicialización por ruta DB |
+| `connection_pool.py` | Gestiona conexiones SQLite con pool por hilo |
+| `engine_state.py` | Engine inyectable y protocolo `DatabaseEngine` |
 | `schema.py` | Inicialización del esquema y ejecución de migraciones |
 | `migrations.py` | Define 9 migraciones secuenciales del esquema |
 | `sqlite_engine.py` | Implementación concreta del protocolo `DatabaseEngine` para SQLite |
@@ -34,10 +36,11 @@ class DatabaseEngine(Protocol):
 Es un **Protocol** (structural subtyping). Cualquier clase con esos 5 métodos es válida.
 La única implementación es `SQLiteEngine` que envuelve `sqlite3`.
 
-**Flujo en `connection.py` + `schema.py`:**
-- `connection.py` mantiene el `threading.local` y el engine inyectable.
-- Si `_engine is None`, se usa `sqlite3` directamente (modo legacy).
+**Flujo en `connection_pool.py` + `schema.py` + `lifecycle.py`:**
+- `connection_pool.py` mantiene el `threading.local` y usa el engine inyectable.
+- Si no hay engine configurado, se usa `sqlite3` directamente.
 - `get_conn()` retorna un `PooledConnection` cuyo `.close()` es no-op (la conexión se reutiliza por hilo via `threading.local`).
+- `lifecycle.py` guarda qué rutas DB ya fueron inicializadas.
 - `schema.py` ejecuta las migraciones pendientes leyendo `schema_version` y marca esa ruta como inicializada.
 
 ---
@@ -114,4 +117,4 @@ _BaseRepository
 - **`get_engine()` como global mutable**: el engine se inyecta vía variable global, no vía DI container.
 - **No hay validación de esquema**: las migraciones no verifican integridad del esquema final.
 - **Tipos `Any` en exceso**: `conn: Any` en todos los repos pierde type safety.
-- **`init_db()` y `get_conn()` siguen mezclados en el mismo módulo**: ahora la inicialización está guardada por ruta, pero el lifecycle todavía podría separarse más si se quisiera una frontera más estricta.
+- **`schema.py` todavía concentra migraciones + bootstrap**: el estado de rutas inicializadas ya salió a `lifecycle.py`, pero el bootstrap completo todavía vive junto.

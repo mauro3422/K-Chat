@@ -1,6 +1,8 @@
-"""Contract test: Web code should go through API facade, not directly to repos."""
+"""Contract test: API domain modules should remain importable."""
+import importlib
 import pytest
-from src.api import __init__ as api_init_module
+
+api_init_module = importlib.import_module("src.api")
 
 
 class TestApiFacadeBypass:
@@ -9,8 +11,8 @@ class TestApiFacadeBypass:
         assert content == "# Package marker. Intentionally empty."
 
     def test_api_modules_importable(self):
-        from src.api import messages, session, widgets, debug, tools, history, connection, models
-        assert hasattr(messages, "save_message")
+        from src.api import messages, session, widgets, debug, tools
+        assert hasattr(messages, "save_message_record")
         assert hasattr(session, "get_sessions")
         assert hasattr(widgets, "save_widget_state")
         assert hasattr(debug, "save_debug_info")

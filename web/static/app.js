@@ -1,8 +1,13 @@
-// app.js — bundled frontend entry.
-// Real compatibility shims live in the dedicated bootstrap modules.
+import { SessionContext } from './modules/session-context.js';
+import './modules/reasoning-handler.js';
+import './modules/content-handler.js';
+import './modules/tool-call-renderer.js';
+import './modules/asr-mic.js';
+import { initSessionPage } from './modules/session-page.js';
+import { KairosForm } from './modules/chat-form.js';
+import { KairosDebugPanel } from './modules/debug-panel.js';
 
-import './modules/widgets/bootstrap.js';
-import './modules/stream-bootstrap.js';
-import './modules/chat-form-bootstrap.js';
-import './debug.js';
-import './session.js';
+SessionContext.init(window.__SESSION_ID);
+initSessionPage();
+KairosDebugPanel.bindDebugControls();
+KairosForm.init();

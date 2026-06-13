@@ -8,6 +8,7 @@ from src.memory.repos import (
     WidgetStateRepository,
     DebugRepository,
     SavedWidgetRepository,
+    MemoryIndexRepository,
     get_repos,
 )
 
@@ -165,7 +166,7 @@ class TestSessionRepository:
 
         repo.delete("sess_1")
 
-        assert mock_conn.cursor.return_value.execute.call_count == 8
+        assert mock_conn.cursor.return_value.execute.call_count == 1
         mock_conn.commit.assert_called_once()
 
     @patch("src.memory.repos.base.get_conn")
@@ -309,7 +310,7 @@ class TestDebugRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_get_info_found(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.return_value = {"model": "m1", "reasoning": "thinking", "system_prompt": "sys prompt", "tool_calls": "[]", "history_before": "[]"}
+        mock_cursor.fetchone.return_value = {"model": "m1", "reasoning": "thinking", "system_prompt": "sys prompt", "tool_calls": "[]", "history_before": "[]", "asr_telemetry": "[]"}
         mock_get_conn.return_value = mock_conn
         repo = DebugRepository()
 
@@ -321,6 +322,7 @@ class TestDebugRepository:
             "system_prompt": "sys prompt",
             "tool_calls": [],
             "history_before": [],
+            "asr_telemetry": [],
         }
 
     @patch("src.memory.repos.base.get_conn")
@@ -337,7 +339,7 @@ class TestDebugRepository:
     @patch("src.memory.repos.base.get_conn")
     def test_get_info_parses_json(self, mock_get_conn, mock_conn):
         mock_conn, mock_cursor = mock_conn
-        mock_cursor.fetchone.return_value = {"model": "m1", "reasoning": "", "system_prompt": "", "tool_calls": '[{"name":"test"}]', "history_before": '[{"role":"user"}]'}
+        mock_cursor.fetchone.return_value = {"model": "m1", "reasoning": "", "system_prompt": "", "tool_calls": '[{"name":"test"}]', "history_before": '[{"role":"user"}]', "asr_telemetry": '[{"transport":"ws"}]'}
         mock_get_conn.return_value = mock_conn
         repo = DebugRepository()
 
@@ -345,6 +347,7 @@ class TestDebugRepository:
 
         assert result["tool_calls"] == [{"name": "test"}]
         assert result["history_before"] == [{"role": "user"}]
+        assert result["asr_telemetry"] == [{"transport": "ws"}]
 
 
 class TestSavedWidgetRepository:
@@ -453,6 +456,7 @@ class TestGetRepos:
         assert isinstance(repos.widget_states, WidgetStateRepository)
         assert isinstance(repos.debug, DebugRepository)
         assert isinstance(repos.saved_widgets, SavedWidgetRepository)
+        assert isinstance(repos.memory_index, MemoryIndexRepository)
 
     def test_get_repos_passes_connection(self, mock_conn):
         mock_conn, mock_cursor = mock_conn
