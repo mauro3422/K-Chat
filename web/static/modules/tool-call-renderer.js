@@ -1,7 +1,32 @@
-import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
 import { KairosStream } from './stream-dispatcher.js';
 import { logUI } from './log-ui.js';
+
+function createToolPillClass(status) {
+  return C.TC_ITEM + ' ' + status;
+}
+
+function createToolPillText(status, name) {
+  return (status === 'ok' ? '✓ ' : '✗ ') + (name || '?');
+}
+
+function createCallingPill(name) {
+  var span = document.createElement('span');
+  span.className = C.TC_ITEM_CALLING;
+  span.setAttribute('data-tool', name);
+
+  var spinner = document.createElement('span');
+  spinner.className = 'tc-spinner';
+  span.appendChild(spinner);
+  span.appendChild(document.createTextNode(' ' + name));
+
+  return span;
+}
+
+function updateToolPill(pill, status, name) {
+  pill.className = createToolPillClass(status);
+  pill.textContent = createToolPillText(status, name);
+}
 
 export function registerToolCallRenderer() {
   KairosStream.on('tool_call', function(dataStr, ctx) {
@@ -56,24 +81,20 @@ export function registerToolCallRenderer() {
       var existing = tcEl.querySelector('[data-id="' + info.id + '"]');
       if (info.status === 'calling') {
         if (!existing) {
-          var span = document.createElement('span');
-          span.className = C.TC_ITEM_CALLING;
+          var span = createCallingPill(info.name);
           span.setAttribute('data-id', info.id);
-          span.setAttribute('data-tool', info.name);
-          span.innerHTML = '<span class="tc-spinner"></span> ' + KairosUtils.escHtml(info.name);
           tcEl.appendChild(span);
           logUI('tool_calling', info.name);
         }
       } else {
         if (existing) {
-          existing.className = C.TC_ITEM + ' ' + info.status;
-          existing.innerHTML = (info.status === 'ok' ? '&#10003; ' : '&#10007; ') + KairosUtils.escHtml(info.name);
+          updateToolPill(existing, info.status, info.name);
           logUI('tool_' + info.status, info.name);
         } else {
           var span2 = document.createElement('span');
-          span2.className = C.TC_ITEM + ' ' + info.status;
+          span2.className = createToolPillClass(info.status);
           span2.setAttribute('data-id', info.id);
-          span2.innerHTML = (info.status === 'ok' ? '&#10003; ' : '&#10007; ') + KairosUtils.escHtml(info.name || '?');
+          span2.textContent = createToolPillText(info.status, info.name);
           tcEl.appendChild(span2);
           logUI('tool_' + info.status, info.name);
         }

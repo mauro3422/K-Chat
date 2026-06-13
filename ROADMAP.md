@@ -196,6 +196,7 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Debug listeners injectable**: `bindDebugControls()` usa `eventTarget` inyectable en vez de depender de `window` directo
 - [x] **Stream completion helper**: el post-success del stream salió de `stream-orchestrator.js` a `stream-completion.js`
 - [x] **Retry message DOM**: `showRetryMessage()` y pill errors dejaron de usar `innerHTML` para la UI de error
+- [x] **Tool call pills DOM**: `tool-call-renderer.js` dejó de pintar pills con `innerHTML`
 - [x] **LLM docs sync**: mapas y arquitectura de `llm/` alineados con `adapters/openai_adapter.py`
 - [x] **Health doc sync**: `docs/HEALTH.md` ya nombra `OpenAIAdapter` en vez de `OpenAIProvider`
 - [x] **Frontend de transición acotado**: compatibilidad legacy aislada en `session-page.js`, `debug-panel.js` y `stream-orchestrator.js`

@@ -9,6 +9,7 @@
 - **Contexto**: `load_context()` quedó pura; `TOOLS.md` se genera fuera del flujo de lectura
 - **Web/frontend**: routers y servicios usan imports directos; transiciones legacy quedaron acotadas, `session-page.js` dejó de reconstruir acciones con `innerHTML`, `debug-panel.js` dejó de pintar los listados principales y el core render con `innerHTML`, `refreshSidebar()` quedó compartido, los listeners del panel son inyectables y el post-success del stream quedó separado
 - **Error UI**: `showRetryMessage()` y los pills de error ya se dibujan con DOM nodes en vez de `innerHTML`
+- **Tool UI**: `tool-call-renderer.js` dejó de construir pills con `innerHTML`
 - **LLM docs**: `llm/` quedó alineado con `adapters/openai_adapter.py` y sin referencias vivas a `openai_provider.py`
 - **Health doc**: `docs/HEALTH.md` también quedó alineado con `OpenAIAdapter`
 - **Docs**: ROADMAP y LEGOS_AUDIT alineados con el estado real del refactor
