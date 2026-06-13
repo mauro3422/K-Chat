@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 from typing import Any
+import httpx
 
 from openai import OpenAI
 
@@ -22,7 +23,12 @@ logger = logging.getLogger(__name__)
 
 class OpenAIAdapter(LLMProvider):
     def __init__(self, api_key: str, base_url: str):
-        self._client = OpenAI(api_key=api_key, base_url=base_url)
+        self._client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=httpx.Timeout(connect=10, read=300, write=10, pool=10),
+            max_retries=0,
+        )
 
     @property
     def provider_name(self) -> str:

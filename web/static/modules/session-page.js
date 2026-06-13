@@ -6,6 +6,8 @@ import { KairosWidgets } from './widgets/index.js';
 import { KairosForm } from './chat-form.js';
 import stateManager from './widgets/state-manager.js';
 
+import { refreshSidebar } from './sidebar-refresh.js';
+
 function getNav(deps) {
   if (deps && deps.nav) return deps.nav;
   return {
@@ -14,12 +16,6 @@ function getNav(deps) {
     onDomReady: function(cb) { document.addEventListener('DOMContentLoaded', cb); },
     onPopState: function(cb) { window.addEventListener('popstate', cb); },
   };
-}
-
-function refreshSidebar() {
-  ApiClient.sidebar().then(function(h){
-    document.getElementById('session-list').innerHTML = h;
-  }).catch(function(err) { console.error('Sidebar refresh failed:', err); });
 }
 
 function createActionButton(className, title, label) {

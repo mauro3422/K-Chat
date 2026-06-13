@@ -4,14 +4,9 @@ import { KairosUtils } from './utils.js';
 import C from './dom-contracts.js';
 import { SessionContext } from './session-context.js';
 import { logUI } from './log-ui.js';
-import { ApiClient } from './api-client.js';
+import { refreshSidebar } from './sidebar-refresh.js';
 
-export function refreshSidebar() {
-  ApiClient.sidebar().then(function(h){
-    var el = document.getElementById('session-list');
-    if (el) el.innerHTML = h;
-  }).catch(function(err) { console.error('Sidebar refresh failed:', err); });
-}
+export { refreshSidebar };
 
 function isEmptyAssistant(asstDiv) {
   var bodyDiv = asstDiv.querySelector('.' + C.MSG_BODY);
