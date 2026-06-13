@@ -1,0 +1,52 @@
+from unittest.mock import patch, MagicMock
+
+import pytest
+
+from src.llm.verifier import verify_model
+
+
+@patch("src.llm.models._api_call")
+def test_verify_model_returns_true_when_model_responds(mock_api_call):
+    mock_response = MagicMock()
+    mock_api_call.return_value = mock_response
+
+    result = verify_model("test-model")
+
+    assert result is True
+    mock_api_call.assert_called_once_with(
+        model="test-model",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=2,
+        timeout=2.0,
+    )
+
+
+@patch("src.llm.models._api_call")
+def test_verify_model_returns_false_on_api_error(mock_api_call):
+    mock_api_call.side_effect = Exception("API error")
+
+    result = verify_model("test-model")
+
+    assert result is False
+    mock_api_call.assert_called_once_with(
+        model="test-model",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=2,
+        timeout=2.0,
+    )
+
+
+@patch("src.llm.models._api_call")
+def test_verify_model_uses_api_call_with_minimal_params(mock_api_call):
+    mock_response = MagicMock()
+    mock_api_call.return_value = mock_response
+
+    verify_model("test-model")
+
+    call_kwargs = mock_api_call.call_args[1]
+    assert "model" in call_kwargs
+    assert "messages" in call_kwargs
+    assert "max_tokens" in call_kwargs
+    assert "timeout" in call_kwargs
+    assert call_kwargs["max_tokens"] == 2
+    assert call_kwargs["timeout"] == 2.0

@@ -22,21 +22,20 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 ## Structure
 
 ```
-├── config.py               → Reads .env, validates keys
+├── config.py               → Compat shim (re-exports from src/config_loader.py)
 ├── SOUL.md / MEMORY.md     → Personality and user data (auto-created)
 ├── AGENTS.md / TOOLS.md    → Agent rules and tool guide (auto-generated)
 ├── src/
 │   ├── api/                → Domain modules for all DB operations
 │   │   ├── __init__.py     → Package marker (empty)
 │   │   ├── messages.py     → Message CRUD
-│   │   ├── sessions.py     → Session management
+│   │   ├── session.py      → Session management
 │   │   ├── widgets.py      → Widget persistence
 │   │   ├── debug.py        → Debug info
 │   │   ├── tools.py        → Tool history
-│   │   ├── rebuild.py      → History reconstruction
-│   │   ├── filter.py       → UI message filtering
-│   │   ├── stream.py       → Chat streaming
-│   │   └── repos.py        → Repository singletons
+│   │   ├── history.py      → History reconstruction and UI filtering
+│   │   ├── connection.py   → Re-exports get_conn from src.memory.connection
+│   │   └── models.py       → Facade re-exporting from src.llm.policy and model_state
 │   ├── core/
 │   │   ├── orchestrator.py → Chat loop, streaming, tool phases, compression
 │   │   ├── tool_loop.py    → Sync + streaming tool execution loops
@@ -59,16 +58,8 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   │   ├── __init__.py     → Module exports
 │   │   ├── loader.py       → Auto-loader (TOOL_MAP, TOOL_DEFINITIONS)
 │   │   ├── runner.py       → Parallel tool execution
-│   │   ├── web_search.py   → Web search via API
-│   │   ├── fetch_url.py    → Fetch and extract web page content
-│   │   ├── save_memory.py  → Persist data to MEMORY.md
-│   │   ├── read_file.py    → Read project files
-│   │   ├── write_file.py   → Write project files
-│   │   ├── read_skill.py   → Load skills from skills/
-│   │   ├── get_tool_history.py → Query tool usage
-│   │   ├── save_widget.py  → Save widget to DB
-│   │   ├── get_widget_code.py → Retrieve widget code
-│   │   └── update_widget.py → Update widget version
+│   │   ├── rules/          → Auto-generated tool rule docs (preserves manual edits below ---)
+│   │   └── 16 tools        → Individual tools
 │   ├── constants.py        → Shared policy constants (MAX_TOOL_TURNS, LLM_MAX_RETRIES)
 │   ├── context/
 │   │   ├── builder.py      → System prompt builder
@@ -115,9 +106,13 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 └── memory/                 → SQLite database
 ```
 
+> **Note:** Some docs may lag behind the current version. When in doubt, prefer [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MODULES.md](docs/MODULES.md).
+
 ## Features
 
 ### 16 Tools
+- `src/tools/rules/`: Auto-generated markdown docs per tool, preserving manual usage notes below `---` separators.
+
 `fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`, `list_files`, `execute_command`, `search_files`, `edit_file`, `analyze_code`, `git_operation`. Auto-registered via `importlib` filesystem scan.
 
 ### Streaming with visual phases

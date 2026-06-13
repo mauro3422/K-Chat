@@ -54,9 +54,9 @@ These modules are still mostly there to keep old callers alive:
 - `api modules for session and db were split`
 - `src/api/*` transitional modules
 - `web/static/app.js`
-- `web/static/modules/widgets/bootstrap.js`
-- `web/static/modules/stream-bootstrap.js`
-- `web/static/modules/chat-form-bootstrap.js`
+- ~~`web/static/modules/widgets/bootstrap.js`~~ ✅ deleted
+- ~~`web/static/modules/stream-bootstrap.js`~~ ✅ deleted
+- ~~`web/static/modules/chat-form-bootstrap.js`~~ ✅ deleted
 - `web/static/session.js`
 - `web/static/debug.js`
 - `web/static/chat-stream.js`
@@ -83,24 +83,13 @@ Best next cut:
 ### 2. LLM routing
 
 Current state:
-- `src/llm/policy.py` does discovery, verification, default selection, and refresh policy
-- `llm policy moved to src/llm/policy.py` is now a compatibility wrapper around that policy
-- `src/llm/model_state.py` holds shared state
+- `src/llm/policy.py` is a 6-line facade re-exporting from `discovery.py`, `verifier.py`, `selector.py`, `failover.py`
+- `src/llm/providers.py` owns `_PROVIDER_REGISTRY` and `register_provider()` (extracted from `models.py`)
+- `src/llm/model_state.py` holds shared state with `_switch_model()` (extracted from `models.py`)
 - `src/llm/client.py` does runtime failover
+- `models.py` is now a thin `_api_call()` wrapper
 
-What still bothers me:
-- the policy boundary still deserves smaller sub-pieces
-- model verification is still a live behavior, not just cached state
-- selection logic still has special cases that are easy to forget
-
-Best next cut:
-- split the model lifecycle into smaller concepts:
-  - discovery
-  - verification
-  - selection
-  - failover policy
-
-That would make the LLM layer read more like a set of lego pieces and less like a smart helper module.
+**✅ Split done.** The model lifecycle is now decomposed into: discovery, verification, selection, failover, provider registry, model state.
 
 ### 3. Database lifecycle
 
@@ -159,13 +148,24 @@ What still bothers me:
 Best next cut:
 - either update these docs in one pass, or mark them clearly as historical
 
+### Resolved since last audit
+
+- `src/config_loader.py` created with `Config` dataclass + `load_config()` + `DEFAULT_CONFIG` — replaces loose env‑var access.
+- `config.py` kept as compat shim (re-exports from `src/config_loader.py`).
+- `src/llm/policy.py` split into `discovery.py`, `verifier.py`, `selector.py`, `failover.py` — policy.py is now a 6-line facade.
+- `src/llm/providers.py` extracted from `models.py` — `_PROVIDER_REGISTRY` and `register_provider()` live here.
+- Injection params added to `orchestrator.chat_stream()`, `tool_loop.*`, `chat_stream.py`, and individual API domain modules — no more module-level hard imports for test‑critical seams.
+- Bootstraps `stream-bootstrap.js`, `chat-form-bootstrap.js`, `widgets/bootstrap.js` deleted.
+- `shared-state.js`, `content-renderer.js`, and 3 bootstrap files deleted (frontend module count stabilized at 36).
+- Root `config.py` kept as compat shim (was NOT removed — re-exports from `src/config_loader.py`).
+
 ## Prioritized backlog
 
 ### P0
 
 1. Reduce the compatibility bootstraps if the legacy surface is no longer needed.
 2. Keep shrinking legacy globals and transition surfaces where practical.
-3. Split `src/llm/policy.py` into smaller policy objects or modules.
+3. ~~Split `src/llm/policy.py` into smaller policy objects or modules.~~ ✅ DONE
 4. Split `memory connection + schema + repos` into lifecycle pieces.
 
 ### P1

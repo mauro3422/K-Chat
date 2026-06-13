@@ -4,6 +4,12 @@
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 > Las entradas describen el estado del proyecto en el momento de cada release.
 
+## [v0.0.53] — 2026-06-13 — [Detalle](changelogs/v0.0.53.md)
+- **Tests**: 14 new test files (LLM, context, web, integration, smoke), 642 unit tests passing
+- **Test fixes**: Cache isolation, mock patterns, audio data validation, FALLBACK_MODEL assertions
+- **Docs**: README, config.py, LEGOS_AUDIT aligned; `src/api/_widget_helpers.py` bridge created
+- **Smoke test**: 8 critical endpoint checks (homepage, session, sidebar, messages, debug, health, chat, streaming)
+
 ## [v0.0.52] — 2026-06-13 — [Detalle](changelogs/v0.0.52.md)
 - **Lego refactor**: ModelState class, policy split (4 sub-modules), repos injection in tool_loop/orchestrator/router
 - **Data access**: `sqlite3.Row` named access, 38 positional→named migrations, `chat_sync` delegation
