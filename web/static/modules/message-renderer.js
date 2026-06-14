@@ -23,6 +23,7 @@ function _fileIcon(ext) {
 }
 
 function _isImageFile(filename) {
+  var ext = filename.split('.').pop().toLowerCase();
   return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'tif'].indexOf(ext) !== -1;
 }
 
