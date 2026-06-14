@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import logging
 import os
@@ -46,7 +47,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not DEFAULT_CONFIG.testing:
         from src.llm.discovery import get_verified_models
         try:
-            await get_verified_models()
+            await asyncio.wait_for(get_verified_models(), timeout=10)
+        except asyncio.TimeoutError:
+            logger.warning("Model discovery timed out (10s) — will lazy-load on first request")
         except Exception as e:
             logger.warning("Failed to schedule model discovery: %s", e)
     yield
