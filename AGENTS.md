@@ -27,9 +27,25 @@ Agent rules:
 - **Document Tool Behavior**: Cada vez que descubras un comportamiento NO OBVIO de una herramienta, guardalo en MEMORY.md con key `herramienta:<nombre>-comportamiento`.
 - **Self-Discover Architecture**: Tenés acceso de lectura a tu propia arquitectura. Usá `read_file` para entender **código fuente que no está en tu system prompt** (src/, web/, etc.). No usés `read_file` para leer MEMORY.md, SOUL.md o AGENTS.md — ya los tenés en contexto. La curiosidad por uno mismo es parte de tu identidad, pero no malgastes tools en lo que ya sabés.
 
---- 🏗️ PRINCIPIOS DE ARQUITECTURA ---
+--- 🏗️ ARCHITECTURE CONSTRAINTS (NON-NEGOTIABLE) ---
 
-- **Clean Architecture**: Sistema LEGIBLE y ESCALABLE. Nada de parches a medio camino. Cada módulo con propósito claro. Priorizar arquitectura limpia sobre features rápidas.
+These rules apply to ALL code modifications. Violations are regressions.
+
+- **🔒 No global singletons.** `DEFAULT_CONFIG` and module-level globals are forbidden.
+  Use dependency injection instead: pass config/repos as parameters, fall back to `DEFAULT_CONFIG`
+  only at entry points. Every global import is a regression.
+- **🔒 No upward layer coupling.** Dependencies flow one way only:
+  `Entry (web/, cli.py)` → `API (src/api/)` → `Core (src/core/)` → `{LLM, Tools, Memory, Context}`.
+  `src/tools/` must NOT import `src/core/`. `src/memory/` must NOT import `src/tools/`.
+  Lower layers know nothing about higher layers.
+- **🔒 No framework imports in domain layers.** `src/api/`, `src/core/`, `src/tools/`,
+  `src/llm/`, `src/memory/` must NOT import FastAPI, Flask, or any web framework.
+  Keep domain logic pure — framework concerns belong in `web/` only.
+- **🔒 No duplicated logic.** If two code paths share structure, extract a helper.
+  Copy-paste is technical debt. Every duplicate is a regression.
+- **✅ Prefer dependency injection over direct imports.**
+- **✅ Protocol/interface before concrete implementation** — swapability by design.
+- **✅ If you need to import upward, stop and redesign.** The abstraction is wrong.
 
 --- 🔧 USO DE TOOLS ---
 
@@ -84,56 +100,6 @@ Agent rules:
 - **cross_reference**: Muestra qué funciones con el mismo nombre están definidas en múltiples archivos.
 - **Falsos positivos**: El sistema ignora automáticamente run(), __init__(), métodos de provider pattern, y migraciones.
 - **Ejemplo**: `analyze_code(path="src/core/orchestrator.py", find_duplicates=True, cross_reference=True)`
---- 🐍 USO DE RUN_CODE ---
-
-- **run_code**: Ejecuta código Python en un sandbox aislado. El sandbox permite LEER archivos del proyecto, solo RESTRINGE escritura a /tmp/ y modulos peligrosos ni importar módulos peligrosos (os, subprocess, shutil, socket, etc.).
-- **⚠️ El sandbox NO está roto**: Si intentás leer archivos del proyecto (read_file, open()) desde run_code, el sandbox lo bloquea. Eso es por diseño. run_code es para EJECUTAR lógica, no para leer archivos. Para leer archivos usá read_file/read_multiple.
-- **Cuándo usarla**:
-  - Hacer cálculos, transformaciones o procesamiento de datos que requieran ejecución
-  - Probar algoritmos antes de implementarlos en el proyecto
-  - Validar lógica compleja antes de escribir archivos
-  - Procesar datos obtenidos de fetch_url o web_search
-  - Prototipar ideas rápidas sin ensuciar el proyecto con archivos temporales
---- 🔬 USO DE ANALYZE_CODE CON CROSS-FILE ---
-
-- **analyze_code** ahora soporta `find_duplicates=True` y `cross_reference=True` para análisis cross-file.
-- **find_duplicates**: Busca funciones con estructura AST similar en todo el proyecto. Revela posibles duplicados.
-- **cross_reference**: Muestra qué funciones con el mismo nombre están definidas en múltiples archivos.
-- **Falsos positivos**: El sistema ignora automáticamente run(), __init__(), métodos de provider pattern, y migraciones.
-- **Ejemplo**: `analyze_code(path="src/core/orchestrator.py", find_duplicates=True, cross_reference=True)`
-  - Parsear, transformar o analizar strings sin leer/escribir archivos
-- **Auto-fix**: Si el código tiene errores de sintaxis comunes (print sin paréntesis, dos puntos faltantes, strings sin cerrar, tabs), run_code intenta corregirlos automáticamente y avisa qué corrigió.
-- **Output**: Devuelve JSON con status, stdout, stderr, exit_code y auto_fix_applied.
-- **Diferencia con execute_command**: execute_command corre comandos shell en tu terminal real (peligroso, sin sandbox). run_code corre SOLO Python en un entorno aislado (seguro). Preferí run_code sobre execute_command para debug y prototipado.
-- **No usar para**: leer archivos del proyecto (usá read_file/read_multiple), operaciones shell (usá execute_command), git (usá git_operation).
-
---- 🐞 DEBUGGING CON DB_QUERY ---
-
-- **db_query**: Consulta la base de datos SQLite del sistema en modo solo lectura. 
-- **Sintaxis**: `db_query(table="messages", session_id="id", limit=10)`
-- **Tablas**: sessions, messages, tool_calls, saved_widgets, widget_states, debug_info, memory_index, widget_versions
-- **Cuándo usarla**:
-  - Cuando el usuario reporte un error 500 al recargar sesión → consultá `messages` de esa sesión
-  - Para verificar qué herramientas se ejecutaron → `tool_calls` filtrado por session_id
-  - Inspeccionar datos corruptos/duplicados → `messages` con session_id, ordená por id
-  - Estado de widgets → `saved_widgets` o `widget_states`
-  - Memoria guardada → `memory_index`
-- **⚠️ No abuses**: Usala para diagnosticar problemas puntuales, no para leer toda la DB sin motivo.
---- 📚 USO DE READ_MULTIPLE ---
-
-- **read_multiple**: Lee MULTIPLES archivos en una sola llamada. Usala cuando necesites entender un flujo completo (orchestrator → tool_loop → runner) o comparar archivos relacionados.
-- **Sintaxis**: `read_multiple(files=["path/to/file.py", "path/to/other.py:1-50"])`
-- **Rangos**: Cada archivo puede llevar rango: `archivo.py:10-30` (líneas 10 a 30), `archivo.py:40` (desde línea 40).
-- **Cuándo usarla**: Para leer módulos completos en lugar de hacer múltiples calls de read_file. Para comparar implementaciones. Para entender la estructura de un directorio.
-- **Límites**: hasta 10 archivos, 100 líneas por archivo.
-
---- 🧪 USO DE VALIDATE_ALL ---
-
-- **validate_all**: Valida sintaxis de múltiples archivos (Python, JS, JSON, HTML, CSS) en una llamada.
-- **Sintaxis**: `validate_all(files=["a.py", "b.js"])` o `validate_all(path="src/tools/", pattern="*.py")`
-- **Cuándo usarla**: Antes de commitear cambios. Para verificar que código nuevo no tiene errores de sintaxis. Para auditar un directorio completo.
-- **Diferencia con analyze_code**: analyze_code analiza ESTRUCTURA (functions, calls, graph). validate_all solo verifica SINTAXIS (que compile/parsee).
-
 - **Verification Loop**: (1) Generate, (2) Verify, (3) Pass → proceed, (4) Fail → iterate. Max 5 turns.
 - **Error Handling in Tests**: En modo prueba/test, capturar error, documentarlo y guardarlo antes de intentar solución. Mostrar el proceso, no silenciar errores.
 - **Stress Test Protocol**: Cuando el usuario diga 'iniciar prueba', ejecutar secuencia completa: (1) Fallo de tools, (2) Widgets+memoria+edge cases, (3) Markdown+renderizado, (4) Aborto de stream, (5) Búsqueda web masiva.
