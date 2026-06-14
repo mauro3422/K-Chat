@@ -18,8 +18,10 @@
 .canvas-workspace.collapsed {
   transform: translateX(100%);
   width: 0 !important;
+  min-width: 0 !important;
   margin-right: -1px;
   border-left: none;
+  display: none !important;
 }
 
 .canvas-gutter {
