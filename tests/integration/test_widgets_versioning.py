@@ -68,28 +68,31 @@ async def test_widget_agent_tools():
     code_initial = "<p>Initial</p>"
     code_updated = "<p>Updated</p>"
 
+    from src.api.repos import get_repos
+    repos = get_repos()
+
     # 1. Test get_widget_code for non-existent widget
-    err_res = await get_widget_code_run(widget_id, _session_id=session_id)
+    err_res = await get_widget_code_run(widget_id, _session_id=session_id, _repos=repos)
     assert "[ERROR]" in err_res
 
     # 2. Test save_widget
-    save_res = await save_widget_run(widget_id, code_initial, "init version", _session_id=session_id)
+    save_res = await save_widget_run(widget_id, code_initial, "init version", _session_id=session_id, _repos=repos)
     assert "[OK]" in save_res
     assert "Version 1" in save_res
 
     # 3. Test get_widget_code for saved widget
-    get_res = await get_widget_code_run(widget_id, _session_id=session_id)
+    get_res = await get_widget_code_run(widget_id, _session_id=session_id, _repos=repos)
     assert "notes-app" in get_res
     assert "Active Version: 1" in get_res
     assert code_initial in get_res
 
     # 4. Test update_widget
-    up_res = await update_widget_run(widget_id, code_updated, "update version", _session_id=session_id)
+    up_res = await update_widget_run(widget_id, code_updated, "update version", _session_id=session_id, _repos=repos)
     assert "[OK]" in up_res
     assert "Version 2" in up_res
 
     # 5. Test update_widget for non-existent widget
-    up_err = await update_widget_run("ghost-widget", code_updated, _session_id=session_id)
+    up_err = await update_widget_run("ghost-widget", code_updated, _session_id=session_id, _repos=repos)
     assert "[ERROR]" in up_err
 
 

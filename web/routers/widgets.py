@@ -25,10 +25,10 @@ async def set_widget_state(session_id: str, widget_id: str, payload: WidgetState
     repos = get_repos()
     await repos.sessions.require_session(session_id)
     widget_id = sanitize_widget_id(widget_id)
-    repos.widget_states.save_state(session_id, widget_id, payload.state)
+    await repos.widget_states.save_state(session_id, widget_id, payload.state)
     if payload.codeEntries:
         for code_key, code_value in payload.codeEntries.items():
-            repos.widget_states.save_state(session_id, code_key, code_value)
+            await repos.widget_states.save_state(session_id, code_key, code_value)
     return {"status": "ok"}
 
 
@@ -43,7 +43,7 @@ async def get_all_widget_states(session_id: str) -> dict[str, str]:
 async def get_widget_code(session_id: str, widget_id: str) -> Any:
     repos = get_repos()
     await repos.sessions.require_session(session_id)
-    widget = repos.saved_widgets.get(widget_id)
+    widget = await repos.saved_widgets.get(widget_id)
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found.")
     return widget
@@ -53,7 +53,7 @@ async def get_widget_code(session_id: str, widget_id: str) -> Any:
 async def get_widget_versions(session_id: str, widget_id: str) -> dict[str, Any]:
     repos = get_repos()
     await repos.sessions.require_session(session_id)
-    versions = repos.saved_widgets.get_versions(widget_id)
+    versions = await repos.saved_widgets.get_versions(widget_id)
     return {"versions": versions}
 
 
@@ -61,7 +61,7 @@ async def get_widget_versions(session_id: str, widget_id: str) -> dict[str, Any]
 async def get_widget_version_code(session_id: str, widget_id: str, version: int) -> Any:
     repos = get_repos()
     await repos.sessions.require_session(session_id)
-    widget = repos.saved_widgets.get_by_version(widget_id, version)
+    widget = await repos.saved_widgets.get_by_version(widget_id, version)
     if not widget:
         raise HTTPException(status_code=404, detail="Widget version not found.")
     return widget
@@ -79,7 +79,7 @@ async def save_widget(session_id: str, widget_id: str, payload: SaveWidgetPayloa
         raise HTTPException(status_code=400, detail="Invalid widget identifier.")
 
     try:
-        res = repos.saved_widgets.save(session_id, clean_id, payload.code, payload.description)
+        res = await repos.saved_widgets.save(session_id, clean_id, payload.code, payload.description)
         return {"status": "ok", "widget_id": clean_id, "version": res["version"]}
     except Exception as e:
         logger.error("Error saving widget: %s", e)

@@ -37,19 +37,33 @@ async def run(**kwargs) -> str:
     import os
 
     try:
+        from src.tools._preflight import create_backup, postflight_check, rollback
+
+        # Backup if file exists
+        backup_path = None
+        if os.path.exists(resolved):
+            backup_path = create_backup(resolved)
+
         def _write_sync():
             dir_name = os.path.dirname(resolved)
             if dir_name:
                 os.makedirs(dir_name, exist_ok=True)
-
             with open(resolved, "w", encoding="utf-8") as f:
                 f.write(content)
-            from src.tools._validators import validate_file
-            return validate_file(resolved, content)
 
-        vresult = await asyncio.to_thread(_write_sync)
-        if vresult['status'] in ('warning', 'error'):
-            return f"[OK] File written correctly to '{path}'. {vresult['message']}"
-        return f"[OK] File written correctly to '{path}'."
+        await asyncio.to_thread(_write_sync)
+
+        # Post-flight validation
+        pf = postflight_check(resolved, content)
+        if not pf["ok"]:
+            if backup_path:
+                rollback(resolved, backup_path)
+                return f"[ERROR] Post-flight falló after write (rollback applied): {'; '.join(pf['errors'][:3])}"
+            return f"[ERROR] Post-flight falló: {'; '.join(pf['errors'][:3])}"
+
+        msg = f"[OK] File written correctly to '{path}'."
+        if pf["warnings"]:
+            msg += " " + "; ".join(pf["warnings"][:2])
+        return msg
     except Exception:
         return f"[ERROR] Could not write the file to '{path}'."

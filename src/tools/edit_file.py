@@ -119,12 +119,26 @@ def run(**kwargs: Any) -> str:
     else:
         return "[ERROR] Debes proporcionar new_content o end_line (o ambos)."
 
-    # Escribir
+    # ── BACKUP + WRITE + POSTFLIGHT + ROLLBACK ──────────────────────
+    from src.tools._preflight import create_backup, postflight_check, rollback
+
+    backup_path = create_backup(path)
+    new_content_full = ''.join(result_lines)
+
     try:
         with open(path, 'w', encoding='utf-8') as f:
-            f.writelines(result_lines)
+            f.write(new_content_full)
     except Exception as e:
-        return f"[ERROR] No se pudo escribir: {e}"
+        if backup_path:
+            rollback(path, backup_path)
+        return f"[ERROR] No se pudo escribir (rollback aplicado): {e}"
+
+    # Post-flight validation
+    pf = postflight_check(path, new_content_full)
+    if not pf["ok"] and backup_path:
+        rollback(path, backup_path)
+        error_detail = "; ".join(pf["errors"][:3])
+        return f"[ERROR] Post-flight falló (rollback aplicado): {error_detail}"
 
     diff = len(result_lines) - total_lines
     summary = f"✅ Editado: {path}\n"
@@ -134,15 +148,14 @@ def run(**kwargs: Any) -> str:
         summary += f"-{end}"
     summary += f"\n   Lineas resultantes: {len(result_lines)} ({diff:+d})"
 
-    # Validacion cross-language post-escritura
-    from src.tools._validators import validate_file
-    vresult = validate_file(path, ''.join(result_lines))
-    if vresult['status'] == 'ok':
-        summary += f"\n   ✅ {vresult['message']}"
-    elif vresult['status'] == 'error':
-        line_info = f" L{vresult['line']}" if vresult.get('line') else ""
-        summary += f"\n   ⚠️ {vresult['message']}{line_info}"
-    elif vresult['status'] == 'warning':
-        summary += f"\n   ⚡ {vresult['message']}"
+    if pf["ok"]:
+        summary += f"\n   ✅ Post-flight OK"
+    elif pf["warnings"]:
+        for w in pf["warnings"][:3]:
+            summary += f"\n   ⚡ {w}"
+
+    if preflight_warnings:
+        for w in preflight_warnings[:3]:
+            summary += f"\n   ⚠️ Pre-flight: {w}"
 
     return summary

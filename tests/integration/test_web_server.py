@@ -42,11 +42,14 @@ async def test_session_page(mock_tpl, _mock_models):
     assert isinstance(resp, HTMLResponse)
 
 
-@patch("web.routers.pages.get_sessions", return_value=[])
+@patch("web.routers.pages.get_repos")
 @patch("web.routers.pages.templates.TemplateResponse")
 @pytest.mark.anyio
-async def test_sidebar(mock_tpl, _mock_sessions):
+async def test_sidebar(mock_tpl, mock_get_repos):
     mock_tpl.return_value = HTMLResponse("<div></div>")
+    mock_repos = AsyncMock()
+    mock_repos.sessions.get_all.return_value = []
+    mock_get_repos.return_value = mock_repos
     from web.routers.pages import sidebar
     resp = await sidebar(_request("/sidebar", current="test-session-abc"))
     assert isinstance(resp, HTMLResponse)
@@ -61,12 +64,14 @@ async def test_session_messages_empty():
 
 
 @patch("web.routers.chat.build_stream_generator")
-@patch("web.routers.chat.db_save_message")
 @patch("web.routers.chat.rebuild_history", return_value=[])
-@patch("web.routers.chat.ensure_session")
 @patch("web.routers.chat.get_default_model", return_value="test-model")
 @pytest.mark.anyio
-async def test_chat_streaming(_mock_default, _mock_ensure, _mock_history, _mock_save, mock_builder):
+async def test_chat_streaming(_mock_default, _mock_history, mock_builder):
+    from src.memory.schema import init_db
+    from src.api.session import ensure_session
+    await init_db()
+    await ensure_session("test-session-abc")
     from web.routers.chat import chat
 
     mock_builder.return_value = lambda: iter([
@@ -79,9 +84,10 @@ async def test_chat_streaming(_mock_default, _mock_ensure, _mock_history, _mock_
     assert response.media_type == "application/x-ndjson"
 
 
-@patch("web.routers.sessions.rename_session")
 @pytest.mark.anyio
-async def test_rename_session(_mock_rename):
+async def test_rename_session():
+    from src.memory.schema import init_db
+    await init_db()
     from web.routers.sessions import rename
     await ensure_session("test-session-abc")
 
@@ -90,9 +96,10 @@ async def test_rename_session(_mock_rename):
     assert b"ok" in response.body
 
 
-@patch("web.routers.sessions.delete_session")
 @pytest.mark.anyio
-async def test_delete_session(_mock_delete):
+async def test_delete_session():
+    from src.memory.schema import init_db
+    await init_db()
     from web.routers.sessions import delete
     await ensure_session("test-session-abc")
 
@@ -101,9 +108,10 @@ async def test_delete_session(_mock_delete):
     assert b"ok" in response.body
 
 
-@patch("web.routers.debug.get_debug_info", return_value={})
 @pytest.mark.anyio
-async def test_debug_info_empty(_mock_debug):
+async def test_debug_info_empty():
+    from src.memory.schema import init_db
+    await init_db()
     from web.routers.debug import debug_info
     await ensure_session("test-session-abc")
 

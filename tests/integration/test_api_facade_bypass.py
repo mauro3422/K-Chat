@@ -10,7 +10,7 @@ class TestApiFacadeBypass:
     @pytest.mark.anyio
     async def test_api_init_is_empty(self):
         content = open(api_init_module.__file__).read().strip()
-        assert content == "# Package marker. Intentionally empty."
+        assert content.startswith('"""Public API for K-Chat')
 
     @pytest.mark.anyio
     async def test_api_modules_importable(self):

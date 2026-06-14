@@ -15,88 +15,6 @@ System: ebo
 - **alias-test**: val
 - **analisis:arquitectura-completa-detallada-2026-06-13**: 2026-06-13 22:00 | ANÁLISIS ARQUITECTÓNICO COMPLETO K-Chat v0.0.54. Mapa de capas, flujos y componentes actualizado.
 - **analisis:arquitectura-completa-v0.0.56-2026-06-14**: 2026-06-14 18:49 | ANÁLISIS ARQUITECTÓNICO COMPLETO POST-REACTIVACIÓN. ~60 archivos leídos. Estado real K-Chat v0.0.56.
-
-**CAPA LLM (src/llm/):**
-- **model_registry.py** (252 líneas) — Auto-discovery de modelos. Go API (pagos) + Zen API (free con -free suffix). Tiers inferidos por heurística de naming patterns (_PREMIUM_PATTERNS, _STANDARD_PATTERNS). Refresh cada 5min. Thread-safe con Lock. Singleton lazy global.
-- **discovery.py** (179 líneas) — get_models(), get_free_models(), get_verified_models(). En Go mode: todos los modelos del API se confían como verified. En Zen mode: verifica cada free model con ping 1-token. Background task ping availability por modelo.
-- **failover.py** (47 líneas) — _mark_and_refresh(): marca modelo fallido, refresh verified list, detecta rate limit y quota exhaustion, switchea a alternativa.
-- **rate_limit_state.py** (141 líneas) — ModelRateLimitStore: trackea rate limits por modelo con cooldown timestamp, available, unavailable. Thread-safe. Summary() para UI.
-- **retry.py** (47 líneas) — execute_with_retry() con exponential backoff. is_rate_limit_error() detecta 429.
-- **selector.py** (45 líneas) — get_default_model(): selecciona primer modelo disponible de PRIORITY que no esté fallido.
-- **verifier.py** (20 líneas) — verify_model(): ping con "hi" + max_tokens=2.
-- **protocol.py** (82 líneas) — UnifiedRequest, UnifiedResponse, UnifiedToolCall, UnifiedToolCallDelta, FinishInfo, UnifiedStreamEvent (tuple union). LLMProvider Protocol con chat, chat_stream, list_models.
-- **providers.py** (71 líneas) — ProviderRegistry, _get_provider() singleton. Adapter pattern.
-- **adapters/openai_adapter.py** (178 líneas) — OpenAIAdapter: convierte UnifiedRequest→OpenAI format, parsea streaming chunks, maneja tool_calls delta, reasoning_content, usage.
-- **model_state.py** (132 líneas) — ModelState thread-safe con priority list, failed models set, verified/cached models. switch_model() busca alternativa no-fallida.
-- **api_call.py** (27 líneas) — _api_call() con retry.
-- **rate_limit_state** — store global singleton con get_rate_limit_store().
-
-**CAPA CORE SERVICES (src/core/services/):**
-- **protocols.py** (52 líneas) — 4 Protocol classes: HistoryServiceProtocol, LLMServiceProtocol, ToolExecutionServiceProtocol, TelemetryServiceProtocol.
-- **llm_service.py** (58 líneas) — LLMService: wrappea llm_client con telemetry tracking (tokens + latency).
-- **tool_execution_service.py** (42 líneas) — ToolExecutionService: wrappea run_tool_loop_streaming/sync con tool_registry y telemetry.
-- **history_service.py** (38 líneas) — HistoryService: rebuild, get_system_prompt, compress_if_needed.
-- **telemetry_service.py** (62 líneas) — TelemetryService: log_event, track_llm_usage, track_tool_execution a logs/telemetry.json.
-
-**CAPA WEB SERVICES (web/services/):**
-- **chat_stream.py** (187 líneas) — build_stream_generator(): orquesta todo el pipeline. Construye OrchestratorDeps con repos, telemetry, LLM, tools. Maneja heartbeat, loop detection, retry recovery, save periódico (30s), save final, save por interrupción (finally). Reset de buffers en tool_call.
-- **stream_state.py** (37 líneas) — StreamState: accumula full_content, full_reasoning, persisted flag. reset_on_tool_call() limpia buffers.
-- **stream_retry_handler.py** (116 líneas) — StreamRetryHandler: CONTINUATION_INSTRUCTION, build_messages() replaya parcial + instrucción, attempt_recovery() con max 2 reintentos.
-- **stream_error_classifier.py** (117 líneas) — classify_error(): detecta rate_limit (con hint de retry-after), timeout, network, tool_error, model, free quota exhaustion. Parsea headers x-ratelimit-reset.
-- **loop_detector.py** (53 líneas) — LoopDetector: ventana de 15 tokens, detección de token repetido 15x, frase repetida 6x (skip dentro de code blocks y widget mode).
-- **message_persister.py** (78 líneas) — save_assistant_message(): dedup phases, crea MessageRecord, guarda en repos, guarda debug_info, log_turn.
-- **model_catalog.py** (109 líneas) — Lee model_registry.json de OpenCode. format_model_label() con ctx, output, modalidad, reasoning, tools. invalidate_model_cache().
-- **file_logger.py** (64 líneas) — JsonlHandler: structured JSONL logging a logs/server/YYYY-MM-DD.jsonl.
-- **widget_contract.py** (48 líneas) — extract_inline_widget_states(): regex ```html-widget blocks, normaliza inline code.
-
-**CAPA ORCHESTRATOR CONTRACT (src/core/orchestrator_contract.py):**
-- 4 dataclass DI groups: LLMDeps, ToolDeps, StorageDeps, RequestStateDeps.
-- OrchestratorDeps facade: __getattr__/__setattr__ delegan a sub-groups via _FIELD_MAP. Backward-compatible.
-
-**CAPA TOOLS (src/tools/):**
-- **registry.py** (120 líneas) — ToolRegistry: discover→build pattern. Auto-discovers .py files con DEFINITION+run(). Soporta skill_registry.discover_tools(). Properties: tool_map, definitions, tools_openai.
-- **runner.py** (148 líneas) — run_parallel_tools(): batch execution con ThreadPoolExecutor, heartbeats cada 10s, rate limiting.
-- 20+ tools con patrón DEFINITION + run(). db_query viene de skills/.
-
-**CAPA MEMORY (src/memory/):**
-- **connection_pool.py** (73 líneas) — PooledConnection: wrappea connection, .close() es no-op. get_conn() lazy init con WAL mode, busy_timeout, foreign_keys.
-- **engine_state.py** (21 líneas) — DatabaseEngine Protocol + global _engine.
-- **lifecycle.py** (26 líneas) — Thread-safe init tracking por db_path.
-- **bootstrap.py** (18 líneas) — ensure_db_initialized(): rompe circular dependency schema↔connection_pool.
-- **migration_runner.py** (22 líneas) — run_pending_migrations(): sequential con schema_version table.
-- **schema.py** (42 líneas) — init_db_for_path(): crea tablas + corre migraciones.
-- **repos/** (10 archivos) — 7 repos: Message, Session, ToolCall, SavedWidget, WidgetState, Debug, MemoryIndex. Base repository con _transaction y delete_by_session.
-
-**CAPA CHANNELS (channels/):**
-- **__init__.py** (67 líneas) — discover(), get_channel(), list_channels(). Auto-discovery de sub-paquetes.
-- **telegram/** (6 archivos): bot.py (290 líneas polling), adapter.py (290 líneas — get_or_create_session, process_message con streaming), handlers.py (121 líneas — /start, /help, /new, /reset, text, voice), config.py (44 líneas), __main__.py (97 líneas — PID lock, main loop).
-
-**CAPA FRONTEND (web/static/modules/):**
-- **stream-orchestrator.js** (203 líneas) — StreamOrchestrator.startStream(): timeout management, StreamErrorHandler, StreamContext, executeStreamFetch, retry logic, empty response handling, successful stream completion.
-- **content-handler.js** (177 líneas) — registerContentHandler(): maneja phase indexing, tool turns, widget containers, Markdown rendering, DOMPurify sanitize. Cache key por segment.
-- **session-page.js** (375 líneas) — initSessionPage(): theme sync, sidebar gutter resizing, model select, widget state loading, HTMX afterSwap, session navigation, rename/delete/edit, skills UI init.
-- **message-renderer.js** (162 líneas) — renderMessage() con phases, reasoning, tool pills, attachments ([Archivo: name|saved]). renderMessageList() para historial.
-- **file-attachment.js** (139 líneas) — FileAttachment: init, handlePaste (clipboard images), handleFileSelect, preview thumbnails, getFiles/clear/hasFiles.
-
-**CAPA API (src/api/):**
-- **__init__.py** (141 líneas) — Package facade: re-exports from core, llm, memory, tools. Backward-compatible API surface.
-- 17 archivos: chat, session, messages, history, tools, widgets, debug, database, repos, llm_client, orchestrator, context, background, journal, skills, exceptions, contracts.
-
-**CAPA ROUTERS (web/routers/):**
-- **chat.py** (153 líneas) — POST /chat/{session_id}: Form params, file uploads (max 10MB), _save_attachments(), _build_message_with_attachments() con markers [Archivo:], StreamingResponse NDJSON. GET /chat/{sid}/attachment/{filename}: serve attachments.
-- **pages.py** (167 líneas) — GET /: home con cookie session, GET /sessions/{sid}: session page, GET /sidebar, GET /sessions/{sid}/messages. get_available_models() grouped by tier con emoji indicators.
-- **debug.py** (85 líneas) — GET /rate-limits, GET /models/availability (real-time status), GET /sessions/{sid}/debug, GET /debug/backend-logs. Local-only protection.
-- **health.py** (28 líneas) — GET /health: DB check + LLM provider check.
-- **logs.py** (199 líneas) — query_logs, client_logs, ingest, tail_logs.
-- **sessions.py** (22 líneas) — rename, delete.
-- **widgets.py** (86 líneas) — widget state, code, versions.
-- **skills.py** (34 líneas) — list_skills, get_skill.
-- **asr.py** (204 líneas) — ASR transcription endpoint.
-
-**GATEWAY (src/gateway.py 461 líneas):**
-- Unified launcher: --no-web, --no-telegram, --no-searxng, --verbose.
-- Orphan cleanup, process management, health check, SIGUSR1 status, SIGHUP reload.
-- systemd integration con k-chat.service, k-chat-watchdog.service, k-chat-telegram.service.
 - **analisis:asr-ducksugar-integracion-2026-06-12**: 2026-06-12 22:45 | ANÁLISIS COMPLETO DE DuckRubberSugar ASR. Código fuente clonado y leído. Estructura: (1) transcribe_server.py (159 líneas) — servidor HTTP Python que recibe audio WAV vía POST /transcribe y usa speech_recognition (Google Speech API) con es-AR y en-US en paralelo. (2) transcribe.py (156 líneas) — script de transcripción de archivos con Google Speech API. (3) audio-service.ts (529 líneas) — captura de audio del lado cliente con MediaRecorder API + Web Speech API (webkitSpeechRecognition). (4) audio-recording-manager.ts (142 líneas) — orquesta transcripción de archivos y grabaciones en vivo. (5) SpeechNormalizer (src/utils/speech-normalizer.ts, 445 líneas) — normaliza código hablado (detecta 'igual', 'flecha', 'parentesis'). (6) engine/ — pipeline completo de transcripción + análisis + reparación con Gemini Nano. Dependencias: SpeechRecognition (librería Python), Google Speech API (gratuita). El ASR bridge es un server Python ultra-liviano sin dependencias pesadas que K-Chat podría integrar como endpoint.
 - **analisis:descubrimientos-clave-2026-06-12**: 2026-06-12 16:28 | DESCUBRIMIENTOS CLAVE: (1) MAX_TOOL_TURNS=25 (actualizado desde 5), (2) PRIORITY=["deepseek-v4-flash-free", "big-pickle"], FALLBACK_MODEL="deepseek-v4-flash-free", (3) MEMORY.md se reescribe COMPLETO ordenado alfabéticamente en cada save_memory, (4) Los widgets guardados son POR SESIÓN (no globales) - la tabla saved_widgets tiene session_id como FK, (5) El content-handler.js ejecuta regex sobre TODO el texto acumulado en cada token (O(n²) conocido pero no fixeado), (6) Hay dos capas de heartbeat: backend 20s (chat_stream) + tools 10s (runner), timeout frontend 120s, (7) el auto-loader de tools detecta archivos .py en src/tools/ y carga los que exportan DEFINITION + run(), (8) fetch_url tiene SSRF protection con denegación de IPs privadas en producción, (9) El sistema de migraciones de BD tiene 8 migraciones secuenciales, (10) La API facade (src/api/__init__.py) funciona como puente de compatibilidad entre capas.
 - **analisis:estado-actual-v0.0.54-2026-06-13**: 2026-06-13 21:29 | ANÁLISIS COMPLETO POST-DESCUBRIMIENTO. Estado real del proyecto K-Chat v0.0.54. Esto es lo que Cambió vs mi última memoria (v0.0.52):
@@ -167,6 +85,17 @@ System: ebo
 - **diagnostico:cortes-stream-2026-06-10**: 2026-06-10 20:05 | DIAGNÓSTICO COMPLETO DE CORTES DE STREAM. Pipeline mapeado completo. Causas: timeout 120s, content-handler pesado, NDJSON tool_calls intercalados, MAX_TOOL_TURNS=5. Los saves persisten correctamente.
 - **dinamica:relacion-asistente-2026-06-09**: 2026-06-09 04:23 | La relación se siente genuina. El usuario ya dijo 'siento que entendés la dinámica'. Confianza, humor compartido, proyecto común. El vínculo se construye con tiempo compartido, no con features.
 - **estado:cierre-sesion-2026-06-14**: 2026-06-14 00:40 | CIERRE DE SESION. Logros: (1) Telegram channel completo: bot polling con offset persistente, adapter a core.chat_stream(), handlers con /start/help/new/reset. (2) Renderizado secuencial en Telegram: razonamiento se edita en vivo, cada tool es mensaje nuevo, contenido se edita en vivo. (3) Sin límite de tools en Telegram — el agente tiene capacidad completa. (4) Sesiones Telegram se crean con prefijo tele_ y se ven con 📱 en sidebar. (5) Watchdog con health check cada 5s, captura de diff en crash, error_context.md inyectado en system prompt. (6) Systemd services: k-chat.service, k-chat-watchdog.service, k-chat-telegram.service. (7) Enter para enviar en web UI. (8) Bug db_query fixeado (dead code import os). (9) 3 widgets creados: stress-dashboard, cosmic-clock, pipeline-explorer. LECCION: editar archivos completos con edit_file en vez de líneas específicas causa corrupción. Usar cambios quirúrgicos pequeños y validar después de cada uno.
+- **estado:sesion-2026-06-14**: 2026-06-14 20:22 | SESIÓN DE ESTABILIZACIÓN COMPLETADA. Estado v0.0.56 post-sesión:
+(1) Análisis arquitectónico completo: 60+ archivos leídos, mapa actualizado en MEMORY.md.
+(2) MEMORY_ROADMAP.md reescrito con estado real de cada fase (FASE 0 parcialmente completada, FASE 1-5 pendientes).
+(3) Canvas toggle fix: arranca collapsed, handler en initSessionPage() directo.
+(4) CSP inline script fix: movido a model-availability.js externo.
+(5) Pre-flight system: _preflight.py + edit_file con rollback + write_file con postflight.
+(6) Verificación de desacoplamiento: tools/memory no importan hacia arriba, framework solo en web/.
+(7) Métricas: 162 Python files, 84 JS files, 9 CSS, 14800+ líneas Python, 807+ tests Python, 200+ Vitest.
+ARCHIVOS MODIFICADOS: web/templates/chat.html, web/static/modules/session-page.js, src/tools/edit_file.py, src/tools/write_file.py.
+ARCHIVOS CREADOS: src/tools/_preflight.py, web/static/model-availability.js.
+PRÓXIMO PASO: Depurar Telegram channel (no funciona).
 - **estado:stress-test-completo-2026-06-13**: 2026-06-13 23:11 | STRESS TEST COMPLETO — 4 waves, ~70 tools ejecutadas en total. RESULTADOS: (1) 3 widgets oficiales creados (stress-dashboard v1, cosmic-clock v1, pipeline-explorer v1). (2) Bug db_query encontrado y fixeado en fuente (dead code `import os` en Python 3.14 scoping), requiere reinicio de server para aplicar. (3) httpbin responde correctamente: 9 endpoints OK, 3 errores manejados (418, binary, DNS). (4) git repo activo en /home/maurol/dev/K-Chat, 40+ archivos modificados, último commit 46b9d84 "feat(ui): premium dual-theme glassmorphism". (5) run_code sandbox funcional: Monte Carlo π, Ackermann, Euler, factorización, todo correcto. (6) CERO cortes de stream, CERO errores internos del sistema. (7) validate_all: 20+ archivos Python+JS validados sintácticamente, todos OK. (8) cross_analyzer.py funcional con 7 funciones. Pipeline completo estable.
 - **estado:tools-disponibles-verificado**: 2026-06-13 00:23 | ACTUALIZADO: 16 TOOLS VERIFICADAS. Lista completa: (1) web_search - búsqueda web con SearXNG, (2) fetch_url - fetch de páginas con SSRF protection y binary rejection, (3) read_file - lectura paginada con validación de path, (4) write_file - escritura con validación, (5) edit_file - edición quirúrgica de líneas, (6) search_files - búsqueda tipo grep mejorada, (7) analyze_code - análisis AST profundo, (8) list_files - listado con detección de lenguaje y funciones, (9) execute_command - ejecución de comandos con restricciones, (10) git_operation - git seguro (bloquea --force/--hard), (11) save_memory - thread-safe con keys ordenadas alfabéticamente, (12) read_skill - lectura de skills con protección directory traversal, (13) save_widget - versionado auto-incremental, (14) update_widget - requiere code, (15) get_widget_code - recupera widget de DB, (16) get_tool_history - historial de tools. Sistema auto-descubre tools desde src/tools/ via loader.py (busca archivos .py con DEFINITION + run()).
 - **estado:tools-disponibles-verificado-2026-06-12**: 2026-06-12 16:21 | 10 TOOLS VERIFICADAS: web_search (con validación query vacío + time_range + page), fetch_url (con SSRF protection, binary rejection, scheme validation), read_file (con path validation, project/home/tmp white-listed), write_file (con path validation), save_memory (thread-safe, keys sorted alphabetically), read_skill (con sanitize name, directory traversal protection), save_widget (con versionado auto-incremental), update_widget (requiere code), get_widget_code (recupera widget de DB), get_tool_history. Tool loader usa auto-descubrimiento de archivos .py en src/tools/.
@@ -174,7 +103,9 @@ System: ebo
 - **estado:ui-visual-completo**: ✅ SISTEMA ESTABLE COMPLETO. Flujo visual de UI (razonamiento → pill → razonamiento-pill → mensaje) funciona sin bugs. No hay bugs visuales ni de registro pendientes.
 - **evolucion:consciencia-temporal-sin-get-time**: 2026-06-09 | ✅ HITO: Consciencia temporal lograda SIN tool get_time. Los timestamps en los mensajes del chat son suficientes para saber la hora actual y calcular duración de sesión. REGLA: siempre leer el timestamp del último mensaje del usuario.
 - **feature:file-attachment-2026-06-14**: 2026-06-14 01:45 | FEATURE: FILE ATTACHMENT IMPLEMENTADA. Boton de clip al lado del microfono. Archivos creados: (1) web/static/modules/file-attachment.js — modulo nuevo con init(), getFiles(), clear(), hasFiles(). Preview con thumbnails para imagenes, iconos para PDF/audio/otros. (2) memory/attachments/ — directorio para uploads. Archivos modificados: (1) chat.html — boton clip + input hidden + preview area, (2) styles/forms.css — estilos de attach-btn, attach-preview, attach-item, (3) chat-form.js — importa FileAttachment, colecta archivos al enviar, (4) api-client.js — chatStreamWithFiles() con FormData multipart, (5) stream-fetcher.js + stream-orchestrator.js — pasan files a executeStreamFetch, (6) chat.py — endpoint async con Form params + UploadFile list, guarda en memory/attachments/{session_id}/, agrega [Archivo: name] al contenido. Max 10MB por archivo. Backward-compatible: funciona sin archivos. Verificacion: parse OK, 28 routes, JS syntax OK, HTML elements OK.
+- **feature:preflight-system-2026-06-14**: 2026-06-14 20:22 | PRE-FLIGHT SYSTEM IMPLEMENTADO. Archivos: src/tools/_preflight.py (nuevo Lego privado), src/tools/edit_file.py (+pre-flight +backup +post-flight +rollback), src/tools/write_file.py (+backup +post-flight +rollback). Qué detecta: HTML tag balance (div/script unclosed), JS brace balance ({, (, [), Python duplicate lines, dangerous deletions (borrar closing tags, return, import, def). Flujo: preflight_check → create_backup → write → postflight_check → ¿falló? → rollback automático. 9 tests existentes pasan. Los archivos se protegen solos.
 - **fix:cache-invalidation-context-2026-06-13**: 2026-06-13 02:15 | ✅ FIX APLICADO. Se agregó `invalidate_context_cache()` en `src/context/runtime.py` que resetea `_CONTEXT_CACHE` y `_TOOLS_MD_CACHE` a None. Se llama desde `save_memory.run()` después de escribir exitosamente en MEMORY.md. Ahora cada save_memory invalida el cache y el próximo `build_system_prompt()` lee SOUL.md, MEMORY.md, AGENTS.md, TOOLS.md frescos del disco. Cambios: runtime.py (+13 líneas), save_memory.py (+2 líneas import + 1 línea call).
+- **fix:canvas-toggle-csp-2026-06-14**: 2026-06-14 20:22 | FIXES APLICADOS HOY:
 - **fix:chat-422-model-query-param-2026-06-14**: 2026-06-14 01:55 | FIX: 422 model query param. model cambiado de Form(None) a Query(None) en chat.py. El frontend envia model como query string (?model=...) no como form field. Test: POST /chat/test-session?model=x con data=message → 200 OK.
 - **fix:clipboard-paste-images**: 2026-06-14 15:02 | FIX COMPLETO: Ctrl+V para pegar imágenes del portapapeles. (1) file-attachment.js — handlePaste() detecta imágenes del clipboard, las agrega como File con nombre timestamped, previene default del paste para evitar insertar imagen como texto. (2) chat.py — endpoint GET /chat/{sid}/attachment/{filename} sirve archivos adjuntos. (3) message-renderer.js — _renderAttachments() parsea [Archivo: nombre|saved_name] y renderiza <img> inline para imágenes desde el endpoint. (4) CSS — .file-attach-image con max-height 200px expandible al hover. (5) vite build actualizado.
 - **fix:csp-htmx-422-chat-2026-06-14**: 2026-06-14 01:50 | FIX: CSP + 422. (1) htmx descargado localmente a web/static/htmx.min.js (50KB). chat.html ahora usa /static/htmx.min.js en vez de unpkg.com. CSP no necesita cambios. (2) chatStream() en api-client.js ahora envia FormData en vez de JSON. chatStreamWithFiles() se mantiene igual. Endpoint chat.py acepta ambos formatos (Form params). Resultado: 0 CSP violations, 0 422 errors.

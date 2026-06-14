@@ -43,6 +43,10 @@ async def test_session_messages_empty():
 
 @pytest.mark.anyio
 async def test_debug_info():
+    from src.memory.schema import init_db
+    from src.api.session import ensure_session
+    await init_db()
+    await ensure_session("smoke-test-session")
     async with _make_client() as client:
         resp = await client.get("/sessions/smoke-test-session/debug")
     assert resp.status_code in (200, 404)
@@ -65,12 +69,14 @@ async def test_chat_returns_422_without_payload():
 
 
 @patch("web.routers.chat.build_stream_generator")
-@patch("web.routers.chat.db_save_message")
 @patch("web.routers.chat.rebuild_history", return_value=[])
-@patch("web.routers.chat.ensure_session")
 @patch("web.routers.chat.get_default_model", return_value="test-model")
 @pytest.mark.anyio
-async def test_chat_streaming_works(_m1, _m2, _m3, _m4, mock_builder):
+async def test_chat_streaming_works(_mock_default, _mock_history, mock_builder):
+    from src.memory.schema import init_db
+    from src.api.session import ensure_session
+    await init_db()
+    await ensure_session("smoke-test-session")
     mock_builder.return_value = lambda: iter([
         '{"t":"content","d":"Smoke test OK"}\n',
     ])

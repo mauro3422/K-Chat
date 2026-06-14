@@ -30,7 +30,7 @@ class TestSetWidgetState:
     async def test_set_state_ok(self, mock_get_repos, mock_sanitize):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.widget_states = MagicMock()
+        mock_repos.widget_states = AsyncMock()
         mock_get_repos.return_value = mock_repos
         result = await set_widget_state("sid-1", "my-widget", WidgetStatePayload(state='{"x":1}'))
         assert result == {"status": "ok"}
@@ -43,7 +43,7 @@ class TestSetWidgetState:
         mock_sanitize.return_value = "w"
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.widget_states = MagicMock()
+        mock_repos.widget_states = AsyncMock()
         mock_get_repos.return_value = mock_repos
         result = await set_widget_state("sid-1", "w", WidgetStatePayload())
         assert result == {"status": "ok"}
@@ -56,7 +56,7 @@ class TestGetWidgetCode:
     async def test_found(self, mock_get_repos):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.saved_widgets = MagicMock()
+        mock_repos.saved_widgets = AsyncMock()
         mock_repos.saved_widgets.get.return_value = {"id": "w1", "code": "alert(1)"}
         mock_get_repos.return_value = mock_repos
         result = await get_widget_code("sid-1", "w1")
@@ -67,7 +67,7 @@ class TestGetWidgetCode:
     async def test_not_found(self, mock_get_repos):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.saved_widgets = MagicMock()
+        mock_repos.saved_widgets = AsyncMock()
         mock_repos.saved_widgets.get.return_value = None
         mock_get_repos.return_value = mock_repos
         with pytest.raises(HTTPException) as exc:
@@ -81,7 +81,7 @@ class TestGetWidgetVersions:
     async def test_returns_versions(self, mock_get_repos):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.saved_widgets = MagicMock()
+        mock_repos.saved_widgets = AsyncMock()
         mock_repos.saved_widgets.get_versions.return_value = [1, 2]
         mock_get_repos.return_value = mock_repos
         result = await get_widget_versions("sid-1", "w1")
@@ -92,7 +92,7 @@ class TestGetWidgetVersions:
     async def test_empty_versions(self, mock_get_repos):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.saved_widgets = MagicMock()
+        mock_repos.saved_widgets = AsyncMock()
         mock_repos.saved_widgets.get_versions.return_value = []
         mock_get_repos.return_value = mock_repos
         result = await get_widget_versions("sid-1", "w1")
@@ -105,7 +105,7 @@ class TestGetWidgetVersionCode:
     async def test_found(self, mock_get_repos):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.saved_widgets = MagicMock()
+        mock_repos.saved_widgets = AsyncMock()
         mock_repos.saved_widgets.get_by_version.return_value = {"version": 2, "code": "v2 code"}
         mock_get_repos.return_value = mock_repos
         result = await get_widget_version_code("sid-1", "w1", 2)
@@ -116,7 +116,7 @@ class TestGetWidgetVersionCode:
     async def test_not_found(self, mock_get_repos):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.saved_widgets = MagicMock()
+        mock_repos.saved_widgets = AsyncMock()
         mock_repos.saved_widgets.get_by_version.return_value = None
         mock_get_repos.return_value = mock_repos
         with pytest.raises(HTTPException) as exc:
@@ -131,7 +131,7 @@ class TestSaveWidget:
     async def test_save_ok(self, mock_get_repos, mock_sanitize):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.saved_widgets = MagicMock()
+        mock_repos.saved_widgets = AsyncMock()
         mock_repos.saved_widgets.save.return_value = {"version": 1}
         mock_get_repos.return_value = mock_repos
         result = await save_widget("sid-1", "my-widget", SaveWidgetPayload(code="alert(1)", description="test widget"))
@@ -144,7 +144,7 @@ class TestSaveWidget:
     async def test_save_default_description(self, mock_get_repos, mock_sanitize):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.saved_widgets = MagicMock()
+        mock_repos.saved_widgets = AsyncMock()
         mock_repos.saved_widgets.save.return_value = {"version": 2}
         mock_get_repos.return_value = mock_repos
         result = await save_widget("sid-1", "my-widget", SaveWidgetPayload(code="alert(1)"))
@@ -188,7 +188,7 @@ class TestSaveWidget:
     async def test_save_db_error_raises_500(self, mock_get_repos, mock_sanitize):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.saved_widgets = MagicMock()
+        mock_repos.saved_widgets = AsyncMock()
         mock_repos.saved_widgets.save.side_effect = Exception("DB error")
         mock_get_repos.return_value = mock_repos
         with pytest.raises(HTTPException) as exc:
