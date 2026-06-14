@@ -4,15 +4,14 @@ from typing import Any
 
 from src.memory.repos import DebugRepository
 from src.api.debug_contract import DebugOpsDeps
+from src.api._resolve import resolve_deps
 
 
 def _resolve_debug_deps(
     debug_repo: DebugRepository | None = None,
     deps: DebugOpsDeps | None = None,
 ) -> DebugOpsDeps:
-    if deps is not None:
-        return deps
-    return DebugOpsDeps(debug_repo=debug_repo)
+    return resolve_deps(deps, DebugOpsDeps, debug_repo=debug_repo)
 
 
 async def save_debug_info(

@@ -31,11 +31,9 @@ def run(name=None, **kwargs) -> str:
     if not safe_name:
         return "[ERROR] Invalid skill name."
 
-    if _skill_registry is not None:
-        registry = _skill_registry
-    else:
-        from src.skills import SkillRegistry
-        registry = SkillRegistry()
+    if _skill_registry is None:
+        return "[ERROR] No skill registry available. Inject _skill_registry via kwargs."
+    registry = _skill_registry
     skill = registry.discover().get_skill(safe_name)
     if not skill:
         try:

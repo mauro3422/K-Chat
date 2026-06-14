@@ -77,7 +77,9 @@ class ModelState:
 _state: ModelState | None = None
 
 
-def _get_state() -> ModelState:
+def _get_state(state: ModelState | None = None) -> ModelState:
+    if state is not None:
+        return state
     global _state
     if _state is None:
         _state = ModelState()
@@ -91,35 +93,35 @@ FALLBACK_MODEL = DEFAULT_MODEL
 
 # Convenience wrappers — accept optional state param for DI
 def is_model_failed(model: str, state: ModelState | None = None) -> bool:
-    return (state or _get_state()).is_model_failed(model)
+    return _get_state(state).is_model_failed(model)
 
 
 def mark_model_failed(model: str, state: ModelState | None = None) -> None:
-    (state or _get_state()).mark_model_failed(model)
+    _get_state(state).mark_model_failed(model)
 
 
 def clear_failed_models(state: ModelState | None = None) -> None:
-    (state or _get_state()).clear_failed_models()
+    _get_state(state).clear_failed_models()
 
 
 def get_verified_models_safe(state: ModelState | None = None) -> list[str] | None:
-    return (state or _get_state()).get_verified_models_safe()
+    return _get_state(state).get_verified_models_safe()
 
 
 def set_verified_models(value: list[str] | None, state: ModelState | None = None) -> None:
-    (state or _get_state()).set_verified_models(value)
+    _get_state(state).set_verified_models(value)
 
 
 def get_cached_models_safe(state: ModelState | None = None) -> Any:
-    return (state or _get_state()).get_cached_models_safe()
+    return _get_state(state).get_cached_models_safe()
 
 
 def set_cached_models(value: Any, state: ModelState | None = None) -> None:
-    (state or _get_state()).set_cached_models(value)
+    _get_state(state).set_cached_models(value)
 
 
 def _switch_model(model: str, state: ModelState | None = None) -> str:
-    return (state or _get_state()).switch_model(model)
+    return _get_state(state).switch_model(model)
 
 
 __all__ = [

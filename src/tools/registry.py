@@ -20,6 +20,7 @@ class ToolRegistry:
     _definitions: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
     _built: bool = field(default=False, init=False)
     _package: str = field(default="src.tools", init=False)
+    _skill_registry: Any | None = field(default=None, init=False)
     
     def discover(self, package: str = "src.tools") -> "ToolRegistry":
         """Discover tools from package without building. Returns self for chaining."""
@@ -85,6 +86,7 @@ class ToolRegistry:
             except Exception as e:
                 logger.warning("Error scanning skills folder for tools via SkillRegistry: %s", e)
 
+        self._skill_registry = skill_registry
         self._built = True
         return self
     

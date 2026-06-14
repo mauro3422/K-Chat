@@ -143,8 +143,10 @@ async def test_circular_sensitive_tools_run_imports_api():
 async def test_build_tools_md_generates_all_10():
     """Verifica que la auto-generación de TOOLS.md incluya las tools
     sin errores de circular import."""
+    from src.tools import get_default_registry
+    tool_defs = get_default_registry().definitions
     from src.context import _build_tools_md
-    result = _build_tools_md()
+    result = _build_tools_md(tool_defs)
     for name in EXPECTED_TOOLS:
         assert f"- **{name}**" in result, f"{name} missing from auto-generated TOOLS.md"
 
@@ -154,8 +156,10 @@ async def test_build_tools_md_no_errors():
     """Verifica que _build_tools_md() no lance excepciones."""
     import logging
     logging.disable(logging.CRITICAL)
+    from src.tools import get_default_registry
+    tool_defs = get_default_registry().definitions
     from src.context import _build_tools_md
-    result = _build_tools_md()
+    result = _build_tools_md(tool_defs)
     assert len(result) > 0
     assert result.startswith("# Available Tools")
 
@@ -165,9 +169,11 @@ async def test_build_tools_md_idempotent():
     """Verifica que regenerar TOOLS.md dos veces dé el mismo resultado."""
     import logging
     logging.disable(logging.CRITICAL)
+    from src.tools import get_default_registry
+    tool_defs = get_default_registry().definitions
     from src.context import _build_tools_md
-    r1 = _build_tools_md()
-    r2 = _build_tools_md()
+    r1 = _build_tools_md(tool_defs)
+    r2 = _build_tools_md(tool_defs)
     assert r1 == r2, "TOOLS.md generation is not idempotent"
 
 

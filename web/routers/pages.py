@@ -10,6 +10,7 @@ from src.api import get_model_registry, ensure_registry_refreshed
 from src.api import get_rate_limit_store, get_repos
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
+from web.services.protocols import MessageRendererProtocol
 from web.services.model_catalog import format_model_label, get_model_metadata
 
 router = APIRouter()

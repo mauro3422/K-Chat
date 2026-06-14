@@ -23,6 +23,7 @@ from web.services.stream_error_classifier import classify_error
 from web.services.stream_retry_handler import StreamRetryHandler
 from web.services.stream_contract import serialize_stream_event
 from web.services.chat_stream_contract import StreamGeneratorDeps
+from web.services.protocols import MessagePersisterProtocol, StreamGeneratorProtocol
 from web.services.stream_state import StreamState
 
 logger = logging.getLogger(__name__)
@@ -39,10 +40,10 @@ def build_stream_generator(
     chat_stream_fn: Callable[..., AsyncGenerator[Any, None]] | None = None,
     loop_detector: LoopDetector | None = None,
     retry_handler: StreamRetryHandler | None = None,
-    save_fn: Callable | None = None,
+    save_fn: MessagePersisterProtocol | None = None,
     rename_fn: Callable | None = None,
     deps: StreamGeneratorDeps | None = None,
-) -> Callable[..., AsyncGenerator[str, None]]:
+) -> StreamGeneratorProtocol:
     """Builds the NDJSON generator for the chat stream."""
     _deps = deps or StreamGeneratorDeps(
         chat_stream_fn=chat_stream_fn,

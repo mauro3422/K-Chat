@@ -27,7 +27,9 @@ _registry: ProviderRegistry | None = None
 _provider: LLMProvider | None = None
 
 
-def _get_registry() -> ProviderRegistry:
+def _get_registry(registry: ProviderRegistry | None = None) -> ProviderRegistry:
+    if registry is not None:
+        return registry
     global _registry
     if _registry is None:
         _registry = ProviderRegistry()

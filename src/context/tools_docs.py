@@ -32,18 +32,14 @@ def _auto_section(name: str, fn: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _build_tools_md(tool_definitions: dict[str, Any] | None = None) -> str:
+def _build_tools_md(tool_definitions: dict[str, Any]) -> str:
     """Generates a markdown document listing all available tools.
 
     The output is consumed by the system prompt to inform the LLM about
     which tools are available and how to call them.
 
-    *tool_definitions* — injected from the caller.  When ``None`` the
-    function falls back to importing from ``src.tools``.
+    *tool_definitions* — required injection from the caller.
     """
-    if tool_definitions is None:
-        from src.tools import get_default_registry
-        tool_definitions = get_default_registry().definitions
 
     lines = [
         "# Available Tools",
@@ -76,18 +72,14 @@ def _build_tools_md(tool_definitions: dict[str, Any] | None = None) -> str:
     return "\n".join(lines)
 
 
-def _build_rules_files(rules_dir: str, tool_definitions: dict[str, Any] | None = None) -> None:
+def _build_rules_files(rules_dir: str, tool_definitions: dict[str, Any]) -> None:
     """Generates rules/<tool>.md files from TOOL_DEFINITIONS.
 
     Each file has an auto-generated params table (regenerated on every call)
     and a manual section below '---' that is preserved across generations.
 
-    *tool_definitions* — injected from the caller.  When ``None`` the
-    function falls back to importing from ``src.tools``.
+    *tool_definitions* — required injection from the caller.
     """
-    if tool_definitions is None:
-        from src.tools import get_default_registry
-        tool_definitions = get_default_registry().definitions
 
     os.makedirs(rules_dir, exist_ok=True)
 

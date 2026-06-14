@@ -195,3 +195,128 @@ async def test_availability_endpoint_includes_quota() -> None:
     content = _read("web/routers/debug.py")
     assert "go_quota_exhausted" in content, \
         "Missing go_quota_exhausted in /models/availability — Go quota not exposed to UI!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 12. Entry points (web/, cli.py, gateway.py) must NOT import domain layers
+#     directly. Domain = core, llm, tools, memory, context, skills.
+#     They must go through src.api (the facade) instead.
+# ═══════════════════════════════════════════════════════════════════════
+
+_FORBIDDEN_DOMAIN = ("src.core", "src.llm", "src.tools", "src.memory", "src.context", "src.skills")
+_IMPORT_RE = re.compile(r'^\s*(?:from\s+(src\.\w+)|import\s+(src\.\w+))\b')
+
+
+async def test_web_never_imports_domain_directly() -> None:
+    violations: list[str] = []
+    for pyfile in sorted((PROJECT_ROOT / "web").rglob("*.py")):
+        rel = pyfile.relative_to(PROJECT_ROOT)
+        for lineno, line in enumerate(pyfile.read_text("utf-8").splitlines(), 1):
+            m = _IMPORT_RE.match(line)
+            if not m:
+                continue
+            mod = m.group(1) or m.group(2)
+            if mod.startswith(_FORBIDDEN_DOMAIN):
+                violations.append(f"  {rel}:{lineno}  {line.strip()}")
+    assert not violations, \
+        "web/ imports domain layer directly:\n" + "\n".join(violations)
+
+
+async def test_cli_never_imports_domain_directly() -> None:
+    content = _read("src/cli.py")
+    violations: list[str] = []
+    for lineno, line in enumerate(content.splitlines(), 1):
+        m = _IMPORT_RE.match(line)
+        if not m:
+            continue
+        mod = m.group(1) or m.group(2)
+        if mod.startswith(_FORBIDDEN_DOMAIN):
+            violations.append(f"  src/cli.py:{lineno}  {line.strip()}")
+    assert not violations, \
+        "cli.py imports domain layer directly:\n" + "\n".join(violations)
+
+
+async def test_gateway_never_imports_domain_directly() -> None:
+    content = _read("src/gateway.py")
+    violations: list[str] = []
+    for lineno, line in enumerate(content.splitlines(), 1):
+        m = _IMPORT_RE.match(line)
+        if not m:
+            continue
+        mod = m.group(1) or m.group(2)
+        if mod.startswith(_FORBIDDEN_DOMAIN):
+            violations.append(f"  src/gateway.py:{lineno}  {line.strip()}")
+    assert not violations, \
+        "gateway.py imports domain layer directly:\n" + "\n".join(violations)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 13. No module-level singletons in src/ (must use DI)
+# ═══════════════════════════════════════════════════════════════════════
+
+_SINGLETON_RE = re.compile(
+    r'^[a-zA-Z_]\w*\s*=\s*(?:load_config|ModelState|ProviderRegistry|ToolRegistry)\s*\('
+)
+
+
+async def test_no_module_level_singletons() -> None:
+    violations: list[str] = []
+    for pyfile in sorted((PROJECT_ROOT / "src").rglob("*.py")):
+        rel = pyfile.relative_to(PROJECT_ROOT)
+        for lineno, line in enumerate(pyfile.read_text("utf-8").splitlines(), 1):
+            if _SINGLETON_RE.match(line):
+                violations.append(f"  {rel}:{lineno}  {line.strip()}")
+    assert not violations, \
+        "Module-level singletons found (violates DI rule):\n" + "\n".join(violations)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 14. src/api/__init__.py must export from all submodules
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_api_facade_exports_complete() -> None:
+    content = _read("src/api/__init__.py")
+
+    all_match = re.search(r'__all__\s*=\s*\[(.*?)\]', content, re.DOTALL)
+    assert all_match, "src/api/__init__.py missing __all__"
+
+    exports: set[str] = set(re.findall(r'"([^"]+)"', all_match.group(1)))
+    assert len(exports) >= 30, \
+        f"__all__ only has {len(exports)} exports, expected >= 30"
+
+    required_imports = [
+        "from src.api.session import",
+        "from src.api.debug import",
+        "from src.api.messages import",
+        "from src.api.tools import",
+        "from src.api.widgets import",
+        "from src.api.orchestrator import",
+        "from src.api.llm_client import",
+        "from src.api.repos import",
+        "from src.api.context import",
+        "from src.api.background import",
+        "from src.api.journal import",
+        "from src.api.skills import",
+        "from src.api.exceptions import",
+    ]
+    for imp in required_imports:
+        assert imp in content, f"Missing import: '{imp}' in src/api/__init__.py"
+
+    required_exports = [
+        "ensure_session", "rename_session", "delete_session", "get_sessions",
+        "save_debug_info", "get_debug_info", "append_asr_telemetry",
+        "get_tool_history", "sanitize_widget_id",
+        "save_widget_state", "get_widget_states",
+        "db_save_widget", "db_get_widget",
+        "chat_stream", "generate_session_id", "OrchestratorDeps",
+        "get_default_model", "get_verified_models", "get_verified_models_safe",
+        "get_repos", "init_db",
+        "build_system_prompt",
+        "auto_rename_session",
+        "log_turn",
+        "SkillRegistry",
+        "ServiceException",
+    ]
+    missing = [e for e in required_exports if e not in exports]
+    assert not missing, \
+        f"Missing exports in src/api/__init__.__all__: {missing}"

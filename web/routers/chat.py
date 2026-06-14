@@ -2,6 +2,7 @@ import logging
 import os
 import time
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response, UploadFile, File as FastAPIFile, Form
 from fastapi.responses import StreamingResponse
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from src.api import llm_chat_stream, rebuild_history, get_default_model, get_repos, MessageRecord, DebugInfo
 from web.services.chat_stream import build_stream_generator
 from web.services.chat_stream_contract import StreamGeneratorDeps
+from web.services.protocols import MessagePersisterProtocol, StreamGeneratorProtocol
 from web.services.stream_retry_handler import StreamRetryHandler
 
 router = APIRouter()
@@ -94,7 +96,7 @@ async def chat(
 
     from web.services.message_persister import save_assistant_message
 
-    async def _wrapped_save(*a, **kw):
+    async def _wrapped_save(*a: Any, **kw: Any) -> None:
         result = await save_assistant_message(*a, **kw, repos=repos)
         try:
             from src.api import log_turn

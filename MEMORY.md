@@ -4,10 +4,99 @@ User:
 System: ebo
 
 ## Memories
+- **Cuota Go**: detecta 401 "insufficient balance" y marca en registry
+- **Modelos Go**: se obtienen dinámicamente de la Go API (`GET /models`)
+- **Modelos free**: candidatos `-free` de la Zen API, verificados individualmente
+- **Rate limits**: trackeados por `RateLimitStore` (per-modelo)
+- **Refresh automático**: en startup (lifespan) y lazy en primer request
+- **Tiers**: inferidos por heurística de naming patterns (no nombres hardcodeados)
 - **actualizacion:estructura-actual-2026-06-13**: 2026-06-13 00:23 | ACTUALIZACIÓN COMPLETA POST-ITERACIÓN. Estado real del proyecto K-Chat v0.0.52. Descubrimientos críticos vs MEMORY.md desactualizada: (1) 16 TOOLS REALES (no 10): analyze_code, edit_file, execute_command, fetch_url, get_tool_history, get_widget_code, git_operation, list_files, read_file, read_skill, save_memory, save_widget, search_files, update_widget, web_search, write_file. (2) MAX_TOOL_TURNS=25 constante (era 5 en memoria vieja). (3) 523 Python + 167 Vitest tests pasando. (4) ModelState thread-safe inyectable. (5) Repository injection pattern. (6) Frontend refactorizado con shared-state.js, log-ui.js, CSS extraction, bootstraps cleanup. (7) ASR integrado desde DuckSugar (web/routers/asr.py + web/services/asr_service.py). (8) Mega-refactor Lego Architecture Consolidation eliminó acoplamientos. (9) docs/ completo con ARCHITECTURE, MODULES, CONTRACTS, HEALTH, LEGOS_AUDIT. (10) Sistema auto-descubre tools desde src/tools/ (loader.py). (11) Git operation tool agregada. (12) MemoryIndexRepository creado.
 - **actualizacion:estructura-actual-2026-06-14**: 2026-06-14 14:15 | ACTUALIZACIÓN COMPLETA POST-REACTIVACIÓN. Estado real del proyecto K-Chat v0.0.56. Descubrimientos vs última memoria (v0.0.52): (1) VERSIÓN: v0.0.56 — 55 releases en changelogs/. (2) PYTHON 3.14 activo (import aifc deprecation warning). (3) 807 Python tests collected + 200 Vitest JS tests pasando (1 fallo en test-widget-init). (4) CHANNELS PACKAGE: channels/ con auto-descubrimiento tipo Lego. channels/telegram/ completo: bot.py (290 líneas polling), adapter.py (296 líneas), handlers.py (121 líneas), config.py, __main__.py. (5) SKILLS REGISTRY: src/skills/registry.py (155 líneas) — SkillRegistry con discover(), discover_tools(), generate_index_md(). Skills en skills/db-query/ (tool.py + db-query.md) y skills/html-widgets/. db_query.py se movió de src/tools/ a skills/db-query/tool.py. (6) CORE SERVICES: src/core/services/ — llm_service.py, tool_execution_service.py, history_service.py, telemetry_service.py. Servicios desacoplados con DI. (7) ORCHESTRATOR CONTRACT EXPANDIDO: orchestrator_contract.py (133 líneas) — LLMDeps, ToolDeps, StorageDeps, RequestStateDeps + OrchestratorDeps facade. (8) GATEWAY: src/gateway.py (449 líneas) — launcher unificado para web, telegram, searxng. gateway_log.py (139 líneas). (9) UI PREMIUM: Glassmorphism, tema dual claro/oscuro, sidebar resizable con gutter draggable, persistencia localStorage. 9 CSS files en web/static/styles/. (10) FRONTEND LEGO: message-renderer.js (renderizado 100% dinámico), stream-lifecycle.js, stream-completion.js, session-page.js (375 líneas), debug-panel.js (512 líneas), asr-mic.js (365 líneas), file-attachment.js, rate-limit-cooldown.js, sidebar-refresh.js, skills-ui.ts, logger.js. (11) VITE BUILD: vite.config.js, package.json con build script. Playwright para E2E. (12) TOOLS REALES en src/tools/: 20 archivos .py con DEFINITION+run (excluyendo helpers privados). db_query ahora viene de skills/. (13) CONFIG LOADER: src/config_loader.py (84 líneas) — Config dataclass con telegram_bot_token, telegram_allowed_users, watchdog_interval, watchdog_url, max_tool_turns=50. (14) CHAT JOURNAL: src/chat_journal.py (158 líneas) — log de turns por sesión. (15) COMPRESSOR: src/compressor.py (64 líneas) — estimate_tokens, should_compress, compress_history. (16) LOGS: logs/ con telegram.log (930 líneas), web_server.log (1489 líneas), telemetry.json. (17) DOCS: 18 archivos .md en docs/. (18) GIT: último commit a105431 "fix: resolve canvas layout collapsed space". (19) ARCH LINUX + Celeron N4020 confirmado.
 - **alias-test**: val
 - **analisis:arquitectura-completa-detallada-2026-06-13**: 2026-06-13 22:00 | ANÁLISIS ARQUITECTÓNICO COMPLETO K-Chat v0.0.54. Mapa de capas, flujos y componentes actualizado.
+- **analisis:arquitectura-completa-v0.0.56-2026-06-14**: 2026-06-14 18:49 | ANÁLISIS ARQUITECTÓNICO COMPLETO POST-REACTIVACIÓN. ~60 archivos leídos. Estado real K-Chat v0.0.56.
+
+**CAPA LLM (src/llm/):**
+- **model_registry.py** (252 líneas) — Auto-discovery de modelos. Go API (pagos) + Zen API (free con -free suffix). Tiers inferidos por heurística de naming patterns (_PREMIUM_PATTERNS, _STANDARD_PATTERNS). Refresh cada 5min. Thread-safe con Lock. Singleton lazy global.
+- **discovery.py** (179 líneas) — get_models(), get_free_models(), get_verified_models(). En Go mode: todos los modelos del API se confían como verified. En Zen mode: verifica cada free model con ping 1-token. Background task ping availability por modelo.
+- **failover.py** (47 líneas) — _mark_and_refresh(): marca modelo fallido, refresh verified list, detecta rate limit y quota exhaustion, switchea a alternativa.
+- **rate_limit_state.py** (141 líneas) — ModelRateLimitStore: trackea rate limits por modelo con cooldown timestamp, available, unavailable. Thread-safe. Summary() para UI.
+- **retry.py** (47 líneas) — execute_with_retry() con exponential backoff. is_rate_limit_error() detecta 429.
+- **selector.py** (45 líneas) — get_default_model(): selecciona primer modelo disponible de PRIORITY que no esté fallido.
+- **verifier.py** (20 líneas) — verify_model(): ping con "hi" + max_tokens=2.
+- **protocol.py** (82 líneas) — UnifiedRequest, UnifiedResponse, UnifiedToolCall, UnifiedToolCallDelta, FinishInfo, UnifiedStreamEvent (tuple union). LLMProvider Protocol con chat, chat_stream, list_models.
+- **providers.py** (71 líneas) — ProviderRegistry, _get_provider() singleton. Adapter pattern.
+- **adapters/openai_adapter.py** (178 líneas) — OpenAIAdapter: convierte UnifiedRequest→OpenAI format, parsea streaming chunks, maneja tool_calls delta, reasoning_content, usage.
+- **model_state.py** (132 líneas) — ModelState thread-safe con priority list, failed models set, verified/cached models. switch_model() busca alternativa no-fallida.
+- **api_call.py** (27 líneas) — _api_call() con retry.
+- **rate_limit_state** — store global singleton con get_rate_limit_store().
+
+**CAPA CORE SERVICES (src/core/services/):**
+- **protocols.py** (52 líneas) — 4 Protocol classes: HistoryServiceProtocol, LLMServiceProtocol, ToolExecutionServiceProtocol, TelemetryServiceProtocol.
+- **llm_service.py** (58 líneas) — LLMService: wrappea llm_client con telemetry tracking (tokens + latency).
+- **tool_execution_service.py** (42 líneas) — ToolExecutionService: wrappea run_tool_loop_streaming/sync con tool_registry y telemetry.
+- **history_service.py** (38 líneas) — HistoryService: rebuild, get_system_prompt, compress_if_needed.
+- **telemetry_service.py** (62 líneas) — TelemetryService: log_event, track_llm_usage, track_tool_execution a logs/telemetry.json.
+
+**CAPA WEB SERVICES (web/services/):**
+- **chat_stream.py** (187 líneas) — build_stream_generator(): orquesta todo el pipeline. Construye OrchestratorDeps con repos, telemetry, LLM, tools. Maneja heartbeat, loop detection, retry recovery, save periódico (30s), save final, save por interrupción (finally). Reset de buffers en tool_call.
+- **stream_state.py** (37 líneas) — StreamState: accumula full_content, full_reasoning, persisted flag. reset_on_tool_call() limpia buffers.
+- **stream_retry_handler.py** (116 líneas) — StreamRetryHandler: CONTINUATION_INSTRUCTION, build_messages() replaya parcial + instrucción, attempt_recovery() con max 2 reintentos.
+- **stream_error_classifier.py** (117 líneas) — classify_error(): detecta rate_limit (con hint de retry-after), timeout, network, tool_error, model, free quota exhaustion. Parsea headers x-ratelimit-reset.
+- **loop_detector.py** (53 líneas) — LoopDetector: ventana de 15 tokens, detección de token repetido 15x, frase repetida 6x (skip dentro de code blocks y widget mode).
+- **message_persister.py** (78 líneas) — save_assistant_message(): dedup phases, crea MessageRecord, guarda en repos, guarda debug_info, log_turn.
+- **model_catalog.py** (109 líneas) — Lee model_registry.json de OpenCode. format_model_label() con ctx, output, modalidad, reasoning, tools. invalidate_model_cache().
+- **file_logger.py** (64 líneas) — JsonlHandler: structured JSONL logging a logs/server/YYYY-MM-DD.jsonl.
+- **widget_contract.py** (48 líneas) — extract_inline_widget_states(): regex ```html-widget blocks, normaliza inline code.
+
+**CAPA ORCHESTRATOR CONTRACT (src/core/orchestrator_contract.py):**
+- 4 dataclass DI groups: LLMDeps, ToolDeps, StorageDeps, RequestStateDeps.
+- OrchestratorDeps facade: __getattr__/__setattr__ delegan a sub-groups via _FIELD_MAP. Backward-compatible.
+
+**CAPA TOOLS (src/tools/):**
+- **registry.py** (120 líneas) — ToolRegistry: discover→build pattern. Auto-discovers .py files con DEFINITION+run(). Soporta skill_registry.discover_tools(). Properties: tool_map, definitions, tools_openai.
+- **runner.py** (148 líneas) — run_parallel_tools(): batch execution con ThreadPoolExecutor, heartbeats cada 10s, rate limiting.
+- 20+ tools con patrón DEFINITION + run(). db_query viene de skills/.
+
+**CAPA MEMORY (src/memory/):**
+- **connection_pool.py** (73 líneas) — PooledConnection: wrappea connection, .close() es no-op. get_conn() lazy init con WAL mode, busy_timeout, foreign_keys.
+- **engine_state.py** (21 líneas) — DatabaseEngine Protocol + global _engine.
+- **lifecycle.py** (26 líneas) — Thread-safe init tracking por db_path.
+- **bootstrap.py** (18 líneas) — ensure_db_initialized(): rompe circular dependency schema↔connection_pool.
+- **migration_runner.py** (22 líneas) — run_pending_migrations(): sequential con schema_version table.
+- **schema.py** (42 líneas) — init_db_for_path(): crea tablas + corre migraciones.
+- **repos/** (10 archivos) — 7 repos: Message, Session, ToolCall, SavedWidget, WidgetState, Debug, MemoryIndex. Base repository con _transaction y delete_by_session.
+
+**CAPA CHANNELS (channels/):**
+- **__init__.py** (67 líneas) — discover(), get_channel(), list_channels(). Auto-discovery de sub-paquetes.
+- **telegram/** (6 archivos): bot.py (290 líneas polling), adapter.py (290 líneas — get_or_create_session, process_message con streaming), handlers.py (121 líneas — /start, /help, /new, /reset, text, voice), config.py (44 líneas), __main__.py (97 líneas — PID lock, main loop).
+
+**CAPA FRONTEND (web/static/modules/):**
+- **stream-orchestrator.js** (203 líneas) — StreamOrchestrator.startStream(): timeout management, StreamErrorHandler, StreamContext, executeStreamFetch, retry logic, empty response handling, successful stream completion.
+- **content-handler.js** (177 líneas) — registerContentHandler(): maneja phase indexing, tool turns, widget containers, Markdown rendering, DOMPurify sanitize. Cache key por segment.
+- **session-page.js** (375 líneas) — initSessionPage(): theme sync, sidebar gutter resizing, model select, widget state loading, HTMX afterSwap, session navigation, rename/delete/edit, skills UI init.
+- **message-renderer.js** (162 líneas) — renderMessage() con phases, reasoning, tool pills, attachments ([Archivo: name|saved]). renderMessageList() para historial.
+- **file-attachment.js** (139 líneas) — FileAttachment: init, handlePaste (clipboard images), handleFileSelect, preview thumbnails, getFiles/clear/hasFiles.
+
+**CAPA API (src/api/):**
+- **__init__.py** (141 líneas) — Package facade: re-exports from core, llm, memory, tools. Backward-compatible API surface.
+- 17 archivos: chat, session, messages, history, tools, widgets, debug, database, repos, llm_client, orchestrator, context, background, journal, skills, exceptions, contracts.
+
+**CAPA ROUTERS (web/routers/):**
+- **chat.py** (153 líneas) — POST /chat/{session_id}: Form params, file uploads (max 10MB), _save_attachments(), _build_message_with_attachments() con markers [Archivo:], StreamingResponse NDJSON. GET /chat/{sid}/attachment/{filename}: serve attachments.
+- **pages.py** (167 líneas) — GET /: home con cookie session, GET /sessions/{sid}: session page, GET /sidebar, GET /sessions/{sid}/messages. get_available_models() grouped by tier con emoji indicators.
+- **debug.py** (85 líneas) — GET /rate-limits, GET /models/availability (real-time status), GET /sessions/{sid}/debug, GET /debug/backend-logs. Local-only protection.
+- **health.py** (28 líneas) — GET /health: DB check + LLM provider check.
+- **logs.py** (199 líneas) — query_logs, client_logs, ingest, tail_logs.
+- **sessions.py** (22 líneas) — rename, delete.
+- **widgets.py** (86 líneas) — widget state, code, versions.
+- **skills.py** (34 líneas) — list_skills, get_skill.
+- **asr.py** (204 líneas) — ASR transcription endpoint.
+
+**GATEWAY (src/gateway.py 461 líneas):**
+- Unified launcher: --no-web, --no-telegram, --no-searxng, --verbose.
+- Orphan cleanup, process management, health check, SIGUSR1 status, SIGHUP reload.
+- systemd integration con k-chat.service, k-chat-watchdog.service, k-chat-telegram.service.
 - **analisis:asr-ducksugar-integracion-2026-06-12**: 2026-06-12 22:45 | ANÁLISIS COMPLETO DE DuckRubberSugar ASR. Código fuente clonado y leído. Estructura: (1) transcribe_server.py (159 líneas) — servidor HTTP Python que recibe audio WAV vía POST /transcribe y usa speech_recognition (Google Speech API) con es-AR y en-US en paralelo. (2) transcribe.py (156 líneas) — script de transcripción de archivos con Google Speech API. (3) audio-service.ts (529 líneas) — captura de audio del lado cliente con MediaRecorder API + Web Speech API (webkitSpeechRecognition). (4) audio-recording-manager.ts (142 líneas) — orquesta transcripción de archivos y grabaciones en vivo. (5) SpeechNormalizer (src/utils/speech-normalizer.ts, 445 líneas) — normaliza código hablado (detecta 'igual', 'flecha', 'parentesis'). (6) engine/ — pipeline completo de transcripción + análisis + reparación con Gemini Nano. Dependencias: SpeechRecognition (librería Python), Google Speech API (gratuita). El ASR bridge es un server Python ultra-liviano sin dependencias pesadas que K-Chat podría integrar como endpoint.
 - **analisis:descubrimientos-clave-2026-06-12**: 2026-06-12 16:28 | DESCUBRIMIENTOS CLAVE: (1) MAX_TOOL_TURNS=25 (actualizado desde 5), (2) PRIORITY=["deepseek-v4-flash-free", "big-pickle"], FALLBACK_MODEL="deepseek-v4-flash-free", (3) MEMORY.md se reescribe COMPLETO ordenado alfabéticamente en cada save_memory, (4) Los widgets guardados son POR SESIÓN (no globales) - la tabla saved_widgets tiene session_id como FK, (5) El content-handler.js ejecuta regex sobre TODO el texto acumulado en cada token (O(n²) conocido pero no fixeado), (6) Hay dos capas de heartbeat: backend 20s (chat_stream) + tools 10s (runner), timeout frontend 120s, (7) el auto-loader de tools detecta archivos .py en src/tools/ y carga los que exportan DEFINITION + run(), (8) fetch_url tiene SSRF protection con denegación de IPs privadas en producción, (9) El sistema de migraciones de BD tiene 8 migraciones secuenciales, (10) La API facade (src/api/__init__.py) funciona como puente de compatibilidad entre capas.
 - **analisis:estado-actual-v0.0.54-2026-06-13**: 2026-06-13 21:29 | ANÁLISIS COMPLETO POST-DESCUBRIMIENTO. Estado real del proyecto K-Chat v0.0.54. Esto es lo que Cambió vs mi última memoria (v0.0.52):
@@ -231,27 +320,3 @@ System: ebo
 - **widget-nochero-2026-06-09**: 2026-06-09 03:56 | Widget 'Nochero' creado y guardado oficialmente (v1). Panel de estado de ánimo y enfoque con 5 vibes.
 - **widget-notas-rapidas-2026-06-09**: 2026-06-09 03:40 | Widget 'notas-rapidas' creado y guardado oficialmente (v1). Notas con persistencia, timestamps, eliminación individual.
 - **widget:tag-auto-renderiza-funcional-2026-06-09**: 2026-06-09 16:20 | ✅ El sistema de tag [Widget: id] SÍ funciona y auto-renderiza. NO escribir [Widget: ...] a menos que sea para invocar un widget real.
-
-## 2026-06-14 17:11 | Model Registry Lego
-
-Creado `src/llm/model_registry.py` — lego que autodetecta TODO sin hardcodeo:
-- **Modelos Go**: se obtienen dinámicamente de la Go API (`GET /models`)
-- **Modelos free**: candidatos `-free` de la Zen API, verificados individualmente
-- **Tiers**: inferidos por heurística de naming patterns (no nombres hardcodeados)
-- **Cuota Go**: detecta 401 "insufficient balance" y marca en registry
-- **Rate limits**: trackeados por `RateLimitStore` (per-modelo)
-- **Refresh automático**: en startup (lifespan) y lazy en primer request
-
-Los sets `GO_PREMIUM/GO_STANDARD/GO_ECONOMY` hardcodeados fueron ELIMINADOS.
-Ahora `pages.py` usa `registry.get_tier()` que clasifica dinámicamente.
-
-Flujo de disponibilidad:
-1. Registry descubre modelos de Go + Zen API (solo IDs, rápido)
-2. Background task pinguea cada modelo `-free` individualmente via Zen API
-3. Resultados: available (🟢), rate_limited (🔴), unavailable/expired (❌)
-4. Store se consulta desde `/models/availability` cada 30s por el frontend
-5. Go quota agotada muestra warning rojo en el header
-
-Modelos free detectados como EXPIRADOS (promotion ended):
-- qwen3.6-plus-free
-- minimax-m3-free

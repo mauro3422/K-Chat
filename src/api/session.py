@@ -3,6 +3,7 @@
 from src.memory.repos import Repositories, SessionRepository
 from src.api.session_contract import SessionOpsDeps
 from src.api.exceptions import ServiceException
+from src.api._resolve import resolve_deps
 
 
 def _resolve_session_deps(
@@ -10,12 +11,7 @@ def _resolve_session_deps(
     repos: Repositories | None = None,
     deps: SessionOpsDeps | None = None,
 ) -> SessionOpsDeps:
-    if deps is not None:
-        return deps
-    return SessionOpsDeps(
-        session_repo=session_repo,
-        repos=repos,
-    )
+    return resolve_deps(deps, SessionOpsDeps, session_repo=session_repo, repos=repos)
 
 
 async def ensure_session(session_id: str, session_repo: SessionRepository | None = None, deps: SessionOpsDeps | None = None) -> None:
@@ -54,10 +50,10 @@ async def get_sessions(limit: int = 50, session_repo: SessionRepository | None =
     return await repo.get_all(limit)
 
 
-async def _require_session(session_id: str) -> None:
+async def _require_session(session_id: str, session_repo: SessionRepository | None = None) -> None:
     """Validate that a session exists. Raises 404 if not found."""
     if not session_id or not session_id.strip():
         raise ServiceException(status_code=404, detail="Session not found")
-    repo = SessionRepository()
+    repo = session_repo or SessionRepository()
     if not await repo.exists(session_id):
         raise ServiceException(status_code=404, detail="Session not found")

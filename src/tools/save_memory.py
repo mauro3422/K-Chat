@@ -100,6 +100,7 @@ def run(**kwargs) -> str:
     key = kwargs.get("key") or kwargs.get("name", "")
     value = kwargs.get("value") or kwargs.get("content") or kwargs.get("text", "")
     _session_id = kwargs.get("_session_id")
+    _invalidate_cache_fn = kwargs.get("_invalidate_cache_fn")
     filepath = os.path.join(CONTEXT_DIR, "MEMORY.md")
 
     with _save_lock:
@@ -138,7 +139,10 @@ def run(**kwargs) -> str:
         if err:
             return err
 
-        from src.context.runtime import invalidate_context_cache
-        invalidate_context_cache()
+        invalidate_cache = _invalidate_cache_fn
+        if invalidate_cache is None:
+            from src.context.runtime import invalidate_context_cache
+            invalidate_cache = invalidate_context_cache
+        invalidate_cache()
 
     return f"[OK] {action_msg} in MEMORY.md."

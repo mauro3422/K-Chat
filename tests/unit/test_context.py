@@ -86,39 +86,33 @@ async def test_build_tools_md_with_tools():
         },
     }
 
-    mock_registry = MagicMock()
-    mock_registry.definitions = mock_defs
-    with patch("src.tools.get_default_registry", return_value=mock_registry):
-        from src.context import _build_tools_md
+    from src.context import _build_tools_md
 
-        result = _build_tools_md()
+    result = _build_tools_md(mock_defs)
 
-        assert "# Available Tools" in result
-        assert "read_file" in result
-        assert "web_search" in result
-        assert "Search the web" in result
-        assert "Read a file from disk" in result
-        assert "query" in result
-        assert "max_results" in result
-        assert "path" in result
-        assert "(required)" in result
-        assert "(optional)" in result
-        assert 'query="example query"' in result
-        assert "max_results=5" in result
-        assert 'path="example path"' in result
+    assert "# Available Tools" in result
+    assert "read_file" in result
+    assert "web_search" in result
+    assert "Search the web" in result
+    assert "Read a file from disk" in result
+    assert "query" in result
+    assert "max_results" in result
+    assert "path" in result
+    assert "(required)" in result
+    assert "(optional)" in result
+    assert 'query="example query"' in result
+    assert "max_results=5" in result
+    assert 'path="example path"' in result
 
 
 @pytest.mark.anyio
 async def test_build_tools_md_empty():
-    mock_registry = MagicMock()
-    mock_registry.definitions = {}
-    with patch("src.tools.get_default_registry", return_value=mock_registry):
-        from src.context import _build_tools_md
+    from src.context import _build_tools_md
 
-        result = _build_tools_md()
-        assert "# Available Tools" in result
-        assert "These are the internal tools" in result
-        assert "**" not in result[len("# Available Tools\n"):]
+    result = _build_tools_md({})
+    assert "# Available Tools" in result
+    assert "These are the internal tools" in result
+    assert "**" not in result[len("# Available Tools\n"):]
 
 
 @pytest.mark.anyio
@@ -139,16 +133,13 @@ async def test_build_tools_md_integer_param():
         },
     }
 
-    mock_registry = MagicMock()
-    mock_registry.definitions = mock_defs
-    with patch("src.tools.get_default_registry", return_value=mock_registry):
-        from src.context import _build_tools_md
+    from src.context import _build_tools_md
 
-        result = _build_tools_md()
+    result = _build_tools_md(mock_defs)
 
-        assert "limit=5" in result
-        assert "(optional)" in result
-        assert "(integer)" in result
+    assert "limit=5" in result
+    assert "(optional)" in result
+    assert "(integer)" in result
 
 
 @pytest.mark.anyio

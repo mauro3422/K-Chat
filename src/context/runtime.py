@@ -36,6 +36,10 @@ def build_context_snapshot(force: bool = False, tool_definitions: dict[str, Any]
         if _CONTEXT_CACHE is not None and _TOOLS_MD_CACHE is not None and not force:
             return ContextSnapshot(text=_CONTEXT_CACHE, tools_md=_TOOLS_MD_CACHE)
 
+    if tool_definitions is None:
+        from src.tools import get_default_registry
+        tool_definitions = get_default_registry().definitions
+
     segments: list[str] = []
     for filename in ["SOUL.md", "MEMORY.md", "AGENTS.md"]:
         filepath = os.path.join(CONTEXT_DIR, filename)

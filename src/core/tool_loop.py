@@ -30,6 +30,7 @@ class _ToolLoopContext:
     llm_chat_fn: Callable[..., Any] | None = None
     llm_chat_stream_fn: Callable[..., Any] | None = None
     tool_defs: list[dict[str, Any]] | None = None
+    skill_registry: Any | None = None
 
 
 # ── helpers ──────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ def _build_ctx(
     llm_chat_fn: Callable[..., Any] | None,
     llm_chat_stream_fn: Callable[..., Any] | None,
     tool_defs: list[dict[str, Any]] | None,
+    skill_registry: Any | None = None,
 ) -> _ToolLoopContext:
     import src.llm.client as llm_client
     import src.tools as tools
@@ -63,6 +65,7 @@ def _build_ctx(
         llm_chat_fn=llm_chat_fn or llm_client.chat,
         llm_chat_stream_fn=llm_chat_stream_fn or llm_client.chat_stream,
         tool_defs=tool_defs or tools.get_default_registry().tools_openai,
+        skill_registry=skill_registry,
     )
 
 
@@ -140,7 +143,7 @@ async def _execute_tools(
     async for event in ctx.run_parallel_tools_fn(
         tool_calls, ctx.session_id, turn, ctx.history, ctx.tool_detail,
         ctx.used_tools, phase_tool_ids, tagged=ctx.tagged, tool_map=ctx.tool_map,
-        repos=ctx.repos,
+        repos=ctx.repos, skill_registry=ctx.skill_registry,
     ):
         yield event
 
@@ -242,12 +245,14 @@ async def run_tool_loop_streaming(
     llm_chat_fn: Callable[..., Any] | None = None,
     llm_chat_stream_fn: Callable[..., Any] | None = None,
     tool_defs: list[dict[str, Any]] | None = None,
+    skill_registry: Any | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Tool loop for streaming path. Yields NDJSON events."""
     ctx = _build_ctx(
         history, model, session_id, tagged, debug, phases_output,
         used_tools, tool_detail, run_parallel_tools_fn, tool_map,
         max_turns, repos, llm_chat_fn, llm_chat_stream_fn, tool_defs,
+        skill_registry=skill_registry,
     )
     async for event in _run_tool_loop(ctx):
         yield event
@@ -269,6 +274,7 @@ async def run_tool_loop_sync(
     llm_chat_fn: Callable[..., Any] | None = None,
     llm_chat_stream_fn: Callable[..., Any] | None = None,
     tool_defs: list[dict[str, Any]] | None = None,
+    skill_registry: Any | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Tool loop for synchronous path (tests). Yields NDJSON events.
 
@@ -284,6 +290,7 @@ async def run_tool_loop_sync(
         history, model, session_id, tagged, debug, phases_output,
         used_tools, tool_detail, run_parallel_tools_fn, tool_map,
         max_turns + 1, repos, llm_chat_fn, llm_chat_stream_fn, tool_defs,
+        skill_registry=skill_registry,
     )
 
     async for event in _run_tool_loop(ctx):

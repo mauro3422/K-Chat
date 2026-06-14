@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # ── Definición para el LLM ────────────────────────────────────────────────
 
 DEFINITION: dict[str, Any] = {
+    "type": "function",
     "function": {
         "name": "extract_text",
         "description": (

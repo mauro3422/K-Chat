@@ -3,11 +3,6 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock, mock_open
 
 
-def _make_registry(mock_defs):
-    mock_registry = MagicMock()
-    type(mock_registry).definitions = property(lambda self: mock_defs)
-    return mock_registry
-
 
 @pytest.mark.anyio
 async def test_build_tools_md_with_tools():
@@ -41,35 +36,33 @@ async def test_build_tools_md_with_tools():
         },
     }
 
-    with patch("src.tools.get_default_registry", return_value=_make_registry(mock_defs)):
-        from src.context.tools_docs import _build_tools_md
+    from src.context.tools_docs import _build_tools_md
 
-        result = _build_tools_md()
+    result = _build_tools_md(mock_defs)
 
-        assert "# Available Tools" in result
-        assert "read_file" in result
-        assert "web_search" in result
-        assert "Search the web" in result
-        assert "Read a file from disk" in result
-        assert "query" in result
-        assert "max_results" in result
-        assert "path" in result
-        assert "(required)" in result
-        assert "(optional)" in result
-        assert 'query="example query"' in result
-        assert "max_results=5" in result
-        assert 'path="example path"' in result
+    assert "# Available Tools" in result
+    assert "read_file" in result
+    assert "web_search" in result
+    assert "Search the web" in result
+    assert "Read a file from disk" in result
+    assert "query" in result
+    assert "max_results" in result
+    assert "path" in result
+    assert "(required)" in result
+    assert "(optional)" in result
+    assert 'query="example query"' in result
+    assert "max_results=5" in result
+    assert 'path="example path"' in result
 
 
 @pytest.mark.anyio
 async def test_build_tools_md_empty():
-    with patch("src.tools.get_default_registry", return_value=_make_registry({})):
-        from src.context.tools_docs import _build_tools_md
+    from src.context.tools_docs import _build_tools_md
 
-        result = _build_tools_md()
-        assert "# Available Tools" in result
-        assert "These are the internal tools" in result
-        assert "**" not in result[len("# Available Tools\n"):]
+    result = _build_tools_md({})
+    assert "# Available Tools" in result
+    assert "These are the internal tools" in result
+    assert "**" not in result[len("# Available Tools\n"):]
 
 
 @pytest.mark.anyio
@@ -90,14 +83,13 @@ async def test_build_tools_md_integer_param():
         },
     }
 
-    with patch("src.tools.get_default_registry", return_value=_make_registry(mock_defs)):
-        from src.context.tools_docs import _build_tools_md
+    from src.context.tools_docs import _build_tools_md
 
-        result = _build_tools_md()
+    result = _build_tools_md(mock_defs)
 
-        assert "limit=5" in result
-        assert "(optional)" in result
-        assert "(integer)" in result
+    assert "limit=5" in result
+    assert "(optional)" in result
+    assert "(integer)" in result
 
 
 @pytest.mark.anyio
@@ -153,14 +145,13 @@ async def test_build_rules_files_creates_files():
         },
     }
 
-    with patch("src.tools.get_default_registry", return_value=_make_registry(mock_defs)):
-        with patch("os.path.exists", return_value=False):
-            with patch("builtins.open", mock_open()) as mock_file:
-                from src.context.tools_docs import _build_rules_files
+    with patch("os.path.exists", return_value=False):
+        with patch("builtins.open", mock_open()) as mock_file:
+            from src.context.tools_docs import _build_rules_files
 
-                _build_rules_files("/tmp/rules")
+            _build_rules_files("/tmp/rules", mock_defs)
 
-                assert mock_file().write.call_count == 2
+            assert mock_file().write.call_count == 2
 
 
 @pytest.mark.anyio
@@ -190,18 +181,17 @@ async def test_build_rules_files_preserves_manual_section():
 Manual section below
 """
 
-    with patch("src.tools.get_default_registry", return_value=_make_registry(mock_defs)):
-        with patch("os.path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=existing_content)) as mock_file:
-                from src.context.tools_docs import _build_rules_files
+    with patch("os.path.exists", return_value=True):
+        with patch("builtins.open", mock_open(read_data=existing_content)) as mock_file:
+            from src.context.tools_docs import _build_rules_files
 
-                _build_rules_files("/tmp/rules")
+            _build_rules_files("/tmp/rules", mock_defs)
 
-                write_calls = mock_file().write.call_args_list
-                assert len(write_calls) >= 1
+            write_calls = mock_file().write.call_args_list
+            assert len(write_calls) >= 1
 
-                all_written = "".join(call[0][0] for call in write_calls)
-                assert "# tool1" in all_written
-                assert "**First tool**" in all_written
-                assert "<!-- auto:params -->" in all_written
-                assert "Manual section below" in all_written
+            all_written = "".join(call[0][0] for call in write_calls)
+            assert "# tool1" in all_written
+            assert "**First tool**" in all_written
+            assert "<!-- auto:params -->" in all_written
+            assert "Manual section below" in all_written

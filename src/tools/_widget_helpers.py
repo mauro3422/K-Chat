@@ -1,8 +1,7 @@
 def _get_saved_widget_repo(repo=None):
-    if repo is not None:
-        return repo
-    from src.memory.repos import SavedWidgetRepository
-    return SavedWidgetRepository()
+    if repo is None:
+        raise ValueError("SavedWidgetRepository is required — inject via repo= keyword")
+    return repo
 
 
 def get_saved_widget_repo(repo=None):

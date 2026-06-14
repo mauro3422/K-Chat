@@ -4,6 +4,7 @@ from typing import Any
 
 from src.memory.repos import WidgetStateRepository, SavedWidgetRepository
 from src.api.widgets_contract import WidgetOpsDeps
+from src.api._resolve import resolve_deps
 
 
 def _resolve_widget_deps(
@@ -11,12 +12,7 @@ def _resolve_widget_deps(
     saved_widget_repo: SavedWidgetRepository | None = None,
     deps: WidgetOpsDeps | None = None,
 ) -> WidgetOpsDeps:
-    if deps is not None:
-        return deps
-    return WidgetOpsDeps(
-        widget_state_repo=widget_state_repo,
-        saved_widget_repo=saved_widget_repo,
-    )
+    return resolve_deps(deps, WidgetOpsDeps, widget_state_repo=widget_state_repo, saved_widget_repo=saved_widget_repo)
 
 
 def save_widget_state(
