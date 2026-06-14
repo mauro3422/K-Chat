@@ -21,7 +21,7 @@ async def auto_rename_session(
 ) -> None:
     """Generates an automatic title for the session if it has no name yet."""
     repo = _get_session_repo(session_repo)
-    if not repo.check_should_rename(session_id):
+    if not await repo.check_should_rename(session_id):
         return
     prompt = (
         "Generate a very short, direct, and descriptive title of 3 to 5 words for a chat "
@@ -38,6 +38,6 @@ async def auto_rename_session(
         )
         title = (r.message.content or "").strip().replace('"', '').replace("'", "")[:50]
         if title:
-            repo.rename(session_id, title)
+            await repo.rename(session_id, title)
     except Exception as e:
         logger.warning("auto_rename failed (session=%s): %s", session_id, e)

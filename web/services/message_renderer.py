@@ -21,7 +21,7 @@ async def render_session_messages(session_id: str, deps: MessageRenderDeps | Non
     raw_msgs = await repos.messages.get_session_messages(session_id)
     msgs = filter_messages_fn(raw_msgs)
 
-    all_tools = repos.tool_calls.get_history(session_id, 100)
+    all_tools = await repos.tool_calls.get_history(session_id, 100)
     msg_tool_map = match_tools_fn(msgs, all_tools)
     widget_states = await repos.widget_states.get_states(session_id)
     widget_states.update(extract_inline_widget_states_fn(msgs))
