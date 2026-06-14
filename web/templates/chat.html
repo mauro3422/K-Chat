@@ -138,6 +138,10 @@
       } else if (info.status === 'available') {
         opt.textContent = '🟢 ' + clean;
         opt.style.opacity = '1';
+      } else if (info.status === 'unavailable') {
+        opt.textContent = '❌ ' + clean + ' (expired)';
+        opt.style.opacity = '0.35';
+        opt.disabled = true;
       } else {
         opt.textContent = '⚪ ' + clean;
         opt.style.opacity = '0.85';

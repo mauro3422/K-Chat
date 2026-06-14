@@ -20,9 +20,9 @@ templates.env.auto_reload = True
 _NOCACHE_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
 # ── Model tier definitions ────────────────────────────────────────────
-GO_PREMIUM = {"glm-5.1", "kimi-k2.7-code", "qwen3.7-max"}
-GO_STANDARD = {"deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5"}
-GO_ECONOMY = {"minimax-m3", "minimax-m2.7", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus"}
+GO_PREMIUM = {"glm-5.1", "glm-5", "kimi-k2.7-code", "qwen3.7-max"}
+GO_STANDARD = {"deepseek-v4-pro", "deepseek-v4-flash", "kimi-k2.6", "kimi-k2.5", "mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-pro", "mimo-v2-omni"}
+GO_ECONOMY = {"minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "hy3-preview"}
 ALL_GO = GO_PREMIUM | GO_STANDARD | GO_ECONOMY
 # All models ending in -free are truly free/rate-limited (cost=0)
 # Models ending in -mini or -nano are PAID Zen models, NOT free

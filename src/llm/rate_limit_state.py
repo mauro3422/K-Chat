@@ -28,6 +28,8 @@ class ModelRateLimitStore:
         self._details: dict[str, str] = {}
         # model_ids confirmed working (survives clear)
         self._available: set[str] = set()
+        # model_ids confirmed dead (promotion ended, removed, etc.)
+        self._unavailable: set[str] = set()
 
     # --- Public API ---------------------------------------------------
 
@@ -52,11 +54,25 @@ class ModelRateLimitStore:
             self._available.add(model_id)
             self._limited.pop(model_id, None)
             self._details.pop(model_id, None)
+            self._unavailable.discard(model_id)
+
+    def mark_unavailable(self, model_id: str) -> None:
+        """Mark a model as permanently unavailable (promotion ended, removed, etc.)."""
+        with self._lock:
+            self._unavailable.add(model_id)
+            self._available.discard(model_id)
+            self._limited.pop(model_id, None)
+            self._details.pop(model_id, None)
 
     def is_available(self, model_id: str) -> bool:
         """Has this model been confirmed working since last restart?"""
         with self._lock:
             return model_id in self._available
+
+    def is_unavailable(self, model_id: str) -> bool:
+        """Is this model permanently unavailable (promotion ended, etc.)?"""
+        with self._lock:
+            return model_id in self._unavailable
 
     def is_rate_limited(self, model_id: str) -> bool:
         """Check if a model is currently rate limited (cooldown still active)."""
@@ -105,6 +121,7 @@ class ModelRateLimitStore:
         return {
             "limited_count": len(limited),
             "available_models": sorted(self._available),
+            "unavailable_models": sorted(self._unavailable),
             "limited_models": limited,
         }
 

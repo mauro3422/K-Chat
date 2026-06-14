@@ -41,6 +41,8 @@ async def model_availability(request: Request) -> dict:
             status = "rate_limited"
         elif rl.is_available(model_id):
             status = "available"
+        elif rl.is_unavailable(model_id):
+            status = "unavailable"
         else:
             status = "unknown"  # never tried since last restart
         result[model_id] = {

@@ -77,7 +77,7 @@ async def get_verified_models(force_refresh: bool = False, config=None) -> list[
                     mid = m if isinstance(m, str) else getattr(m, "id", "")
                     if mid and mid.endswith("-free") and mid not in all_ids:
                         all_ids.append(mid)
-                logger.info("Go mode: added free models from Zen API")
+                logger.info("Go mode: discovered %d free models from Zen API", len([x for x in all_ids if x.endswith("-free")]))
             except Exception as ze:
                 logger.warning("Could not fetch free models from Zen: %s", ze)
             models.set_verified_models(all_ids)
@@ -122,10 +122,13 @@ async def get_verified_models(force_refresh: bool = False, config=None) -> list[
 
 
 async def _ping_free_model_availability(free_ids: list[str], config=None) -> None:
-    """Make ONE lightweight ping to a free model to check rate-limit status.
+    """Ping each free model independently to check availability.
 
-    If 429 → all free models are rate-limited (cooldown tracked).
-    If success → all free models are available (clear any stale limits).
+    Each model gets a lightweight 1-token request via the Zen API.
+    Results:
+      - 200 OK → mark_available
+      - 429 → mark_rate_limited
+      - other errors (401 promotion ended, etc.) → not available, no mark
     """
     if not free_ids:
         return
@@ -133,40 +136,39 @@ async def _ping_free_model_availability(free_ids: list[str], config=None) -> Non
     from src.llm.rate_limit_state import get_rate_limit_store
     store = get_rate_limit_store()
 
-    # Try the first free model
-    ping_model = free_ids[0]
-    try:
-        # Free models are served through the Zen API, not Go
-        from src.config_loader import DEFAULT_CONFIG
-        ping_cfg = config or DEFAULT_CONFIG
-        import copy
-        fresh = copy.copy(ping_cfg)
-        fresh.llm_mode = "zen"
-        from src.llm.providers import _PROVIDER_REGISTRY
-        pcls = _PROVIDER_REGISTRY.get(fresh.llm_provider)
-        if not pcls:
-            return
-        zen_provider = pcls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
-        from src.llm.protocol import UnifiedRequest
-        result = await zen_provider.chat(
-            UnifiedRequest(
-                messages=[{"role": "user", "content": "hi"}],
-                model=ping_model,
-                max_tokens=1,
-                stream=False,
+    # Build Zen provider once
+    from src.config_loader import DEFAULT_CONFIG
+    ping_cfg = config or DEFAULT_CONFIG
+    import copy
+    fresh = copy.copy(ping_cfg)
+    fresh.llm_mode = "zen"
+    from src.llm.providers import _PROVIDER_REGISTRY
+    pcls = _PROVIDER_REGISTRY.get(fresh.llm_provider)
+    if not pcls:
+        return
+    zen_provider = pcls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
+    from src.llm.protocol import UnifiedRequest
+
+    async def _ping_one(mid: str) -> None:
+        try:
+            await zen_provider.chat(
+                UnifiedRequest(
+                    messages=[{"role": "user", "content": "hi"}],
+                    model=mid,
+                    max_tokens=1,
+                    stream=False,
+                )
             )
-        )
-        # Success → clear any stale rate limits on all free models
-        for mid in free_ids:
             store.mark_available(mid)
-        logger.info("Free model ping OK: %s — all free models available", ping_model)
-    except Exception as e:
-        from src.llm.retry import is_rate_limit_error
-        if is_rate_limit_error(e):
-            # 429 → all free models are rate-limited
-            for mid in free_ids:
+            logger.info("Free model ping OK: %s", mid)
+        except Exception as e:
+            from src.llm.retry import is_rate_limit_error
+            if is_rate_limit_error(e):
                 store.mark_rate_limited(mid, retry_after=60, detail=str(e)[:200])
-            logger.warning("Free model ping 429: %s — all free models rate-limited", ping_model)
-        else:
-            # Other error → model-specific issue, don't mark all
-            logger.info("Free model ping error (non-rate-limit): %s — %s", ping_model, e)
+                logger.info("Free model ping 429: %s — rate-limited", mid)
+            else:
+                # Promotion ended, model removed, etc.
+                store.mark_unavailable(mid)
+                logger.info("Free model ping unavailable: %s — %s", mid, str(e)[:100])
+
+    await asyncio.gather(*[_ping_one(mid) for mid in free_ids], return_exceptions=True)
