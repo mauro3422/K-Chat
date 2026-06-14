@@ -49,7 +49,7 @@ async def test_get_available_model_ids_no_duplicates(mock_verified):
 async def test_get_available_model_ids_fallback_on_error(mock_verified):
     """If get_verified_models raises, fallback list is used."""
     result = get_available_model_ids()
-    assert result == ["model-a", "deepseek-v4-flash-free"]
+    assert result == ["model-a", "deepseek-v4-flash"]
 
 
 class TestPageEndpoints:

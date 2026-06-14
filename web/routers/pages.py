@@ -11,6 +11,7 @@ from src.memory.repos import get_repos
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
 from web.services.model_catalog import format_model_label
+from src.config_loader import DEFAULT_CONFIG
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
@@ -21,13 +22,27 @@ _NOCACHE_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
 def get_available_model_ids() -> list[str]:
     verified = get_verified_models_safe()
-    free_ids = verified or []
+    all_ids = verified or []
     models = list(PRIORITY)
-    for fid in free_ids:
+    for fid in all_ids:
         if fid not in models:
             models.append(fid)
-    if (verified is None or not free_ids) and FALLBACK_MODEL not in models:
+    if (not verified or not all_ids) and FALLBACK_MODEL not in models:
         models.append(FALLBACK_MODEL)
+    if DEFAULT_CONFIG.llm_mode == "go":
+        go_premium = ["glm-5.1", "kimi-k2.7-code", "qwen3.7-max"]
+        go_standard = ["deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5"]
+        go_economy = ["minimax-m3", "minimax-m2.7", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus"]
+        seen = set(models)
+        for m in go_premium + go_standard + go_economy:
+            if m not in seen and (not all_ids or m in all_ids):
+                models.append(m)
+                seen.add(m)
+        if not all_ids:
+            for m in go_premium + go_standard + go_economy:
+                if m not in seen:
+                    models.append(m)
+                    seen.add(m)
     return models
 
 

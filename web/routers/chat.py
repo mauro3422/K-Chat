@@ -103,10 +103,6 @@ async def chat(
 
     from web.services.message_persister import save_assistant_message
 
-    async def _wrapped_chat_stream(*a, **kw):
-        async for event in core_chat_stream(*a, **kw, deps=OrchestratorDeps(repos=repos)):
-            yield event
-
     async def _wrapped_save(*a, **kw):
         result = await save_assistant_message(*a, **kw, repos=repos)
         try:
@@ -132,7 +128,6 @@ async def chat(
         model,
         background_tasks,
         deps=StreamGeneratorDeps(
-            chat_stream_fn=_wrapped_chat_stream,
             retry_handler=StreamRetryHandler(max_retries=2, llm_chat_stream_fn=llm_chat_stream),
             save_fn=_wrapped_save,
         ),

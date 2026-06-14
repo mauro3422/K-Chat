@@ -205,3 +205,47 @@
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── File Attachment Cards ───────────────────────────────────────────── */
+
+.file-attach-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 6px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  max-width: 100%;
+}
+
+.file-attach-card:hover {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 6px rgba(56, 139, 253, 0.15);
+}
+
+.file-attach-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.file-attach-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg.user .file-attach-card {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border);
+}
+
+.msg.user .file-attach-card:hover {
+  border-color: var(--border-accent);
+}

@@ -75,10 +75,11 @@ async def test_get_free_models_filters_by_free_suffix(mock_get_models):
 
 
 @pytest.mark.anyio
+@patch("src.llm.discovery._is_go_mode", return_value=False)
 @patch("src.llm.verifier.verify_model", new_callable=AsyncMock)
 @patch("src.llm.discovery.get_free_models", new_callable=AsyncMock)
 async def test_get_verified_models_verifies_free_models_in_parallel(
-    mock_get_free_models, mock_verify_model
+    mock_get_free_models, mock_verify_model, mock_is_go
 ):
     mock_model1 = MagicMock()
     mock_model1.id = "model1-free"

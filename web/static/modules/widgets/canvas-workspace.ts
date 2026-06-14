@@ -34,8 +34,9 @@ export const CanvasWorkspace = {
     
     if (!canvasEl) return;
     
-    // Load state of collapsed canvas from localStorage
-    const isCollapsed = localStorage.getItem(`canvas_collapsed_${_currentSessionId}`) === 'true';
+    // Load state of collapsed canvas from localStorage (defaults to true/collapsed if null)
+    const storedCollapsed = localStorage.getItem(`canvas_collapsed_${_currentSessionId}`);
+    const isCollapsed = storedCollapsed === null ? true : storedCollapsed === 'true';
     if (isCollapsed) {
       canvasEl.classList.add('collapsed');
       gutterEl?.classList.add('collapsed');
