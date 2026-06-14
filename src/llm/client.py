@@ -41,7 +41,7 @@ async def _with_fallback(
         return res
     except Exception as e:
         logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
-        next_model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e))
+        next_model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e), error=e)
         _update_system_prompt(messages, next_model, build_prompt_fn)
         logger.info("Switching model to: %s", next_model)
         res = fn(next_model)
@@ -64,7 +64,7 @@ async def _try_stream(
         return s
     except Exception as e:
         logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)
-        model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e))
+        model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e), error=e)
         _update_system_prompt(messages, model, build_prompt_fn)
         logger.info("Switching stream to: %s", model)
         return await api_call._api_call(model=model, messages=messages, stream=True, **kwargs)

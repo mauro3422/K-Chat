@@ -11,6 +11,13 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+@router.get("/rate-limits")
+async def rate_limits(request: Request) -> dict:
+    _local_only(request)
+    from src.llm.rate_limit_state import get_rate_limit_store
+    return get_rate_limit_store().summary()
+
+
 def _local_only(request: Request) -> None:
     if os.getenv("TESTING") == "true":
         return

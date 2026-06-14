@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
 from src.llm.model_state import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
+from src.llm.rate_limit_state import get_rate_limit_store
 from src.memory.repos import get_repos
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
@@ -64,6 +65,7 @@ def get_available_model_ids() -> list[str]:
 
 def get_available_models() -> list[dict[str, str]]:
     """Return models grouped by tier for the UI selector."""
+    rl = get_rate_limit_store()
     grouped = {"go_premium": [], "go_standard": [], "go_economy": [], "free_ratelimited": [], "zen": []}
     for model_id in get_available_model_ids():
         tier = _get_model_tier(model_id)
@@ -78,6 +80,12 @@ def get_available_models() -> list[dict[str, str]]:
             label = "⚡ " + label
         elif tier == "go_economy":
             label = "💰 " + label
+
+        # Rate limit cooldown badge
+        cooldown = rl.get_cooldown_remaining(model_id)
+        if cooldown is not None:
+            label += f"  🔒 {int(cooldown)}s"
+
         grouped[tier].append({"id": model_id, "label": label, "tier": tier})
     return grouped
 
