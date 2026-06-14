@@ -76,12 +76,13 @@ class TestPageEndpoints:
         resp = sidebar(request)
         assert isinstance(resp, HTMLResponse)
 
-    @patch("web.routers.pages.render_session_messages", return_value="<div>msg</div>")
-    def test_session_messages_returns_html(self, mock_render):
+    @patch("web.routers.pages.render_session_messages", return_value={"messages": [], "widget_states": {}})
+    def test_session_messages_returns_dict(self, mock_render):
         from web.routers.pages import session_messages
         resp = session_messages("sid-1")
-        assert isinstance(resp, HTMLResponse)
-        assert b"<div>msg</div>" in resp.body
+        assert isinstance(resp, dict)
+        assert "messages" in resp
+
 
     def test_favicon_returns_file(self):
         from web.routers.pages import favicon

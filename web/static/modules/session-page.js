@@ -5,6 +5,8 @@ import { ApiClient } from './api-client.js';
 import { KairosWidgets } from './widgets/index.js';
 import { KairosForm } from './chat-form.js';
 import stateManager from './widgets/state-manager.js';
+import { renderMessageList } from './message-renderer.js';
+
 
 import { refreshSidebar } from './sidebar-refresh.js';
 
@@ -256,26 +258,26 @@ function loadSession(sid, deps) {
     KairosForm.reset();
   }
   ApiClient.loadMessages(sid)
-    .then(function(r) { return r.text(); })
-    .then(function(h) {
-      var main = document.getElementById('main');
-      if (main) {
-        setMainHtml(main, h);
-        var meta = document.getElementById('messages-metadata');
-        if (meta) {
-          try {
-            stateManager.loadFromJSON(JSON.parse(meta.getAttribute('data-widget-states') || '{}'));
-          } catch(e) {
-            console.error('Error parsing widgetStates metadata:', e);
-            stateManager.clear();
-          }
-        } else {
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var messagesDiv = document.getElementById('messages');
+      if (messagesDiv) {
+        var html = renderMessageList(data.messages, data.widget_states);
+        messagesDiv.innerHTML = html;
+        
+        try {
+          stateManager.loadFromJSON(data.widget_states || {});
+        } catch(e) {
+          console.error('Error parsing widgetStates:', e);
           stateManager.clear();
         }
+
         KairosMarkdown.renderAll();
+        KairosUtils.scrollToBottom();
       }
     })
     .catch(function(err) { console.error('Failed to load messages:', err); });
+
 }
 
 export const KairosSessionPage = {

@@ -48,8 +48,9 @@ def test_sidebar(mock_tpl, _mock_sessions):
 def test_session_messages_empty():
     from web.routers.pages import session_messages
     resp = session_messages("test-session-abc")
-    assert isinstance(resp, HTMLResponse)
-    assert "Send a message to start" in resp.body.decode("utf-8")
+    assert isinstance(resp, dict)
+    assert resp["messages"] == []
+
 
 
 @patch("web.routers.chat.build_stream_generator")

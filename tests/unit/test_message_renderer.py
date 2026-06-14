@@ -1,5 +1,4 @@
 import json
-import html
 
 from web.services.message_renderer_contract import MessageRenderDeps
 from web.services.message_renderer import render_session_messages
@@ -21,17 +20,16 @@ def make_deps(**overrides):
 
 
 def test_render_session_messages_empty():
-    """Empty message list should render empty-state div."""
-    html_out = render_session_messages("test-sid", deps=make_deps())
-    assert 'Send a message to start' in html_out
-    assert '<div id="messages">' in html_out
-    assert '<form id="chat-form">' in html_out
+    """Empty message list should return empty list and empty widget states."""
+    data = render_session_messages("test-sid", deps=make_deps())
+    assert data["messages"] == []
+    assert data["widget_states"] == {}
 
 
 def test_render_session_messages_plain_user():
-    """A plain user message should be rendered with correct CSS classes and label."""
+    """A plain user message should be returned with correct fields."""
     msgs = [{"role": "user", "content": "Hello world", "created_at": 1000.0, "reasoning": "", "phases": "[]"}]
-    html_out = render_session_messages(
+    data = render_session_messages(
         "test-sid",
         deps=make_deps(
             get_session_messages_fn=lambda session_id: msgs,
@@ -39,17 +37,18 @@ def test_render_session_messages_plain_user():
         ),
     )
 
-    assert '<div class="msg user">' in html_out
-    assert '<div class="msg-label">Tu</div>' in html_out
-    assert 'Hello world' in html_out
-    assert '1000.0' in html_out or '1000.' in html_out
+    assert len(data["messages"]) == 1
+    msg = data["messages"][0]
+    assert msg["role"] == "user"
+    assert msg["content"] == "Hello world"
+    assert msg["ts"] == 1000.0
 
 
 def test_render_session_messages_assistant_legacy():
-    """Legacy assistant message (no phases) renders tool calls and reasoning."""
+    """Legacy assistant message (no phases) returns tool calls and reasoning."""
     msgs = [{"role": "assistant", "content": "Response text", "created_at": 2000.0, "reasoning": "Deep thought", "phases": "[]"}]
     tool_rows = [{"tool_name": "web_search", "input": "query", "status": "ok", "created_at": 1500, "turn": 1}]
-    html_out = render_session_messages(
+    data = render_session_messages(
         "test-sid",
         deps=make_deps(
             get_session_messages_fn=lambda session_id: msgs,
@@ -59,19 +58,21 @@ def test_render_session_messages_assistant_legacy():
         ),
     )
 
-    assert '<div class="msg assistant">' in html_out
-    assert '<div class="msg-label">Kairos</div>' in html_out
-    assert '<summary>Razonamiento</summary>' in html_out
-    assert '<div class="rt">Deep thought</div>' in html_out
-    assert '<div class="msg-body md-content">Response text</div>' in html_out
-    assert 'tc-item ok' in html_out
-    assert 'web_search' in html_out
+    assert len(data["messages"]) == 1
+    msg = data["messages"][0]
+    assert msg["role"] == "assistant"
+    assert msg["content"] == "Response text"
+    assert msg["reasoning"] == "Deep thought"
+    assert len(msg["matched_tools"]) == 1
+    assert msg["matched_tools"][0]["tool_name"] == "web_search"
+    assert msg["matched_tools"][0]["status"] == "ok"
 
 
 def test_render_session_messages_xss_escaping():
-    """User content with HTML/script tags should be HTML-escaped in output."""
-    msgs = [{"role": "user", "content": '<script>alert("xss")</script>', "created_at": 3000.0, "reasoning": "", "phases": "[]"}]
-    html_out = render_session_messages(
+    """HTML escaping is handled on client-side, backend returns raw data."""
+    raw_content = '<script>alert("xss")</script>'
+    msgs = [{"role": "user", "content": raw_content, "created_at": 3000.0, "reasoning": "", "phases": "[]"}]
+    data = render_session_messages(
         "test-sid",
         deps=make_deps(
             get_session_messages_fn=lambda session_id: msgs,
@@ -79,18 +80,17 @@ def test_render_session_messages_xss_escaping():
         ),
     )
 
-    assert '<script>' not in html_out
-    assert '&lt;script&gt;' in html_out
+    assert data["messages"][0]["content"] == raw_content
 
 
 def test_render_session_messages_multiple():
-    """Multiple messages of alternating roles render in order."""
+    """Multiple messages of alternating roles returned in order."""
     msgs = [
         {"role": "user", "content": "First", "created_at": 1.0, "reasoning": "", "phases": "[]"},
         {"role": "assistant", "content": "Second", "created_at": 2.0, "reasoning": "", "phases": "[]"},
         {"role": "user", "content": "Third", "created_at": 3.0, "reasoning": "", "phases": "[]"},
     ]
-    html_out = render_session_messages(
+    data = render_session_messages(
         "test-sid",
         deps=make_deps(
             get_session_messages_fn=lambda session_id: msgs,
@@ -98,28 +98,29 @@ def test_render_session_messages_multiple():
         ),
     )
 
-    assert html_out.index("First") < html_out.index("Second") < html_out.index("Third")
+    assert len(data["messages"]) == 3
+    assert data["messages"][0]["content"] == "First"
+    assert data["messages"][1]["content"] == "Second"
+    assert data["messages"][2]["content"] == "Third"
 
 
 def test_render_session_messages_widget_states_metadata():
-    """Widget states are serialised into a data attribute."""
-    html_out = render_session_messages(
+    """Widget states are returned directly in the dictionary."""
+    data = render_session_messages(
         "test-sid",
         deps=make_deps(
             get_widget_states_fn=lambda session_id: {"w1": {"x": 1}},
         ),
     )
 
-    expected_meta = html.escape(json.dumps({"w1": {"x": 1}}, ensure_ascii=False))
-    assert expected_meta in html_out
-    assert 'id="messages-metadata"' in html_out
+    assert data["widget_states"] == {"w1": {"x": 1}}
 
 
 def test_render_session_messages_with_phases():
-    """Messages with phases data render phase-structured HTML."""
-    phases = json.dumps([{"reasoning": "Step 1", "content": "Part A"}])
-    msgs = [{"role": "assistant", "content": "Part A", "created_at": 4000.0, "reasoning": "", "phases": phases}]
-    html_out = render_session_messages(
+    """Messages with phases data are structured correctly."""
+    phases = [{"reasoning": "Step 1", "content": "Part A"}]
+    msgs = [{"role": "assistant", "content": "Part A", "created_at": 4000.0, "reasoning": "", "phases": json.dumps(phases)}]
+    data = render_session_messages(
         "test-sid",
         deps=make_deps(
             get_session_messages_fn=lambda session_id: msgs,
@@ -127,5 +128,7 @@ def test_render_session_messages_with_phases():
         ),
     )
 
-    assert "Step 1" in html_out
-    assert "Part A" in html_out
+    assert len(data["messages"]) == 1
+    msg = data["messages"][0]
+    assert msg["phases"] == phases
+    assert msg["content"] == "Part A"

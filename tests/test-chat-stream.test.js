@@ -11,7 +11,12 @@ const _utils = { escHtml: (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&
 global.KairosUtils = _utils;
 global.defaultModel = 'test-model';
 global.KairosStream = { on() {}, emit() {} };
-global.fetch = () => Promise.resolve({ text: () => Promise.resolve('<div id="messages">content</div>') });
+const mockFetchResponse = (data = { messages: [], widget_states: {} }) => Promise.resolve({
+  text: () => Promise.resolve(JSON.stringify(data)),
+  json: () => Promise.resolve(data)
+});
+
+global.fetch = () => mockFetchResponse();
 global.logUI = () => {};
 global.logStream = () => {};
 
@@ -64,7 +69,7 @@ describe('chat-stream', () => {
 
   test('loadSession cambia sessionId', () => {
     const prevSid = sessionContextModule.SessionContext.getSessionId();
-    global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
+    global.fetch = () => mockFetchResponse();
     global.document.getElementById = () => mockElement();
     chatModule.loadSession('custom-sid-999', { nav: testNav });
     expect(sessionContextModule.SessionContext.getSessionId()).toBe('custom-sid-999');
@@ -72,7 +77,7 @@ describe('chat-stream', () => {
   });
 
   test('loadSession llama replaceState', () => {
-    global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
+    global.fetch = () => mockFetchResponse();
     global.document.getElementById = () => mockElement();
     window._lastState = undefined;
     window._lastUrl = undefined;
@@ -83,7 +88,7 @@ describe('chat-stream', () => {
   });
 
   test('loadSession pasa URL correcta', () => {
-    global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
+    global.fetch = () => mockFetchResponse();
     global.document.getElementById = () => mockElement();
     window._lastUrl = undefined;
     chatModule.loadSession('url-test-sid', { nav: testNav });
@@ -110,7 +115,7 @@ describe('chat-stream', () => {
     const sessionCtx = await import('../web/static/modules/session-context.js');
     sessionCtx.SessionContext.setSessionId('abc-123');
     global.window.location.pathname = '/sessions/abc-123';
-    global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
+    global.fetch = () => mockFetchResponse();
     global.document.getElementById = () => mockElement();
     const handler = global.document._listeners?.DOMContentLoaded;
     if (handler) handler();
@@ -131,7 +136,7 @@ describe('chat-stream', () => {
 
   test('loadSession llama fetch con URL correcta', async () => {
     let fetchedUrl = null;
-    global.fetch = (url) => { fetchedUrl = url; return Promise.resolve({ text: () => Promise.resolve('') }); };
+    global.fetch = (url) => { fetchedUrl = url; return mockFetchResponse(); };
     global.document.getElementById = () => mockElement();
     chatModule.loadSession('url-test-sid', { nav: testNav });
     expect(fetchedUrl).toBe('/sessions/url-test-sid/messages');
@@ -139,7 +144,7 @@ describe('chat-stream', () => {
 
   test('loadSession llama renderAll', async () => {
     const { KairosMarkdown } = await import('../web/static/modules/markdown-renderer.js');
-    const fetchPromise = Promise.resolve({ text: () => Promise.resolve('<div id="messages"></div>') });
+    const fetchPromise = mockFetchResponse({ messages: [], widget_states: {} });
     global.fetch = () => fetchPromise;
     global.document.getElementById = () => mockElement();
     chatModule.loadSession('render-test-sid', { nav: testNav });

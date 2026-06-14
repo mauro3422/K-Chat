@@ -80,6 +80,6 @@ def sidebar(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "sidebar.html", {"sessions": sessions, "current": current})
 
 
-@router.get("/sessions/{session_id}/messages", response_class=HTMLResponse)
-def session_messages(session_id: str) -> HTMLResponse:
-    return HTMLResponse(render_session_messages(session_id, deps=MessageRenderDeps(repos=get_repos())))
+@router.get("/sessions/{session_id}/messages")
+def session_messages(session_id: str) -> dict:
+    return render_session_messages(session_id, deps=MessageRenderDeps(repos=get_repos()))

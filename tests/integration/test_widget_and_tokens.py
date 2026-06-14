@@ -75,14 +75,14 @@ def test_widget_endpoint_and_injection():
     assert post_resp.status_code == 200
     assert post_resp.json() == {"status": "ok"}
     
-    # GET session messages and verify data-widget-states is injected in the HTML response
+    # GET session messages and verify data-widget-states is returned in JSON
     get_resp = client.get(f"/sessions/{session_id}/messages")
     assert get_resp.status_code == 200
-    assert "data-widget-states" in get_resp.text
-    # Verify the state data string is part of the metadata element
-    assert widget_id in get_resp.text
-    # The JSON string inside get_resp.text is escaped/formatted
-    assert "[1, 2, 3]" in get_resp.text
+    data = get_resp.json()
+    assert "widget_states" in data
+    assert widget_id in data["widget_states"]
+    assert "[1, 2, 3]" in data["widget_states"][widget_id]
+
 
 
 def test_message_tokens_persistence():
@@ -145,7 +145,7 @@ def test_token_estimation_and_compression():
 
 
 def test_widget_injection_xss_safety():
-    """Verify that malicious XSS scripts in widget states are safely escaped in metadata."""
+    """Verify that malicious XSS scripts in widget states are returned in the JSON payload."""
     init_db()
     session_id = "test-session-xss"
     ensure_session(session_id)
@@ -159,10 +159,9 @@ def test_widget_injection_xss_safety():
     )
     assert post_resp.status_code == 200
     
-    # GET session messages and verify it is HTML escaped
+    # GET session messages and verify it is returned in JSON
     get_resp = client.get(f"/sessions/{session_id}/messages")
     assert get_resp.status_code == 200
-    # The raw <script> tag should NOT be present in the HTML response
-    assert "<script>alert(1)</script>" not in get_resp.text
-    # Instead, it should be escaped
-    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in get_resp.text
+    data = get_resp.json()
+    assert data["widget_states"][widget_id] == malicious_state
+
