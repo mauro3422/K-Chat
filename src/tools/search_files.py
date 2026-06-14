@@ -76,6 +76,69 @@ SKIP_DIRS = frozenset({
 def _should_skip_dir(name: str) -> bool:
     return name.startswith('.') or name in SKIP_DIRS
 
+def _read_file_safe(filepath: str) -> tuple[list[str] | None, str | None]:
+    """Lee un archivo de forma segura con verificación de tamaño.
+
+    Devuelve (lines, error_msg). Si hay error, lines es None.
+    """
+    try:
+        size = os.path.getsize(filepath)
+    except OSError as e:
+        return None, str(e)
+
+    if size > MAX_FILE_SIZE:
+        return None, f"archivo demasiado grande ({size / 1024:.0f}K)"
+
+    try:
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            return f.readlines(), None
+    except Exception as e:
+        return None, f"no se pudo leer: {e}"
+
+
+def _find_match_lines(lines: list[str], regex: re.Pattern, max_results: int) -> list[int]:
+    """Encuentra números de línea que coinciden con el patrón regex."""
+    match_lines = []
+    for i, line in enumerate(lines, 1):
+        if regex.search(line):
+            match_lines.append(i)
+            if len(match_lines) >= max_results:
+                break
+    return match_lines
+
+
+def _build_match_contexts(
+    lines: list[str],
+    match_lines: list[int],
+    context_lines: int,
+    tree: ast.Module | None,
+) -> list[dict]:
+    """Construye contexto detallado para cada coincidencia encontrada."""
+    match_set = set(match_lines)
+    matches = []
+    for ml in match_lines:
+        start = max(1, ml - context_lines)
+        end = min(len(lines), ml + context_lines)
+
+        container = find_function_at_line(tree, ml) if tree else None
+
+        context = []
+        for ln in range(start, end + 1):
+            line_text = lines[ln - 1].rstrip('\n')
+            context.append({
+                'line': ln,
+                'text': line_text,
+                'is_match': ln in match_set,
+            })
+
+        matches.append({
+            'line': ml,
+            'container': container,
+            'context_lines': context,
+        })
+    return matches
+
+
 def _find_matches_in_file(
     filepath: str,
     pattern: str,
@@ -91,79 +154,31 @@ def _find_matches_in_file(
         'error': None,
     }
 
-    # Verificar tamaño
-    try:
-        size = os.path.getsize(filepath)
-    except OSError as e:
-        result['error'] = str(e)
+    lines, error = _read_file_safe(filepath)
+    if error:
+        result['error'] = error
         return result
 
-    if size > MAX_FILE_SIZE:
-        result['error'] = f"archivo demasiado grande ({size / 1024:.0f}K)"
-        return result
-
-    # Leer archivo
-    try:
-        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-            lines = f.readlines()
-    except Exception as e:
-        result['error'] = f"no se pudo leer: {e}"
-        return result
-
-    # Buscar
     flags = 0 if case_sensitive else re.IGNORECASE
     try:
         regex = re.compile(re.escape(pattern), flags)
     except re.error:
-        result['error'] = f"patron invalido"
+        result['error'] = "patron invalido"
         return result
 
-    # AST para Python
     tree = None
     if filepath.endswith('.py'):
         try:
             tree = ast.parse(''.join(lines))
         except SyntaxError:
-            pass  # si falla el parseo, seguimos sin AST
+            pass
 
-    # Encontrar matches
-    match_lines = []
-    for i, line in enumerate(lines, 1):
-        if regex.search(line):
-            match_lines.append(i)
-            if len(match_lines) >= max_results:
-                break
-
+    match_lines = _find_match_lines(lines, regex, max_results)
     if not match_lines:
-        return result  # sin matches
+        return result
 
     result['count'] = len(match_lines)
-    match_set = set(match_lines)
-
-    # Construir contexto para cada match
-    for _ in range(len(match_lines)):
-        ml = match_lines[_]
-        start = max(1, ml - context_lines)
-        end = min(len(lines), ml + context_lines)
-
-        # Detectar funcion/clase contenedora
-        container = find_function_at_line(tree, ml) if tree else None
-
-        context = []
-        for ln in range(start, end + 1):
-            line_text = lines[ln - 1].rstrip('\n')
-            marker = '→' if ln in match_set else ' '
-            context.append({
-                'line': ln,
-                'text': line_text,
-                'is_match': ln in match_set,
-            })
-
-        result['matches'].append({
-            'line': ml,
-            'container': container,
-            'context_lines': context,
-        })
+    result['matches'] = _build_match_contexts(lines, match_lines, context_lines, tree)
 
     return result
 
@@ -260,7 +275,7 @@ def _walk_and_search(
 
     return '\n'.join(output_parts), total_files, total_matches
 
-def run(**kwargs: Any) -> str:
+async def run(**kwargs: Any) -> str:
     pattern = kwargs.get("pattern", "").strip()
     path = kwargs.get("path", "~/proyectos")
     file_pattern = kwargs.get("file_pattern", "").strip()
@@ -275,7 +290,10 @@ def run(**kwargs: Any) -> str:
     if err:
         return err
 
-    if not os.path.isdir(path):
+    import asyncio
+    import os
+
+    if not await asyncio.to_thread(os.path.isdir, path):
         return f"[ERROR] El directorio '{path}' no existe."
 
     # Output header
@@ -283,7 +301,8 @@ def run(**kwargs: Any) -> str:
     file_str = f" en {file_pattern}" if file_pattern else ""
     output = f"🔍 Buscando \"{pattern}\"{file_str} en {path}{flags_str}"
 
-    results, total_files, total_matches = _walk_and_search(
+    results, total_files, total_matches = await asyncio.to_thread(
+        _walk_and_search,
         path, pattern, file_pattern,
         context_lines, max_results, case_sensitive,
     )

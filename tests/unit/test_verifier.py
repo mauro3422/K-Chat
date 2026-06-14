@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -6,11 +7,11 @@ from src.llm.verifier import verify_model
 
 
 @patch("src.llm.verifier.api_call")
-def test_verify_model_returns_true_when_model_responds(mock_api_call):
-    mock_response = MagicMock()
-    mock_api_call._api_call.return_value = mock_response
+@pytest.mark.anyio
+async def test_verify_model_returns_true_when_model_responds(mock_api_call):
+    mock_api_call._api_call = AsyncMock(return_value=MagicMock())
 
-    result = verify_model("test-model")
+    result = await verify_model("test-model")
 
     assert result is True
     mock_api_call._api_call.assert_called_once_with(
@@ -22,10 +23,11 @@ def test_verify_model_returns_true_when_model_responds(mock_api_call):
 
 
 @patch("src.llm.verifier.api_call")
-def test_verify_model_returns_false_on_api_error(mock_api_call):
-    mock_api_call._api_call.side_effect = Exception("API error")
+@pytest.mark.anyio
+async def test_verify_model_returns_false_on_api_error(mock_api_call):
+    mock_api_call._api_call = AsyncMock(side_effect=Exception("API error"))
 
-    result = verify_model("test-model")
+    result = await verify_model("test-model")
 
     assert result is False
     mock_api_call._api_call.assert_called_once_with(
@@ -37,11 +39,11 @@ def test_verify_model_returns_false_on_api_error(mock_api_call):
 
 
 @patch("src.llm.verifier.api_call")
-def test_verify_model_uses_api_call_with_minimal_params(mock_api_call):
-    mock_response = MagicMock()
-    mock_api_call._api_call.return_value = mock_response
+@pytest.mark.anyio
+async def test_verify_model_uses_api_call_with_minimal_params(mock_api_call):
+    mock_api_call._api_call = AsyncMock(return_value=MagicMock())
 
-    verify_model("test-model")
+    await verify_model("test-model")
 
     call_kwargs = mock_api_call._api_call.call_args[1]
     assert "model" in call_kwargs

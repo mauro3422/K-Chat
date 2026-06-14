@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
@@ -7,11 +7,13 @@ from fastapi.responses import JSONResponse
 from web.routers.debug import router, _local_only, debug_info, backend_logs
 
 
-def test_router_exists():
+@pytest.mark.anyio
+async def test_router_exists():
     assert isinstance(router, APIRouter)
 
 
-def test_router_has_routes():
+@pytest.mark.anyio
+async def test_router_has_routes():
     assert len(router.routes) >= 1
     paths = [r.path for r in router.routes]
     assert "/sessions/{session_id}/debug" in paths
@@ -19,22 +21,26 @@ def test_router_has_routes():
 
 
 class TestLocalOnly:
-    def test_localhost_ipv4_passes(self):
+    @pytest.mark.anyio
+    async def test_localhost_ipv4_passes(self):
         request = MagicMock()
         request.client.host = "127.0.0.1"
         _local_only(request)  # should not raise
 
-    def test_localhost_ipv6_passes(self):
+    @pytest.mark.anyio
+    async def test_localhost_ipv6_passes(self):
         request = MagicMock()
         request.client.host = "::1"
         _local_only(request)  # should not raise
 
-    def test_localhost_name_passes(self):
+    @pytest.mark.anyio
+    async def test_localhost_name_passes(self):
         request = MagicMock()
         request.client.host = "localhost"
         _local_only(request)  # should not raise
 
-    def test_non_local_ip_raises_403(self, monkeypatch):
+    @pytest.mark.anyio
+    async def test_non_local_ip_raises_403(self, monkeypatch):
         monkeypatch.delenv("TESTING", raising=False)
         request = MagicMock()
         request.client.host = "192.168.1.1"
@@ -42,13 +48,15 @@ class TestLocalOnly:
             _local_only(request)
         assert exc.value.status_code == 403
 
-    def test_testing_env_skips_check(self, monkeypatch):
+    @pytest.mark.anyio
+    async def test_testing_env_skips_check(self, monkeypatch):
         monkeypatch.setenv("TESTING", "true")
         request = MagicMock()
         request.client.host = "evil.com"
         _local_only(request)  # should not raise because TESTING=true
 
-    def test_no_client_uses_unknown_fallback(self, monkeypatch):
+    @pytest.mark.anyio
+    async def test_no_client_uses_unknown_fallback(self, monkeypatch):
         """When request.client is None, host becomes 'unknown' which is non-local."""
         monkeypatch.delenv("TESTING", raising=False)
         request = MagicMock()
@@ -58,9 +66,12 @@ class TestLocalOnly:
         assert exc.value.status_code == 403
 
 
-@patch("web.routers.debug.get_debug_info", return_value={"key": "val"})
-def test_debug_info_returns_json(mock_debug):
-    result = debug_info("sid-1")
+@pytest.mark.anyio
+@patch("web.routers.debug.get_debug_info", new_callable=AsyncMock)
+@patch("web.routers.debug._require_session", new_callable=AsyncMock)
+async def test_debug_info_returns_json(mock_req, mock_debug):
+    mock_debug.return_value = {"key": "val"}
+    result = await debug_info("sid-1")
     assert isinstance(result, JSONResponse)
     import json
     body = json.loads(result.body.decode())
@@ -68,8 +79,9 @@ def test_debug_info_returns_json(mock_debug):
     mock_debug.assert_called_once_with("sid-1")
 
 
+@pytest.mark.anyio
 @patch("web.routers.debug.get_backend_logs", return_value=[{"message": "log1"}, {"message": "log2"}])
-def test_backend_logs_returns_json(mock_logs):
+async def test_backend_logs_returns_json(mock_logs):
     result = backend_logs()
     assert isinstance(result, JSONResponse)
     import json

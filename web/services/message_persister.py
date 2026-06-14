@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any
 
 from src.api.debug import save_debug_info
@@ -23,7 +24,7 @@ def _resolve_persister_deps(deps: MessagePersisterDeps | None = None) -> Message
     return deps or MessagePersisterDeps()
 
 
-def save_assistant_message(
+async def save_assistant_message(
     session_id: str,
     full_content: str,
     full_reasoning: str,
@@ -35,7 +36,6 @@ def save_assistant_message(
 ) -> None:
     """Persists the assistant message and debug info to the database."""
     _deps = _resolve_persister_deps(deps)
-    save_message_fn = _deps.save_message_fn or db_save_message
     save_debug_fn = _deps.save_debug_fn or save_debug_info
     record_cls = _deps.message_record_cls or MessageRecord
 
@@ -48,52 +48,41 @@ def save_assistant_message(
     pt = debug_info.prompt_tokens
     ct = debug_info.completion_tokens
     tt = debug_info.total_tokens
+    record = record_cls(
+        session_id=session_id,
+        role="assistant",
+        content=full_content,
+        model=model,
+        reasoning=full_reasoning,
+        phases=phases_json,
+        prompt_tokens=pt,
+        completion_tokens=ct,
+        total_tokens=tt,
+    )
     if _deps.save_message_fn is not None:
-        try:
-            save_message_fn(
-                record_cls(
-                    session_id=session_id,
-                    role="assistant",
-                    content=full_content,
-                    model=model,
-                    reasoning=full_reasoning,
-                    phases=phases_json,
-                    prompt_tokens=pt,
-                    completion_tokens=ct,
-                    total_tokens=tt,
-                ),
-                repos=repos,
-            )
-        except TypeError:
-            save_message_fn(
-                record_cls(
-                    session_id=session_id,
-                    role="assistant",
-                    content=full_content,
-                    model=model,
-                    reasoning=full_reasoning,
-                    phases=phases_json,
-                    prompt_tokens=pt,
-                    completion_tokens=ct,
-                    total_tokens=tt,
-                ),
-            )
+        await _deps.save_message_fn(record)
     else:
-        save_message_fn(
-            record_cls(
-                session_id=session_id,
-                role="assistant",
-                content=full_content,
-                model=model,
-                reasoning=full_reasoning,
-                phases=phases_json,
-                prompt_tokens=pt,
-                completion_tokens=ct,
-                total_tokens=tt,
-            ),
-            repos=repos,
-        )
+        await db_save_message(record, repos=repos)
     if not debug_info.phases or debug_info.phases == "[]":
         debug_info.phases = phases_json
-    save_debug_fn(session_id, debug_info.to_dict())
+    import inspect
+    res = save_debug_fn(session_id, debug_info.to_dict())
+    if inspect.iscoroutine(res):
+        await res
+
+
+    try:
+        from src.chat_journal import log_turn
+        log_turn(
+            session_id=session_id,
+            user_msg="",
+            assistant_msg=full_content,
+            tools_used=[],
+            model=model,
+            duration_ms=0,
+            token_count=tt,
+            error="",
+        )
+    except Exception:
+        pass
 

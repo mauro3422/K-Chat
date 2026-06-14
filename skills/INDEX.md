@@ -3,4 +3,5 @@
 This is the catalog of skill specifications and guides for the agent.
 
 Available skills:
-- **html-widgets**: Guide and standards for building interactive HTML and JavaScript interfaces with state persistence inside the chat.
+- **db-query**: Quick database queries for K-Chat — search sessions, messages, widgets, and debug info from the SQLite DB..
+- **html-widgets**: Allows the agent to generate interactive visual interfaces (like calculators, planners, charts, or simple games) directl....

@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -8,7 +9,8 @@ from src.llm.selector import get_default_model, _get_default_model_candidates
 @patch("src.llm.model_state.get_verified_models_safe")
 @patch("src.llm.model_state.is_model_failed")
 @patch("src.llm.model_state.PRIORITY", ["big-pickle", "deepseek-v4-flash-free"])
-def test_get_default_model_returns_first_available_priority_model_from_verified_list(
+@pytest.mark.anyio
+async def test_get_default_model_returns_first_available_priority_model_from_verified_list(
     mock_is_model_failed, mock_get_verified_models_safe
 ):
     mock_get_verified_models_safe.return_value = ["big-pickle", "deepseek-v4-flash-free"]
@@ -24,7 +26,8 @@ def test_get_default_model_returns_first_available_priority_model_from_verified_
 @patch("src.llm.discovery.get_free_models")
 @patch("src.llm.model_state.PRIORITY", ["big-pickle", "deepseek-v4-flash-free"])
 @patch("src.llm.model_state.FALLBACK_MODEL", "deepseek-v4-flash-free")
-def test_get_default_model_falls_back_to_free_models_when_no_verified_models(
+@pytest.mark.anyio
+async def test_get_default_model_falls_back_to_free_models_when_no_verified_models(
     mock_get_free_models, mock_is_model_failed, mock_get_verified_models_safe
 ):
     mock_get_verified_models_safe.return_value = None
@@ -43,7 +46,8 @@ def test_get_default_model_falls_back_to_free_models_when_no_verified_models(
 @patch("src.llm.model_state.get_verified_models_safe")
 @patch("src.llm.model_state.is_model_failed")
 @patch("src.llm.model_state.FALLBACK_MODEL", "deepseek-v4-flash-free")
-def test_get_default_model_returns_fallback_model_on_error(
+@pytest.mark.anyio
+async def test_get_default_model_returns_fallback_model_on_error(
     mock_is_model_failed, mock_get_verified_models_safe
 ):
     mock_get_verified_models_safe.side_effect = Exception("Error")
@@ -58,7 +62,8 @@ def test_get_default_model_returns_fallback_model_on_error(
 @patch("src.llm.model_state.is_model_failed")
 @patch("src.llm.model_state.FALLBACK_MODEL", "deepseek-v4-flash-free")
 @patch("src.llm.model_state.PRIORITY", ["big-pickle", "deepseek-v4-flash-free"])
-def test_get_default_model_handles_all_models_failed_gracefully(
+@pytest.mark.anyio
+async def test_get_default_model_handles_all_models_failed_gracefully(
     mock_is_model_failed, mock_get_verified_models_safe
 ):
     mock_get_verified_models_safe.return_value = ["big-pickle", "deepseek-v4-flash-free"]
@@ -70,7 +75,8 @@ def test_get_default_model_handles_all_models_failed_gracefully(
 
 
 @patch("src.llm.model_state.get_verified_models_safe")
-def test_get_default_model_candidates_returns_cached_verified_list(mock_get_verified_models_safe):
+@pytest.mark.anyio
+async def test_get_default_model_candidates_returns_cached_verified_list(mock_get_verified_models_safe):
     mock_get_verified_models_safe.return_value = ["model1", "model2"]
 
     result, verified_cache_used = _get_default_model_candidates()
@@ -81,7 +87,8 @@ def test_get_default_model_candidates_returns_cached_verified_list(mock_get_veri
 
 @patch("src.llm.model_state.get_verified_models_safe")
 @patch("src.llm.discovery.get_free_models")
-def test_get_default_model_candidates_returns_free_models_when_no_cache(
+@pytest.mark.anyio
+async def test_get_default_model_candidates_returns_free_models_when_no_cache(
     mock_get_free_models, mock_get_verified_models_safe
 ):
     mock_get_verified_models_safe.return_value = None

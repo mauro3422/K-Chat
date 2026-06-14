@@ -1,4 +1,3 @@
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,13 +19,15 @@ class _FakeRequest:
         return self._form
 
 
-def test_read_audio_payload_from_raw_body():
+@pytest.mark.anyio
+async def test_read_audio_payload_from_raw_body():
     request = _FakeRequest(headers={"content-type": "application/octet-stream"}, body=b"wav-bytes")
-    result = asyncio.run(_read_audio_payload(request))
+    result = await _read_audio_payload(request)
     assert result == (b"wav-bytes", "application/octet-stream")
 
 
-def test_read_audio_payload_from_multipart_audio_file():
+@pytest.mark.anyio
+async def test_read_audio_payload_from_multipart_audio_file():
     upload = MagicMock()
     upload.read = AsyncMock(return_value=b"webm-bytes")
     upload.content_type = "audio/webm"
@@ -34,27 +35,30 @@ def test_read_audio_payload_from_multipart_audio_file():
         headers={"content-type": "multipart/form-data; boundary=abc"},
         form={"audio": upload},
     )
-    result = asyncio.run(_read_audio_payload(request))
+    result = await _read_audio_payload(request)
     assert result == (b"webm-bytes", "audio/webm")
     upload.read.assert_awaited_once()
 
 
-def test_read_audio_payload_missing_audio_file():
+@pytest.mark.anyio
+async def test_read_audio_payload_missing_audio_file():
     request = _FakeRequest(headers={"content-type": "multipart/form-data; boundary=abc"}, form={})
     with pytest.raises(HTTPException, match="Missing audio file"):
-        asyncio.run(_read_audio_payload(request))
+        await _read_audio_payload(request)
 
 
-def test_transcribe_segment_forwards_audio_and_content_type():
-    with patch("web.routers.asr.transcribe_audio") as mocked:
+@pytest.mark.anyio
+async def test_transcribe_segment_forwards_audio_and_content_type():
+    with patch("web.routers.asr.transcribe_audio", new_callable=AsyncMock) as mocked:
         mocked.return_value = {"success": True, "transcript": "hola"}
-        result = _transcribe_segment(b"abc", content_type="audio/wav")
+        result = await _transcribe_segment(b"abc", content_type="audio/wav")
 
     assert result == {"success": True, "transcript": "hola"}
     mocked.assert_called_once_with(b"abc", content_type="audio/wav")
 
 
-def test_asr_routes_registered():
+@pytest.mark.anyio
+async def test_asr_routes_registered():
     paths = {route.path for route in asr_router.routes}
     assert "/api/asr/transcribe" in paths
     assert "/api/asr/stream" in paths
@@ -83,12 +87,13 @@ class _FakeWebSocket:
         self.closed = True
 
 
-def test_asr_websocket_stream_roundtrip():
+@pytest.mark.anyio
+async def test_asr_websocket_stream_roundtrip():
     fake_ws = _FakeWebSocket(messages=[{"type": "websocket.receive", "bytes": b"wav-bytes"}])
 
-    with patch("web.routers.asr.transcribe_audio", return_value={"success": True, "transcript": "hola"}), \
+    with patch("web.routers.asr._transcribe_segment", return_value={"success": True, "transcript": "hola"}), \
          patch("web.routers.asr.append_asr_telemetry") as mock_telemetry:
-        asyncio.run(asr_stream(fake_ws))
+        await asr_stream(fake_ws)
 
     assert fake_ws.accepted is True
     assert fake_ws.closed is True

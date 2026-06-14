@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, AsyncGenerator
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -60,14 +60,14 @@ class StreamRetryHandler:
 
         return messages
 
-    def attempt_recovery(
+    async def attempt_recovery(
         self,
         history: list[dict[str, Any]],
         partial_content: str,
         partial_reasoning: str,
         model: str,
         session_id: str | None = None,
-    ) -> Generator[tuple[str, str], None, None]:
+    ) -> AsyncGenerator[tuple[str, str], None]:
         """Try to recover by calling the LLM again with continuation context.
 
         Args:
@@ -99,7 +99,7 @@ class StreamRetryHandler:
                 from src.llm.client import chat_stream as chat_stream_fn
 
             # Only stream content — no tool calls for continuation
-            for event in chat_stream_fn(
+            async for event in chat_stream_fn(
                 messages,
                 model,
                 tagged=True,

@@ -1,3 +1,5 @@
+import pytest
+from unittest.mock import AsyncMock
 import json
 import re
 
@@ -8,7 +10,7 @@ from src.core.history_rebuilder import rebuild_history
 from src.memory.schema import init_db
 
 
-def save_message(
+async def save_message(
     session_id,
     role,
     content,
@@ -19,7 +21,7 @@ def save_message(
     tool_call_id=None,
     **kwargs,
 ):
-    return save_message_record(MessageRecord(
+    return await save_message_record(MessageRecord(
         session_id=session_id,
         role=role,
         content=content,
@@ -31,25 +33,27 @@ def save_message(
     ), repos=get_repos())
 
 
-def test_rebuild_history_empty_session():
+@pytest.mark.anyio
+async def test_rebuild_history_empty_session():
     session_id = "test-empty-session"
-    init_db()
-    ensure_session(session_id)
+    await init_db()
+    await ensure_session(session_id)
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 1
     assert result[0]["role"] == "system"
     assert "test-model" in result[0]["content"]
 
 
-def test_rebuild_history_simple():
+@pytest.mark.anyio
+async def test_rebuild_history_simple():
     session_id = "test-simple"
-    init_db()
-    ensure_session(session_id)
-    save_message(session_id=session_id, role="user", content="Hello", model="test-model")
-    save_message(session_id=session_id, role="assistant", content="Hi there!", model="test-model")
+    await init_db()
+    await ensure_session(session_id)
+    await save_message(session_id=session_id, role="user", content="Hello", model="test-model")
+    await save_message(session_id=session_id, role="assistant", content="Hi there!", model="test-model")
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 3
     assert result[0]["role"] == "system"
     assert result[1]["role"] == "user"
@@ -58,19 +62,20 @@ def test_rebuild_history_simple():
     assert re.match(r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] Hi there!", result[2]["content"])
 
 
-def test_rebuild_history_tool_calls_with_responses():
+@pytest.mark.anyio
+async def test_rebuild_history_tool_calls_with_responses():
     session_id = "test-tool-with-response"
-    init_db()
-    ensure_session(session_id)
+    await init_db()
+    await ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_weather", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}},
         {"id": "call_time", "type": "function", "function": {"name": "get_time", "arguments": "{}"}},
     ])
-    save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
-    save_message(session_id=session_id, role="tool", content='{"temp": 22}', model="test-model", tool_call_id="call_weather")
-    save_message(session_id=session_id, role="tool", content='{"time": "12:00"}', model="test-model", tool_call_id="call_time")
+    await save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
+    await save_message(session_id=session_id, role="tool", content='{"temp": 22}', model="test-model", tool_call_id="call_weather")
+    await save_message(session_id=session_id, role="tool", content='{"time": "12:00"}', model="test-model", tool_call_id="call_time")
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 4
     assert result[0]["role"] == "system"
     assert result[1]["role"] == "assistant"
@@ -84,70 +89,75 @@ def test_rebuild_history_tool_calls_with_responses():
     assert result[3]["tool_call_id"] == "call_time"
 
 
-def test_rebuild_history_orphan_tool_calls():
+@pytest.mark.anyio
+async def test_rebuild_history_orphan_tool_calls():
     session_id = "test-orphan-tc"
-    init_db()
-    ensure_session(session_id)
+    await init_db()
+    await ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_orphan", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}},
     ])
-    save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
+    await save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 1
     assert result[0]["role"] == "system"
 
 
-def test_rebuild_history_orphan_tool_response():
+@pytest.mark.anyio
+async def test_rebuild_history_orphan_tool_response():
     session_id = "test-orphan-tool-resp"
-    init_db()
-    ensure_session(session_id)
-    save_message(session_id=session_id, role="tool", content="orphan result", model="test-model", tool_call_id="call_nonexistent")
+    await init_db()
+    await ensure_session(session_id)
+    await save_message(session_id=session_id, role="tool", content="orphan result", model="test-model", tool_call_id="call_nonexistent")
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 1
     assert result[0]["role"] == "system"
 
 
-def test_rebuild_history_orphan_tool_calls_with_content_kept():
+@pytest.mark.anyio
+async def test_rebuild_history_orphan_tool_calls_with_content_kept():
     session_id = "test-orphan-tc-with-content"
-    init_db()
-    ensure_session(session_id)
+    await init_db()
+    await ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_orphan", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}},
     ])
-    save_message(session_id=session_id, role="assistant", content="I have content even without tools", model="test-model", tool_calls=tool_calls_json)
+    await save_message(session_id=session_id, role="assistant", content="I have content even without tools", model="test-model", tool_calls=tool_calls_json)
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 2
     assert result[1]["role"] == "assistant"
     assert "tool_calls" not in result[1]
     assert "I have content even without tools" in result[1]["content"]
 
 
-def test_rebuild_history_reasoning():
+@pytest.mark.anyio
+async def test_rebuild_history_reasoning():
     session_id = "test-reasoning"
-    init_db()
-    ensure_session(session_id)
-    save_message(session_id=session_id, role="user", content="Think step by step", model="test-model")
-    save_message(session_id=session_id, role="assistant", content="Final answer", model="test-model", reasoning="Let me think...")
+    await init_db()
+    await ensure_session(session_id)
+    await save_message(session_id=session_id, role="user", content="Think step by step", model="test-model")
+    await save_message(session_id=session_id, role="assistant", content="Final answer", model="test-model", reasoning="Let me think...")
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 3
     assert result[2]["role"] == "assistant"
     assert result[2]["reasoning_content"] == "Let me think..."
     assert result[2]["content"].endswith("Final answer")
 
 
-def test_rebuild_history_multiple_timestamps():
+@pytest.mark.anyio
+async def test_rebuild_history_multiple_timestamps():
     session_id = "test-timestamps"
-    init_db()
-    ensure_session(session_id)
-    save_message(session_id=session_id, role="user", content="First", model="test-model")
-    save_message(session_id=session_id, role="assistant", content="Second", model="test-model")
-    save_message(session_id=session_id, role="user", content="Third", model="test-model")
+    await init_db()
+    await ensure_session(session_id)
+    await save_message(session_id=session_id, role="user", content="First", model="test-model")
+    await save_message(session_id=session_id, role="assistant", content="Second", model="test-model")
+    await save_message(session_id=session_id, role="user", content="Third", model="test-model")
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 4
     for i in range(1, 4):
         assert result[i]["content"].startswith("["), f"msg {i} missing timestamp: {result[i]['content']}"
@@ -160,14 +170,15 @@ def test_rebuild_history_multiple_timestamps():
     assert ts1 <= ts2 <= ts3
 
 
-def test_rebuild_history_skips_system_rows():
+@pytest.mark.anyio
+async def test_rebuild_history_skips_system_rows():
     session_id = "test-skip-system"
-    init_db()
-    ensure_session(session_id)
-    save_message(session_id=session_id, role="system", content="this should be ignored", model="test-model")
-    save_message(session_id=session_id, role="user", content="Hello", model="test-model")
+    await init_db()
+    await ensure_session(session_id)
+    await save_message(session_id=session_id, role="system", content="this should be ignored", model="test-model")
+    await save_message(session_id=session_id, role="user", content="Hello", model="test-model")
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 2
     assert result[0]["role"] == "system"
     assert "this should be ignored" not in result[0]["content"]
@@ -175,17 +186,18 @@ def test_rebuild_history_skips_system_rows():
     assert result[1]["content"].endswith("Hello")
 
 
-def test_rebuild_history_content_none_with_tool_calls():
+@pytest.mark.anyio
+async def test_rebuild_history_content_none_with_tool_calls():
     session_id = "test-content-none-tc"
-    init_db()
-    ensure_session(session_id)
+    await init_db()
+    await ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_none", "type": "function", "function": {"name": "do_something", "arguments": "{}"}},
     ])
-    save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
-    save_message(session_id=session_id, role="tool", content="done", model="test-model", tool_call_id="call_none")
+    await save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
+    await save_message(session_id=session_id, role="tool", content="done", model="test-model", tool_call_id="call_none")
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 3
     assert result[1]["role"] == "assistant"
     assert result[1]["content"] is None
@@ -196,18 +208,19 @@ def test_rebuild_history_content_none_with_tool_calls():
     assert result[2]["tool_call_id"] == "call_none"
 
 
-def test_rebuild_history_partial_tool_calls_filtered():
+@pytest.mark.anyio
+async def test_rebuild_history_partial_tool_calls_filtered():
     session_id = "test-partial-tc"
-    init_db()
-    ensure_session(session_id)
+    await init_db()
+    await ensure_session(session_id)
     tool_calls_json = json.dumps([
         {"id": "call_matched", "type": "function", "function": {"name": "matched_func", "arguments": "{}"}},
         {"id": "call_orphan", "type": "function", "function": {"name": "orphan_func", "arguments": "{}"}},
     ])
-    save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
-    save_message(session_id=session_id, role="tool", content="matched result", model="test-model", tool_call_id="call_matched")
+    await save_message(session_id=session_id, role="assistant", content="", model="test-model", tool_calls=tool_calls_json)
+    await save_message(session_id=session_id, role="tool", content="matched result", model="test-model", tool_call_id="call_matched")
     from src.memory.repos import get_repos
-    result = rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
+    result = await rebuild_history(session_id, "test-model", messages_repo=get_repos().messages)
     assert len(result) == 3
     assert result[1]["role"] == "assistant"
     assert len(result[1]["tool_calls"]) == 1

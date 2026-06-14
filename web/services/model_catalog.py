@@ -85,6 +85,10 @@ def _modality_label(meta: dict[str, Any]) -> str:
     return "+".join(modalities)
 
 
+def invalidate_model_cache() -> None:
+    _load_registry.cache_clear()
+
+
 def format_model_label(model_id: str) -> str:
     meta = get_model_metadata(model_id)
     if not meta:

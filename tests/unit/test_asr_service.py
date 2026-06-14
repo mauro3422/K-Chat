@@ -1,44 +1,52 @@
 import io
 import os
-from unittest.mock import patch, MagicMock, mock_open
+import pytest
+from unittest.mock import patch, MagicMock, mock_open, AsyncMock
 
 
-def test_transcribe_audio_empty():
+@pytest.mark.anyio
+async def test_transcribe_audio_empty():
     from web.services import asr_service
 
-    result = asr_service.transcribe_audio(b"")
+    result = await asr_service.transcribe_audio(b"")
     assert result["success"] is False
     assert "Empty or too small audio payload" in result["error"]
 
 
-def test_transcribe_audio_small():
+@pytest.mark.anyio
+async def test_transcribe_audio_small():
     from web.services import asr_service
 
-    result = asr_service.transcribe_audio(b"small")
+    result = await asr_service.transcribe_audio(b"small")
     assert result["success"] is False
     assert "Empty or too small audio payload" in result["error"]
 
 
-def test_transcribe_audio_conversion_fails():
+@pytest.mark.anyio
+async def test_transcribe_audio_conversion_fails():
     from web.services import asr_service
 
-    with patch("web.services.asr_service._convert_to_wav", return_value=None):
-        result = asr_service.transcribe_audio(b"x" * 200)
+    with patch("web.services.asr_service._convert_to_wav", new_callable=AsyncMock) as mock_conv:
+        mock_conv.return_value = None
+        result = await asr_service.transcribe_audio(b"x" * 200)
         assert result["success"] is False
         assert "Invalid audio format" in result["error"]
 
 
-def test_transcribe_audio_invalid_wav():
+@pytest.mark.anyio
+async def test_transcribe_audio_invalid_wav():
     from web.services import asr_service
 
-    with patch("web.services.asr_service._convert_to_wav", return_value=b"invalid wav"):
+    with patch("web.services.asr_service._convert_to_wav", new_callable=AsyncMock) as mock_conv:
+        mock_conv.return_value = b"invalid wav"
         with patch("wave.open", side_effect=Exception("Invalid WAV")):
-            result = asr_service.transcribe_audio(b"x" * 200)
+            result = await asr_service.transcribe_audio(b"x" * 200)
             assert result["success"] is False
             assert "Cannot read converted audio" in result["error"]
 
 
-def test_transcribe_audio_success():
+@pytest.mark.anyio
+async def test_transcribe_audio_success():
     from web.services import asr_service
 
     mock_recognizer = MagicMock()
@@ -49,12 +57,13 @@ def test_transcribe_audio_success():
 
     mock_audio = MagicMock()
 
-    with patch("web.services.asr_service._convert_to_wav", return_value=b"valid wav"):
+    with patch("web.services.asr_service._convert_to_wav", new_callable=AsyncMock) as mock_conv:
+        mock_conv.return_value = b"valid wav"
         with patch("wave.open", MagicMock()):
             with patch("web.services.asr_service.sr.Recognizer", return_value=mock_recognizer):
                 with patch("web.services.asr_service.sr.AudioFile") as mock_audio_file:
                     mock_audio_file.return_value.__enter__.return_value = mock_audio
-                    result = asr_service.transcribe_audio(b"x" * 200)
+                    result = await asr_service.transcribe_audio(b"x" * 200)
 
                     assert result["success"] is True
                     assert result["transcript"] == "transcripción en español"
@@ -62,29 +71,33 @@ def test_transcribe_audio_success():
                     assert result["transcript_en"] == "transcript in english"
 
 
-def test_transcribe_audio_empty_after_conversion():
+@pytest.mark.anyio
+async def test_transcribe_audio_empty_after_conversion():
     from web.services import asr_service
 
-    with patch("web.services.asr_service._convert_to_wav", return_value=b"valid wav"):
+    with patch("web.services.asr_service._convert_to_wav", new_callable=AsyncMock) as mock_conv:
+        mock_conv.return_value = b"valid wav"
         with patch("wave.open") as mock_wave:
             mock_wf = MagicMock()
             mock_wf.getnframes.return_value = 0
             mock_wave.return_value.__enter__.return_value = mock_wf
-            result = asr_service.transcribe_audio(b"x" * 200)
+            result = await asr_service.transcribe_audio(b"x" * 200)
             assert result["success"] is False
             assert "Empty audio" in result["error"]
 
 
-def test_convert_to_wav_ffmpeg_not_found():
+@pytest.mark.anyio
+async def test_convert_to_wav_ffmpeg_not_found():
     from web.services import asr_service
 
     with patch("tempfile.NamedTemporaryFile", MagicMock()):
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            result = asr_service._convert_to_wav(b"audio")
+            result = await asr_service._convert_to_wav(b"audio")
             assert result is None
 
 
-def test_convert_to_wav_success():
+@pytest.mark.anyio
+async def test_convert_to_wav_success():
     from web.services import asr_service
 
     with patch("tempfile.NamedTemporaryFile") as mock_temp:
@@ -99,61 +112,67 @@ def test_convert_to_wav_success():
             mock_run.return_value = mock_result
 
             with patch("builtins.open", mock_open(read_data=b"wav data")):
-                result = asr_service._convert_to_wav(b"audio")
+                result = await asr_service._convert_to_wav(b"audio")
                 assert result == b"wav data"
 
 
-def test_ffmpeg_input_args_for_webm():
+@pytest.mark.anyio
+async def test_ffmpeg_input_args_for_webm():
     from web.services import asr_service
 
     assert asr_service._ffmpeg_input_args("audio/webm;codecs=opus") == ["-f", "webm"]
 
 
-def test_ffmpeg_input_args_for_wav():
+@pytest.mark.anyio
+async def test_ffmpeg_input_args_for_wav():
     from web.services import asr_service
 
     assert asr_service._ffmpeg_input_args("audio/wav") == ["-f", "wav"]
 
 
-def test_recognize_success():
+@pytest.mark.anyio
+async def test_recognize_success():
     from web.services import asr_service
 
     mock_recognizer = MagicMock()
     mock_audio = MagicMock()
 
     with patch.object(mock_recognizer, "recognize_google", return_value="recognized text"):
-        result = asr_service._recognize(mock_recognizer, mock_audio, "es-AR")
+        result = await asr_service._recognize(mock_recognizer, mock_audio, "es-AR")
         assert result == "recognized text"
 
 
-def test_recognize_unknown_value():
+@pytest.mark.anyio
+async def test_recognize_unknown_value():
     from web.services import asr_service
 
     mock_recognizer = MagicMock()
     mock_audio = MagicMock()
 
     with patch.object(mock_recognizer, "recognize_google", side_effect=asr_service.sr.UnknownValueError):
-        result = asr_service._recognize(mock_recognizer, mock_audio, "es-AR")
+        result = await asr_service._recognize(mock_recognizer, mock_audio, "es-AR")
         assert result == ""
 
 
-def test_recognize_request_error():
+@pytest.mark.anyio
+async def test_recognize_request_error():
     from web.services import asr_service
 
     mock_recognizer = MagicMock()
     mock_audio = MagicMock()
 
     with patch.object(mock_recognizer, "recognize_google", side_effect=asr_service.sr.RequestError("API error")):
-        result = asr_service._recognize(mock_recognizer, mock_audio, "es-AR")
+        result = await asr_service._recognize(mock_recognizer, mock_audio, "es-AR")
         assert result == ""
 
 
-def test_recognize_exception():
+@pytest.mark.anyio
+async def test_recognize_exception():
     from web.services import asr_service
 
     mock_recognizer = MagicMock()
     mock_audio = MagicMock()
 
     with patch.object(mock_recognizer, "recognize_google", side_effect=Exception("Unexpected error")):
-        result = asr_service._recognize(mock_recognizer, mock_audio, "es-AR")
+        result = await asr_service._recognize(mock_recognizer, mock_audio, "es-AR")
         assert result == ""

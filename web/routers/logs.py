@@ -120,23 +120,51 @@ def _latest_log_path(log_dir: Path) -> Optional[Path]:
     return files[-1] if files else None
 
 
+MAX_LOG_ENTRIES = 10000
+
+
 def _read_filter(path: Path, level: Optional[str], module: Optional[str]) -> list[dict]:
+    lines = _tail_lines(path, MAX_LOG_ENTRIES)
     entries = []
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if level and entry.get("l") != level:
-                continue
-            if module and entry.get("m") != module:
-                continue
-            entries.append(entry)
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if level and entry.get("l") != level:
+            continue
+        if module and entry.get("m") != module:
+            continue
+        entries.append(entry)
     return entries
+
+
+def _tail_lines(path: Path, n: int) -> list[str]:
+    """Read the last n lines from a file efficiently."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            if size == 0:
+                return []
+            block_size = min(size, max(8192, n * 256))
+            f.seek(max(0, size - block_size))
+            data = f.read()
+            lines = data.split(b"\n")
+            result = [l.decode("utf-8", errors="replace") for l in lines if l]
+            while len(result) < n and f.tell() < size:
+                block_size = min(size - f.tell(), max(8192, n * 256))
+                data = f.read(block_size)
+                if not data:
+                    break
+                more = data.split(b"\n")
+                result = [l.decode("utf-8", errors="replace") for l in more if l] + result
+            return result[-n:]
+    except Exception:
+        return []
 
 
 def _tail_file(path: Path, n: int) -> list[dict]:

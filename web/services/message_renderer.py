@@ -14,14 +14,18 @@ def _resolve_render_deps(deps: MessageRenderDeps | None = None) -> MessageRender
     return deps or MessageRenderDeps()
 
 
-def _call_with_repos(fn, session_id: str, repos, *args):
+async def _call_with_repos(fn, session_id: str, repos, *args):
     params = inspect.signature(fn).parameters
     if 'repos' in params:
-        return fn(session_id, *args, repos=repos)
-    return fn(session_id, *args)
+        result = fn(session_id, *args, repos=repos)
+    else:
+        result = fn(session_id, *args)
+    if inspect.isawaitable(result):
+        return await result
+    return result
 
 
-def render_session_messages(session_id: str, deps: MessageRenderDeps | None = None) -> dict:
+async def render_session_messages(session_id: str, deps: MessageRenderDeps | None = None) -> dict:
     """Returns a dict containing messages and widget states for a session."""
     _deps = _resolve_render_deps(deps)
     get_session_messages_fn = _deps.get_session_messages_fn or get_session_messages
@@ -32,22 +36,23 @@ def render_session_messages(session_id: str, deps: MessageRenderDeps | None = No
     extract_inline_widget_states_fn = _deps.extract_inline_widget_states_fn or extract_inline_widget_states
     repos = _deps.repos
 
-    raw_msgs = _call_with_repos(get_session_messages_fn, session_id, repos)
+    raw_msgs = await _call_with_repos(get_session_messages_fn, session_id, repos)
     msgs = filter_messages_fn(raw_msgs)
 
-    all_tools = _call_with_repos(get_tool_history_fn, session_id, repos, 100)
+    all_tools = await _call_with_repos(get_tool_history_fn, session_id, repos, 100)
     msg_tool_map = match_tools_fn(msgs, all_tools)
-    widget_states = get_widget_states_fn(session_id)
+    widget_states_raw = get_widget_states_fn(session_id)
+    widget_states = await widget_states_raw if inspect.isawaitable(widget_states_raw) else widget_states_raw
     widget_states.update(extract_inline_widget_states_fn(msgs))
 
     from web.ui_utils import _ensure_dict
     formatted_msgs = []
     for row in msgs:
-        role = row.role if hasattr(row, "role") else row["role"]
-        content = row.content if hasattr(row, "content") else row["content"]
-        ts = row.created_at if hasattr(row, "created_at") else row["created_at"]
-        reasoning = row.reasoning if hasattr(row, "reasoning") else row["reasoning"]
-        phases_str = row.phases if hasattr(row, "phases") else row["phases"]
+        role = row.role
+        content = row.content
+        ts = row.created_at
+        reasoning = row.reasoning
+        phases_str = row.phases
         matched = msg_tool_map.get(ts, []) if role == "assistant" else []
         
         matched_dicts = [_ensure_dict(t) for t in matched]

@@ -1,3 +1,5 @@
+import pytest
+from unittest.mock import AsyncMock
 import json
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +15,8 @@ def _bg_tasks():
     return bg
 
 
-def test_tool_loop_default_turns_match_shared_constant():
+@pytest.mark.anyio
+async def test_tool_loop_default_turns_match_shared_constant():
     ctx = _ToolLoopContext(history=[], model="m")
     assert ctx.max_turns == MAX_TOOL_TURNS
     assert MAX_TOOL_TURNS == DEFAULT_CONFIG.max_tool_turns
@@ -21,29 +24,46 @@ def test_tool_loop_default_turns_match_shared_constant():
 
 
 
-def test_tool_runner_heartbeat_constant_is_centralized():
+@pytest.mark.anyio
+async def test_tool_runner_heartbeat_constant_is_centralized():
     assert DEFAULT_CONFIG.tool_heartbeat_interval == 10.0
 
 
-def test_tool_output_chunk_size_is_shared():
+@pytest.mark.anyio
+async def test_tool_output_chunk_size_is_shared():
     assert TOOL_OUTPUT_CHUNK_SIZE == 12
 
 
 @patch("web.services.chat_stream.save_assistant_message")
 @patch("web.services.chat_stream.chat_stream")
-def test_stream_contract_uses_ndjson_t_and_d(mock_chat_stream, mock_save):
-    mock_chat_stream.return_value = iter([
+@pytest.mark.anyio
+async def test_stream_contract_uses_ndjson_t_and_d(mock_chat_stream, mock_save):
+    class _AsyncIter:
+        def __init__(self, items):
+            self._items = list(items)
+            self._idx = 0
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if self._idx >= len(self._items):
+                raise StopAsyncIteration
+            item = self._items[self._idx]
+            self._idx += 1
+            return item
+
+    mock_chat_stream.return_value = _AsyncIter([
         ("reasoning", "Pensando"),
         ("content", "Hola"),
     ])
 
-    chunks = list(build_stream_generator(
+    gen = build_stream_generator(
         "ses-contract",
         "Hola",
         [{"role": "system", "content": "test"}],
         "test-model",
         _bg_tasks(),
-    )())
+    )
+    chunks = [chunk async for chunk in gen()]
 
     assert chunks
     parsed = [json.loads(chunk.strip()) for chunk in chunks]

@@ -1,6 +1,6 @@
 import logging
-import time
-from typing import Any, Callable
+import asyncio
+from typing import Any, Callable, Awaitable
 from openai import RateLimitError
 from src.config_loader import DEFAULT_CONFIG
 
@@ -16,8 +16,8 @@ def is_rate_limit_error(error: Exception) -> bool:
     return "rate limit" in error_msg or "ratelimit" in error_msg or "429" in error_msg
 
 
-def execute_with_retry(fn: Callable[[], Any], model_name: str, max_retries: int | None = None, retry_delay: float | None = None) -> Any:
-    """Wrapper that executes a function with exponential backoff on rate limit or retryable errors."""
+async def execute_with_retry(fn: Callable[[], Awaitable[Any] | Any], model_name: str, max_retries: int | None = None, retry_delay: float | None = None) -> Any:
+    """Wrapper that executes an async function with exponential backoff on rate limit or retryable errors."""
     last_error: Exception | None = None
     if max_retries is None:
         max_retries = DEFAULT_CONFIG.llm_max_retries
@@ -25,7 +25,10 @@ def execute_with_retry(fn: Callable[[], Any], model_name: str, max_retries: int 
         retry_delay = DEFAULT_CONFIG.llm_retry_delay
     for attempt in range(max_retries):
         try:
-            return fn()
+            res = fn()
+            if asyncio.iscoroutine(res):
+                return await res
+            return res
         except Exception as e:
             last_error = e
             if is_rate_limit_error(e):
@@ -33,7 +36,7 @@ def execute_with_retry(fn: Callable[[], Any], model_name: str, max_retries: int 
                 if attempt < max_retries - 1:
                     delay = retry_delay * (2 ** attempt)
                     logger.info("Rate limit detected. Retrying %d/%d in %.1fs...", attempt + 1, max_retries, delay)
-                    time.sleep(delay)
+                    await asyncio.sleep(delay)
                     continue
                 raise
             raise e

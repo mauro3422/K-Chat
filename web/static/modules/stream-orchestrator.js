@@ -23,6 +23,7 @@ export const StreamOrchestrator = {
     var controller = params.controller;
     var sessionId = params.sessionId;
     var defaultModel = params.defaultModel;
+    var files = params.files;
     var retryController = params.retryController || createRetryController();
 
     logUI('stream_start', 'mensaje=' + text.substring(0, 40) + '...');
@@ -62,7 +63,8 @@ export const StreamOrchestrator = {
         errorHandler: errorHandler,
         context: context,
         onChunk: resetTimeout,
-        onResponse: refreshSidebar
+        onResponse: refreshSidebar,
+        files: files
       });
     } catch(e2) {
       clearTimeout(timeoutId);
@@ -109,6 +111,7 @@ export const StreamOrchestrator = {
     var hasContent = fetchResult ? fetchResult.hasContent : false;
 
     var streamError = errorHandler.getError();
+    var streamError = errorHandler.getError();
     if (streamError) {
       logUI('stream_backend_error', streamError.type + ': ' + streamError.message);
 
@@ -116,9 +119,10 @@ export const StreamOrchestrator = {
       var errorMsg = streamError.message || 'Error desconocido';
 
       if (errorType === 'auth' || errorType === 'rate_limit') {
+        StreamErrorHandler.showRetryMessage(asstDiv, errorMsg, errorType);
+        retryController.resetRetryCount();
         Utils.finalizeStream(input);
         cleanupStream();
-        return;
         return;
       }
 
@@ -136,10 +140,10 @@ export const StreamOrchestrator = {
         cleanupStream();
         return;
       }
+      StreamErrorHandler.showRetryMessage(asstDiv, errorMsg);
+      retryController.resetRetryCount();
       Utils.finalizeStream(input);
       cleanupStream();
-      return;
-      Utils.finalizeStream(input);
       return;
     }
 
@@ -176,7 +180,6 @@ export const StreamOrchestrator = {
         hasSuccessfulTools: hasSuccessfulTools,
       })) {
         cleanupStream();
-        return;
         return;
       }
 

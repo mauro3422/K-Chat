@@ -1,17 +1,26 @@
 import logging
 import json
 import uuid
-from collections.abc import Callable, Generator
-from typing import Any
+from datetime import datetime
+from collections.abc import Callable, AsyncGenerator
+from typing import Any, TYPE_CHECKING
 
 from src.context import build_system_prompt
 from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
 from src.core.debug_info import DebugInfo
-from src.memory.repos import Repositories
+from src.memory.repos import Repositories, get_repos
 from src.core.orchestrator_contract import OrchestratorDeps
 from src.tools.registry import ToolRegistry
 import src.tools as tools
+from src.llm.selector import get_default_model
+import src.llm.client as llm_client
+from src.core.history_contract import HistoryMessage
+
+from src.core.services.history_service import HistoryService
+from src.core.services.llm_service import LLMService
+from src.core.services.tool_execution_service import ToolExecutionService
+from src.core.services.telemetry_service import TelemetryService
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -32,34 +41,7 @@ def _save_debug_info(debug: DebugInfo | None, history: list[dict[str, Any]], pha
         debug.phases = json.dumps(phases_output) if phases_output else "[]"
 
 
-def _compress_if_needed(
-    history: list[dict[str, Any]],
-    model: str,
-    compress_fn: Callable[[list[dict[str, Any]], str], None] | None = None,
-    should_compress_fn: Callable[[list[dict[str, Any]]], bool] | None = None,
-) -> None:
-    _should = should_compress_fn or (lambda h: False)
-    _compress = compress_fn or (lambda h, m: None)
-    if _should(history):
-        try:
-            _compress(history, model)
-        except Exception as e:
-            logger.warning("compress_history failed, history not compressed: %s", e)
-
-
-def _get_tool_registry(deps: OrchestratorDeps) -> ToolRegistry:
-    """Get tool registry from deps or fall back to default."""
-    if deps.tool_registry is not None:
-        return deps.tool_registry
-    return get_default_registry()
-
-
-def get_default_registry() -> ToolRegistry:
-    """Get default tool registry (imported from tools package)."""
-    return tools.get_default_registry()
-
-
-def chat_stream(
+async def chat_stream(
     message_user: str,
     history: list[dict[str, Any]],
     model: str | None = None,
@@ -75,72 +57,105 @@ def chat_stream(
     llm_chat_fn: Callable[..., Any] | None = None,
     llm_chat_stream_fn: Callable[..., Any] | None = None,
     deps: OrchestratorDeps | None = None,
-) -> Generator[Any, None, None]:
+) -> AsyncGenerator[Any, None]:
     """Same as chat() but yields tokens. history must be a mutable list."""
-    _deps = deps or OrchestratorDeps(
-        repos=repos,
-        default_model_fn=default_model_fn,
-        llm_chat_fn=llm_chat_fn,
-        llm_chat_stream_fn=llm_chat_stream_fn,
-        compress_fn=compress_fn,
-        should_compress_fn=should_compress_fn,
-    )
+    _deps = deps or OrchestratorDeps()
+    # Backward-compat: positional/keyword params override deps defaults
+    if repos is not None:
+        _deps.repos = repos
+    if default_model_fn is not None:
+        _deps.default_model_fn = default_model_fn
+    if llm_chat_fn is not None:
+        _deps.llm_chat_fn = llm_chat_fn
+    if llm_chat_stream_fn is not None:
+        _deps.llm_chat_stream_fn = llm_chat_stream_fn
+    if compress_fn is not None:
+        _deps.compress_fn = compress_fn
+    if should_compress_fn is not None:
+        _deps.should_compress_fn = should_compress_fn
+    if session_id is not None:
+        _deps.session_id = session_id
+    if tagged:
+        _deps.tagged = tagged
+    if debug is not None:
+        _deps.debug = debug
+    if phases_output is not None:
+        _deps.phases_output = phases_output
+    if not streaming:
+        _deps.streaming = streaming
+
+    # Initialize services if not provided
     if _deps.repos is None:
-        from src.memory.repos import get_repos as _get_repos
-        _deps.repos = _get_repos()
+        _deps.repos = get_repos()
 
+    if _deps.history_service is None:
+        _deps.history_service = HistoryService(repos=_deps.repos)
 
-    # Lazy init tool registry if not injected
-    tool_registry = _get_tool_registry(_deps)
+    if _deps.telemetry_service is None:
+        _deps.telemetry_service = TelemetryService()
+
+    if _deps.llm_service is None:
+        _deps.llm_service = LLMService(
+            chat_fn=_deps.llm_chat_fn,
+            chat_stream_fn=_deps.llm_chat_stream_fn,
+            default_model_fn=_deps.default_model_fn,
+            telemetry_service=_deps.telemetry_service
+        )
+
+    if _deps.tool_service is None:
+        _deps.tool_service = ToolExecutionService(tool_registry=_deps.tool_registry)
 
     if model is None:
-        if _deps.default_model_fn is None:
-            from src.llm.selector import get_default_model as _get_default_model
-            _deps.default_model_fn = _get_default_model
-        model = _deps.default_model_fn()
+        model = _deps.llm_service.get_default_model()
 
-    if _deps.llm_chat_fn is None or _deps.llm_chat_stream_fn is None:
-        import src.llm.client as _llm_client
-        if _deps.llm_chat_fn is None:
-            _deps.llm_chat_fn = lambda *a, **kw: _llm_client.chat(*a, **kw)
-        if _deps.llm_chat_stream_fn is None:
-            _deps.llm_chat_stream_fn = lambda *a, **kw: _llm_client.chat_stream(*a, **kw)
+    if _deps.phases_output is not None:
+        _deps.phases_output[:] = []
 
-    if phases_output is not None:
-        phases_output[:] = []
-
-    if debug is not None:
-        debug.model = model
-        debug.session_id = session_id or ""
-        debug.reasoning = ""
-        debug.tool_calls = []
-        debug.history_before = []
-        debug.system_prompt = ""
+    if _deps.debug is not None:
+        _deps.debug.model = model
+        _deps.debug.session_id = _deps.session_id or ""
+        _deps.debug.reasoning = ""
+        _deps.debug.tool_calls = []
+        _deps.debug.history_before = []
+        _deps.debug.system_prompt = ""
 
     if not history:
-        history.append(build_system_prompt(model))
+        sp = _deps.history_service.get_system_prompt(model)
+        history.append(HistoryMessage(
+            role=sp["role"],
+            content=sp["content"],
+            created_at=datetime.now().isoformat()
+        ))
 
-    if debug is not None:
-        debug.system_prompt = history[0]["content"]
+    if _deps.debug is not None:
+        _deps.debug.system_prompt = getattr(history[0], "content", "") or ""
 
-    history.append({"role": "user", "content": message_user})
+    history.append(HistoryMessage(
+        role="user",
+        content=message_user,
+        created_at=datetime.now().isoformat()
+    ))
 
-    if debug is not None:
-        debug.history_before = [_msg_snapshot(m) for m in history]
+    if _deps.debug is not None:
+        _deps.debug.history_before = [_msg_snapshot(m) for m in history]
 
-    used_tools: list[str] = []
-    tool_detail: list[dict[str, Any]] = []
-
-    loop_fn = run_tool_loop_streaming if streaming else run_tool_loop_sync
-    for event in loop_fn(
-        history, model, session_id, tagged, debug, phases_output,
-        used_tools, tool_detail, run_parallel_tools, tool_registry.tool_map,
+    # Execute tool loop via ToolExecutionService
+    async for event in _deps.tool_service.execute(
+        history, model, _deps.session_id, _deps.tagged, _deps.debug, _deps.phases_output,
+        streaming=_deps.streaming,
         repos=_deps.repos,
-        llm_chat_fn=_deps.llm_chat_fn,
-        llm_chat_stream_fn=_deps.llm_chat_stream_fn,
-        tool_defs=tool_registry.tools_openai,
+        llm_chat_fn=_deps.llm_service._chat_fn,
+        llm_chat_stream_fn=_deps.llm_service._chat_stream_fn,
     ):
         yield event
 
-    _save_debug_info(debug, history, phases_output)
-    _compress_if_needed(history, model, _deps.compress_fn, _deps.should_compress_fn)
+    _save_debug_info(_deps.debug, history, _deps.phases_output)
+
+    if _deps.background_tasks:
+        _deps.background_tasks.add_task(
+            _deps.history_service.compress_if_needed,
+            history, model, _deps.compress_fn, _deps.should_compress_fn
+        )
+    else:
+        await _deps.history_service.compress_if_needed(history, model, _deps.compress_fn, _deps.should_compress_fn)
+

@@ -29,6 +29,6 @@ def _parse_tool_call(tc: Any, tool_map: dict[str, Any]) -> tuple[str, dict[str, 
 
 
 def _get_required_params(tool_name: str) -> list[str]:
-    from src.tools.loader import TOOL_DEFINITIONS
-    defn = TOOL_DEFINITIONS.get(tool_name, {})
+    from src.tools import get_default_registry
+    defn = get_default_registry().definitions.get(tool_name, {})
     return defn.get("function", {}).get("parameters", {}).get("required", [])

@@ -1,10 +1,13 @@
+import pytest
+from unittest.mock import AsyncMock
 """Tests for src/config_loader.py"""
 import os
 from src.config_loader import Config, load_config, DEFAULT_CONFIG
 
 
 class TestConfigDataclass:
-    def test_default_values(self):
+    @pytest.mark.anyio
+    async def test_default_values(self):
         """Config with no args uses defaults."""
         cfg = Config()
         assert cfg.opencode_zen_api_key == ""
@@ -18,7 +21,8 @@ class TestConfigDataclass:
         assert cfg.environment == "production"
         assert cfg.user_name == "user"
 
-    def test_custom_values(self):
+    @pytest.mark.anyio
+    async def test_custom_values(self):
         """Config accepts explicit overrides."""
         cfg = Config(
             opencode_zen_api_key="test-key-123",
@@ -51,7 +55,8 @@ class TestConfigDataclass:
 
 
 class TestLoadConfig:
-    def test_loads_from_env(self, monkeypatch):
+    @pytest.mark.anyio
+    async def test_loads_from_env(self, monkeypatch):
         """load_config() reads environment variables."""
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "env-key-456")
         monkeypatch.setenv("LLM_PROVIDER", "google")
@@ -66,7 +71,8 @@ class TestLoadConfig:
         assert cfg.port == 9000
         assert cfg.testing is True
 
-    def test_env_fallback_key(self, monkeypatch):
+    @pytest.mark.anyio
+    async def test_env_fallback_key(self, monkeypatch):
         """OPENCODE_ZEN_API_KEY_FALLBACK used when primary key is empty."""
         monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY_FALLBACK", "fallback-key")
@@ -74,7 +80,8 @@ class TestLoadConfig:
         cfg = load_config()
         assert cfg.opencode_zen_api_key == "fallback-key"
 
-    def test_memory_db_default(self, monkeypatch):
+    @pytest.mark.anyio
+    async def test_memory_db_default(self, monkeypatch):
         """MEMORY_DB_PATH defaults to project-root/memory/kairos_memory.db."""
         monkeypatch.delenv("MEMORY_DB_PATH", raising=False)
 
@@ -82,14 +89,16 @@ class TestLoadConfig:
         assert cfg.memory_db_path.endswith("kairos_memory.db")
         assert "memory" in cfg.memory_db_path
 
-    def test_port_default(self, monkeypatch):
+    @pytest.mark.anyio
+    async def test_port_default(self, monkeypatch):
         """PORT defaults to 8000 when env var is missing."""
         monkeypatch.delenv("PORT", raising=False)
 
         cfg = load_config()
         assert cfg.port == 8000
 
-    def test_testing_default_false(self, monkeypatch):
+    @pytest.mark.anyio
+    async def test_testing_default_false(self, monkeypatch):
         """TESTING defaults to False."""
         monkeypatch.delenv("TESTING", raising=False)
 
@@ -98,11 +107,13 @@ class TestLoadConfig:
 
 
 class TestDefaultConfig:
-    def test_default_config_is_instance(self):
+    @pytest.mark.anyio
+    async def test_default_config_is_instance(self):
         """DEFAULT_CONFIG is a Config instance."""
         assert isinstance(DEFAULT_CONFIG, Config)
 
-    def test_default_config_has_values(self):
+    @pytest.mark.anyio
+    async def test_default_config_has_values(self):
         """DEFAULT_CONFIG has reasonable non-None values for all fields."""
         assert DEFAULT_CONFIG.opencode_zen_base_url is not None
         assert DEFAULT_CONFIG.llm_provider is not None

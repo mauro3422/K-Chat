@@ -74,14 +74,13 @@ def handle_voice_message(update: dict[str, Any]) -> str | None:
     duration = voice.get("duration", 0)
     return f"__voice__:{file_id}:{duration}"
 
-
 @register
 def handle_command_start(update: dict[str, Any]) -> str | None:
-    """Handle /start command."""
+    """Handle /start command (case-insensitive)."""
     msg = update.get("message")
     if not msg:
         return None
-    text = msg.get("text", "").strip()
+    text = (msg.get("text", "") or "").strip().lower()
     if text == "/start":
         return "/start"
     return None
@@ -89,11 +88,11 @@ def handle_command_start(update: dict[str, Any]) -> str | None:
 
 @register
 def handle_command_help(update: dict[str, Any]) -> str | None:
-    """Handle /help command."""
+    """Handle /help command (case-insensitive)."""
     msg = update.get("message")
     if not msg:
         return None
-    text = msg.get("text", "").strip()
+    text = (msg.get("text", "") or "").strip().lower()
     if text == "/help":
         return "/help"
     return None
@@ -105,7 +104,7 @@ def handle_command_new(update: dict[str, Any]) -> str | None:
     msg = update.get("message")
     if not msg:
         return None
-    text = msg.get("text", "").strip()
+    text = (msg.get("text", "") or "").strip().lower()
     if text == "/new":
         return "/new"
     return None
@@ -117,7 +116,6 @@ def handle_command_reset(update: dict[str, Any]) -> str | None:
     msg = update.get("message")
     if not msg:
         return None
-    text = msg.get("text", "").strip()
+    text = (msg.get("text", "") or "").strip().lower()
     if text == "/reset":
         return "/reset"
-    return None

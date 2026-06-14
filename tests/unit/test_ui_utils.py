@@ -1,10 +1,14 @@
+import pytest
+from unittest.mock import AsyncMock
 from src.core.history_ui import match_tools_to_msgs as _match_tools_to_msgs
 
-def test_match_tools_to_msgs_empty():
+@pytest.mark.anyio
+async def test_match_tools_to_msgs_empty():
     """Test matching with empty lists."""
     assert _match_tools_to_msgs([], []) == {}
 
-def test_match_tools_to_msgs_basic():
+@pytest.mark.anyio
+async def test_match_tools_to_msgs_basic():
     """Test matching tool calls to assistant messages chronologically."""
     msgs = [
         {"role": "user", "content": "Hello", "created_at": 10},

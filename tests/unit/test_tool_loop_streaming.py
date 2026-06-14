@@ -1,3 +1,5 @@
+import pytest
+from unittest.mock import AsyncMock
 import json
 from types import SimpleNamespace
 
@@ -14,29 +16,39 @@ def _tool_call(tc_id: str, name: str, args: dict[str, object]) -> SimpleNamespac
     return tc
 
 
-def test_streaming_duplicate_content_after_tool_turn_breaks_without_reexecuting_tools():
+@pytest.mark.anyio
+async def test_streaming_duplicate_content_after_tool_turn_breaks_without_reexecuting_tools():
     stream_calls: list[int] = []
     tool_runs: list[int] = []
     phases_output: list[dict[str, object]] = []
     history = [{"role": "system", "content": "test"}]
 
-    def llm_chat_stream_fn(messages, model, **kwargs):
+    async def llm_chat_stream_fn(messages, model, **kwargs):
         idx = len(stream_calls)
         stream_calls.append(idx)
         tool_calls_output = kwargs.get("tool_calls_output")
         if idx == 0:
             if tool_calls_output is not None:
                 tool_calls_output[:] = [_tool_call("c1", "web_search", {"query": "test"})]
-            return iter([("content", "Repeated answer"), ("tool_call", json.dumps({"name": "web_search", "status": "calling"}))])
-        if tool_calls_output is not None:
-            tool_calls_output[:] = []
-        return iter([("content", "Repeated answer")])
+            for e in [("content", "Repeated answer"), ("tool_call", json.dumps({"name": "web_search", "status": "calling"}))]:
+                yield e
+        else:
+            if tool_calls_output is not None:
+                tool_calls_output[:] = []
+            for e in [("content", "Repeated answer")]:
+                yield e
+
+    class _EmptyAsyncIter:
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            raise StopAsyncIteration
 
     def run_parallel_tools_fn(*args, **kwargs):
         tool_runs.append(1)
-        return iter([])
+        return _EmptyAsyncIter()
 
-    tokens = list(run_tool_loop_streaming(
+    gen = run_tool_loop_streaming(
         history=history,
         model="test-model",
         session_id="sess-1",
@@ -51,7 +63,8 @@ def test_streaming_duplicate_content_after_tool_turn_breaks_without_reexecuting_
         llm_chat_stream_fn=llm_chat_stream_fn,
         llm_chat_fn=lambda *a, **kw: None,
         tool_defs=[],
-    ))
+    )
+    tokens = [t async for t in gen]
 
     assert tool_runs == [1]
     assert len(stream_calls) == 2

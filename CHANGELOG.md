@@ -4,6 +4,11 @@
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 > Las entradas describen el estado del proyecto en el momento de cada release.
 
+## [v0.0.56] — 2026-06-14 — [Detalle](changelogs/v0.0.56.md)
+- **Modular Skills & Lego refactor**: Agrupación de skills y sus especificaciones/herramientas en subcarpetas lógicas individuales bajo `skills/`.
+- **Decoupled Autoregistry**: Implementación del cargador modular `SkillRegistry.discover_tools()` para desacoplar el descubrimiento físico de dependencias.
+- **Smart Tests**: Integración de `pytest-testmon` para pruebas selectivas rápidas enfocadas en cambios (0.2s ejecución).
+
 ## [v0.0.55] — 2026-06-13 — [Detalle](changelogs/v0.0.55.md)
 - **Premium UI y Layout Resizable**: Estética Glassmorphism ligera, tema claro/oscuro (🌓) y gutter interactivo resizable con persistencia en `localStorage`.
 - **Lego Frontend**: Desacoplamiento total del renderizado de mensajes a JSON, inyectados dinámicamente desde el cliente (`message-renderer.js`).

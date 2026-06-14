@@ -1,17 +1,21 @@
+import pytest
+from unittest.mock import AsyncMock
 from types import SimpleNamespace
 
 from src.api.widgets_contract import WidgetOpsDeps
 from src.api.widgets import save_widget_state, db_save_widget
 
 
-def test_widget_ops_deps_defaults_are_empty():
+@pytest.mark.anyio
+async def test_widget_ops_deps_defaults_are_empty():
     deps = WidgetOpsDeps()
 
     assert deps.widget_state_repo is None
     assert deps.saved_widget_repo is None
 
 
-def test_widget_contract_allows_injected_repos():
+@pytest.mark.anyio
+async def test_widget_contract_allows_injected_repos():
     calls = []
 
     class FakeWidgetStateRepo:

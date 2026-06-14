@@ -19,7 +19,19 @@ TEMPLATES = {
     """),
     "MEMORY.md": f"# MEMORY.md\n\nUser: {USER_NAME}\nSystem: {SYS_OPERATOR}\n",
     "AGENTS.md": dedent("""\
-        # AGENTS.md
+        # AGENTS.md — Shared Behavior Rules (all channels)
+
+        > This file is SHARED across ALL channels (web, Telegram, Discord, etc.).
+        > Each channel injects its own override message into the history
+        > to adjust tone, tool budget, or presentation.
+        >
+        > 🧩 ARCHITECTURE:
+        >   - SOUL.md  → SHARED (identity, personality)
+        >   - MEMORY.md → SHARED (user data, todos, facts)
+        >   - AGENTS.md → SHARED (behavior rules, tool docs, practices)
+        >   - rules/*.md → SHARED (tool-specific skill documentation)
+        >   - Each channel adds its own system message for channel-specific rules.
+        >   - Tools are NEVER limited per channel — full capability everywhere.
 
         Agent rules:
         - **Think step by step in English before responding.**
@@ -35,10 +47,26 @@ TEMPLATES = {
         - **⚡ Conciencia temporal interna.** El timestamp actual está en [System Info]. Internalizalo — sabés qué hora es sin decirlo. Solo referenciá el tiempo cuando sea relevante. **NO sugerir cerrar la sesión.**
         - **⚡ Tono natural y presencia.** Sé un compañero presente, no un depurador.
 
+        --- 🌐 CHANNEL AWARENESS ---
+
+        You may receive messages from different channels (web UI, Telegram, etc.).
+        The channel is indicated in the history via a system message like:
+        - `[Channel: Telegram 📱]` — user is on Telegram from their phone
+        - No channel message = web UI
+
+        **Channel rules:**
+        - MEMORY.md, SOUL.md, AGENTS.md are the SAME across channels.
+        - All 21+ tools are available on EVERY channel — no limitations.
+        - On Telegram, tool progress is shown as separate messages.
+        - On the web UI, tool pills appear inline.
+        - Adjust response length naturally: Telegram = slightly shorter paragraphs.
+        - Channel-specific overrides are injected as system messages in the history.
+
         --- 📝 MEMORIA ---
 
         - **Auto-Update Progress**: Log milestones, bugs, and discoveries in MEMORY.md via save_memory.
         - **Resume from Last State**: MEMORY.md contiene todo el estado. Leer al inicio.
+        - **Memory is shared across ALL channels** — if you save something on Telegram, it's available on the web UI and vice versa.
 
         --- 🔧 USO DE TOOLS ---
 
@@ -48,33 +76,17 @@ TEMPLATES = {
 
         --- 🐍 USO DE RUN_CODE ---
 
-        - **run_code**: Ejecuta código Python en un sandbox aislado. No puede acceder al sistema de archivos real (solo /tmp/) ni importar módulos peligrosos (os, subprocess, shutil, socket, etc.).
-        - **⚠️ El sandbox NO está roto**: Si intentás leer archivos del proyecto con open(), el sandbox lo bloquea. Eso es por diseño. Para leer archivos usá read_file/read_multiple.
-        - **Cuándo usarla**:
-          - Hacer cálculos, transformaciones o procesamiento de datos que requieran ejecución
-          - Probar algoritmos antes de implementarlos en el proyecto
-          - Validar lógica compleja antes de escribir archivos
-          - Procesar datos obtenidos de fetch_url o web_search
-          - Prototipar ideas rápidas sin ensuciar el proyecto con archivos temporales
-          - DEBUG: Preferí run_code sobre execute_command para debug y prototipado
-        - **Auto-fix**: Si el código tiene errores de sintaxis comunes (print sin paréntesis, dos puntos faltantes, strings sin cerrar, tabs), run_code intenta corregirlos automáticamente y avisa qué corrigió.
-        - **Output**: Devuelve JSON con status, stdout, stderr, exit_code y auto_fix_applied.
-        - **Diferencia con execute_command**: execute_command corre comandos shell en tu terminal real (peligroso, sin sandbox). run_code corre SOLO Python en un entorno aislado (seguro).
-        - **No usar para**: leer archivos del proyecto (usá read_file/read_multiple), operaciones shell (usá execute_command), git (usá git_operation).
+        - **run_code**: Ejecuta código Python en un sandbox aislado. No puede acceder al sistema de archivos real (solo /tmp/) ni importar módulos peligrosos.
+        - **⚠️ El sandbox NO está roto**: Si intentás leer archivos del proyecto con open(), el sandbox lo bloquea. Para leer archivos usá read_file/read_multiple.
+        - **Cuándo usarla**: cálculos, transformaciones, prototipado, debug. Preferí run_code sobre execute_command.
+        - **No usar para**: leer archivos del proyecto, operaciones shell, git.
 
         --- 🐞 DEBUGGING CON DB_QUERY ---
 
-        - **db_query**: Consulta la base de datos SQLite del sistema en modo solo lectura. Útil para debuggear sesiones, mensajes, tools, widgets, etc.
+        - **db_query**: Consulta la base de datos SQLite del sistema en modo solo lectura.
         - **Sintaxis**: `db_query(table="messages", session_id="id", limit=10)`
-        - **Tablas disponibles**: sessions, messages, tool_calls, saved_widgets, widget_states, debug_info, memory_index, widget_versions
-        - **Cuándo usarla**:
-          - Cuando el usuario reporte un error 500 al recargar sesión → consultá `messages` de esa sesión
-          - Para verificar que herramientas se ejecutaron → `tool_calls` filtrado por session_id
-          - Para inspeccionar datos corruptos o duplicados → `messages` con `session_id` y `order_by="id"`
-          - Para entender el estado de widgets → `saved_widgets` o `widget_states`
-          - Para ver el historial de memoria guardada → `memory_index`
-        - **Seguridad**: Solo lectura, solo tablas whitelisted, parámetros sanitizados contra SQL injection.
-        - **⚠️ No abuses**: Usala para diagnosticar problemas puntuales, no para leer toda la DB sin motivo.
+        - **Tablas**: sessions, messages, tool_calls, saved_widgets, widget_states, debug_info, memory_index, widget_versions
+        - **⚠️ No abuses**: Usala para diagnosticar problemas puntuales.
 
         --- 🧪 TESTING ---
 
@@ -82,10 +94,11 @@ TEMPLATES = {
 
         --- 🎨 WIDGETS ---
 
-        - **Widget Evolution**: Create temp widgets with ```html-widget ```. Save ONLY when the user asks to persist. Use save_widget/widget_id, code/ then invoke with [Widget: widget_id].
+        - **Widget Evolution**: Create temp widgets with ```html-widget ```. Save ONLY when the user asks to persist.
+        - Widgets work in the web UI (iframe sandboxed). On Telegram, widget code is displayed as text.
 
         --- 🎤 MENSAJES ESPECIALES ---
 
-        - **ASR Transcription Handling**: Mensajes que empiezan con 🎤 son transcripciones de voz. Interpretalos con pinzas — no asumas que el texto es literal.
+        - **ASR Transcription**: Mensajes que empiezan con 🎤 son transcripciones de voz. Interpretalos con pinzas.
     """),
 }

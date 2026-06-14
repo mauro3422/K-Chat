@@ -1,30 +1,40 @@
 import json
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock, MagicMock
+import pytest
+import json
+from datetime import datetime
 
 from src.core.debug_info import DebugInfo
+from src.core.history_contract import HistoryMessage
 
-
-
-@patch("src.llm.client.chat")
-def test_no_tools(mock_chat, make_choice):
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
+async def test_no_tools(mock_chat, make_choice):
     """Simple text response, no tools needed."""
     mock_chat.return_value = make_choice(content="¡Hola!")
     from src.core.orchestrator import chat_stream
 
-    history = [{"role": "system", "content": "test"}]
-    tokens = list(chat_stream("Hola!", history, model="test-model", tagged=True, streaming=False))
+    history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
+    tokens = [t async for t in chat_stream("Hola!", history, model="test-model", tagged=True, streaming=False)]
     contents = [t for t in tokens if t[0] == "content"]
     full = "".join(t[1] for t in contents)
     assert "¡Hola!" in full
     # Final assistant message appended to history
-    assert history[-1]["role"] == "assistant"
-    assert history[-1]["content"] == "¡Hola!"
+    assert history[-1].role == "assistant"
+    assert history[-1].content == "¡Hola!"
     mock_chat.assert_called_once()
 
 
-@patch("src.llm.client.chat")
-def test_tool_call_then_response(mock_chat, make_choice):
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.tools.get_default_registry")
+async def test_tool_call_then_response(mock_get_reg, mock_chat, make_choice):
     """Model calls a tool, then responds."""
+    mock_reg = MagicMock()
+    mock_reg.tool_map = {"web_search": AsyncMock(return_value="ok result")}
+    mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
+    mock_get_reg.return_value = mock_reg
+
     from src.core.orchestrator import chat_stream
 
     # First call: tool_calls
@@ -39,10 +49,10 @@ def test_tool_call_then_response(mock_chat, make_choice):
         make_choice(content="Aquí está la info.", reasoning_content="Done thinking"),
     ]
 
-    history = [{"role": "system", "content": "test"}]
+    history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     debug = DebugInfo()
-    with patch("src.tools.TOOL_MAP", {"web_search": lambda **kw: "ok result"}):
-        tokens = list(chat_stream("Busca algo", history, model="test-model", tagged=True, debug=debug, streaming=False))
+    
+    tokens = [t async for t in chat_stream("Busca algo", history, model="test-model", tagged=True, debug=debug, streaming=False)]
 
     types_seen = [t[0] for t in tokens]
     assert "reasoning" in types_seen
@@ -65,14 +75,20 @@ def test_tool_call_then_response(mock_chat, make_choice):
     assert "Done thinking" in (debug.reasoning or "")
 
 
-@patch("src.llm.client.chat")
-def test_tool_error(mock_chat, make_choice):
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.tools.get_default_registry")
+async def test_tool_error(mock_get_reg, mock_chat, make_choice):
     """Tool raises an exception."""
-    from src.core.orchestrator import chat_stream
-
+    mock_reg = MagicMock()
     # Use a real side effect that raises
-    def failing_run(**kwargs):
+    async def failing_run(**kwargs):
         raise ValueError("API error")
+    mock_reg.tool_map = {"web_search": failing_run}
+    mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
+    mock_get_reg.return_value = mock_reg
+
+    from src.core.orchestrator import chat_stream
 
     mock_chat.side_effect = [
         make_choice(
@@ -82,26 +98,32 @@ def test_tool_error(mock_chat, make_choice):
         make_choice(content="Lo siento, hubo un error."),
     ]
 
-    history = [{"role": "system", "content": "test"}]
-    # We need to mock the TOOL_MAP to raise
-    with patch("src.tools.TOOL_MAP", {"web_search": failing_run}):
-        tokens = list(chat_stream("test", history, model="test-model", tagged=True, streaming=False))
+    history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
+    
+    tokens = [t async for t in chat_stream("test", history, model="test-model", tagged=True, streaming=False)]
 
     tcs = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     assert any(t["status"] == "error" for t in tcs)
 
 
-@patch("src.llm.client.chat")
-def test_session_id_propagates_to_tools(mock_chat, make_choice):
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.tools.get_default_registry")
+async def test_session_id_propagates_to_tools(mock_get_reg, mock_chat, make_choice):
     """session_id is passed as _session_id to tools."""
     from src.api.session import ensure_session
-    ensure_session("ses-123")
-    from src.core.orchestrator import chat_stream
-
+    await ensure_session("ses-123")
+    
+    mock_reg = MagicMock()
     captured = {}
-    def tracking_tool(**kwargs):
+    async def tracking_tool(**kwargs):
         captured["session_id"] = kwargs.get("_session_id")
         return "ok"
+    mock_reg.tool_map = {"web_search": tracking_tool}
+    mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
+    mock_get_reg.return_value = mock_reg
+
+    from src.core.orchestrator import chat_stream
 
     mock_chat.side_effect = [
         make_choice(
@@ -111,25 +133,31 @@ def test_session_id_propagates_to_tools(mock_chat, make_choice):
         make_choice(content="done"),
     ]
 
-    history = [{"role": "system", "content": "test"}]
-    with patch("src.tools.TOOL_MAP", {"web_search": tracking_tool}):
-        list(chat_stream("test", history, model="test-model", session_id="ses-123", tagged=True, streaming=False))
+    history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
+    
+    [t async for t in chat_stream("test", history, model="test-model", session_id="ses-123", tagged=True, streaming=False)]
 
     assert captured.get("session_id") == "ses-123"
 
 
-@patch("src.llm.client.chat")
-def test_multiple_tool_calls_same_turn(mock_chat, make_choice):
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.tools.get_default_registry")
+async def test_multiple_tool_calls_same_turn(mock_get_reg, mock_chat, make_choice):
     """Multiple tools called in a single turn."""
     from src.api.session import ensure_session
-    ensure_session("ses-1")
-    from src.core.orchestrator import chat_stream
-
+    await ensure_session("ses-1")
+    
+    mock_reg = MagicMock()
     tools_called = []
-
-    def tracking_tool(**kwargs):
+    async def tracking_tool(**kwargs):
         tools_called.append(kwargs.get("_session_id"))
         return "result"
+    mock_reg.tool_map = {"web_search": tracking_tool}
+    mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
+    mock_get_reg.return_value = mock_reg
+
+    from src.core.orchestrator import chat_stream
 
     mock_chat.side_effect = [
         make_choice(
@@ -143,9 +171,9 @@ def test_multiple_tool_calls_same_turn(mock_chat, make_choice):
         make_choice(content="Resultados combinados."),
     ]
 
-    history = [{"role": "system", "content": "test"}]
-    with patch("src.tools.TOOL_MAP", {"web_search": tracking_tool}):
-        tokens = list(chat_stream("test", history, model="test-model", session_id="ses-1", tagged=True, streaming=False))
+    history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
+    
+    tokens = [t async for t in chat_stream("test", history, model="test-model", session_id="ses-1", tagged=True, streaming=False)]
 
     tcs = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     calling = [t for t in tcs if t["status"] == "calling"]
@@ -155,20 +183,26 @@ def test_multiple_tool_calls_same_turn(mock_chat, make_choice):
     assert len(tools_called) == 3
 
 
-@patch("src.llm.client.chat")
-def test_mixed_tool_results(mock_chat, make_choice):
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.tools.get_default_registry")
+async def test_mixed_tool_results(mock_get_reg, mock_chat, make_choice):
     """One tool succeeds, one fails in the same turn."""
     from src.api.session import ensure_session
-    ensure_session("ses-2")
-    from src.core.orchestrator import chat_stream
-
+    await ensure_session("ses-2")
+    
+    mock_reg = MagicMock()
     call_count = [0]
-
-    def flip_flop(**kwargs):
+    async def flip_flop(**kwargs):
         call_count[0] += 1
         if call_count[0] == 1:
             raise ValueError("fail")
         return "ok result"
+    mock_reg.tool_map = {"web_search": flip_flop}
+    mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
+    mock_get_reg.return_value = mock_reg
+
+    from src.core.orchestrator import chat_stream
 
     mock_chat.side_effect = [
         make_choice(
@@ -181,9 +215,9 @@ def test_mixed_tool_results(mock_chat, make_choice):
         make_choice(content="done"),
     ]
 
-    history = [{"role": "system", "content": "test"}]
-    with patch("src.tools.TOOL_MAP", {"web_search": flip_flop}):
-        tokens = list(chat_stream("test", history, model="test-model", session_id="ses-2", tagged=True, streaming=False))
+    history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
+    
+    tokens = [t async for t in chat_stream("test", history, model="test-model", session_id="ses-2", tagged=True, streaming=False)]
 
     tcs = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     errors = [t for t in tcs if t["status"] == "error"]
@@ -192,14 +226,21 @@ def test_mixed_tool_results(mock_chat, make_choice):
     assert len(oks) >= 1
 
 
-@patch("src.llm.client.chat")
-def test_tool_result_truncation(mock_chat, make_choice):
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.tools.get_default_registry")
+async def test_tool_result_truncation(mock_get_reg, mock_chat, make_choice):
     """Tool result >30000 chars gets truncated."""
     from src.api.session import ensure_session
-    ensure_session("ses-3")
-    from src.core.orchestrator import chat_stream
-
+    await ensure_session("ses-3")
+    
+    mock_reg = MagicMock()
     long_result = "x" * 35000
+    mock_reg.tool_map = {"web_search": AsyncMock(return_value=long_result)}
+    mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
+    mock_get_reg.return_value = mock_reg
+
+    from src.core.orchestrator import chat_stream
 
     mock_chat.side_effect = [
         make_choice(
@@ -209,47 +250,47 @@ def test_tool_result_truncation(mock_chat, make_choice):
         make_choice(content="done"),
     ]
 
-    history = [{"role": "system", "content": "test"}]
-    with patch("src.tools.TOOL_MAP", {"web_search": lambda **kw: long_result}):
-        list(chat_stream("test", history, model="test-model", session_id="ses-3", tagged=True, streaming=False))
+    history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
+    
+    [t async for t in chat_stream("test", history, model="test-model", session_id="ses-3", tagged=True, streaming=False)]
 
     # Check history has truncated tool result
-    tool_msgs = [m for m in history if m["role"] == "tool"]
+    tool_msgs = [m for m in history if m.role == "tool"]
     assert len(tool_msgs) == 1
-    assert len(tool_msgs[0]["content"]) == 30014  # 30000 + "\n...[truncado]"
+    assert len(tool_msgs[0].content) == 30015  # 30000 + "\n...[truncated]"
 
 
-@patch("src.llm.client.chat")
-def test_empty_message(mock_chat, make_choice):
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
+async def test_empty_message(mock_chat, make_choice):
     """Empty message still works."""
     from src.core.orchestrator import chat_stream
 
     mock_chat.return_value = make_choice(content="OK")
-    history = [{"role": "system", "content": "test"}]
-    tokens = list(chat_stream("", history, model="test-model", tagged=True, streaming=False))
+    history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
+    tokens = [t async for t in chat_stream("", history, model="test-model", tagged=True, streaming=False)]
     contents = [t[1] for t in tokens if t[0] == "content"]
     assert any("OK" in c for c in contents)
 
 
-def _mock_stream(response_text):
-    def _gen(message_user, history, **kwargs):
-        if not history:
-            history.append({"role": "system", "content": "sys prompt"})
-        history.append({"role": "user", "content": message_user})
-        history.append({"role": "assistant", "content": response_text})
-        yield response_text
-    return _gen
-
-
+@pytest.mark.anyio
 @patch("src.core.orchestrator.chat_stream")
-def test_chat_non_streaming(mock_chat_stream):
+async def test_chat_non_streaming(mock_chat_stream):
     """Non-streaming path is just orchestrator.chat_stream(streaming=False)."""
-    mock_chat_stream.side_effect = _mock_stream("Respuesta de prueba")
+    async def side_effect(message_user, history, **kwargs):
+        if not history:
+            history.append(HistoryMessage(role="system", content="sys prompt", created_at=datetime.now().isoformat()))
+        history.append(HistoryMessage(role="user", content=message_user, created_at=datetime.now().isoformat()))
+        msg = HistoryMessage(role="assistant", content="Respuesta de prueba", created_at=datetime.now().isoformat())
+        history.append(msg)
+        yield "Respuesta de prueba"
+
+    mock_chat_stream.side_effect = side_effect
     from src.core.orchestrator import chat_stream
 
     history = []
-    tokens = list(chat_stream("Hola", history, model="test-model", streaming=False))
+    tokens = [t async for t in chat_stream("Hola", history, model="test-model", streaming=False)]
     assert "Respuesta de prueba" in "".join(tokens)
     assert len(history) >= 2
-    assert history[-1]["role"] == "assistant"
-    assert history[-1]["content"] == "Respuesta de prueba"
+    assert history[-1].role == "assistant"
+    assert history[-1].content == "Respuesta de prueba"

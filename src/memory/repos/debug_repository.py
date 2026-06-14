@@ -11,11 +11,10 @@ logger = logging.getLogger(__name__)
 class DebugRepository(_BaseRepository):
     _table_name = "debug_info"
 
-    def save_info(self, session_id: str, data: dict[str, Any]) -> None:
+    async def save_info(self, session_id: str, data: dict[str, Any]) -> None:
         """Save or replace debug info for a session."""
-        with self._transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        async with self._transaction() as conn:
+            await conn.execute('''
                 INSERT OR REPLACE INTO debug_info (session_id, model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
@@ -29,17 +28,16 @@ class DebugRepository(_BaseRepository):
                 datetime.now().isoformat()
             ))
 
-    def get_info(self, session_id: str) -> dict[str, Any]:
+    async def get_info(self, session_id: str) -> dict[str, Any]:
         """Retrieve debug info for a session."""
         try:
-            conn = self._get_conn()
-            cursor = conn.cursor()
-            cursor.execute('''
+            conn = await self._get_conn()
+            cursor = await conn.execute('''
                 SELECT model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry
                 FROM debug_info
                 WHERE session_id = ?
             ''', (session_id,))
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             if not row:
                 return {}
             model = row["model"]

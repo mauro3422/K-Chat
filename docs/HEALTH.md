@@ -126,7 +126,7 @@ class DebugInfo:
 | ~~`src/tool_runner.py`~~ | ~~1-line re-export~~ | ~~Delete~~ ✅ |
 | ~~`web/routers/__init__.py`~~ | ~~Only groups imports~~ | ~~Delete, use auto-discovery~~ ✅ |
 | ~~`src/config.py`~~ | ~~Merged into config_loader.py~~ | ~~Delete~~ ✅ |
-| `src/handler_cli.py` | Entry concern in core | Move to `src/cli/` or keep but rename to `cli_commands.py` |
+| ~~`src/handler_cli.py`~~ | ~~Entry concern in core~~ | ~~Migrated to `src/cli.py`~~ ✅ |
 
 ### Inline imports (code smell) — mostly fixed ✅
 

@@ -16,7 +16,7 @@ def estimate_tokens(text: str) -> int:
     return len(text) // 4
 
 
-def should_compress(history: list[dict[str, Any]]) -> bool:
+def should_compress(history: list[Any]) -> bool:
     """Decide si se debe comprimir el historial según la longitud de mensajes o el volumen de tokens."""
     if len(history) > MAX_HISTORY:
         return True
@@ -24,15 +24,16 @@ def should_compress(history: list[dict[str, Any]]) -> bool:
     # Calcular los tokens aproximados en todo el historial
     total_tokens = 0
     for msg in history:
-        content = msg.get("content") or ""
-        reasoning = msg.get("reasoning") or ""
-        total_tokens += estimate_tokens(content) + estimate_tokens(reasoning)
+        # Compatibility: handle both dicts and HistoryMessage objects
+        content = getattr(msg, "content", None) or (msg.get("content") if isinstance(msg, dict) else "") or ""
+        reasoning = getattr(msg, "reasoning", "") or (msg.get("reasoning") if isinstance(msg, dict) else "")
+        total_tokens += estimate_tokens(str(content)) + estimate_tokens(str(reasoning))
         
     return total_tokens > MAX_ESTIMATED_TOKENS
 
 
-def compress_history(
-    history: list[dict[str, Any]],
+async def compress_history(
+    history: list[Any],
     model: str,
     chat_fn: Callable[[list[dict[str, Any]], str], Any] | None = None,
 ) -> None:
@@ -41,13 +42,18 @@ def compress_history(
     if not to_compress:
         return
     recent = history[-keep:]
-    text = "\n".join(
-        f"{m['role']}: {(m.get('content') or '')[:300]}" for m in to_compress
-    )
+    
+    lines = []
+    for m in to_compress:
+        role = getattr(m, "role", None) or (m.get("role") if isinstance(m, dict) else "unknown")
+        content = getattr(m, "content", None) or (m.get("content") if isinstance(m, dict) else "") or ""
+        lines.append(f"{role}: {str(content)[:300]}")
+        
+    text = "\n".join(lines)
     try:
         if chat_fn is None:
             from src.llm.client import chat as chat_fn
-        r = chat_fn(
+        r = await chat_fn(
             [{"role": "user", "content": f"Summarize this conversation in 2-3 lines, key facts only:\n\n{text}"}],
             model
         )
@@ -55,4 +61,4 @@ def compress_history(
         if summary:
             history[:] = [history[0], {"role": "system", "content": f"[Resumen: {summary}]"}] + recent
     except Exception as e:
-        logger.warning("compress_history failed: %s", e)
+        logger.warning("compress_history failed (model=%s, msgs=%d): %s", model, len(history), e)

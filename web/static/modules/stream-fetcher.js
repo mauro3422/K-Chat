@@ -11,12 +11,20 @@ export function executeStreamFetch(params) {
   var errorHandler = params.errorHandler;
   var context = params.context || params.state;
   var onChunk = params.onChunk;
+  var files = params.files;
 
   var buf = '';
   var hasContent = false;
   var tokenCount = 0;
 
-  return ApiClient.chatStream(sessionId, text, defaultModel, controller).then(function(resp) {
+  var fetchPromise;
+  if (files && files.length > 0) {
+    fetchPromise = ApiClient.chatStreamWithFiles(sessionId, text, defaultModel, controller, files);
+  } else {
+    fetchPromise = ApiClient.chatStream(sessionId, text, defaultModel, controller);
+  }
+
+  return fetchPromise.then(function(resp) {
     if (resp.status === 401) {
       errorHandler.handler('error', { type: 'auth', message: 'Error de autenticación. Verifica tu API key.' });
       throw new Error('HTTP ' + resp.status);
@@ -89,10 +97,10 @@ export function executeStreamFetch(params) {
     }
 
     return readLoop();
-  })
-  .catch(function(err) {
+  }).catch(function(err) {
     var isAbort = err && (err.name === 'AbortError' || String(err.message || '').toLowerCase().indexOf('aborted') >= 0);
-    if (!isAbort) {
+    var isRateLimit = err && String(err.message || '').indexOf('429') >= 0;
+    if (!isAbort && !isRateLimit) {
       console.error('Chat request failed:', err);
       if (errorHandler) errorHandler.handler('error', {type: 'network', message: 'Connection failed'});
     }

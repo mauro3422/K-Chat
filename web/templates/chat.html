@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kairos</title>
 <link rel="icon" type="image/png" href="/static/logo.png">
-<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script src="/static/htmx.min.js"></script>
 <link rel="stylesheet" href="/static/style.css?v=10">
 <script src="/static/marked.min.js?v=7"></script>
 <script src="/static/purify.min.js?v=7"></script>
@@ -15,16 +15,27 @@
       <img src="/static/logo.png" alt="Kairos Logo" class="brand-logo">
       <h2>Kairos</h2>
     </div>
-    <a href="/" class="btn-new">+ Nueva</a>
+    <a href="/?new=1" class="btn-new">+ Nueva</a>
   </div>
   <div id="session-list"
        hx-get="/sidebar?current={{ session_id }}"
        hx-trigger="load delay:0.1s"
        hx-swap="innerHTML"></div>
+  <!-- Skills Section -->
+  <div class="skills-sidebar-section">
+    <div class="skills-header" id="skills-sidebar-header">
+      <span class="skills-icon">💡</span>
+      <h4>Skills</h4>
+    </div>
+    <div class="skills-list" id="skills-sidebar-list">
+      <!-- Cargar dinámicamente -->
+    </div>
+  </div>
 </aside>
 <div id="sidebar-gutter" class="sidebar-gutter"></div>
 <main id="main">
   <div class="main-header">
+    <button id="canvas-toggle" class="canvas-toggle-btn" title="Ver Lienzo">🎨 Lienzo</button>
     <button id="theme-toggle" class="theme-toggle-btn" title="Cambiar tema">🌓</button>
     <span class="debug-toggle" id="debug-toggle">&#128202; Debug</span>
   </div>
@@ -32,6 +43,7 @@
   <form id="chat-form">
     <div class="chat-input-container">
       <textarea id="msg-input" placeholder="Escribe un mensaje..." autofocus rows="1"></textarea>
+      <div id="attach-preview" class="attach-preview"></div>
       <div class="chat-input-toolbar">
         <div class="toolbar-left">
           <div class="model-select-wrapper">
@@ -50,6 +62,12 @@
               <line x1="8" y1="23" x2="16" y2="23"></line>
             </svg>
           </button>
+          <button type="button" id="attach-btn" class="attach-btn" title="Adjuntar archivos">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+            </svg>
+          </button>
+          <input type="file" id="file-input" multiple accept="image/*,application/pdf,audio/*,*/*" style="display:none">
         </div>
         <div class="toolbar-right">
           <button type="submit" id="chat-submit-btn" title="Enviar mensaje">
@@ -63,6 +81,18 @@
     </div>
     <span id="spinner" class="htmx-indicator"></span>
   </form>
+  </main>
+  <div id="canvas-gutter" class="canvas-gutter"></div>
+  <div id="canvas-workspace" class="canvas-workspace">
+    <div class="canvas-header">
+      <div class="canvas-title-wrapper">
+        <span class="canvas-icon">🎨</span>
+        <h3>Lienzo</h3>
+      </div>
+      <button id="canvas-close" class="canvas-close" title="Ocultar Lienzo">&times;</button>
+    </div>
+    <div id="canvas-cards" class="canvas-cards-container"></div>
+  </div>
 <div id="debug-panel" class="debug-panel">
   <div class="debug-header">
     <h3>Debug</h3>

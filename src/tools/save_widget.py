@@ -29,7 +29,7 @@ DEFINITION = {
 }
 
 
-def run(*args, **kwargs) -> str:
+async def run(*args, **kwargs) -> str:
     widget_id = args[0] if args else kwargs.get("widget_id") or kwargs.get("key", "")
     code = args[1] if len(args) > 1 else kwargs.get("code", "")
     description = args[2] if len(args) > 2 else kwargs.get("description", "")
@@ -43,7 +43,7 @@ def run(*args, **kwargs) -> str:
     _session_id, clean_id = result
 
     try:
-        res = get_saved_widget_repo().save(_session_id, clean_id, code, description)
+        res = await get_saved_widget_repo().save(_session_id, clean_id, code, description)
         return f"[OK] Widget '{clean_id}' saved correctly as Version {res['version']}."
     except Exception as e:
         logger.error("Error guardando widget %s para session %s: %s", clean_id, _session_id, e)

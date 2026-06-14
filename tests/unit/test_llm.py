@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
 
@@ -7,8 +7,9 @@ from src.llm.model_state import clear_failed_models, set_cached_models, set_veri
 from src.llm.api_call import _api_call
 from src.context import build_system_prompt
 
-@patch("src.llm.retry.time.sleep")
-def test_fallback_switch_updates_system_prompt(mock_sleep):
+@pytest.mark.anyio
+@patch("src.llm.retry.asyncio.sleep", new_callable=AsyncMock)
+async def test_fallback_switch_updates_system_prompt(mock_sleep):
     clear_failed_models()
     set_cached_models(None)
     set_verified_models(None)
@@ -19,7 +20,7 @@ def test_fallback_switch_updates_system_prompt(mock_sleep):
     mock_choice.message.content = "Response from fallback"
     mock_response.choices = [mock_choice]
     
-    with patch("src.llm.client._mark_and_refresh") as mock_mark_and_refresh, patch("src.llm.client.api_call._api_call") as mock_api_call:
+    with patch("src.llm.client._mark_and_refresh") as mock_mark_and_refresh, patch("src.llm.client.api_call._api_call", new_callable=AsyncMock) as mock_api_call:
         mock_mark_and_refresh.return_value = "deepseek-v4-flash-free"
         mock_api_call.side_effect = [
             Exception("Connection error"),
@@ -31,7 +32,7 @@ def test_fallback_switch_updates_system_prompt(mock_sleep):
             {"role": "user", "content": "Hello"}
         ]
         
-        res = chat(messages, model="big-pickle", build_prompt_fn=build_system_prompt)
+        res = await chat(messages, model="big-pickle", build_prompt_fn=build_system_prompt)
 
         # Verify the returned choice
         assert res.message.content == "Response from fallback"
@@ -44,17 +45,18 @@ def test_fallback_switch_updates_system_prompt(mock_sleep):
         assert "Active model: deepseek-v4-flash-free" in messages[0]["content"]
         
 
-@patch("src.llm.retry.time.sleep")
-def test_api_call_retries_on_rate_limit(mock_sleep):
+@pytest.mark.anyio
+@patch("src.llm.retry.asyncio.sleep", new_callable=AsyncMock)
+async def test_api_call_retries_on_rate_limit(mock_sleep):
     class DummyRateLimitError(Exception):
         status_code = 429
 
     with patch("src.llm.api_call._get_provider") as mock_get_provider:
         mock_provider = MagicMock()
-        mock_provider.chat.side_effect = DummyRateLimitError("HTTP 429 Too Many Requests")
+        mock_provider.chat = AsyncMock(side_effect=DummyRateLimitError("HTTP 429 Too Many Requests"))
         mock_get_provider.return_value = mock_provider
 
         with pytest.raises(DummyRateLimitError):
-            _api_call(model="big-pickle", messages=[])
+            await _api_call(model="big-pickle", messages=[])
 
         assert mock_provider.chat.call_count == 3

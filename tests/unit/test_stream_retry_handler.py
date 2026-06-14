@@ -1,24 +1,30 @@
+import pytest
+from unittest.mock import AsyncMock
 from web.services.stream_retry_handler import StreamRetryHandler, CONTINUATION_INSTRUCTION
 
 
-def test_can_retry_starts_true():
+@pytest.mark.anyio
+async def test_can_retry_starts_true():
     h = StreamRetryHandler(max_retries=2)
     assert h.can_retry is True
     assert h.retry_count == 0
 
 
-def test_can_retry_false_after_exhaustion():
+@pytest.mark.anyio
+async def test_can_retry_false_after_exhaustion():
     h = StreamRetryHandler(max_retries=1)
     h.retry_count = 1
     assert h.can_retry is False
 
 
-def test_zero_max_retries():
+@pytest.mark.anyio
+async def test_zero_max_retries():
     h = StreamRetryHandler(max_retries=0)
     assert h.can_retry is False
 
 
-def test_build_messages_adds_assistant_and_continuation():
+@pytest.mark.anyio
+async def test_build_messages_adds_assistant_and_continuation():
     h = StreamRetryHandler()
     history = [
         {"role": "system", "content": "You are a helpful assistant."},
@@ -35,7 +41,8 @@ def test_build_messages_adds_assistant_and_continuation():
     assert messages[3]["role"] == "user"
 
 
-def test_build_messages_combines_reasoning_and_content():
+@pytest.mark.anyio
+async def test_build_messages_combines_reasoning_and_content():
     h = StreamRetryHandler()
     history = [{"role": "user", "content": "Explain."}]
     messages = h.build_messages(history,
@@ -49,7 +56,8 @@ def test_build_messages_combines_reasoning_and_content():
     assert "Final answer." in asst_msg["content"]
 
 
-def test_build_messages_appends_continuation_instruction():
+@pytest.mark.anyio
+async def test_build_messages_appends_continuation_instruction():
     h = StreamRetryHandler()
     messages = h.build_messages([], partial_content="Hello",
                                  partial_reasoning="")
@@ -58,22 +66,25 @@ def test_build_messages_appends_continuation_instruction():
     assert last["content"] == CONTINUATION_INSTRUCTION
 
 
-def test_attempt_recovery_returns_empty_when_exhausted():
+@pytest.mark.anyio
+async def test_attempt_recovery_returns_empty_when_exhausted():
     """When max_retries=0, attempt_recovery yields nothing."""
     h = StreamRetryHandler(max_retries=0)
     gen = h.attempt_recovery([], "hi", "", "gpt-4")
-    items = list(gen)
+    items = [item async for item in gen]
     assert items == []
 
 
 class TestAttemptRecovery:
-    def test_cannot_retry_when_exhausted(self):
+    @pytest.mark.anyio
+    async def test_cannot_retry_when_exhausted(self):
         handler = StreamRetryHandler(max_retries=0)
         assert not handler.can_retry
 
-    def test_attempt_recovery_yields_nothing_on_exhausted(self):
+    @pytest.mark.anyio
+    async def test_attempt_recovery_yields_nothing_on_exhausted(self):
         handler = StreamRetryHandler(max_retries=1)
         handler.retry_count = 1  # simulate exhausted
         gen = handler.attempt_recovery([], "", "", "model")
-        result = list(gen)
+        result = [item async for item in gen]
         assert result == []  # yields nothing when exhausted

@@ -1,4 +1,8 @@
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 from web.services.message_renderer_contract import MessageRenderDeps
 from web.services.message_renderer import render_session_messages
@@ -6,33 +10,35 @@ from web.services.message_renderer import render_session_messages
 
 def make_deps(**overrides):
     base = MessageRenderDeps(
-        get_session_messages_fn=lambda session_id: [],
+        get_session_messages_fn=AsyncMock(return_value=[]),
         filter_messages_fn=lambda msgs: msgs,
-        get_tool_history_fn=lambda session_id, limit: [],
+        get_tool_history_fn=AsyncMock(return_value=[]),
         match_tools_fn=lambda msgs, tools: {},
-        get_widget_states_fn=lambda session_id: {},
+        get_widget_states_fn=AsyncMock(return_value={}),
         extract_inline_widget_states_fn=lambda msgs: {},
-        render_msg_fn=None,
+        repos=None,
     )
     for key, value in overrides.items():
         setattr(base, key, value)
     return base
 
 
-def test_render_session_messages_empty():
+@pytest.mark.anyio
+async def test_render_session_messages_empty():
     """Empty message list should return empty list and empty widget states."""
-    data = render_session_messages("test-sid", deps=make_deps())
+    data = await render_session_messages("test-sid", deps=make_deps())
     assert data["messages"] == []
     assert data["widget_states"] == {}
 
 
-def test_render_session_messages_plain_user():
+@pytest.mark.anyio
+async def test_render_session_messages_plain_user():
     """A plain user message should be returned with correct fields."""
-    msgs = [{"role": "user", "content": "Hello world", "created_at": 1000.0, "reasoning": "", "phases": "[]"}]
-    data = render_session_messages(
+    msgs = [SimpleNamespace(role="user", content="Hello world", created_at=1000.0, reasoning="", phases="[]")]
+    data = await render_session_messages(
         "test-sid",
         deps=make_deps(
-            get_session_messages_fn=lambda session_id: msgs,
+            get_session_messages_fn=AsyncMock(return_value=msgs),
             filter_messages_fn=lambda rows: rows,
         ),
     )
@@ -44,16 +50,17 @@ def test_render_session_messages_plain_user():
     assert msg["ts"] == 1000.0
 
 
-def test_render_session_messages_assistant_legacy():
+@pytest.mark.anyio
+async def test_render_session_messages_assistant_legacy():
     """Legacy assistant message (no phases) returns tool calls and reasoning."""
-    msgs = [{"role": "assistant", "content": "Response text", "created_at": 2000.0, "reasoning": "Deep thought", "phases": "[]"}]
-    tool_rows = [{"tool_name": "web_search", "input": "query", "status": "ok", "created_at": 1500, "turn": 1}]
-    data = render_session_messages(
+    msgs = [SimpleNamespace(role="assistant", content="Response text", created_at=2000.0, reasoning="Deep thought", phases="[]")]
+    tool_rows = [SimpleNamespace(tool_name="web_search", input="query", status="ok", created_at=1500, turn=1)]
+    data = await render_session_messages(
         "test-sid",
         deps=make_deps(
-            get_session_messages_fn=lambda session_id: msgs,
+            get_session_messages_fn=AsyncMock(return_value=msgs),
             filter_messages_fn=lambda rows: rows,
-            get_tool_history_fn=lambda session_id, limit: tool_rows,
+            get_tool_history_fn=AsyncMock(return_value=tool_rows),
             match_tools_fn=lambda rows, tools: {2000.0: tool_rows},
         ),
     )
@@ -68,14 +75,15 @@ def test_render_session_messages_assistant_legacy():
     assert msg["matched_tools"][0]["status"] == "ok"
 
 
-def test_render_session_messages_xss_escaping():
+@pytest.mark.anyio
+async def test_render_session_messages_xss_escaping():
     """HTML escaping is handled on client-side, backend returns raw data."""
     raw_content = '<script>alert("xss")</script>'
-    msgs = [{"role": "user", "content": raw_content, "created_at": 3000.0, "reasoning": "", "phases": "[]"}]
-    data = render_session_messages(
+    msgs = [SimpleNamespace(role="user", content=raw_content, created_at=3000.0, reasoning="", phases="[]")]
+    data = await render_session_messages(
         "test-sid",
         deps=make_deps(
-            get_session_messages_fn=lambda session_id: msgs,
+            get_session_messages_fn=AsyncMock(return_value=msgs),
             filter_messages_fn=lambda rows: rows,
         ),
     )
@@ -83,17 +91,18 @@ def test_render_session_messages_xss_escaping():
     assert data["messages"][0]["content"] == raw_content
 
 
-def test_render_session_messages_multiple():
+@pytest.mark.anyio
+async def test_render_session_messages_multiple():
     """Multiple messages of alternating roles returned in order."""
     msgs = [
-        {"role": "user", "content": "First", "created_at": 1.0, "reasoning": "", "phases": "[]"},
-        {"role": "assistant", "content": "Second", "created_at": 2.0, "reasoning": "", "phases": "[]"},
-        {"role": "user", "content": "Third", "created_at": 3.0, "reasoning": "", "phases": "[]"},
+        SimpleNamespace(role="user", content="First", created_at=1.0, reasoning="", phases="[]"),
+        SimpleNamespace(role="assistant", content="Second", created_at=2.0, reasoning="", phases="[]"),
+        SimpleNamespace(role="user", content="Third", created_at=3.0, reasoning="", phases="[]"),
     ]
-    data = render_session_messages(
+    data = await render_session_messages(
         "test-sid",
         deps=make_deps(
-            get_session_messages_fn=lambda session_id: msgs,
+            get_session_messages_fn=AsyncMock(return_value=msgs),
             filter_messages_fn=lambda rows: rows,
         ),
     )
@@ -104,26 +113,28 @@ def test_render_session_messages_multiple():
     assert data["messages"][2]["content"] == "Third"
 
 
-def test_render_session_messages_widget_states_metadata():
+@pytest.mark.anyio
+async def test_render_session_messages_widget_states_metadata():
     """Widget states are returned directly in the dictionary."""
-    data = render_session_messages(
+    data = await render_session_messages(
         "test-sid",
         deps=make_deps(
-            get_widget_states_fn=lambda session_id: {"w1": {"x": 1}},
+            get_widget_states_fn=AsyncMock(return_value={"w1": {"x": 1}}),
         ),
     )
 
     assert data["widget_states"] == {"w1": {"x": 1}}
 
 
-def test_render_session_messages_with_phases():
+@pytest.mark.anyio
+async def test_render_session_messages_with_phases():
     """Messages with phases data are structured correctly."""
     phases = [{"reasoning": "Step 1", "content": "Part A"}]
-    msgs = [{"role": "assistant", "content": "Part A", "created_at": 4000.0, "reasoning": "", "phases": json.dumps(phases)}]
-    data = render_session_messages(
+    msgs = [SimpleNamespace(role="assistant", content="Part A", created_at=4000.0, reasoning="", phases=json.dumps(phases))]
+    data = await render_session_messages(
         "test-sid",
         deps=make_deps(
-            get_session_messages_fn=lambda session_id: msgs,
+            get_session_messages_fn=AsyncMock(return_value=msgs),
             filter_messages_fn=lambda rows: rows,
         ),
     )

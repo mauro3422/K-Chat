@@ -17,6 +17,7 @@ Environment variables:
 
 from __future__ import annotations
 
+import asyncio
 from channels.telegram.config import load_telegram_config
 from channels.telegram.bot import run_bot
 
@@ -25,7 +26,7 @@ DEFINITION = {
     "description": "Telegram bot — two-way conversation via core.chat_stream()",
     "version": "0.1.0",
     "author": "Kairos",
-    "dependencies": ["requests"],
+    "dependencies": ["httpx"],
 }
 
 
@@ -35,7 +36,7 @@ def run() -> None:
     This is the entry point used by the channel registry / CLI dispatcher.
     """
     config = load_telegram_config()
-    run_bot(config)
+    asyncio.run(run_bot(config))
 
 
 def stop() -> None:

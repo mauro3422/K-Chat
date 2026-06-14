@@ -140,6 +140,38 @@ def _analyze_file(filepath: str, show_imports: bool) -> dict:
     return result
 
 
+def _format_file_entry(prefix: str, fname: str, info: dict, show_imports: bool, import_prefix: str) -> str:
+    """Formatea una entrada de archivo individual con su metadata."""
+    line_str = f"{info['lines']} lines" if info['lines'] else "?"
+    smry = f"  {info['summary']}" if info['summary'] else ""
+    output = f"{prefix}{fname:<35} {line_str:>12} {info['icon']} {info['language']}{smry}\n"
+    if show_imports and info['imports']:
+        for imp in info['imports']:
+            output += f"{import_prefix}{imp}\n"
+    return output
+
+
+def _categorize_entries(path: str, entries: list[str], pattern: str) -> tuple[list[str], list[str]]:
+    """Separa entradas del directorio en subdirectorios y archivos, aplicando filtros."""
+    dirs: list[str] = []
+    files: list[str] = []
+    for entry in entries:
+        full = os.path.join(path, entry)
+        if entry.startswith('.'):
+            continue
+        if os.path.isdir(full) and entry not in SKIP_DIRS:
+            _, err = resolve_and_validate_path(full)
+            if not err:
+                dirs.append(entry)
+        elif os.path.isfile(full):
+            _, err = resolve_and_validate_path(full)
+            if err:
+                continue
+            if not pattern or fnmatch.fnmatch(entry, pattern):
+                files.append(entry)
+    return dirs, files
+
+
 def _walk_directory(
     path: str,
     depth: int,
@@ -163,43 +195,15 @@ def _walk_directory(
     except FileNotFoundError:
         return f"{indent}[ERROR] No existe: {path}\n", file_count
     except NotADirectoryError:
-        # Si es un archivo, lo analizamos directamente
         info = _analyze_file(path, show_imports)
         file_count += 1
-        size_str = _format_size(info['size'])
-        line_str = f"{info['lines']} lines" if info['lines'] else "?"
-        smry = f"  {info['summary']}" if info['summary'] else ""
-        output = f"{indent}📄 {basename:<35} {line_str:>12} {info['icon']} {info['language']}{smry}\n"
-        if show_imports and info['imports']:
-            for imp in info['imports']:
-                output += f"{indent}  import: {imp}\n"
+        output = _format_file_entry(f"{indent}📄 ", basename, info, show_imports, f"{indent}  import: ")
         return output, file_count
 
-    # Separar directorios y archivos
-    dirs = []
-    files = []
-    for entry in entries:
-        full = os.path.join(path, entry)
-        if entry.startswith('.'):
-            continue
-        if os.path.isdir(full) and entry not in SKIP_DIRS:
-            _, err = resolve_and_validate_path(full)
-            if err:
-                continue
-            dirs.append(entry)
-        elif os.path.isfile(full) and not entry.startswith('.'):
-            _, err = resolve_and_validate_path(full)
-            if err:
-                continue
-            if pattern:
-                if fnmatch.fnmatch(entry, pattern):
-                    files.append(entry)
-            else:
-                files.append(entry)
+    dirs, files = _categorize_entries(path, entries, pattern)
 
     output = f"{indent}📁 {basename}/ ({len(dirs)} dirs, {len(files)} files)\n"
 
-    # Archivos
     for fname in files:
         if file_count > MAX_FILES_LISTED:
             output += f"{sub_indent}... (limite de {MAX_FILES_LISTED} archivos alcanzado)\n"
@@ -211,15 +215,8 @@ def _walk_directory(
             continue
         info = _analyze_file(fpath, show_imports)
         file_count += 1
-        size_str = _format_size(info['size'])
-        line_str = f"{info['lines']} lines" if info['lines'] else "?"
-        smry = f"  {info['summary']}" if info['summary'] else ""
-        output += f"{sub_indent}├── {fname:<35} {line_str:>12} {info['icon']} {info['language']}{smry}\n"
-        if show_imports and info['imports']:
-            for imp in info['imports']:
-                output += f"{sub_indent}│   import: {imp}\n"
+        output += _format_file_entry(f"{sub_indent}├── ", fname, info, show_imports, f"{sub_indent}│   import: ")
 
-    # Subdirectorios (recursivo)
     if current_depth < depth:
         for dname in dirs:
             if file_count > MAX_FILES_LISTED:
@@ -236,7 +233,7 @@ def _walk_directory(
     return output, file_count
 
 
-def run(**kwargs: Any) -> str:
+async def run(**kwargs: Any) -> str:
     path = kwargs.get("path", "~/proyectos")
     depth = min(int(kwargs.get("depth", 1)), 3)  # max depth 3
     pattern = kwargs.get("pattern", "").strip()
@@ -246,10 +243,13 @@ def run(**kwargs: Any) -> str:
     if err:
         return err
 
-    if not os.path.exists(resolved_path):
+    import asyncio
+    import os
+
+    if not await asyncio.to_thread(os.path.exists, resolved_path):
         return f"[ERROR] El path '{path}' no existe."
 
-    output, count = _walk_directory(resolved_path, depth, pattern, show_imports)
+    output, count = await asyncio.to_thread(_walk_directory, resolved_path, depth, pattern, show_imports)
 
     # Limitar output total
     if len(output) > 30000:

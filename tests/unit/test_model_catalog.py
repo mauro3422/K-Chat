@@ -1,14 +1,17 @@
+import pytest
 import json
 
 from web.services import model_catalog
 
 
-def test_format_model_label_falls_back_to_id(monkeypatch):
+@pytest.mark.anyio
+async def test_format_model_label_falls_back_to_id(monkeypatch):
     monkeypatch.setattr(model_catalog, "_load_registry", lambda: {})
     assert model_catalog.format_model_label("unknown-model") == "unknown-model"
 
 
-def test_format_model_label_uses_registry(tmp_path, monkeypatch):
+@pytest.mark.anyio
+async def test_format_model_label_uses_registry(tmp_path, monkeypatch):
     registry = tmp_path / "model_registry.json"
     registry.write_text(
         json.dumps(

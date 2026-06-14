@@ -1,8 +1,11 @@
+import pytest
+from unittest.mock import AsyncMock
 import os
 from unittest.mock import patch, MagicMock, mock_open
 
 
-def test_build_context_snapshot_reads_files():
+@pytest.mark.anyio
+async def test_build_context_snapshot_reads_files():
     from src.context.runtime import build_context_snapshot, invalidate_context_cache, CONTEXT_DIR
 
     invalidate_context_cache()
@@ -29,7 +32,8 @@ def test_build_context_snapshot_reads_files():
                         assert mock_file().write.call_args[0][0] == "# Tools md content"
 
 
-def test_build_context_snapshot_uses_cache():
+@pytest.mark.anyio
+async def test_build_context_snapshot_uses_cache():
     from src.context.runtime import build_context_snapshot, invalidate_context_cache
 
     invalidate_context_cache()
@@ -50,7 +54,8 @@ def test_build_context_snapshot_uses_cache():
                         mock_file().write.assert_not_called()
 
 
-def test_build_context_snapshot_force_bypasses_cache():
+@pytest.mark.anyio
+async def test_build_context_snapshot_force_bypasses_cache():
     from src.context.runtime import build_context_snapshot, invalidate_context_cache
 
     invalidate_context_cache()
@@ -71,7 +76,8 @@ def test_build_context_snapshot_force_bypasses_cache():
                         mock_file().write.assert_called_once()
 
 
-def test_invalidate_context_cache():
+@pytest.mark.anyio
+async def test_invalidate_context_cache():
     from src.context.runtime import invalidate_context_cache, build_context_snapshot
 
     invalidate_context_cache()
@@ -91,7 +97,8 @@ def test_invalidate_context_cache():
                         mock_file().write.assert_called_once()
 
 
-def test_write_if_changed_writes_when_different():
+@pytest.mark.anyio
+async def test_write_if_changed_writes_when_different():
     from src.context.runtime import _write_if_changed
 
     with patch("src.context.runtime._read_file", return_value="current"):
@@ -100,7 +107,8 @@ def test_write_if_changed_writes_when_different():
             mock_file().write.assert_called_once_with("new")
 
 
-def test_write_if_changed_skips_when_same():
+@pytest.mark.anyio
+async def test_write_if_changed_skips_when_same():
     from src.context.runtime import _write_if_changed
 
     with patch("src.context.runtime._read_file", return_value="same"):
@@ -109,7 +117,8 @@ def test_write_if_changed_skips_when_same():
             mock_file.assert_not_called()
 
 
-def test_context_snapshot_dataclass():
+@pytest.mark.anyio
+async def test_context_snapshot_dataclass():
     from src.context.runtime import ContextSnapshot
 
     snapshot = ContextSnapshot(text="test text", tools_md="test tools")

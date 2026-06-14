@@ -56,6 +56,19 @@ export function createToolbar(container, id, key, code, hashId) {
             }
         });
         rightSide.appendChild(btnHist);
+
+        // PIN TO CANVAS
+        var btnPin = createToolbarButton({
+            label: '📌 ANCLAR',
+            border: '1px solid #ffcc00',
+            color: '#ffcc00',
+            onClick: function onPinClick() {
+                import('./canvas-workspace.js').then(function(m) {
+                    m.CanvasWorkspace.pinWidget(container, key, code);
+                });
+            }
+        });
+        rightSide.appendChild(btnPin);
     }
 
     var btnReset = createToolbarButton({

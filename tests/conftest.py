@@ -45,12 +45,12 @@ def make_choice():
 
 
 @pytest.fixture(autouse=True)
-def setup_test_db(monkeypatch):
+async def setup_test_db(monkeypatch):
     temp_dir = tempfile.mkdtemp()
     db_path = os.path.join(temp_dir, "test.db")
     monkeypatch.setenv("MEMORY_DB_PATH", db_path)
 
-    init_db()
+    await init_db()
 
     yield db_path
 

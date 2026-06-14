@@ -4,7 +4,6 @@ from typing import Any
 
 from src.memory.repos import WidgetStateRepository, SavedWidgetRepository
 from src.api.widgets_contract import WidgetOpsDeps
-from src.tools._widget_helpers import sanitize_widget_id
 
 
 def _resolve_widget_deps(
@@ -27,21 +26,21 @@ def save_widget_state(
     widget_state_repo: WidgetStateRepository | None = None,
     deps: WidgetOpsDeps | None = None,
 ) -> None:
-    """Guarda el estado serializado de un widget interactivo."""
+    """Save the serialized state of an interactive widget."""
     _deps = _resolve_widget_deps(widget_state_repo=widget_state_repo, deps=deps)
     repo = _deps.widget_state_repo if _deps.widget_state_repo is not None else WidgetStateRepository()
     return repo.save_state(session_id, widget_id, state)
 
 
-def get_widget_states(
+async def get_widget_states(
     session_id: str,
     widget_state_repo: WidgetStateRepository | None = None,
     deps: WidgetOpsDeps | None = None,
 ) -> dict[str, str]:
-    """Obtiene todos los estados de widgets de una sesión."""
+    """Get all widget states for a session."""
     _deps = _resolve_widget_deps(widget_state_repo=widget_state_repo, deps=deps)
     repo = _deps.widget_state_repo if _deps.widget_state_repo is not None else WidgetStateRepository()
-    return repo.get_states(session_id)
+    return await repo.get_states(session_id)
 
 
 def db_save_widget(
@@ -52,7 +51,7 @@ def db_save_widget(
     saved_widget_repo: SavedWidgetRepository | None = None,
     deps: WidgetOpsDeps | None = None,
 ) -> dict[str, Any]:
-    """Guarda o actualiza un widget oficial en la base de datos."""
+    """Save or update an official widget in the database."""
     _deps = _resolve_widget_deps(saved_widget_repo=saved_widget_repo, deps=deps)
     repo = _deps.saved_widget_repo if _deps.saved_widget_repo is not None else SavedWidgetRepository()
     return repo.save(session_id, widget_id, code, description)
@@ -63,7 +62,7 @@ def db_get_widget(
     saved_widget_repo: SavedWidgetRepository | None = None,
     deps: WidgetOpsDeps | None = None,
 ) -> dict[str, Any] | None:
-    """Retorna la versión activa (más reciente) de un widget."""
+    """Return the active (most recent) version of a widget."""
     _deps = _resolve_widget_deps(saved_widget_repo=saved_widget_repo, deps=deps)
     repo = _deps.saved_widget_repo if _deps.saved_widget_repo is not None else SavedWidgetRepository()
     return repo.get(widget_id)
@@ -74,7 +73,7 @@ def db_get_widget_versions(
     saved_widget_repo: SavedWidgetRepository | None = None,
     deps: WidgetOpsDeps | None = None,
 ) -> list[dict[str, Any]]:
-    """Retorna todas las versiones históricas de un widget."""
+    """Return all historical versions of a widget."""
     _deps = _resolve_widget_deps(saved_widget_repo=saved_widget_repo, deps=deps)
     repo = _deps.saved_widget_repo if _deps.saved_widget_repo is not None else SavedWidgetRepository()
     return repo.get_versions(widget_id)
@@ -86,7 +85,7 @@ def db_get_widget_by_version(
     saved_widget_repo: SavedWidgetRepository | None = None,
     deps: WidgetOpsDeps | None = None,
 ) -> dict[str, Any] | None:
-    """Retorna el código de una versión específica de un widget."""
+    """Return the code of a specific widget version."""
     _deps = _resolve_widget_deps(saved_widget_repo=saved_widget_repo, deps=deps)
     repo = _deps.saved_widget_repo if _deps.saved_widget_repo is not None else SavedWidgetRepository()
     return repo.get_by_version(widget_id, version)

@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 import logging
 
 import pytest
@@ -25,7 +26,8 @@ def _isolate_logging():
     logging.root.manager.disable = saved_disable
 
 
-def test_handler_captures_records():
+@pytest.mark.anyio
+async def test_handler_captures_records():
     """BackendLogHandler captures a log record and get_backend_logs returns it."""
     logger = logging.getLogger("kairos.test-capture")
     logger.setLevel(logging.DEBUG)
@@ -41,7 +43,8 @@ def test_handler_captures_records():
     assert "ts" in entry
 
 
-def test_get_backend_logs_returns_copy():
+@pytest.mark.anyio
+async def test_get_backend_logs_returns_copy():
     """get_backend_logs returns a copy, not the original mutable list."""
     logger = logging.getLogger("kairos.test-copy")
     logger.setLevel(logging.DEBUG)
@@ -53,7 +56,8 @@ def test_get_backend_logs_returns_copy():
     assert logs_a is not logs_b
 
 
-def test_ring_buffer_overflow():
+@pytest.mark.anyio
+async def test_ring_buffer_overflow():
     """When the buffer exceeds _max_backend_logs, oldest records are dropped."""
     import web.logging_handler as wl
     original_max = wl._max_backend_logs
@@ -77,7 +81,8 @@ def test_ring_buffer_overflow():
     wl._max_backend_logs = original_max
 
 
-def test_handler_installed_by_default(caplog):
+@pytest.mark.anyio
+async def test_handler_installed_by_default(caplog):
     """The module installs BackendLogHandler at import time on root logger."""
     root_logger = logging.root
     handler_types = [h for h in root_logger.handlers if isinstance(h, BackendLogHandler)]

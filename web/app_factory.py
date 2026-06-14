@@ -36,12 +36,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.warning("SearXNG auto-start: %s", err)
         else:
             searxng_started = True
-    init_db()
+    await init_db()
+    try:
+        from src.skills import SkillRegistry
+        SkillRegistry().generate_index_md()
+    except Exception as e:
+        logger.warning("Failed to generate skills INDEX.md: %s", e)
     if not DEFAULT_CONFIG.testing:
         from src.llm.discovery import get_verified_models
-        import asyncio
         try:
-            asyncio.get_running_loop().run_in_executor(None, get_verified_models)
+            await get_verified_models()
         except Exception as e:
             logger.warning("Failed to schedule model discovery: %s", e)
     yield
@@ -52,7 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def register_middlewares(app: FastAPI) -> None:
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-        if request.method != "POST" or not request.url.path.startswith("/chat/"):
+        if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
             return await call_next(request)
         client_ip = request.client.host if request.client else "unknown"
         now = time.time()
@@ -68,7 +72,7 @@ def register_middlewares(app: FastAPI) -> None:
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://unpkg.com 'unsafe-inline'; "
+            "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
             "frame-src 'self'; "

@@ -2,14 +2,16 @@ import logging
 import threading
 from typing import Any
 
+from src.config_loader import DEFAULT_MODEL, SECONDARY_MODEL
+
 logger: logging.Logger = logging.getLogger(__name__)
 
 
 class ModelState:
     def __init__(self, priority=None, fallback_model=None):
         self._lock = threading.Lock()
-        self._priority = priority or ["deepseek-v4-flash-free", "big-pickle"]
-        self._fallback_model = fallback_model or "deepseek-v4-flash-free"
+        self._priority = priority or [DEFAULT_MODEL, SECONDARY_MODEL]
+        self._fallback_model = fallback_model or DEFAULT_MODEL
         self._failed_models: set[str] = set()
         self._verified_models: list[str] | None = None
         self._cached_models: list[Any] | None = None

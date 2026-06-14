@@ -1,8 +1,11 @@
+import pytest
+from unittest.mock import AsyncMock
 import os
 from unittest.mock import patch, mock_open
 
 
-def test_ensure_file_creates():
+@pytest.mark.anyio
+async def test_ensure_file_creates():
     from src.context import _ensure_file
 
     with patch("os.path.exists", return_value=False):
@@ -12,7 +15,8 @@ def test_ensure_file_creates():
             m().write.assert_called_once_with("# content")
 
 
-def test_ensure_file_exists():
+@pytest.mark.anyio
+async def test_ensure_file_exists():
     from src.context import _ensure_file
 
     with patch("os.path.exists", return_value=True):
@@ -21,7 +25,8 @@ def test_ensure_file_exists():
             m.assert_not_called()
 
 
-def test_ensure_file_oserror():
+@pytest.mark.anyio
+async def test_ensure_file_oserror():
     from src.context import _ensure_file
 
     with patch("os.path.exists", return_value=False):
@@ -29,7 +34,8 @@ def test_ensure_file_oserror():
             _ensure_file("/tmp/test.md", "# content")
 
 
-def test_read_file_normal():
+@pytest.mark.anyio
+async def test_read_file_normal():
     from src.context import _read_file
 
     with patch("builtins.open", mock_open(read_data="  hello world  ")):
@@ -37,7 +43,8 @@ def test_read_file_normal():
         assert result == "hello world"
 
 
-def test_read_file_missing():
+@pytest.mark.anyio
+async def test_read_file_missing():
     from src.context import _read_file
 
     with patch("builtins.open", side_effect=FileNotFoundError("no such file")):
@@ -45,7 +52,8 @@ def test_read_file_missing():
         assert result == ""
 
 
-def test_read_file_oserror():
+@pytest.mark.anyio
+async def test_read_file_oserror():
     from src.context import _read_file
 
     with patch("builtins.open", side_effect=OSError("permission denied")):

@@ -183,33 +183,25 @@
   font-family: inherit;
 }
 
-.error-header {
-  font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.error-detail {
-  font-size: 13px;
+.error-card.rate-limit-card {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
   color: var(--text-primary);
-  margin-bottom: 8px;
 }
 
-.error-retry-btn {
-  background: var(--accent-red);
-  color: var(--text-white);
-  border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
+.error-card.rate-limit-card .error-header {
+  color: #f59e0b;
+}
+
+.error-card.rate-limit-card .error-hint {
   font-size: 12px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background 0.2s ease;
+  color: var(--text-muted);
+  margin-top: 6px;
+  font-style: italic;
 }
 
-.error-retry-btn:hover {
-  background: var(--accent-red-hover);
+.cooldown-countdown {
+  font-weight: 700;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }

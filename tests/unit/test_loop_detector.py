@@ -1,12 +1,15 @@
+import pytest
 from web.services.loop_detector import LoopDetector, LOOP_WINDOW_SIZE, LOOP_PHRASE_REPEATS
 
 
-def test_initially_clean():
+@pytest.mark.anyio
+async def test_initially_clean():
     d = LoopDetector()
     assert d.check("hello") is None
 
 
-def test_same_token_repeated_triggers():
+@pytest.mark.anyio
+async def test_same_token_repeated_triggers():
     d = LoopDetector()
     for _ in range(LOOP_WINDOW_SIZE - 1):
         d.check("abc")
@@ -15,13 +18,15 @@ def test_same_token_repeated_triggers():
     assert "mismo token repetido" in result
 
 
-def test_different_tokens_no_loop():
+@pytest.mark.anyio
+async def test_different_tokens_no_loop():
     d = LoopDetector()
     for i in range(LOOP_WINDOW_SIZE + 5):
         assert d.check(str(i)) is None
 
 
-def test_inside_code_block_skips_phrase_check():
+@pytest.mark.anyio
+async def test_inside_code_block_skips_phrase_check():
     d = LoopDetector()
     for ch in "```html-widget\n.content{color:red;} ":
         d.check(ch)
@@ -32,7 +37,8 @@ def test_inside_code_block_skips_phrase_check():
     assert d.check("x") is None  # skipped
 
 
-def test_after_code_block_trigger_works():
+@pytest.mark.anyio
+async def test_after_code_block_trigger_works():
     d = LoopDetector()
     for ch in "```html-widget\n<div>x</div>\n```\n":
         d.check(ch)
@@ -48,7 +54,8 @@ def test_after_code_block_trigger_works():
     assert triggered
 
 
-def test_any_code_block_skips_phrase_check():
+@pytest.mark.anyio
+async def test_any_code_block_skips_phrase_check():
     """Any triple-backtick block (not just html-widget) should skip phrase check."""
     d = LoopDetector()
     for ch in "```python\ndata = \n    print('test')\n":
@@ -60,7 +67,8 @@ def test_any_code_block_skips_phrase_check():
     assert d.check("x") is None
 
 
-def test_token_check_still_triggers_inside_code_block():
+@pytest.mark.anyio
+async def test_token_check_still_triggers_inside_code_block():
     """Repeated-token check should still fire even inside a code block."""
     d = LoopDetector()
     for ch in "```css\n":

@@ -10,3 +10,6 @@ python-multipart>=0.0.12,<1.0.0
 # Tests
 pytest>=8.0.0,<10.0.0
 pytest-mock>=3.0.0,<4.0.0
+aiosqlite
+pytest-testmon
+

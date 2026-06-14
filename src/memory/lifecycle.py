@@ -15,10 +15,10 @@ def is_initialized(db_path: str) -> bool:
         return db_path in _initialized_db_paths
 
 
-def ensure_initialized(db_path: str, initializer: Callable[[str], None]) -> None:
+async def ensure_initialized(db_path: str, initializer: Callable[[str], Any]) -> None:
     if is_initialized(db_path):
         return
-    initializer(db_path)
+    await initializer(db_path)
 
 
 def clear_initialized() -> None:

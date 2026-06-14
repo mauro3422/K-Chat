@@ -7,15 +7,15 @@ from src.memory.connection_pool import get_conn
 router = APIRouter()
 
 @router.get("/health")
-def health():
+async def health():
     checks = {}
 
     try:
-        conn = get_conn()
-        conn.execute("SELECT 1")
+        conn = await get_conn()
+        await conn.execute("SELECT 1")
         checks["database"] = "ok"
-    except Exception as e:
-        checks["database"] = f"error: {e}"
+    except Exception:
+        checks["database"] = "error"
 
     # Check LLM provider
     try:

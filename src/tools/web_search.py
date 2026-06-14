@@ -83,7 +83,7 @@ def _format_result(r: dict[str, Any]) -> str:
 VALID_TIME_RANGES = frozenset({"", "day", "week", "month", "year"})
 
 
-def _search_with_retry(
+async def _search_with_retry(
     query: str,
     results_lang: str,
     timeout: float,
@@ -106,22 +106,23 @@ def _search_with_retry(
     if time_range:
         params["time_range"] = time_range
 
-    for attempt in range(_retries + 1):
-        try:
-            resp = httpx.get(f"{_searxng_url()}/search", params=params, timeout=timeout)
-            resp.raise_for_status()
-            return resp.json(), None
-        except Exception:
-            logger.exception("Search attempt %d/%d failed", attempt + 1, _retries + 1)
-            if attempt < _retries:
-                import time
-                time.sleep(1.5 * (attempt + 1))
-            else:
-                return None, f"Search error (after {_retries + 1} attempts)."
+    async with httpx.AsyncClient() as client:
+        for attempt in range(_retries + 1):
+            try:
+                resp = await client.get(f"{_searxng_url()}/search", params=params, timeout=timeout)
+                resp.raise_for_status()
+                return resp.json(), None
+            except Exception:
+                logger.exception("Search attempt %d/%d failed", attempt + 1, _retries + 1)
+                if attempt < _retries:
+                    import asyncio
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                else:
+                    return None, f"Search error (after {_retries + 1} attempts)."
     return None, "Search error (unreachable)"
 
 
-def _search_and_format_results(
+async def _search_and_format_results(
     query: str,
     max_results: int,
     categories: str,
@@ -131,7 +132,7 @@ def _search_and_format_results(
     safe_search: int,
     _retries: int,
 ) -> str:
-    data, error = _search_with_retry(
+    data, error = await _search_with_retry(
         query, language, 15.0, _retries,
         categories=categories, page=page, safe_search=safe_search, time_range=time_range,
     )
@@ -170,7 +171,7 @@ def _search_and_format_results(
     return "\n".join(out).strip()
 
 
-def run(**kwargs: Any) -> str:
+async def run(**kwargs: Any) -> str:
     query = kwargs.get("query") or kwargs.get("q") or kwargs.get("search_query", "")
     max_results = int(kwargs.get("max_results", kwargs.get("max", kwargs.get("limit", 3))))
     categories = kwargs.get("categories") or kwargs.get("category", "general")
@@ -193,7 +194,7 @@ def run(**kwargs: Any) -> str:
         return f"[ERROR] page={page} is not valid. Page must be 1 or greater."
     page = max(page, 1)
 
-    result = _search_and_format_results(
+    result = await _search_and_format_results(
         query, max_results, categories, language, time_range, page, safe_search, _retries,
     )
     return result

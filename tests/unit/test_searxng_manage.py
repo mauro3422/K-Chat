@@ -1,9 +1,12 @@
+import pytest
+from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock
 
 import dependencies.manage as manage
 
 
-def test_searxng_start_does_not_auto_install_by_default(monkeypatch):
+@pytest.mark.anyio
+async def test_searxng_start_does_not_auto_install_by_default(monkeypatch):
     monkeypatch.setattr(manage, "searxng_is_installed", lambda: False)
     monkeypatch.setattr(manage, "SEARXNG_AUTO_INSTALL", False)
     install_mock = MagicMock()
@@ -15,7 +18,8 @@ def test_searxng_start_does_not_auto_install_by_default(monkeypatch):
     install_mock.assert_not_called()
 
 
-def test_searxng_start_installs_when_explicitly_enabled(monkeypatch):
+@pytest.mark.anyio
+async def test_searxng_start_installs_when_explicitly_enabled(monkeypatch):
     monkeypatch.setattr(manage, "searxng_is_installed", lambda: False)
     monkeypatch.setattr(manage, "SEARXNG_AUTO_INSTALL", True)
     install_mock = MagicMock(return_value=None)

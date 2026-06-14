@@ -12,7 +12,7 @@ EnvironmentFile=%h/dev/K-Chat/.env
 Environment=PYTHONUNBUFFERED=1
 
 # ── Execute ────────────────────────────────────────────────────────
-ExecStart=%h/dev/K-Chat/.venv/bin/python -m channels.telegram
+ExecStart=%h/dev/K-Chat/venv/bin/python -m channels.telegram
 
 # ── Lifecycle ──────────────────────────────────────────────────────
 Restart=on-failure

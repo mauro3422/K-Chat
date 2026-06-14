@@ -36,7 +36,8 @@ def _build_tools_md() -> str:
     The output is consumed by the system prompt to inform the LLM about
     which tools are available and how to call them.
     """
-    from src.tools import TOOL_DEFINITIONS
+    from src.tools import get_default_registry
+    tool_definitions = get_default_registry().definitions
 
     lines = [
         "# Available Tools",
@@ -44,8 +45,8 @@ def _build_tools_md() -> str:
         "These are the internal tools available directly as API function calls.",
         "",
     ]
-    for name in sorted(TOOL_DEFINITIONS.keys()):
-        fn = TOOL_DEFINITIONS[name]["function"]
+    for name in sorted(tool_definitions.keys()):
+        fn = tool_definitions[name]["function"]
         desc = fn["description"]
         lines.append(f"- **{name}**: {desc}")
         props = fn.get("parameters", {}).get("properties", {})
@@ -75,26 +76,35 @@ def _build_rules_files(rules_dir: str) -> None:
     Each file has an auto-generated params table (regenerated on every call)
     and a manual section below '---' that is preserved across generations.
     """
-    from src.tools import TOOL_DEFINITIONS
+    from src.tools import get_default_registry
+    tool_definitions = get_default_registry().definitions
     os.makedirs(rules_dir, exist_ok=True)
     
-    for name in sorted(TOOL_DEFINITIONS.keys()):
-        fn = TOOL_DEFINITIONS[name]["function"]
+    for name in sorted(tool_definitions.keys()):
+        fn = tool_definitions[name]["function"]
         new_auto = _auto_section(name, fn)
         filepath = os.path.join(rules_dir, f"{name}.md")
         
+        manual = ""
         if os.path.exists(filepath):
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
             # Preserve manual section (everything after the first ---)
             parts = content.split(_MANUAL_SEPARATOR, 1)
             manual = parts[1] if len(parts) > 1 else ""
-        else:
-            manual = ""
+        
+        new_content = new_auto
+        if manual:
+            new_content += _MANUAL_SEPARATOR + manual
+            
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                old_content = f.read()
+            if old_content == new_content:
+                logger.debug("Skipping unchanged rule file %s", filepath)
+                continue
         
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write(new_auto)
-            if manual:
-                f.write(_MANUAL_SEPARATOR + manual)
+            f.write(new_content)
         
         logger.debug("Generated %s", filepath)

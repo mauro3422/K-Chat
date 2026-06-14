@@ -1,6 +1,6 @@
-from fastapi.testclient import TestClient
-
-
+import pytest
+from unittest.mock import AsyncMock
+from httpx import AsyncClient, ASGITransport
 from web.server import app
 from src.api.widgets import save_widget_state, get_widget_states
 from src.api.messages import save_message_record, get_session_messages
@@ -9,10 +9,11 @@ from src.memory.schema import init_db
 from src.compressor import estimate_tokens, should_compress
 from src.memory.repos import MessageRecord, get_repos
 
-client = TestClient(app)
+def _make_client():
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def save_message(
+async def save_message(
     session_id,
     role,
     content,
@@ -26,7 +27,7 @@ def save_message(
     total_tokens=0,
     **kwargs,
 ):
-    return save_message_record(MessageRecord(
+    return await save_message_record(MessageRecord(
         session_id=session_id,
         role=role,
         content=content,
@@ -41,57 +42,59 @@ def save_message(
     ), repos=get_repos())
 
 
-
-def test_widget_db_operations():
+@pytest.mark.anyio
+async def test_widget_db_operations():
     """Verify that widget states can be saved and retrieved from the database."""
-    init_db()
+    await init_db()
     session_id = "test-session-widget-db"
-    ensure_session(session_id)
+    await ensure_session(session_id)
     widget_id = "widget-calculator"
     state_data = '{"value": 42}'
     
     # Save the widget state
-    save_widget_state(session_id, widget_id, state_data)
+    await save_widget_state(session_id, widget_id, state_data)
     
     # Retrieve states
-    states = get_widget_states(session_id)
+    states = await get_widget_states(session_id)
     assert widget_id in states
     assert states[widget_id] == state_data
 
 
-def test_widget_endpoint_and_injection():
+@pytest.mark.anyio
+async def test_widget_endpoint_and_injection():
     """Verify the widget state API endpoint and script injection on session messages load."""
-    init_db()
+    await init_db()
     session_id = "test-session-widget-api"
-    ensure_session(session_id)
+    await ensure_session(session_id)
     widget_id = "widget-chart"
     state_data = '{"data": [1, 2, 3]}'
     
     # POST widget state
-    post_resp = client.post(
-        f"/sessions/{session_id}/widgets/{widget_id}/state",
-        json={"state": state_data}
-    )
-    assert post_resp.status_code == 200
-    assert post_resp.json() == {"status": "ok"}
-    
-    # GET session messages and verify data-widget-states is returned in JSON
-    get_resp = client.get(f"/sessions/{session_id}/messages")
-    assert get_resp.status_code == 200
-    data = get_resp.json()
-    assert "widget_states" in data
-    assert widget_id in data["widget_states"]
-    assert "[1, 2, 3]" in data["widget_states"][widget_id]
+    async with _make_client() as client:
+        post_resp = await client.post(
+            f"/sessions/{session_id}/widgets/{widget_id}/state",
+            json={"state": state_data}
+        )
+        assert post_resp.status_code == 200
+        assert post_resp.json() == {"status": "ok"}
+        
+        # GET session messages and verify data-widget-states is returned in JSON
+        get_resp = await client.get(f"/sessions/{session_id}/messages")
+        assert get_resp.status_code == 200
+        data = get_resp.json()
+        assert "widget_states" in data
+        assert widget_id in data["widget_states"]
+        assert "[1, 2, 3]" in data["widget_states"][widget_id]
 
 
-
-def test_message_tokens_persistence():
+@pytest.mark.anyio
+async def test_message_tokens_persistence():
     """Verify that message tokens are successfully persisted to SQLite and fetched."""
-    init_db()
+    await init_db()
     session_id = "test-session-tokens-db"
-    ensure_session(session_id)
+    await ensure_session(session_id)
     
-    save_message(
+    await save_message(
         session_id=session_id,
         role="assistant",
         content="Hello world",
@@ -102,28 +105,26 @@ def test_message_tokens_persistence():
     )
     
     # Retrieve messages from DB
-    msgs = get_session_messages(session_id, repos=get_repos())
+    msgs = await get_session_messages(session_id, repos=get_repos())
     assert len(msgs) == 1
+    
     # Check that it saves and queries without errors
-    # (role, content, model, created_at, reasoning, phases_str)
-    # Wait, get_session_messages queries:
-    # SELECT role, content, model, created_at, reasoning, phases FROM messages
-    # Let's execute a direct sqlite query if we want to assert the token counts
     from src.memory.connection_pool import get_conn
-    conn = get_conn()
+    conn = await get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT prompt_tokens, completion_tokens, total_tokens FROM messages WHERE session_id = ?", (session_id,))
-        row = cursor.fetchone()
+        cursor = await conn.cursor()
+        await cursor.execute("SELECT prompt_tokens, completion_tokens, total_tokens FROM messages WHERE session_id = ?", (session_id,))
+        row = await cursor.fetchone()
         assert row is not None
         assert row["prompt_tokens"] == 100
         assert row["completion_tokens"] == 20
         assert row["total_tokens"] == 120
     finally:
-        conn.close()
+        await conn.close()
 
 
-def test_token_estimation_and_compression():
+@pytest.mark.anyio
+async def test_token_estimation_and_compression():
     """Verify estimate_tokens and should_compress logic in compressor.py."""
     assert estimate_tokens("hello") == 1
     assert estimate_tokens("hello world") == 2
@@ -144,24 +145,25 @@ def test_token_estimation_and_compression():
     assert should_compress(large_history) is True
 
 
-def test_widget_injection_xss_safety():
+@pytest.mark.anyio
+async def test_widget_injection_xss_safety():
     """Verify that malicious XSS scripts in widget states are returned in the JSON payload."""
-    init_db()
+    await init_db()
     session_id = "test-session-xss"
-    ensure_session(session_id)
+    await ensure_session(session_id)
     widget_id = "widget-exploit"
     malicious_state = '{"payload": "<script>alert(1)</script>"}'
     
-    # POST malicious state
-    post_resp = client.post(
-        f"/sessions/{session_id}/widgets/{widget_id}/state",
-        json={"state": malicious_state}
-    )
-    assert post_resp.status_code == 200
-    
-    # GET session messages and verify it is returned in JSON
-    get_resp = client.get(f"/sessions/{session_id}/messages")
-    assert get_resp.status_code == 200
-    data = get_resp.json()
-    assert data["widget_states"][widget_id] == malicious_state
-
+    async with _make_client() as client:
+        # POST malicious state
+        post_resp = await client.post(
+            f"/sessions/{session_id}/widgets/{widget_id}/state",
+            json={"state": malicious_state}
+        )
+        assert post_resp.status_code == 200
+        
+        # GET session messages and verify it is returned in JSON
+        get_resp = await client.get(f"/sessions/{session_id}/messages")
+        assert get_resp.status_code == 200
+        data = get_resp.json()
+        assert data["widget_states"][widget_id] == malicious_state

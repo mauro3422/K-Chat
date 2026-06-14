@@ -110,15 +110,15 @@ def _deny_private_ip(url: str) -> str | None:
     return None
 
 
-def _do_fetch(url: str) -> httpx.Response:
-    resp = httpx.get(
-        url,
-        headers={"User-Agent": USER_AGENT},
-        follow_redirects=True,
-        timeout=REQUEST_TIMEOUT,
-    )
-    resp.raise_for_status()
-    return resp
+async def _do_fetch(url: str) -> httpx.Response:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        resp = await client.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp
 
 
 def _check_redirect_ssrf(resp: httpx.Response) -> str | None:
@@ -156,8 +156,8 @@ def _format_output(url: str, status_code: int, title: str, text: str, max_chars:
     return "\n".join(out)
 
 
-def _try_fetch(url: str, max_chars: int) -> str:
-    resp = _do_fetch(url)
+async def _try_fetch(url: str, max_chars: int) -> str:
+    resp = await _do_fetch(url)
     ssrf_err = _check_redirect_ssrf(resp)
     if ssrf_err:
         return ssrf_err
@@ -171,14 +171,15 @@ def _try_fetch(url: str, max_chars: int) -> str:
     return _format_output(url, resp.status_code, title, text, max_chars)
 
 
-def _fetch_with_retry(url: str, max_chars: int, _retries: int, **kwargs: Any) -> str | None:
+async def _fetch_with_retry(url: str, max_chars: int, _retries: int, **kwargs: Any) -> str | None:
     for attempt in range(_retries + 1):
         try:
-            return _try_fetch(url, max_chars)
+            return await _try_fetch(url, max_chars)
         except TimeoutException:
             logger.warning("Timeout fetching %s", url)
             if attempt < _retries:
-                time.sleep(1)
+                import asyncio
+                await asyncio.sleep(1)
             else:
                 return f"[ERROR] Timeout while trying to access {url}."
         except HTTPStatusError as e:
@@ -190,12 +191,13 @@ def _fetch_with_retry(url: str, max_chars: int, _retries: int, **kwargs: Any) ->
         except Exception as e:
             logger.warning("Error fetching %s: %s", url, e)
             if attempt < _retries:
-                time.sleep(1)
+                import asyncio
+                await asyncio.sleep(1)
             else:
                 return f"[ERROR] Error processing {url}."
 
 
-def run(**kwargs: Any) -> str | None:
+async def run(**kwargs: Any) -> str | None:
     url = kwargs.get("url") or kwargs.get("link") or kwargs.get("page_url", "")
     max_chars = int(kwargs.get("max_chars", kwargs.get("max", kwargs.get("max_length", 10000))))
     _retries = int(kwargs.get("_retries", 1))
@@ -216,4 +218,4 @@ def run(**kwargs: Any) -> str | None:
     if ssrf_err:
         return ssrf_err
 
-    return _fetch_with_retry(url, max_chars, _retries)
+    return await _fetch_with_retry(url, max_chars, _retries)

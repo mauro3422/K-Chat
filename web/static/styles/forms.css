@@ -115,6 +115,86 @@
   border-color: var(--accent-neon);
 }
 
+/* Attach Button */
+.attach-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.attach-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--accent-neon);
+  border-color: var(--accent-neon);
+}
+
+.attach-preview {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  overflow-x: auto;
+  min-height: 0;
+  max-height: 80px;
+}
+
+.attach-preview:empty {
+  display: none;
+}
+
+.attach-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--text-primary);
+}
+
+.attach-item img {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.attach-icon {
+  font-size: 20px;
+}
+
+.attach-name {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.attach-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+.attach-remove:hover {
+  color: var(--accent-red);
+}
+
 /* Submit / Stop Button */
 #chat-submit-btn {
   background: var(--accent-neon, #00ff99);

@@ -1,14 +1,18 @@
+import pytest
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock, patch
 
 from src.api.debug import append_asr_telemetry
 from src.api.debug_contract import DebugOpsDeps
 
 
-def test_append_asr_telemetry_appends_and_persists():
+@pytest.mark.anyio
+async def test_append_asr_telemetry_appends_and_persists():
     repo = MagicMock()
-    repo.get_info.return_value = {"asr_telemetry": [{"transport": "http"}], "model": "m1"}
+    repo.get_info = AsyncMock(return_value={"asr_telemetry": [{"transport": "http"}], "model": "m1"})
+    repo.save_info = AsyncMock()
 
-    append_asr_telemetry("sess-1", {"transport": "ws", "bytes": 123}, deps=DebugOpsDeps(debug_repo=repo))
+    await append_asr_telemetry("sess-1", {"transport": "ws", "bytes": 123}, deps=DebugOpsDeps(debug_repo=repo))
 
     repo.get_info.assert_called_once_with("sess-1")
     repo.save_info.assert_called_once()

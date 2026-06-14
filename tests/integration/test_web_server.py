@@ -1,9 +1,12 @@
+import pytest
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock, patch
 
 from fastapi import BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from web.server import app
+from src.api.session import ensure_session
 
 
 def _request(path: str = "/", current: str = "") -> MagicMock:
@@ -13,14 +16,16 @@ def _request(path: str = "/", current: str = "") -> MagicMock:
     return request
 
 
-def test_app_is_created():
+@pytest.mark.anyio
+async def test_app_is_created():
     assert app is not None
     assert any(route.path == "/" for route in app.routes)
 
 
 @patch("web.routers.pages.get_available_model_ids", return_value=["m1", "m2"])
 @patch("web.routers.pages.templates.TemplateResponse")
-def test_home_page(mock_tpl, _mock_models):
+@pytest.mark.anyio
+async def test_home_page(mock_tpl, _mock_models):
     mock_tpl.return_value = HTMLResponse("<html></html>")
     from web.routers.pages import home
     resp = home(_request("/"))
@@ -29,7 +34,8 @@ def test_home_page(mock_tpl, _mock_models):
 
 @patch("web.routers.pages.get_available_model_ids", return_value=["m1"])
 @patch("web.routers.pages.templates.TemplateResponse")
-def test_session_page(mock_tpl, _mock_models):
+@pytest.mark.anyio
+async def test_session_page(mock_tpl, _mock_models):
     mock_tpl.return_value = HTMLResponse("<html></html>")
     from web.routers.pages import session_page
     resp = session_page(_request("/sessions/test-session-123"), "test-session-123")
@@ -38,19 +44,20 @@ def test_session_page(mock_tpl, _mock_models):
 
 @patch("web.routers.pages.get_sessions", return_value=[])
 @patch("web.routers.pages.templates.TemplateResponse")
-def test_sidebar(mock_tpl, _mock_sessions):
+@pytest.mark.anyio
+async def test_sidebar(mock_tpl, _mock_sessions):
     mock_tpl.return_value = HTMLResponse("<div></div>")
     from web.routers.pages import sidebar
-    resp = sidebar(_request("/sidebar", current="test-session-abc"))
+    resp = await sidebar(_request("/sidebar", current="test-session-abc"))
     assert isinstance(resp, HTMLResponse)
 
 
-def test_session_messages_empty():
+@pytest.mark.anyio
+async def test_session_messages_empty():
     from web.routers.pages import session_messages
-    resp = session_messages("test-session-abc")
+    resp = await session_messages("test-session-abc")
     assert isinstance(resp, dict)
     assert resp["messages"] == []
-
 
 
 @patch("web.routers.chat.build_stream_generator")
@@ -58,41 +65,48 @@ def test_session_messages_empty():
 @patch("web.routers.chat.rebuild_history", return_value=[])
 @patch("web.routers.chat.ensure_session")
 @patch("web.routers.chat.get_default_model", return_value="test-model")
-def test_chat_streaming(_mock_default, _mock_ensure, _mock_history, _mock_save, mock_builder):
-    from web.routers.chat import ChatPayload, chat
+@pytest.mark.anyio
+async def test_chat_streaming(_mock_default, _mock_ensure, _mock_history, _mock_save, mock_builder):
+    from web.routers.chat import chat
 
     mock_builder.return_value = lambda: iter([
         '{"t":"reasoning","d":"Thinking..."}\n',
         '{"t":"content","d":"Hello from mocked LLM"}\n',
     ])
 
-    response = chat("test-session-abc", BackgroundTasks(), ChatPayload(message="hello", model="test-model"))
+    response = await chat("test-session-abc", BackgroundTasks(), message="hello", model="test-model")
     assert isinstance(response, StreamingResponse)
     assert response.media_type == "application/x-ndjson"
 
 
 @patch("web.routers.sessions.rename_session")
-def test_rename_session(_mock_rename):
+@pytest.mark.anyio
+async def test_rename_session(_mock_rename):
     from web.routers.sessions import rename
+    await ensure_session("test-session-abc")
 
-    response = rename("test-session-abc", name="New Chat Name")
-    assert isinstance(response, HTMLResponse)
-    assert response.body == b"OK"
+    response = await rename("test-session-abc", name="New Chat Name")
+    assert isinstance(response, JSONResponse)
+    assert b"ok" in response.body
 
 
 @patch("web.routers.sessions.delete_session")
-def test_delete_session(_mock_delete):
+@pytest.mark.anyio
+async def test_delete_session(_mock_delete):
     from web.routers.sessions import delete
+    await ensure_session("test-session-abc")
 
-    response = delete("test-session-abc")
-    assert isinstance(response, HTMLResponse)
-    assert response.body == b"OK"
+    response = await delete("test-session-abc")
+    assert isinstance(response, JSONResponse)
+    assert b"ok" in response.body
 
 
 @patch("web.routers.debug.get_debug_info", return_value={})
-def test_debug_info_empty(_mock_debug):
+@pytest.mark.anyio
+async def test_debug_info_empty(_mock_debug):
     from web.routers.debug import debug_info
+    await ensure_session("test-session-abc")
 
-    response = debug_info("test-session-abc")
+    response = await debug_info("test-session-abc")
     assert isinstance(response, JSONResponse)
     assert response.body == b"{}"

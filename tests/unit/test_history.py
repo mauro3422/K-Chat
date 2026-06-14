@@ -1,9 +1,8 @@
-
-
-
+import pytest
 from src.core.history_ui import filter_messages_for_ui, match_tools_to_msgs
 
-def test_filter_messages_for_ui_complete_turn():
+@pytest.mark.anyio
+async def test_filter_messages_for_ui_complete_turn():
     """
     Verifica que filter_messages_for_ui:
     - Excluya los mensajes de tipo 'tool'.
@@ -26,17 +25,18 @@ def test_filter_messages_for_ui_complete_turn():
     # 2. assistant: "Hola! En qué puedo ayudarte?" (el último del grupo)
     # 3. user: "Dame más info"
     assert len(filtered) == 3
-    assert filtered[0]["role"] == "user"
-    assert filtered[0]["content"] == "Hola"
+    assert filtered[0].role == "user"
+    assert filtered[0].content == "Hola"
     
-    assert filtered[1]["role"] == "assistant"
-    assert filtered[1]["content"] == "Hola! En qué puedo ayudarte?"
+    assert filtered[1].role == "assistant"
+    assert filtered[1].content == "Hola! En qué puedo ayudarte?"
     
-    assert filtered[2]["role"] == "user"
-    assert filtered[2]["content"] == "Dame más info"
+    assert filtered[2].role == "user"
+    assert filtered[2].content == "Dame más info"
 
 
-def test_filter_messages_for_ui_incomplete_turn():
+@pytest.mark.anyio
+async def test_filter_messages_for_ui_incomplete_turn():
     """
     Verifica que si el turno del asistente está incompleto (es decir,
     el último mensaje en la base de datos es del asistente),
@@ -54,12 +54,13 @@ def test_filter_messages_for_ui_incomplete_turn():
     # 1. user: "Hola"
     # 2. assistant: "Pensando paso 2..."
     assert len(filtered) == 2
-    assert filtered[0]["role"] == "user"
-    assert filtered[1]["role"] == "assistant"
-    assert filtered[1]["content"] == "Pensando paso 2..."
+    assert filtered[0].role == "user"
+    assert filtered[1].role == "assistant"
+    assert filtered[1].content == "Pensando paso 2..."
 
 
-def test_match_tools_to_msgs_chronological():
+@pytest.mark.anyio
+async def test_match_tools_to_msgs_chronological():
     """
     Verifica que match_tools_to_msgs asocie correctamente las llamadas
     a herramientas con cada mensaje 'assistant' en base a sus timestamps.

@@ -1,20 +1,26 @@
+import pytest
+from unittest.mock import AsyncMock
 from typing import Protocol
 
 from src.llm.protocol import LLMProvider, UnifiedRequest, UnifiedResponse
 
 
 class TestLLMProviderProtocol:
-    def test_is_protocol_subclass(self):
+    @pytest.mark.anyio
+    async def test_is_protocol_subclass(self):
         assert issubclass(LLMProvider, Protocol)
 
-    def test_is_runtime_checkable(self):
+    @pytest.mark.anyio
+    async def test_is_runtime_checkable(self):
         assert hasattr(LLMProvider, "__instancecheck__")
 
-    def test_openai_provider_satisfies(self):
+    @pytest.mark.anyio
+    async def test_openai_provider_satisfies(self):
         from src.llm.adapters.openai_adapter import OpenAIAdapter
         assert isinstance(OpenAIAdapter(api_key="test", base_url="https://test"), LLMProvider)
 
-    def test_mock_with_all_methods_passes(self):
+    @pytest.mark.anyio
+    async def test_mock_with_all_methods_passes(self):
         class MockProvider:
             @property
             def provider_name(self):
@@ -42,7 +48,8 @@ class TestLLMProviderProtocol:
                 return []
         assert isinstance(MockProvider(), LLMProvider)
 
-    def test_mock_missing_chat_fails(self):
+    @pytest.mark.anyio
+    async def test_mock_missing_chat_fails(self):
         class BadProvider:
             @property
             def provider_name(self):
@@ -67,7 +74,8 @@ class TestLLMProviderProtocol:
                 return []
         assert not isinstance(BadProvider(), LLMProvider)
 
-    def test_mock_missing_chat_stream_fails(self):
+    @pytest.mark.anyio
+    async def test_mock_missing_chat_stream_fails(self):
         class BadProvider:
             @property
             def provider_name(self):
@@ -92,7 +100,8 @@ class TestLLMProviderProtocol:
                 return []
         assert not isinstance(BadProvider(), LLMProvider)
 
-    def test_mock_missing_list_models_fails(self):
+    @pytest.mark.anyio
+    async def test_mock_missing_list_models_fails(self):
         class BadProvider:
             @property
             def provider_name(self):
@@ -117,7 +126,8 @@ class TestLLMProviderProtocol:
                 return (x for x in [])
         assert not isinstance(BadProvider(), LLMProvider)
 
-    def test_mock_returns_generator_any(self):
+    @pytest.mark.anyio
+    async def test_mock_returns_generator_any(self):
         class MockProvider:
             @property
             def provider_name(self):
@@ -145,7 +155,8 @@ class TestLLMProviderProtocol:
                 return []
         assert isinstance(MockProvider(), LLMProvider)
 
-    def test_plain_object_with_methods_passes(self):
+    @pytest.mark.anyio
+    async def test_plain_object_with_methods_passes(self):
         obj = type("", (), {
             "provider_name": property(lambda self: "plain"),
             "supports_streaming": property(lambda self: True),

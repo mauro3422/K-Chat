@@ -1,9 +1,11 @@
 import json
 import logging
+import pytest
 from unittest.mock import patch, MagicMock, mock_open
 
 
-def test_jsonl_handler_emit():
+@pytest.mark.anyio
+async def test_jsonl_handler_emit():
     from web.services import file_logger
 
     with patch("web.services.file_logger._ensure_dirs"):
@@ -30,7 +32,8 @@ def test_jsonl_handler_emit():
                 assert entry["msg"] == "Test message"
 
 
-def test_jsonl_handler_build_entry_with_data():
+@pytest.mark.anyio
+async def test_jsonl_handler_build_entry_with_data():
     from web.services import file_logger
 
     handler = file_logger.JsonlHandler()
@@ -53,7 +56,8 @@ def test_jsonl_handler_build_entry_with_data():
     assert entry["d"] == {"key": "value"}
 
 
-def test_jsonl_handler_build_entry_with_args():
+@pytest.mark.anyio
+async def test_jsonl_handler_build_entry_with_args():
     from web.services import file_logger
 
     handler = file_logger.JsonlHandler()
@@ -75,7 +79,8 @@ def test_jsonl_handler_build_entry_with_args():
     assert entry["d"] == {"args": ("arg1", 42)}
 
 
-def test_ensure_dirs():
+@pytest.mark.anyio
+async def test_ensure_dirs():
     from web.services import file_logger
 
     with patch("web.services.file_logger.SERVER_LOG_DIR") as mock_server_dir:
@@ -86,7 +91,8 @@ def test_ensure_dirs():
             mock_client_dir.mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
 
-def test_install_jsonl_handler():
+@pytest.mark.anyio
+async def test_install_jsonl_handler():
     from web.services import file_logger
 
     with patch("web.services.file_logger.JsonlHandler") as mock_handler_class:
@@ -104,7 +110,8 @@ def test_install_jsonl_handler():
             mock_logger.addHandler.assert_called_once_with(mock_handler)
 
 
-def test_install_jsonl_handler_default_module():
+@pytest.mark.anyio
+async def test_install_jsonl_handler_default_module():
     from web.services import file_logger
 
     with patch("web.services.file_logger.JsonlHandler") as mock_handler_class:
@@ -122,7 +129,8 @@ def test_install_jsonl_handler_default_module():
             mock_logger.addHandler.assert_called_once_with(mock_handler)
 
 
-def test_root_logger_has_add_handler():
+@pytest.mark.anyio
+async def test_root_logger_has_add_handler():
     from web.services import file_logger
     assert hasattr(file_logger, "JsonlHandler")
     assert hasattr(file_logger, "install_jsonl_handler")

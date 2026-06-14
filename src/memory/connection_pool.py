@@ -1,38 +1,35 @@
 import os
-import sqlite3
-import threading
+import aiosqlite
 from typing import Any
 
 from src.memory.db_path import resolve_db_path
 from src.memory.engine_state import get_engine
-from src.memory.lifecycle import ensure_initialized as _ensure_initialized
-from src.memory.bootstrap import ensure_db_initialized
 
-_thread_local = threading.local()
+_conn_storage = {"conn": None, "db_path": None}
 
 
-def get_raw_conn(db_path: str):
+async def get_raw_conn(db_path: str):
     engine = get_engine()
     if engine is not None:
-        return engine.connect()
-    raw_conn = sqlite3.connect(db_path, check_same_thread=False)
-    raw_conn.row_factory = sqlite3.Row
-    raw_conn.execute("PRAGMA journal_mode=WAL")
-    raw_conn.execute("PRAGMA busy_timeout=5000")
-    raw_conn.execute("PRAGMA foreign_keys=ON")
+        return await engine.connect()
+    raw_conn = await aiosqlite.connect(db_path)
+    raw_conn.row_factory = aiosqlite.Row
+    await raw_conn.execute("PRAGMA journal_mode=WAL")
+    await raw_conn.execute("PRAGMA busy_timeout=5000")
+    await raw_conn.execute("PRAGMA foreign_keys=ON")
     return raw_conn
 
 
-def configure_connection(conn: Any) -> None:
+async def configure_connection(conn: Any) -> None:
     engine = get_engine()
     if engine is not None:
-        engine.execute(conn, "PRAGMA journal_mode=WAL")
-        engine.execute(conn, "PRAGMA busy_timeout=5000")
-        engine.execute(conn, "PRAGMA foreign_keys=ON")
+        await engine.execute(conn, "PRAGMA journal_mode=WAL")
+        await engine.execute(conn, "PRAGMA busy_timeout=5000")
+        await engine.execute(conn, "PRAGMA foreign_keys=ON")
     else:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute("PRAGMA foreign_keys=ON")
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA busy_timeout=5000")
+        await conn.execute("PRAGMA foreign_keys=ON")
 
 
 class PooledConnection:
@@ -44,22 +41,33 @@ class PooledConnection:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._conn, name)
 
-    def close(self) -> None:
+    async def close(self) -> None:
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         pass
 
 
-def get_conn() -> PooledConnection:
+async def get_conn() -> PooledConnection:
     db_path = resolve_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    cached_path = getattr(_thread_local, "db_path", None)
-    raw = getattr(_thread_local, "conn", None)
+    
+    raw = _conn_storage["conn"]
+    cached_path = _conn_storage["db_path"]
+    
     if raw is not None and cached_path != db_path:
-        raw.close()
+        await raw.close()
         raw = None
-        _thread_local.conn = None
+        _conn_storage["conn"] = None
+        
     if raw is None:
-        raw = get_raw_conn(db_path)
-        _thread_local.conn = raw
-        _thread_local.db_path = db_path
-        ensure_db_initialized(db_path)
+        raw = await get_raw_conn(db_path)
+        _conn_storage["conn"] = raw
+        _conn_storage["db_path"] = db_path
+        # Lazy import to avoid circular dependency
+        from src.memory.bootstrap import ensure_db_initialized
+        await ensure_db_initialized(db_path)
     return PooledConnection(raw)

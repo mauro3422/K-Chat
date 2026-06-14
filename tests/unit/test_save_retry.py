@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 """Tests for _save_with_retry logic."""
 import time
 from unittest.mock import Mock
@@ -5,7 +6,8 @@ import pytest
 
 
 class TestSaveWithRetry:
-    def test_save_succeeds_first_attempt(self):
+    @pytest.mark.anyio
+    async def test_save_succeeds_first_attempt(self):
         """If save succeeds immediately, return True."""
         mock_save = Mock()
         mock_save.return_value = True
@@ -16,7 +18,8 @@ class TestSaveWithRetry:
         assert mock_save.call_count == 1
         assert elapsed < 0.1  # no delay on success
 
-    def test_save_fails_all_attempts(self):
+    @pytest.mark.anyio
+    async def test_save_fails_all_attempts(self):
         """If save fails 3 times, return False with backoff."""
         mock_save = Mock(side_effect=Exception("DB error"))
         start = time.monotonic()

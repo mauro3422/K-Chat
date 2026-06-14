@@ -1,9 +1,23 @@
+from unittest.mock import AsyncMock
+import pytest
 """
 Stress test: aborto de stream + persistencia parcial.
 """
 
 import json
 from unittest.mock import patch, MagicMock
+
+
+class _AsyncIter:
+    def __init__(self, items):
+        self._items = iter(items)
+    def __aiter__(self):
+        return self
+    async def __anext__(self):
+        try:
+            return next(self._items)
+        except StopIteration:
+            raise StopAsyncIteration
 
 
 def _build_mock_bg_tasks():
@@ -14,10 +28,11 @@ def _build_mock_bg_tasks():
 
 @patch("web.services.chat_stream.save_assistant_message")
 @patch("web.services.chat_stream.chat_stream")
-def test_generator_exit_saves_partial_message(mock_chat_stream, mock_save):
+@pytest.mark.anyio
+async def test_generator_exit_saves_partial_message(mock_chat_stream, mock_save):
     from web.services.chat_stream import build_stream_generator
 
-    mock_chat_stream.return_value = iter([
+    mock_chat_stream.return_value = _AsyncIter([
         ("reasoning", "Pensando..."),
         ("content", "Hola"),
         ("content", " mundo"),
@@ -26,13 +41,13 @@ def test_generator_exit_saves_partial_message(mock_chat_stream, mock_save):
     bg = _build_mock_bg_tasks()
     gen = build_stream_generator("ses-1", "Hola", [{"role": "system", "content": "test"}], "test-model", bg)()
 
-    chunks = [next(gen) for _ in range(3)]
+    chunks = [await anext(gen) for _ in range(3)]
     data = [json.loads(c.strip()) for c in chunks]
     assert data[0] == {"t": "reasoning", "d": "Pensando..."}
     assert data[1] == {"t": "content", "d": "Hola"}
     assert data[2] == {"t": "content", "d": " mundo"}
 
-    gen.close()
+    await gen.aclose()
 
     mock_save.assert_called_once()
     args, kwargs = mock_save.call_args
@@ -45,16 +60,18 @@ def test_generator_exit_saves_partial_message(mock_chat_stream, mock_save):
 
 @patch("web.services.chat_stream.save_assistant_message")
 @patch("web.services.chat_stream.chat_stream")
-def test_complete_stream_saves_and_renames(mock_chat_stream, mock_save):
+@pytest.mark.anyio
+async def test_complete_stream_saves_and_renames(mock_chat_stream, mock_save):
     from web.services.chat_stream import build_stream_generator
 
-    mock_chat_stream.return_value = iter([
+    mock_chat_stream.return_value = _AsyncIter([
         ("reasoning", "Ok"),
         ("content", "Respuesta final."),
     ])
 
     bg = _build_mock_bg_tasks()
-    chunks = list(build_stream_generator("ses-2", "Test", [{"role": "system", "content": "test"}], "test-model", bg)())
+    gen = build_stream_generator("ses-2", "Test", [{"role": "system", "content": "test"}], "test-model", bg)()
+    chunks = [chunk async for chunk in gen]
 
     assert len(chunks) == 2
     data = [json.loads(c.strip()) for c in chunks]
@@ -74,13 +91,15 @@ def test_complete_stream_saves_and_renames(mock_chat_stream, mock_save):
 
 @patch("web.services.chat_stream.save_assistant_message")
 @patch("web.services.chat_stream.chat_stream")
-def test_abort_before_any_content_no_save(mock_chat_stream, mock_save):
+@pytest.mark.anyio
+async def test_abort_before_any_content_no_save(mock_chat_stream, mock_save):
     from web.services.chat_stream import build_stream_generator
 
-    mock_chat_stream.return_value = iter([])
+    mock_chat_stream.return_value = _AsyncIter([])
 
     bg = _build_mock_bg_tasks()
-    chunks = list(build_stream_generator("ses-3", "Test", [{"role": "system", "content": "test"}], "test-model", bg)())
+    gen = build_stream_generator("ses-3", "Test", [{"role": "system", "content": "test"}], "test-model", bg)()
+    chunks = [chunk async for chunk in gen]
 
     assert len(chunks) == 1
     data = json.loads(chunks[0].strip())
@@ -93,10 +112,11 @@ def test_abort_before_any_content_no_save(mock_chat_stream, mock_save):
 
 @patch("web.services.chat_stream.save_assistant_message")
 @patch("web.services.chat_stream.chat_stream")
-def test_abort_with_reasoning_only_saves_reasoning(mock_chat_stream, mock_save):
+@pytest.mark.anyio
+async def test_abort_with_reasoning_only_saves_reasoning(mock_chat_stream, mock_save):
     from web.services.chat_stream import build_stream_generator
 
-    mock_chat_stream.return_value = iter([
+    mock_chat_stream.return_value = _AsyncIter([
         ("reasoning", "Analizando la consulta..."),
         ("reasoning", " Buscando información..."),
     ])
@@ -104,12 +124,12 @@ def test_abort_with_reasoning_only_saves_reasoning(mock_chat_stream, mock_save):
     bg = _build_mock_bg_tasks()
     gen = build_stream_generator("ses-4", "Test", [{"role": "system", "content": "test"}], "test-model", bg)()
 
-    chunks = [next(gen) for _ in range(2)]
+    chunks = [await anext(gen) for _ in range(2)]
     data = [json.loads(c.strip()) for c in chunks]
     assert data[0] == {"t": "reasoning", "d": "Analizando la consulta..."}
     assert data[1] == {"t": "reasoning", "d": " Buscando información..."}
 
-    gen.close()
+    await gen.aclose()
 
     mock_save.assert_called_once()
     args, kwargs = mock_save.call_args
@@ -120,25 +140,26 @@ def test_abort_with_reasoning_only_saves_reasoning(mock_chat_stream, mock_save):
 
 @patch("web.services.chat_stream.save_assistant_message")
 @patch("web.services.chat_stream.chat_stream")
-def test_second_stream_after_abort_works(mock_chat_stream, mock_save):
+@pytest.mark.anyio
+async def test_second_stream_after_abort_works(mock_chat_stream, mock_save):
     from web.services.chat_stream import build_stream_generator
 
     mock_chat_stream.side_effect = [
-        iter([("content", "Primera")]),
-        iter([("content", "Segunda completa.")]),
+        _AsyncIter([("content", "Primera")]),
+        _AsyncIter([("content", "Segunda completa.")]),
     ]
 
     bg = _build_mock_bg_tasks()
 
     gen1 = build_stream_generator("ses-5", "Msg1", [{"role": "system", "content": "test"}], "m", bg)()
-    next(gen1)
-    gen1.close()
+    await anext(gen1)
+    await gen1.aclose()
 
     assert mock_save.call_count == 1
     assert mock_save.call_args_list[0].args[1] == "Primera"
 
     gen2 = build_stream_generator("ses-5", "Msg2", [{"role": "system", "content": "test"}], "m", bg)()
-    chunks = list(gen2)
+    chunks = [chunk async for chunk in gen2]
 
     assert len(chunks) == 1
     assert json.loads(chunks[0].strip()) == {"t": "content", "d": "Segunda completa."}

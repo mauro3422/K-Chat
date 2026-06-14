@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -10,7 +11,8 @@ from src.llm.providers import (
 from src.llm.protocol import LLMProvider
 
 
-def test_register_provider_adds_to_registry():
+@pytest.mark.anyio
+async def test_register_provider_adds_to_registry():
     from src.llm import providers
     original = providers._PROVIDER_REGISTRY.copy()
     try:
@@ -22,7 +24,8 @@ def test_register_provider_adds_to_registry():
         providers._PROVIDER_REGISTRY.update(original)
 
 
-def test_get_provider_creates_provider_singleton():
+@pytest.mark.anyio
+async def test_get_provider_creates_provider_singleton():
     from src.llm import providers
     original_provider = providers._provider
     original_registry = providers._PROVIDER_REGISTRY.copy()
@@ -45,11 +48,13 @@ def test_get_provider_creates_provider_singleton():
         providers._PROVIDER_REGISTRY.update(original_registry)
 
 
-def test_provider_registry_has_default_openai_provider():
+@pytest.mark.anyio
+async def test_provider_registry_has_default_openai_provider():
     assert "openai" in _PROVIDER_REGISTRY
 
 
-def test_register_provider_overwrites_existing_entry():
+@pytest.mark.anyio
+async def test_register_provider_overwrites_existing_entry():
     from src.llm import providers
     original = providers._PROVIDER_REGISTRY.copy()
     try:

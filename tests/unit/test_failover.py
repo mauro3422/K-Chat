@@ -5,10 +5,11 @@ import pytest
 from src.llm.failover import _mark_and_refresh
 
 
+@pytest.mark.anyio
 @patch("src.llm.model_state.mark_model_failed")
 @patch("src.llm.model_state._switch_model")
 @patch("src.llm.discovery.get_verified_models")
-def test_mark_and_refresh_marks_model_as_failed_and_refreshes_verified_list(
+async def test_mark_and_refresh_marks_model_as_failed_and_refreshes_verified_list(
     mock_get_verified_models, mock_switch_model, mock_mark_model_failed
 ):
     mock_get_verified_models.return_value = ["model1", "model2"]
@@ -21,10 +22,11 @@ def test_mark_and_refresh_marks_model_as_failed_and_refreshes_verified_list(
     assert result == "model2"
 
 
+@pytest.mark.anyio
 @patch("src.llm.model_state.mark_model_failed")
 @patch("src.llm.model_state._switch_model")
 @patch("src.llm.discovery.get_verified_models")
-def test_mark_and_refresh_handles_refresh_failure_gracefully(
+async def test_mark_and_refresh_handles_refresh_failure_gracefully(
     mock_get_verified_models, mock_switch_model, mock_mark_model_failed
 ):
     mock_get_verified_models.side_effect = Exception("Refresh failed")
@@ -37,10 +39,11 @@ def test_mark_and_refresh_handles_refresh_failure_gracefully(
     assert result == "model2"
 
 
+@pytest.mark.anyio
 @patch("src.llm.model_state.mark_model_failed")
 @patch("src.llm.model_state._switch_model")
 @patch("src.llm.discovery.get_verified_models")
-def test_mark_and_refresh_falls_back_to_same_model_when_all_failed(
+async def test_mark_and_refresh_falls_back_to_same_model_when_all_failed(
     mock_get_verified_models, mock_switch_model, mock_mark_model_failed
 ):
     mock_get_verified_models.return_value = ["model1", "model2"]

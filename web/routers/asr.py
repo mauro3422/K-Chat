@@ -32,18 +32,25 @@ async def asr_transcribe(request: Request):
         JSON with success, transcript, and optional error.
     """
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > MAX_AUDIO_SIZE:
-        return JSONResponse(
-            {"success": False, "error": f"Audio too large ({content_length} bytes, max {MAX_AUDIO_SIZE})"},
-            status_code=413,
-        )
+    if content_length:
+        try:
+            if int(content_length) > MAX_AUDIO_SIZE:
+                return JSONResponse(
+                    {"success": False, "error": f"Audio too large ({content_length} bytes, max {MAX_AUDIO_SIZE})"},
+                    status_code=413,
+                )
+        except (ValueError, TypeError):
+            return JSONResponse(
+                {"success": False, "error": f"Invalid Content-Length header: {content_length}"},
+                status_code=400,
+            )
 
     audio_data, content_type = await _read_audio_payload(request)
     session_id = request.query_params.get("session_id")
 
     if not audio_data or len(audio_data) < 44:  # WAV header is 44 bytes minimum
         return JSONResponse(
-            {"success": False, "error": "Empty or invalid audio payload"},
+            {"detail": "Empty or invalid audio payload"},
             status_code=400,
         )
 
@@ -54,7 +61,7 @@ async def asr_transcribe(request: Request):
     except Exception as e:
         logger.exception("ASR: internal error during transcription")
         return JSONResponse(
-            {"success": False, "error": f"Transcription failed: {e}"},
+            {"detail": "Transcription failed"},
             status_code=500,
         )
 
@@ -145,7 +152,7 @@ async def asr_stream(websocket: WebSocket):
                 await websocket.send_json({
                     "type": "transcript",
                     "success": False,
-                    "error": f"Transcription failed: {e}",
+                    "error": "Transcription failed",
                 })
                 continue
 

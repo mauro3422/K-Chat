@@ -1,3 +1,5 @@
+import pytest
+from unittest.mock import AsyncMock
 from src.tools.loader import TOOL_MAP, TOOL_DEFINITIONS
 
 EXPECTED_TOOLS = [
@@ -23,17 +25,20 @@ CIRCULAR_SENSITIVE_TOOLS = [
 ]
 
 
-def test_tool_map_has_all_expected():
+@pytest.mark.anyio
+async def test_tool_map_has_all_expected():
     for name in EXPECTED_TOOLS:
         assert name in TOOL_MAP, f"Missing tool {name!r} in TOOL_MAP"
 
 
-def test_tool_definitions_has_all_expected():
+@pytest.mark.anyio
+async def test_tool_definitions_has_all_expected():
     for name in EXPECTED_TOOLS:
         assert name in TOOL_DEFINITIONS, f"Missing tool {name!r} in TOOL_DEFINITIONS"
 
 
-def test_extra_tools_not_accidentally_included():
+@pytest.mark.anyio
+async def test_extra_tools_not_accidentally_included():
     assert "__init__" not in TOOL_MAP
     assert "loader" not in TOOL_MAP
     assert "runner" not in TOOL_MAP
@@ -41,16 +46,19 @@ def test_extra_tools_not_accidentally_included():
     assert "_widget_helpers" not in TOOL_MAP
 
 
-def test_tool_map_and_definitions_have_same_keys():
+@pytest.mark.anyio
+async def test_tool_map_and_definitions_have_same_keys():
     assert set(TOOL_MAP.keys()) == set(TOOL_DEFINITIONS.keys())
 
 
-def test_tool_map_values_are_callable():
+@pytest.mark.anyio
+async def test_tool_map_values_are_callable():
     for name, func in TOOL_MAP.items():
         assert callable(func), f"{name} tool is not callable"
 
 
-def test_tool_definitions_required_fields():
+@pytest.mark.anyio
+async def test_tool_definitions_required_fields():
     for name, defn in TOOL_DEFINITIONS.items():
         assert "type" in defn, f"{name} missing 'type'"
         assert "function" in defn, f"{name} missing 'function'"
@@ -64,18 +72,21 @@ def test_tool_definitions_required_fields():
         assert "properties" in params, f"{name} missing 'parameters.properties'"
 
 
-def test_tool_definitions_parameters_have_object_type():
+@pytest.mark.anyio
+async def test_tool_definitions_parameters_have_object_type():
     for name, defn in TOOL_DEFINITIONS.items():
         params = defn["function"]["parameters"]
         assert params["type"] == "object", f"{name} parameters.type is not 'object'"
 
 
-def test_tool_definitions_not_empty():
+@pytest.mark.anyio
+async def test_tool_definitions_not_empty():
     assert len(TOOL_MAP) > 0
     assert len(TOOL_DEFINITIONS) > 0
 
 
-def test_module_attribute_exported():
+@pytest.mark.anyio
+async def test_module_attribute_exported():
     for name in EXPECTED_TOOLS:
         import importlib
         mod = importlib.import_module(f"src.tools.{name}")
@@ -85,7 +96,8 @@ def test_module_attribute_exported():
 
 # ── Regression: circular import en tools que usan src.api ──────────────
 
-def test_circular_sensitive_tools_have_lazy_imports():
+@pytest.mark.anyio
+async def test_circular_sensitive_tools_have_lazy_imports():
     """Verifica que las tools con dependencia circular importen src.api
     dentro de run(), no al nivel del módulo."""
     for name in CIRCULAR_SENSITIVE_TOOLS:
@@ -100,7 +112,8 @@ def test_circular_sensitive_tools_have_lazy_imports():
                 )
 
 
-def test_circular_sensitive_tools_run_imports_api():
+@pytest.mark.anyio
+async def test_circular_sensitive_tools_run_imports_api():
     """Ejecuta run() en cada tool sensible para verificar que el import
     lazy dentro de la función no falla."""
     import logging
@@ -118,11 +131,16 @@ def test_circular_sensitive_tools_run_imports_api():
             kwargs["code"] = "<div>test</div>"
         elif name == "get_widget_code":
             kwargs["widget_id"] = "test"
-        result = fn(**kwargs)
+        import inspect
+        if inspect.iscoroutinefunction(fn):
+            result = await fn(**kwargs)
+        else:
+            result = fn(**kwargs)
         assert isinstance(result, str), f"{name}.run() should return str, got {type(result)}"
 
 
-def test_build_tools_md_generates_all_10():
+@pytest.mark.anyio
+async def test_build_tools_md_generates_all_10():
     """Verifica que la auto-generación de TOOLS.md incluya las tools
     sin errores de circular import."""
     from src.context import _build_tools_md
@@ -131,7 +149,8 @@ def test_build_tools_md_generates_all_10():
         assert f"- **{name}**" in result, f"{name} missing from auto-generated TOOLS.md"
 
 
-def test_build_tools_md_no_errors():
+@pytest.mark.anyio
+async def test_build_tools_md_no_errors():
     """Verifica que _build_tools_md() no lance excepciones."""
     import logging
     logging.disable(logging.CRITICAL)
@@ -141,7 +160,8 @@ def test_build_tools_md_no_errors():
     assert result.startswith("# Available Tools")
 
 
-def test_build_tools_md_idempotent():
+@pytest.mark.anyio
+async def test_build_tools_md_idempotent():
     """Verifica que regenerar TOOLS.md dos veces dé el mismo resultado."""
     import logging
     logging.disable(logging.CRITICAL)
@@ -151,7 +171,8 @@ def test_build_tools_md_idempotent():
     assert r1 == r2, "TOOLS.md generation is not idempotent"
 
 
-def test_all_tools_accept_kwargs_or_session_id():
+@pytest.mark.anyio
+async def test_all_tools_accept_kwargs_or_session_id():
     """Todas las herramientas deberían aceptar _session_id o **kwargs."""
     for name, func in TOOL_MAP.items():
         import inspect

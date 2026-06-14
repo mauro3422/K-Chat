@@ -3,6 +3,8 @@ import { createRetryController } from './retry-handler.js';
 import { Utils } from './utils.js';
 import C from './dom-contracts.js';
 import { SessionContext } from './session-context.js';
+import { FileAttachment } from './file-attachment.js';
+import { RateLimitCooldown } from './rate-limit-cooldown.js';
 
 var lastUserMessageText = '';
 var currentController = null;
@@ -65,6 +67,7 @@ function retryLastMessage() {
 }
 
 function init(deps) {
+  FileAttachment.init();
   if (!retryClickBound) {
     retryClickBound = true;
     document.addEventListener('click', function(event) {
@@ -99,6 +102,8 @@ function init(deps) {
 
     lastUserMessageText = text;
 
+    var currentFiles = FileAttachment.hasFiles() ? FileAttachment.getFiles() : [];
+
     var nav = getNav(deps);
     var oldUrl = nav.location.pathname;
     if (oldUrl === '/') { nav.history.replaceState({sid:SessionContext.getSessionId()}, '', '/sessions/' + SessionContext.getSessionId()); }
@@ -132,8 +137,11 @@ function init(deps) {
       controller: currentController,
       retryController: currentRetryController,
       sessionId: SessionContext.getSessionId(),
-      defaultModel: getDefaultModel()
+      defaultModel: getDefaultModel(),
+      files: currentFiles
     });
+
+    FileAttachment.clear();
   });
 
   window.addEventListener('keydown', function(event) {
@@ -147,6 +155,19 @@ function init(deps) {
       }
     }
   });
+
+  // ── Enter para enviar (sin Shift) ────────────────────────────────────
+  var input = document.getElementById('msg-input');
+  if (input) {
+    input.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        if (input.value.trim()) {
+          document.getElementById('chat-form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        }
+      }
+    });
+  }
 }
 
 function resetForm() {

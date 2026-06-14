@@ -12,7 +12,7 @@ def _get_session_repo(repo=None):
     return SessionRepository()
 
 
-def auto_rename_session(
+async def auto_rename_session(
     session_id: str,
     message: str,
     model: str,
@@ -32,7 +32,7 @@ def auto_rename_session(
     try:
         if chat_fn is None:
             from src.llm.client import chat as chat_fn
-        r = chat_fn(
+        r = await chat_fn(
             [{"role": "user", "content": prompt}],
             model
         )
@@ -40,4 +40,4 @@ def auto_rename_session(
         if title:
             repo.rename(session_id, title)
     except Exception as e:
-        logger.warning("Error generating automatic session title: %s", e)
+        logger.warning("auto_rename failed (session=%s): %s", session_id, e)

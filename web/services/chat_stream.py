@@ -1,12 +1,19 @@
 import logging
+import asyncio
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, AsyncGenerator
 from typing import Any
 
 from fastapi import BackgroundTasks
 
 from src.core.orchestrator import chat_stream
+from src.core.orchestrator_contract import OrchestratorDeps
+from src.core.services.history_service import HistoryService
+from src.core.services.llm_service import LLMService
+from src.core.services.tool_execution_service import ToolExecutionService
+from src.core.services.telemetry_service import TelemetryService
 from src.core.debug_info import DebugInfo
+from src.memory.repos import get_repos
 from src.background_tasks import auto_rename_session
 from web.services.loop_detector import LoopDetector
 from web.services.message_persister import save_assistant_message
@@ -27,13 +34,13 @@ def build_stream_generator(
     history: list[dict[str, Any]],
     model: str,
     background_tasks: BackgroundTasks,
-    chat_stream_fn: Callable[..., Generator[Any, None, None]] | None = None,
+    chat_stream_fn: Callable[..., AsyncGenerator[Any, None]] | None = None,
     loop_detector: LoopDetector | None = None,
     retry_handler: StreamRetryHandler | None = None,
     save_fn: Callable | None = None,
     rename_fn: Callable | None = None,
     deps: StreamGeneratorDeps | None = None,
-) -> Callable[..., Generator[str, None, None]]:
+) -> Callable[..., AsyncGenerator[str, None]]:
     """Builds the NDJSON generator for the chat stream."""
     _deps = deps or StreamGeneratorDeps(
         chat_stream_fn=chat_stream_fn,
@@ -44,24 +51,24 @@ def build_stream_generator(
     )
     _chat_stream = _deps.chat_stream_fn or chat_stream
 
-    def generate() -> Generator[str, None, None]:
+    async def generate() -> AsyncGenerator[str, None]:
         debug_info = DebugInfo()
         phases_output = []
         state = StreamState()
 
         logger.info("Starting chat for session %s with model %s", session_id, model)
 
-        def _save_with_retry(desc: str = "") -> bool:
+        async def _save_with_retry(desc: str = "") -> bool:
             max_attempts = 3
             for attempt in range(max_attempts):
                 try:
-                    _save(session_id, state.full_content, state.full_reasoning, phases_output, debug_info, model)
+                    await _save(session_id, state.full_content, state.full_reasoning, phases_output, debug_info, model)
                     logger.info("Save OK%s: %d chars", f" ({desc})" if desc else "", len(state.full_content))
                     return True
                 except Exception as e:
                     logger.warning("Save failed%s (attempt %d/%d): %s", f" ({desc})" if desc else "", attempt + 1, max_attempts, e)
                     if attempt < max_attempts - 1:
-                        time.sleep(1.0 * (2 ** attempt))
+                        await asyncio.sleep(1.0 * (2 ** attempt))
             return False
 
         detector = _deps.loop_detector or LoopDetector()
@@ -70,8 +77,24 @@ def build_stream_generator(
         last_save_time = time.monotonic()
         save_interval = 30
 
+        # Prepare orchestrator dependencies
+        repos = get_repos()
+        telemetry_service = TelemetryService()
+        orchestrator_deps = OrchestratorDeps(
+            repos=repos,
+            history_service=HistoryService(repos=repos),
+            telemetry_service=telemetry_service,
+            llm_service=LLMService(telemetry_service=telemetry_service),
+            tool_service=ToolExecutionService(),
+            session_id=session_id,
+            tagged=True,
+            debug=debug_info,
+            phases_output=phases_output,
+            background_tasks=background_tasks
+        )
+
         try:
-            for tipo, token in _chat_stream(message, history, model, session_id=session_id, tagged=True, debug=debug_info, phases_output=phases_output):
+            async for tipo, token in _chat_stream(message, history, model, deps=orchestrator_deps):
                 now = time.monotonic()
 
                 if tipo == "heartbeat":
@@ -98,7 +121,7 @@ def build_stream_generator(
                                 session_id,
                             )
                             try:
-                                for rtipo, rtoken in _deps.retry_handler.attempt_recovery(
+                                async for rtipo, rtoken in _deps.retry_handler.attempt_recovery(
                                     history, state.full_content, state.full_reasoning,
                                     model, session_id,
                                 ):
@@ -118,7 +141,7 @@ def build_stream_generator(
                 yield serialize_stream_event(tipo, token)
 
                 if now - last_save_time > save_interval and state.has_output():
-                    if _save_with_retry("periodic"):
+                    if await _save_with_retry("periodic"):
                         state.mark_persisted(now)
                         last_save_time = now
 
@@ -129,7 +152,7 @@ def build_stream_generator(
 
             logger.info("Chat completed for session %s: %d chars content, %d chars reasoning", session_id, len(state.full_content), len(state.full_reasoning))
 
-            if _save_with_retry("final"):
+            if await _save_with_retry("final"):
                 state.mark_persisted(now)
             background_tasks.add_task(_rename, session_id, message, model)
 
@@ -141,7 +164,7 @@ def build_stream_generator(
             logger.error("Stream error for %s: [%s] %s", session_id, error_type, error_msg)
             if _deps.retry_handler is not None and _deps.retry_handler.can_retry and state.has_output():
                 try:
-                    for rtipo, rtoken in _deps.retry_handler.attempt_recovery(
+                    async for rtipo, rtoken in _deps.retry_handler.attempt_recovery(
                         history, state.full_content, state.full_reasoning, model, session_id,
                     ):
                         state.append(rtipo, rtoken)
@@ -154,12 +177,9 @@ def build_stream_generator(
         finally:
             if not state.persisted and state.has_output():
                 logger.info("Saving partial message for session %s after stream interruption", session_id)
-                if _save_with_retry("interruption"):
+                if await _save_with_retry("interruption"):
                     state.mark_persisted(time.monotonic())
                 else:
-                    try:
-                        yield serialize_stream_event("error", {"type": "save_failed", "message": "Message not saved"})
-                    except Exception:
-                        pass
+                    logger.warning("Could not save partial message for session %s", session_id)
 
     return generate

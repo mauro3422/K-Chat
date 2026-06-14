@@ -10,16 +10,15 @@ logger = logging.getLogger(__name__)
 class ToolCallRepository(_BaseRepository):
     _table_name = "tool_calls"
 
-    def log(self, session_id: str, tool_name: str, input_str: str, status: str, turn: int = 0) -> None:
+    async def log(self, session_id: str, tool_name: str, input_str: str, status: str, turn: int = 0) -> None:
         """Log a tool call to the database."""
-        with self._transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        async with self._transaction() as conn:
+            await conn.execute('''
                 INSERT INTO tool_calls (session_id, tool_name, input, status, turn, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (session_id, tool_name, input_str, status, turn, datetime.now().isoformat()))
 
-    def record_execution(
+    async def record_execution(
         self,
         session_id: str,
         tool_name: str,
@@ -30,31 +29,29 @@ class ToolCallRepository(_BaseRepository):
         tool_call_id: str | None = None,
     ) -> None:
         """Persist both the tool call and its resulting tool message in one transaction."""
-        with self._transaction() as conn:
-            cursor = conn.cursor()
+        async with self._transaction() as conn:
             created_at = datetime.now().isoformat()
-            cursor.execute('''
+            await conn.execute('''
                 INSERT INTO tool_calls (session_id, tool_name, input, status, turn, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (session_id, tool_name, input_str, status, turn, created_at))
-            cursor.execute('''
+            await conn.execute('''
                 INSERT INTO messages (session_id, role, content, model, tool_call_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (session_id, "tool", tool_result, None, tool_call_id, created_at))
 
-    def get_history(self, session_id: str, limit: int = 10) -> list[tuple[Any, ...]]:
+    async def get_history(self, session_id: str, limit: int = 10) -> list[tuple[Any, ...]]:
         """Retrieve tool call history for a session."""
         try:
-            conn = self._get_conn()
-            cursor = conn.cursor()
-            cursor.execute('''
+            conn = await self._get_conn()
+            cursor = await conn.execute('''
                 SELECT tool_name, input, status, created_at, turn
                 FROM tool_calls
                 WHERE session_id = ?
                 ORDER BY created_at DESC
                 LIMIT ?
             ''', (session_id, limit))
-            return cursor.fetchall()
+            return await cursor.fetchall()
         except Exception:
             logger.exception("Failed to get tool history for %s", session_id)
             return []

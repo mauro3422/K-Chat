@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 import os
 import tempfile
 import pytest
@@ -27,7 +28,8 @@ def temp_memory_file():
     except Exception:
         pass
 
-def test_save_memory_create_new_key(temp_memory_file):
+@pytest.mark.anyio
+async def test_save_memory_create_new_key(temp_memory_file):
     res = save_memory_run(key="Preferencia", value="Python")
     assert "saved" in res
     
@@ -39,7 +41,8 @@ def test_save_memory_create_new_key(temp_memory_file):
     assert "## Memories" in content
     assert "- **Preferencia**: Python" in content
 
-def test_save_memory_update_key(temp_memory_file):
+@pytest.mark.anyio
+async def test_save_memory_update_key(temp_memory_file):
     save_memory_run(key="Preferencia", value="Python")
     res = save_memory_run(key="Preferencia", value="TypeScript")
     assert "saved" in res
@@ -50,7 +53,8 @@ def test_save_memory_update_key(temp_memory_file):
     assert "- **Preferencia**: TypeScript" in content
     assert "- **Preferencia**: Python" not in content
 
-def test_save_memory_delete_key(temp_memory_file):
+@pytest.mark.anyio
+async def test_save_memory_delete_key(temp_memory_file):
     save_memory_run(key="Preferencia", value="Python")
     res = save_memory_run(key="Preferencia", value="")
     assert "deleted" in res
@@ -60,10 +64,12 @@ def test_save_memory_delete_key(temp_memory_file):
         
     assert "Preferencia" not in content
 
-def test_save_memory_empty_key(temp_memory_file):
+@pytest.mark.anyio
+async def test_save_memory_empty_key(temp_memory_file):
     res = save_memory_run(key="", value="Algo")
     assert "ERROR" in res
 
-def test_save_memory_delete_nonexistent_key(temp_memory_file):
+@pytest.mark.anyio
+async def test_save_memory_delete_nonexistent_key(temp_memory_file):
     res = save_memory_run(key="Inexistente", value="")
     assert "did not exist" in res

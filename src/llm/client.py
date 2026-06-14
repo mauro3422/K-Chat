@@ -1,7 +1,7 @@
 import logging
 import json
 from types import SimpleNamespace
-from collections.abc import Callable, Generator
+from collections.abc import Callable, AsyncGenerator, Generator
 from typing import Any
 import src.llm.model_state as models
 import src.llm.api_call as api_call
@@ -27,30 +27,30 @@ def _resolve_model(messages: list[dict[str, Any]], model: str | None, build_prom
     return model
 
 
-def _extract_debug_usage(response: Any, debug: DebugInfo | None) -> None:
-    if response and isinstance(debug, DebugInfo) and getattr(response, "usage", None):
-        debug.prompt_tokens = response.usage.prompt_tokens
-        debug.completion_tokens = response.usage.completion_tokens
-        debug.total_tokens = response.usage.total_tokens
-
-
-def _with_fallback(
+async def _with_fallback(
     model: str,
     messages: list[dict[str, Any]],
     build_prompt_fn: Callable | None,
     fn: Callable[[str], Any],
 ) -> Any:
     try:
-        return fn(model)
+        res = fn(model)
+        import asyncio
+        if asyncio.iscoroutine(res):
+            return await res
+        return res
     except Exception as e:
         logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
         next_model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e))
         _update_system_prompt(messages, next_model, build_prompt_fn)
         logger.info("Switching model to: %s", next_model)
-        return fn(next_model)
+        res = fn(next_model)
+        if asyncio.iscoroutine(res):
+            return await res
+        return res
 
 
-def _try_stream(
+async def _try_stream(
     model: str,
     messages: list[dict[str, Any]],
     build_prompt_fn: Callable | None = None,
@@ -59,7 +59,7 @@ def _try_stream(
     if "stream_options" not in kwargs:
         kwargs["stream_options"] = {"include_usage": True}
     try:
-        s = api_call._api_call(model=model, messages=messages, stream=True, **kwargs)
+        s = await api_call._api_call(model=model, messages=messages, stream=True, **kwargs)
         logger.info("Stream started successfully with model: %s", model)
         return s
     except Exception as e:
@@ -67,7 +67,7 @@ def _try_stream(
         model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e))
         _update_system_prompt(messages, model, build_prompt_fn)
         logger.info("Switching stream to: %s", model)
-        return api_call._api_call(model=model, messages=messages, stream=True, **kwargs)
+        return await api_call._api_call(model=model, messages=messages, stream=True, **kwargs)
 
 
 def _process_tool_delta(delta: Any, tool_map: dict[int, Any], reasoning_output: list[str] | None, tool_calls_output: list[Any] | None, tagged: bool) -> Generator[tuple[str, str], None, None]:
@@ -116,7 +116,7 @@ def _update_debug_usage(chunk: Any, debug: DebugInfo | None) -> None:
         debug.total_tokens = usage.total_tokens
 
 
-def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_fn: Callable | None = None, **kwargs: Any) -> Any:
+async def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_fn: Callable | None = None, **kwargs: Any) -> Any:
     debug = kwargs.pop("debug", None)
     if model is None:
         model = get_default_model()
@@ -126,9 +126,9 @@ def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_
 
     from src.llm.protocol import UnifiedResponse
 
-    def _call(m: str) -> Any:
-        response = api_call._api_call(model=m, messages=messages, **kwargs)
-        _extract_debug_usage(response, debug)
+    async def _call(m: str) -> Any:
+        response = await api_call._api_call(model=m, messages=messages, **kwargs)
+        _update_debug_usage(response, debug)
         if isinstance(response, UnifiedResponse):
             tool_calls = None
             if response.tool_calls:
@@ -152,24 +152,25 @@ def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_
             )
         return response.choices[0]
 
-    return _with_fallback(model, messages, build_prompt_fn, _call)
+    return await _with_fallback(model, messages, build_prompt_fn, _call)
 
 
 
-def _process_chunks(
+async def _process_chunks(
     stream: Any,
     reasoning_output: list[str] | None,
     tool_calls_output: list[Any] | None,
     tagged: bool,
     debug: DebugInfo | None,
-) -> Generator[Any, None, tuple[int, bool, bool]]:
+    stats: SimpleNamespace
+) -> AsyncGenerator[Any, None]:
     _tool_map: dict[int, Any] = {}
-    chunk_count = 0
-    has_content = False
-    has_reasoning = False
+    stats.chunk_count = 0
+    stats.has_content = False
+    stats.has_reasoning = False
 
-    for chunk in stream:
-        chunk_count += 1
+    async for chunk in stream:
+        stats.chunk_count += 1
 
         if isinstance(chunk, tuple) and len(chunk) == 2 and isinstance(chunk[0], str):
             event_type, payload = chunk
@@ -180,14 +181,14 @@ def _process_chunks(
                     debug.total_tokens = payload.total_tokens
 
             elif event_type == "reasoning":
-                has_reasoning = True
+                stats.has_reasoning = True
                 if reasoning_output is not None:
                     reasoning_output.append(payload)
                 if tagged:
                     yield ("reasoning", payload)
 
             elif event_type == "content":
-                has_content = True
+                stats.has_content = True
                 if tagged:
                     yield ("content", payload)
                 else:
@@ -220,34 +221,31 @@ def _process_chunks(
             _update_debug_usage(chunk, debug)
 
             if not getattr(chunk, 'choices', None):
-                logger.debug("Chunk %d sin choices", chunk_count)
+                logger.debug("Chunk %d sin choices", stats.chunk_count)
                 continue
 
             delta = chunk.choices[0].delta
             r = getattr(delta, 'reasoning_content', None) or getattr(delta, 'reasoning', None) if delta else None
             if r:
-                has_reasoning = True
+                stats.has_reasoning = True
                 if reasoning_output is not None:
                     reasoning_output.append(r)
                 if tagged:
                     yield ("reasoning", r)
 
-            yield from _process_tool_delta(delta, _tool_map, reasoning_output, tool_calls_output, tagged)
+            for item in _process_tool_delta(delta, _tool_map, reasoning_output, tool_calls_output, tagged):
+                yield item
 
             content = delta.content if delta else None
             if content:
-                has_content = True
+                stats.has_content = True
                 if tagged:
                     yield ("content", content)
                 else:
                     yield content
 
-    return chunk_count, has_content, has_reasoning
 
-
-
-
-def chat_stream(
+async def chat_stream(
     messages: list[dict[str, Any]],
     model: str | None = None,
     build_prompt_fn: Callable | None = None,
@@ -255,18 +253,20 @@ def chat_stream(
     tagged: bool = False,
     tool_calls_output: list[Any] | None = None,
     **kwargs: Any
-) -> Generator[Any, None, None]:
+) -> AsyncGenerator[Any, None]:
     debug = kwargs.pop("debug", None)
     model = _resolve_model(messages, model, build_prompt_fn)
-    stream = _try_stream(model, messages, build_prompt_fn, **kwargs)
+    stream = await _try_stream(model, messages, build_prompt_fn, **kwargs)
 
-    chunk_count, has_content, has_reasoning = yield from _process_chunks(
-        stream, reasoning_output, tool_calls_output, tagged, debug,
-    )
+    stats = SimpleNamespace(chunk_count=0, has_content=False, has_reasoning=False)
+    async for item in _process_chunks(
+        stream, reasoning_output, tool_calls_output, tagged, debug, stats
+    ):
+        yield item
 
-    if chunk_count == 0:
+    if stats.chunk_count == 0:
         logger.warning("Empty stream: no chunks received from model %s", model)
-    elif not has_content and not has_reasoning:
-        logger.warning("Stream with %d chunks but no content or reasoning from model %s", chunk_count, model)
+    elif not stats.has_content and not stats.has_reasoning:
+        logger.warning("Stream with %d chunks but no content or reasoning from model %s", stats.chunk_count, model)
     else:
-        logger.info("Stream completed: %d chunks, has_content=%s, has_reasoning=%s", chunk_count, has_content, has_reasoning)
+        logger.info("Stream completed: %d chunks, has_content=%s, has_reasoning=%s", stats.chunk_count, stats.has_content, stats.has_reasoning)

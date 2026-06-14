@@ -1,10 +1,13 @@
+import pytest
+from unittest.mock import AsyncMock, MagicMock
 import os
 from unittest.mock import patch, mock_open
 
 from src.paths import CONTEXT_DIR
 
 
-def test_ensure_file_creates():
+@pytest.mark.anyio
+async def test_ensure_file_creates():
     from src.context import _ensure_file
 
     with patch("os.path.exists", return_value=False):
@@ -14,7 +17,8 @@ def test_ensure_file_creates():
             m().write.assert_called_once_with("# content")
 
 
-def test_ensure_file_exists():
+@pytest.mark.anyio
+async def test_ensure_file_exists():
     from src.context import _ensure_file
 
     with patch("os.path.exists", return_value=True):
@@ -23,7 +27,8 @@ def test_ensure_file_exists():
             m.assert_not_called()
 
 
-def test_ensure_file_oserror():
+@pytest.mark.anyio
+async def test_ensure_file_oserror():
     from src.context import _ensure_file
 
     with patch("os.path.exists", return_value=False):
@@ -31,7 +36,8 @@ def test_ensure_file_oserror():
             _ensure_file("/tmp/test.md", "# content")
 
 
-def test_read_file_normal():
+@pytest.mark.anyio
+async def test_read_file_normal():
     from src.context import _read_file
 
     with patch("builtins.open", mock_open(read_data="  hello world  ")):
@@ -39,7 +45,8 @@ def test_read_file_normal():
         assert result == "hello world"
 
 
-def test_read_file_missing():
+@pytest.mark.anyio
+async def test_read_file_missing():
     from src.context import _read_file
 
     with patch("builtins.open", side_effect=FileNotFoundError("no such file")):
@@ -47,7 +54,8 @@ def test_read_file_missing():
         assert result == ""
 
 
-def test_build_tools_md_with_tools():
+@pytest.mark.anyio
+async def test_build_tools_md_with_tools():
     mock_defs = {
         "web_search": {
             "function": {
@@ -78,7 +86,9 @@ def test_build_tools_md_with_tools():
         },
     }
 
-    with patch("src.tools.TOOL_DEFINITIONS", mock_defs):
+    mock_registry = MagicMock()
+    mock_registry.definitions = mock_defs
+    with patch("src.tools.get_default_registry", return_value=mock_registry):
         from src.context import _build_tools_md
 
         result = _build_tools_md()
@@ -98,8 +108,11 @@ def test_build_tools_md_with_tools():
         assert 'path="example path"' in result
 
 
-def test_build_tools_md_empty():
-    with patch("src.tools.TOOL_DEFINITIONS", {}):
+@pytest.mark.anyio
+async def test_build_tools_md_empty():
+    mock_registry = MagicMock()
+    mock_registry.definitions = {}
+    with patch("src.tools.get_default_registry", return_value=mock_registry):
         from src.context import _build_tools_md
 
         result = _build_tools_md()
@@ -108,7 +121,8 @@ def test_build_tools_md_empty():
         assert "**" not in result[len("# Available Tools\n"):]
 
 
-def test_build_tools_md_integer_param():
+@pytest.mark.anyio
+async def test_build_tools_md_integer_param():
     mock_defs = {
         "get_tool_history": {
             "function": {
@@ -125,7 +139,9 @@ def test_build_tools_md_integer_param():
         },
     }
 
-    with patch("src.tools.TOOL_DEFINITIONS", mock_defs):
+    mock_registry = MagicMock()
+    mock_registry.definitions = mock_defs
+    with patch("src.tools.get_default_registry", return_value=mock_registry):
         from src.context import _build_tools_md
 
         result = _build_tools_md()
@@ -135,7 +151,8 @@ def test_build_tools_md_integer_param():
         assert "(integer)" in result
 
 
-def test_load_context():
+@pytest.mark.anyio
+async def test_load_context():
     content_map = {
         os.path.join(CONTEXT_DIR, "SOUL.md"): "# Soul content",
         os.path.join(CONTEXT_DIR, "MEMORY.md"): "# Memory content",
@@ -152,7 +169,8 @@ def test_load_context():
             assert result == "# Soul content\n\n# Memory content\n\n# Agents content"
 
 
-def test_build_system_prompt():
+@pytest.mark.anyio
+async def test_build_system_prompt():
     from src.context.runtime import ContextSnapshot
 
     with patch("src.context.builder.build_context_snapshot",

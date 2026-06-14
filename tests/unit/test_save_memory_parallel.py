@@ -1,3 +1,5 @@
+import pytest
+from unittest.mock import AsyncMock
 import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -24,7 +26,8 @@ def _cleanup(temp_dir, filepath):
         pass
 
 
-def test_parallel_save_unique_keys():
+@pytest.mark.anyio
+async def test_parallel_save_unique_keys():
     temp_dir, filepath = _temp_memory_file()
     try:
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
@@ -48,7 +51,8 @@ def test_parallel_save_unique_keys():
         _cleanup(temp_dir, filepath)
 
 
-def test_parallel_save_same_key():
+@pytest.mark.anyio
+async def test_parallel_save_same_key():
     temp_dir, filepath = _temp_memory_file()
     try:
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
@@ -71,7 +75,8 @@ def test_parallel_save_same_key():
         _cleanup(temp_dir, filepath)
 
 
-def test_parallel_save_many_keys():
+@pytest.mark.anyio
+async def test_parallel_save_many_keys():
     temp_dir, filepath = _temp_memory_file()
     try:
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
@@ -93,7 +98,8 @@ def test_parallel_save_many_keys():
         _cleanup(temp_dir, filepath)
 
 
-def test_corrupted_file_repair():
+@pytest.mark.anyio
+async def test_corrupted_file_repair():
     temp_dir, filepath = _temp_memory_file()
     try:
         # Corrupt: write junk

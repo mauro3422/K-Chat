@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 """Contract test: API domain modules should remain importable."""
 import importlib
 import pytest
@@ -6,11 +7,13 @@ api_init_module = importlib.import_module("src.api")
 
 
 class TestApiFacadeBypass:
-    def test_api_init_is_empty(self):
+    @pytest.mark.anyio
+    async def test_api_init_is_empty(self):
         content = open(api_init_module.__file__).read().strip()
         assert content == "# Package marker. Intentionally empty."
 
-    def test_api_modules_importable(self):
+    @pytest.mark.anyio
+    async def test_api_modules_importable(self):
         from src.api import messages, session, widgets, debug, tools
         assert hasattr(messages, "save_message_record")
         assert hasattr(session, "get_sessions")

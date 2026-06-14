@@ -6,6 +6,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Model name constants ────────────────────────────────────────────────
+DEFAULT_MODEL: str = "deepseek-v4-flash-free"
+SECONDARY_MODEL: str = "big-pickle"
+
 
 @dataclass
 class Config:

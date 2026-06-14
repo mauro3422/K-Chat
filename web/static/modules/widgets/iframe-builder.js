@@ -49,34 +49,94 @@ export function createIframe(container, id, code) {
     if (container.dataset.initialized) return;
     container.dataset.initialized = '1';
 
-    var wm = getInitializedWidgets();
-    wm.set(container, { initialized: true, observed: true, widgetId: id });
-
     var key = container.getAttribute('data-widget-key');
-    var hashId = key ? key : 'widget-' + fnv1a_32(code || '');
-    var stateStr = stateManager.getState(hashId) || stateManager.getState(id) || null;
-    var safeStateStr = stateStr !== null ? JSON.stringify(stateStr) : 'null';
 
-    var placeholder = document.createElement('div');
-    placeholder.className = 'widget-placeholder';
-    placeholder.appendChild(createLoadingNode());
-    container.appendChild(placeholder);
-
-    function mountIframe(widgetCode) {
-        if (placeholder && placeholder.parentNode) {
-            placeholder.parentNode.removeChild(placeholder);
+    // Intercept if already pinned to Canvas Workspace
+    import('./canvas-workspace.js').then(function(m) {
+        if (key && m.CanvasWorkspace.isPinned(key)) {
+            container.textContent = '';
+            var ph = document.createElement('a');
+            ph.href = '#';
+            ph.className = 'pinned-widget-placeholder';
+            ph.dataset.widgetKey = key;
+            ph.innerHTML = `<span class="pin-icon">📌</span> Pinned widget: <strong>${key}</strong> (Ver en Lienzo)`;
+            ph.addEventListener('click', (e) => {
+                e.preventDefault();
+                var card = document.querySelector(`.canvas-card[data-widget-key="${key}"]`);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth' });
+                    card.classList.add('active-drag');
+                    setTimeout(() => card.classList.remove('active-drag'), 800);
+                }
+            });
+            container.appendChild(ph);
+            return;
         }
-        createToolbar(container, id, key, widgetCode, hashId);
+        
+        // Normal mount flow
+        var wm = getInitializedWidgets();
+        wm.set(container, { initialized: true, observed: true, widgetId: id });
 
-        var iframe = document.createElement('iframe');
-        iframe.className = 'widget-iframe';
-        iframe.sandbox = 'allow-scripts';
+        var hashId = key ? key : 'widget-' + fnv1a_32(code || '');
+        var stateStr = stateManager.getState(hashId) || stateManager.getState(id) || null;
+        var safeStateStr = stateStr !== null ? JSON.stringify(stateStr) : 'null';
 
-        iframe.srcdoc = buildIframeSrc(id, widgetCode, safeStateStr);
-        container.appendChild(iframe);
-        container.dataset.initialized = '1';
-        cbLog.info('mounted', { id: id, key: key, codeLen: widgetCode.length, iframeH: iframe.offsetHeight });
-    }
+        var placeholder = document.createElement('div');
+        placeholder.className = 'widget-placeholder';
+        placeholder.appendChild(createLoadingNode());
+        container.appendChild(placeholder);
+
+        function mountIframe(widgetCode) {
+            if (placeholder && placeholder.parentNode) {
+                placeholder.parentNode.removeChild(placeholder);
+            }
+            createToolbar(container, id, key, widgetCode, hashId);
+
+            var iframe = document.createElement('iframe');
+            iframe.className = 'widget-iframe';
+            iframe.sandbox = 'allow-scripts';
+
+            iframe.srcdoc = buildIframeSrc(id, widgetCode, safeStateStr);
+            container.appendChild(iframe);
+            container.dataset.initialized = '1';
+            cbLog.info('mounted', { id: id, key: key, codeLen: widgetCode.length, iframeH: iframe.offsetHeight });
+        }
+
+        if (!code && key) {
+            // Check session cache first (widget code persisted from previous render)
+            var cachedCode = stateManager.getCodeCache(key);
+            if (cachedCode) {
+                log(id, 'cache-hit', 'key=' + key + ' code=' + cachedCode.length + 'b');
+                WidgetManager._registry[id] = cachedCode;
+                mountIframe(cachedCode);
+            } else {
+                log(id, 'fetch-init', 'key=' + key);
+                ApiClient.loadWidgetCode(SessionContext.getSessionId(), key)
+                    .then(function(r) {
+                        if (!r.ok) throw new Error("No encontrado");
+                        return r.json();
+                    })
+                    .then(function(data) {
+                        log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
+                        WidgetManager._registry[id] = data.code;
+                        stateManager.setCodeCache(key, data.code);
+                        ApiClient.saveWidgetState(SessionContext.getSessionId(), widgetCodeEntryKey(key), data.code)
+                            .catch(function() {});
+                        mountIframe(data.code);
+                    })
+                    .catch(function(err) {
+                        log(id, 'fetch-error', err.message);
+                        cbLog.error('fetch_failed', { id: id, key: key, err: err.message });
+                        if (placeholder.firstChild) {
+                            placeholder.removeChild(placeholder.firstChild);
+                        }
+                        placeholder.appendChild(createErrorNode(key));
+                    });
+            }
+        } else {
+            mountIframe(code);
+        }
+    });
 
     if (!code && key) {
         // Check session cache first (widget code persisted from previous render)
@@ -120,6 +180,7 @@ export function createIframe(container, id, code) {
 }
 
 export function buildIframeSrc(id, code, stateStr) {
+    var safeCode = code.replace(/<\/script>/gi, '<\\/script>');
     return '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n' +
         '<style>\n' +
         'body { margin:0; padding:12px; font-family:system-ui,-apple-system,sans-serif; color:#c9d1d9; background:#161b22; }\n' +
@@ -131,7 +192,7 @@ export function buildIframeSrc(id, code, stateStr) {
         'window.initialState=JSON.parse(' + stateStr + ');\n' +
         'window.saveState=function(stateObj){window.parent.postMessage({type:"save-widget-state",id:"' + id + '",state:typeof stateObj==="string"?stateObj:JSON.stringify(stateObj)},_origin);};\n' +
         '</' + 'script>\n' +
-        code + '\n' +
+        safeCode + '\n' +
         '<style>\n' +
         'html,body{margin:0;padding:12px;overflow-x:hidden;scrollbar-width:none;}\n' +
         '[style*="100vh"],[style*="100%"],[style*="100VH"],[style*="100Vh"]{height:auto!important;}\n' +

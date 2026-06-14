@@ -26,7 +26,7 @@ class MessageRecord:
 class MessageRepository(_BaseRepository):
     _table_name = "messages"
 
-    def save(
+    async def save(
         self,
         session_id: str,
         role: str,
@@ -41,9 +41,8 @@ class MessageRepository(_BaseRepository):
         total_tokens: int = 0,
     ) -> None:
         """Save a message row to the database."""
-        with self._transaction() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        async with self._transaction() as conn:
+            await conn.execute('''
                 INSERT INTO messages (session_id, role, content, model, reasoning, phases, prompt_tokens, completion_tokens, total_tokens, tool_calls, tool_call_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
@@ -61,9 +60,9 @@ class MessageRepository(_BaseRepository):
                 datetime.now().isoformat()
             ))
 
-    def save_record(self, record: MessageRecord) -> None:
+    async def save_record(self, record: MessageRecord) -> None:
         """Save a MessageRecord dataclass to the database."""
-        self.save(
+        await self.save(
             session_id=record.session_id,
             role=record.role,
             content=record.content,
@@ -77,22 +76,35 @@ class MessageRepository(_BaseRepository):
             total_tokens=record.total_tokens,
         )
 
-    def get_session_messages(self, session_id: str, limit: int = 500) -> list[tuple[Any, ...]]:
+    async def get_session_messages(self, session_id: str, limit: int = 500) -> list[tuple[Any, ...]]:
         """Retrieve messages for a session, ordered by creation time."""
         try:
-            conn = self._get_conn()
-            cursor = conn.cursor()
-            cursor.execute('''
+            conn = await self._get_conn()
+            cursor = await conn.execute('''
                 SELECT role, content, model, created_at, reasoning, phases, tool_calls, tool_call_id
                 FROM messages
                 WHERE session_id = ?
                 ORDER BY id ASC
                 LIMIT ?
             ''', (session_id, limit))
-            return cursor.fetchall()
+            return await cursor.fetchall()
         except Exception:
             logger.exception("Failed to get session messages for %s", session_id)
             return []
+
+    async def delete_empty_assistant(self, session_id: str) -> None:
+        """Delete assistant messages with empty content (left by tool loop resets)."""
+        try:
+            async with self._transaction() as conn:
+                cursor = await conn.execute(
+                    "DELETE FROM messages WHERE session_id = ? AND role = 'assistant' AND (content IS NULL OR content = '')",
+                    (session_id,)
+                )
+                deleted = cursor.rowcount
+                if deleted:
+                    logger.info("Deleted %d empty assistant messages for %s", deleted, session_id)
+        except Exception as e:
+            logger.warning("Failed to delete empty assistant messages: %s", e)
 
 
 __all__ = ["MessageRecord", "MessageRepository"]

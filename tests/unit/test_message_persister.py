@@ -1,3 +1,5 @@
+import pytest
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 import json
 
@@ -9,7 +11,8 @@ from web.services.message_persister import save_assistant_message
 
 @patch("web.services.message_persister.save_debug_info")
 @patch("web.services.message_persister.db_save_message")
-def test_save_with_full_data(mock_db_save, mock_debug_save):
+@pytest.mark.anyio
+async def test_save_with_full_data(mock_db_save, mock_debug_save):
     phases = [{"phase": "reasoning", "content": "thinking..."}]
     debug = DebugInfo(
         prompt_tokens=100,
@@ -18,7 +21,7 @@ def test_save_with_full_data(mock_db_save, mock_debug_save):
         phases="already set",
     )
 
-    save_assistant_message(
+    await save_assistant_message(
         session_id="s1",
         full_content="Hello!",
         full_reasoning="thinking",
@@ -45,11 +48,12 @@ def test_save_with_full_data(mock_db_save, mock_debug_save):
 
 @patch("web.services.message_persister.save_debug_info")
 @patch("web.services.message_persister.db_save_message")
-def test_save_with_empty_debug_info(mock_db_save, mock_debug_save):
+@pytest.mark.anyio
+async def test_save_with_empty_debug_info(mock_db_save, mock_debug_save):
     phases = [{"phase": "answer", "content": "done"}]
     debug = DebugInfo()
 
-    save_assistant_message(
+    await save_assistant_message(
         session_id="s2",
         full_content="Response",
         full_reasoning="",
@@ -68,10 +72,11 @@ def test_save_with_empty_debug_info(mock_db_save, mock_debug_save):
 
 @patch("web.services.message_persister.save_debug_info")
 @patch("web.services.message_persister.db_save_message")
-def test_save_with_empty_phases(mock_db_save, mock_debug_save):
+@pytest.mark.anyio
+async def test_save_with_empty_phases(mock_db_save, mock_debug_save):
     debug = DebugInfo(prompt_tokens=10, completion_tokens=5, total_tokens=15)
 
-    save_assistant_message(
+    await save_assistant_message(
         session_id="s3",
         full_content="Short reply",
         full_reasoning="reason",
@@ -90,11 +95,12 @@ def test_save_with_empty_phases(mock_db_save, mock_debug_save):
 
 @patch("web.services.message_persister.save_debug_info")
 @patch("web.services.message_persister.db_save_message")
-def test_existing_phases_not_overwritten(mock_db_save, mock_debug_save):
+@pytest.mark.anyio
+async def test_existing_phases_not_overwritten(mock_db_save, mock_debug_save):
     phases = [{"phase": "new"}]
     debug = DebugInfo(phases="original_value")
 
-    save_assistant_message(
+    await save_assistant_message(
         session_id="s4",
         full_content="Content",
         full_reasoning="",
@@ -107,14 +113,15 @@ def test_existing_phases_not_overwritten(mock_db_save, mock_debug_save):
     assert saved_debug["phases"] == "original_value"
 
 
-def test_save_assistant_message_with_explicit_deps():
+@pytest.mark.anyio
+async def test_save_assistant_message_with_explicit_deps():
     captured = {}
 
     class FakeRecord:
         def __init__(self, **kwargs):
             captured["record_kwargs"] = kwargs
 
-    def save_message_fn(record):
+    async def save_message_fn(record):
         captured["record"] = record
 
     def save_debug_fn(session_id, debug_info):
@@ -123,7 +130,7 @@ def test_save_assistant_message_with_explicit_deps():
     debug = DebugInfo(prompt_tokens=1, completion_tokens=2, total_tokens=3)
     phases = [{"phase": "answer", "content": "done"}]
 
-    save_assistant_message(
+    await save_assistant_message(
         session_id="s5",
         full_content="Ok",
         full_reasoning="",

@@ -6,10 +6,24 @@ import { SessionContext } from './session-context.js';
 export const ApiClient = {
   // Chat
   chatStream(sessionId, message, model, controller) {
+    var formData = new FormData();
+    formData.append('message', message);
     return fetch('/chat/' + sessionId + '?model=' + encodeURIComponent(model), {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: message}),
+      body: formData,
+      signal: controller.signal
+    });
+  },
+
+  chatStreamWithFiles(sessionId, message, model, controller, files) {
+    var formData = new FormData();
+    formData.append('message', message);
+    for (var i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+    return fetch('/chat/' + sessionId + '?model=' + encodeURIComponent(model), {
+      method: 'POST',
+      body: formData,
       signal: controller.signal
     });
   },
@@ -78,9 +92,7 @@ export const ApiClient = {
     return fetch('/debug/backend-logs');
   },
 
-  backendLogs() {
-    return fetch('/debug/backend-logs');
-  },
+
 
   // Logs
   sendClientLogs(entries) {

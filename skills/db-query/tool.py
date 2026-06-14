@@ -86,96 +86,101 @@ DEFINITION = {
 }
 
 
-def run(
+def _validate_and_sanitize(
     table: str,
-    session_id: str | None = None,
-    limit: int = 10,
-    order_by: str = "",
-    order_dir: str = "DESC",
-    columns: str = "",
-    **kwargs: Any,
-) -> str:
-    """Ejecuta una consulta SELECT de solo lectura sobre la DB."""
-    # Validar tabla
+    session_id: str | None,
+    limit: int,
+    order_by: str,
+    order_dir: str,
+    columns: str,
+) -> tuple[str | None, dict[str, Any]]:
+    """Valida y sanitiza parámetros de consulta.
+
+    Devuelve (error_msg, None) si hay error, o (None, params_dict) si es válido.
+    """
     if table not in ALLOWED_TABLES:
         allowed = ", ".join(sorted(ALLOWED_TABLES))
-        return f"[ERROR] Tabla '{table}' no permitida. Permitidas: {allowed}"
+        return f"[ERROR] Tabla '{table}' no permitida. Permitidas: {allowed}", None
 
-    # Sanitizar y validar parámetros
     limit = max(1, min(limit, 50))
     order_dir = "DESC" if order_dir.upper() != "ASC" else "ASC"
     order_col = (order_by.strip() or DEFAULT_ORDER.get(table, "rowid")).strip()
 
-    # Validar que order_col sea alfanumérico + guión bajo (SQL injection safe)
     if not order_col.replace("_", "").isalnum():
         order_col = DEFAULT_ORDER.get(table, "rowid")
 
-    # Seleccionar columnas
     cols = (columns.strip() or DEFAULT_COLUMNS.get(table, "*")).strip()
-    # Validar que cols solo contenga nombres de columna seguros
     col_list = [c.strip().split(" as ")[0].strip() for c in cols.split(",")]
     for c in col_list:
         c_clean = c.replace("substr(", "").replace(",1,80)", "").replace("(", "").replace(")", "")
         if not c_clean.replace("_", "").isalnum():
-            return f"[ERROR] Columna inválida en la consulta: {c}"
+            return f"[ERROR] Columna inválida en la consulta: {c}", None
 
+    return None, {"limit": limit, "order_dir": order_dir, "order_col": order_col, "cols": cols}
+
+
+def _format_rows_as_table(table: str, rows: list[Any]) -> str:
+    """Formatea filas de SQLite como una tabla legible."""
+    headers = rows[0].keys()
+    result_lines = []
+    result_lines.append(f"📊 {table} ({len(rows)} filas)")
+    result_lines.append(" | ".join(str(h) for h in headers))
+    result_lines.append("-" * min(80, len(" | ".join(str(h) for h in headers))))
+
+    for row in rows:
+        vals = []
+        for h in headers:
+            v = row[h]
+            if v is None:
+                vals.append("NULL")
+            else:
+                s = str(v)
+                if len(s) > 60:
+                    s = s[:57] + "..."
+                vals.append(s)
+        result_lines.append(" | ".join(vals))
+
+    result = "\n".join(result_lines)
+    if len(result) > 30000:
+        result = result[:29997] + "..."
+    return result
+
+
+def _execute_query(table: str, session_id: str | None, params: dict[str, Any]) -> str:
+    """Ejecuta la consulta SQL y formatea los resultados como tabla."""
+    db_path = _get_db_path()
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     try:
-        db_path = _get_db_path()
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
         cur = conn.cursor()
+        query_parts = [f"SELECT {params['cols']} FROM {table}"]
 
-        query_parts = [f"SELECT {cols} FROM {table}"]
-
-        # WHERE seguro con parámetros
-        params: list[Any] = []
+        query_params: list[Any] = []
         if session_id:
             if "%" in session_id:
                 query_parts.append("WHERE session_id LIKE ?")
-                params.append(session_id)
+                query_params.append(session_id)
             else:
                 query_parts.append("WHERE session_id = ?")
-                params.append(session_id)
+                query_params.append(session_id)
 
-        query_parts.append(f"ORDER BY {order_col} {order_dir}")
+        query_parts.append(f"ORDER BY {params['order_col']} {params['order_dir']}")
         query_parts.append("LIMIT ?")
-        params.append(limit)
+        query_params.append(params["limit"])
 
         query = " ".join(query_parts)
-        logger.debug("db_query: %s params=%s", query, params)
+        logger.debug("db_query: %s params=%s", query, query_params)
 
-        cur.execute(query, params)
+        cur.execute(query, query_params)
         rows = cur.fetchall()
 
         if not rows:
-            return f"[INFO] Sin resultados en '{table}'" + (f" para session_id='{session_id}'" if session_id else "")
+            msg = f"[INFO] Sin resultados en '{table}'"
+            if session_id:
+                msg += f" para session_id='{session_id}'"
+            return msg
 
-        # Formatear como tabla
-        headers = rows[0].keys()
-        result_lines = []
-        result_lines.append(f"📊 {table} ({len(rows)} filas)")
-        result_lines.append(" | ".join(str(h) for h in headers))
-        result_lines.append("-" * min(80, len(" | ".join(str(h) for h in headers))))
-
-        for row in rows:
-            vals = []
-            for h in headers:
-                v = row[h]
-                if v is None:
-                    vals.append("NULL")
-                else:
-                    s = str(v)
-                    if len(s) > 60:
-                        s = s[:57] + "..."
-                    vals.append(s)
-            result_lines.append(" | ".join(vals))
-
-        result = "\n".join(result_lines)
-
-        if len(result) > 30000:
-            result = result[:29997] + "..."
-
-        return result
+        return _format_rows_as_table(table, rows)
 
     except sqlite3.OperationalError as e:
         return f"[ERROR] Error en la consulta: {e}"
@@ -187,3 +192,19 @@ def run(
             conn.close()
         except Exception:
             pass
+
+
+def run(
+    table: str,
+    session_id: str | None = None,
+    limit: int = 10,
+    order_by: str = "",
+    order_dir: str = "DESC",
+    columns: str = "",
+    **kwargs: Any,
+) -> str:
+    """Ejecuta una consulta SELECT de solo lectura sobre la DB."""
+    error, params = _validate_and_sanitize(table, session_id, limit, order_by, order_dir, columns)
+    if error:
+        return error
+    return _execute_query(table, session_id, params)

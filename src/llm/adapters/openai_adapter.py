@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from typing import Any
 import httpx
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from src.llm.protocol import (
     LLMProvider,
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class OpenAIAdapter(LLMProvider):
     def __init__(self, api_key: str, base_url: str):
-        self._client = OpenAI(
+        self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
             timeout=httpx.Timeout(connect=10, read=300, write=10, pool=10),
@@ -46,11 +46,11 @@ class OpenAIAdapter(LLMProvider):
     def supports_reasoning(self) -> bool:
         return True
 
-    def chat(self, request: UnifiedRequest) -> UnifiedResponse:
+    async def chat(self, request: UnifiedRequest) -> UnifiedResponse:
         openai_messages = self._to_openai_messages(request.messages)
         openai_tools = self._to_openai_tools(request.tools)
 
-        response = self._client.chat.completions.create(
+        response = await self._client.chat.completions.create(
             model=request.model,
             messages=openai_messages,
             tools=openai_tools,
@@ -60,11 +60,11 @@ class OpenAIAdapter(LLMProvider):
         )
         return self._from_openai_response(response, request.model)
 
-    def chat_stream(self, request: UnifiedRequest) -> Generator[UnifiedStreamEvent, None, None]:
+    async def chat_stream(self, request: UnifiedRequest) -> AsyncGenerator[UnifiedStreamEvent, None]:
         openai_messages = self._to_openai_messages(request.messages)
         openai_tools = self._to_openai_tools(request.tools)
 
-        stream = self._client.chat.completions.create(
+        stream = await self._client.chat.completions.create(
             model=request.model,
             messages=openai_messages,
             tools=openai_tools,
@@ -74,10 +74,12 @@ class OpenAIAdapter(LLMProvider):
             max_tokens=request.max_tokens,
         )
 
-        yield from self._parse_openai_stream(stream)
+        async for event in self._parse_openai_stream(stream):
+            yield event
 
-    def list_models(self) -> list[str]:
-        return [m.id for m in self._client.models.list()]
+    async def list_models(self) -> list[str]:
+        response = await self._client.models.list()
+        return [m.id for m in response.data]
 
     def _to_openai_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         result = []
@@ -126,10 +128,10 @@ class OpenAIAdapter(LLMProvider):
             model=model,
         )
 
-    def _parse_openai_stream(self, stream) -> Generator[UnifiedStreamEvent, None, None]:
+    async def _parse_openai_stream(self, stream: Any) -> AsyncGenerator[UnifiedStreamEvent, None]:
         tool_map: dict[int, UnifiedToolCallDelta] = {}
 
-        for chunk in stream:
+        async for chunk in stream:
             if not chunk.choices:
                 continue
 

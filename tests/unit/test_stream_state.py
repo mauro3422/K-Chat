@@ -1,7 +1,10 @@
+import pytest
+from unittest.mock import AsyncMock
 from web.services.stream_state import StreamState
 
 
-def test_stream_state_accumulates_and_resets():
+@pytest.mark.anyio
+async def test_stream_state_accumulates_and_resets():
     state = StreamState()
 
     state.append("content", "hola")
@@ -19,7 +22,8 @@ def test_stream_state_accumulates_and_resets():
     assert state.has_output() is False
 
 
-def test_stream_state_persistence_clock():
+@pytest.mark.anyio
+async def test_stream_state_persistence_clock():
     state = StreamState(save_interval=10.0)
     state.append("content", "hola")
 

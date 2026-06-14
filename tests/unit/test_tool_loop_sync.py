@@ -1,3 +1,5 @@
+import pytest
+from unittest.mock import AsyncMock
 import json
 from unittest.mock import patch, MagicMock
 
@@ -27,13 +29,27 @@ def _make_result(content=None, finish_reason="stop", tool_calls=None, reasoning_
     return choice
 
 
+class _EmptyAsyncIter:
+    def __aiter__(self):
+        return self
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+
 def _empty_generator(*args, **kwargs):
-    return iter([])
+    return _EmptyAsyncIter()
+
+
+async def _collect_async(gen):
+    items = []
+    async for item in gen:
+        items.append(item)
+    return items
 
 
 @patch("src.llm.client.chat")
-def test_sync_no_tool_calls_tagged(mock_chat):
-    """No tool calls, tagged=True -- yields reasoning then content in 12-char chunks."""
+@pytest.mark.anyio
+async def test_sync_no_tool_calls_tagged(mock_chat):
     content = "Hello world! This is a test."
     mock_chat.return_value = _make_result(
         content=content,
@@ -42,13 +58,14 @@ def test_sync_no_tool_calls_tagged(mock_chat):
     )
 
     history = [{"role": "system", "content": "test"}]
-    tokens = list(run_tool_loop_sync(
+    gen = run_tool_loop_sync(
         history=history, model="test-model", session_id=None,
         tagged=True, debug=None, phases_output=None,
         used_tools=[], tool_detail=[],
         run_parallel_tools_fn=_empty_generator,
         tool_map={}, max_turns=5,
-    ))
+    )
+    tokens = await _collect_async(gen)
 
     types = [t[0] for t in tokens]
     assert "reasoning" in types
@@ -68,8 +85,8 @@ def test_sync_no_tool_calls_tagged(mock_chat):
 
 
 @patch("src.llm.client.chat")
-def test_sync_no_tool_calls_untagged(mock_chat):
-    """No tool calls, tagged=False -- yields raw string tokens."""
+@pytest.mark.anyio
+async def test_sync_no_tool_calls_untagged(mock_chat):
     content = "Hello world! This is a test."
     mock_chat.return_value = _make_result(
         content=content,
@@ -77,13 +94,14 @@ def test_sync_no_tool_calls_untagged(mock_chat):
     )
 
     history = [{"role": "system", "content": "test"}]
-    tokens = list(run_tool_loop_sync(
+    gen = run_tool_loop_sync(
         history=history, model="test-model", session_id=None,
         tagged=False, debug=None, phases_output=None,
         used_tools=[], tool_detail=[],
         run_parallel_tools_fn=_empty_generator,
         tool_map={}, max_turns=5,
-    ))
+    )
+    tokens = await _collect_async(gen)
 
     assert all(isinstance(t, str) for t in tokens)
     assert "".join(tokens) == content
@@ -91,8 +109,8 @@ def test_sync_no_tool_calls_untagged(mock_chat):
 
 
 @patch("src.llm.client.chat")
-def test_sync_tool_calls_then_response(mock_chat):
-    """Tool calls followed by final content -- yields through _process_sync_turn."""
+@pytest.mark.anyio
+async def test_sync_tool_calls_then_response(mock_chat):
     mock_chat.side_effect = [
         _make_result(
             content="Let me search...",
@@ -108,13 +126,14 @@ def test_sync_tool_calls_then_response(mock_chat):
     ]
 
     history = [{"role": "system", "content": "test"}]
-    tokens = list(run_tool_loop_sync(
+    gen = run_tool_loop_sync(
         history=history, model="test-model", session_id=None,
         tagged=True, debug=None, phases_output=None,
         used_tools=[], tool_detail=[],
         run_parallel_tools_fn=_empty_generator,
         tool_map={}, max_turns=5,
-    ))
+    )
+    tokens = await _collect_async(gen)
 
     types = [t[0] for t in tokens]
     assert "reasoning" in types
@@ -131,8 +150,8 @@ def test_sync_tool_calls_then_response(mock_chat):
 
 
 @patch("src.llm.client.chat")
-def test_sync_max_turns(mock_chat):
-    """max_turns limit -- stops after that many tool call rounds."""
+@pytest.mark.anyio
+async def test_sync_max_turns(mock_chat):
     mock_chat.side_effect = [
         _make_result(
             finish_reason="tool_calls",
@@ -149,31 +168,33 @@ def test_sync_max_turns(mock_chat):
     ]
 
     history = [{"role": "system", "content": "test"}]
-    tokens = list(run_tool_loop_sync(
+    gen = run_tool_loop_sync(
         history=history, model="test-model", session_id=None,
         tagged=False, debug=None, phases_output=None,
         used_tools=[], tool_detail=[],
         run_parallel_tools_fn=_empty_generator,
         tool_map={}, max_turns=2,
-    ))
+    )
+    tokens = await _collect_async(gen)
 
     assert mock_chat.call_count == 3
     assert "Final." in "".join(tokens)
 
 
 @patch("src.llm.client.chat")
-def test_sync_session_id_none(mock_chat):
-    """session_id=None -- skips DB save, no crash."""
+@pytest.mark.anyio
+async def test_sync_session_id_none(mock_chat):
     mock_chat.return_value = _make_result(content="No session.", finish_reason="stop")
 
     history = [{"role": "system", "content": "test"}]
-    tokens = list(run_tool_loop_sync(
+    gen = run_tool_loop_sync(
         history=history, model="test-model", session_id=None,
         tagged=True, debug=None, phases_output=None,
         used_tools=[], tool_detail=[],
         run_parallel_tools_fn=_empty_generator,
         tool_map={}, max_turns=5,
-    ))
+    )
+    tokens = await _collect_async(gen)
 
     contents = [t[1] for t in tokens if t[0] == "content"]
     assert any("No session." in c for c in contents)
@@ -181,8 +202,8 @@ def test_sync_session_id_none(mock_chat):
 
 
 @patch("src.llm.client.chat")
-def test_sync_debug_dict(mock_chat):
-    """debug dict -- gets populated with tool_calls and reasoning."""
+@pytest.mark.anyio
+async def test_sync_debug_dict(mock_chat):
     mock_chat.side_effect = [
         _make_result(
             finish_reason="tool_calls",
@@ -199,13 +220,14 @@ def test_sync_debug_dict(mock_chat):
     history = [{"role": "system", "content": "test"}]
     debug = DebugInfo()
     tool_detail = []
-    list(run_tool_loop_sync(
+    gen = run_tool_loop_sync(
         history=history, model="test-model", session_id=None,
         tagged=True, debug=debug, phases_output=None,
         used_tools=[], tool_detail=tool_detail,
         run_parallel_tools_fn=_empty_generator,
         tool_map={}, max_turns=5,
-    ))
+    )
+    await _collect_async(gen)
 
     assert debug.tool_calls is tool_detail
     assert "Done." in debug.reasoning
@@ -213,22 +235,37 @@ def test_sync_debug_dict(mock_chat):
 
 @patch("src.llm.client.chat")
 @patch("src.llm.client.chat_stream")
-def test_sync_empty_content_falls_to_stream(mock_stream, mock_chat):
-    """When result.message.content is None/empty -- falls through to llm_stream."""
+@pytest.mark.anyio
+async def test_sync_empty_content_falls_to_stream(mock_stream, mock_chat):
     mock_chat.return_value = _make_result(content=None, finish_reason="stop")
-    mock_stream.return_value = iter([
+
+    class _AsyncIter:
+        def __init__(self, items):
+            self._items = list(items)
+            self._idx = 0
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if self._idx >= len(self._items):
+                raise StopAsyncIteration
+            item = self._items[self._idx]
+            self._idx += 1
+            return item
+
+    mock_stream.return_value = _AsyncIter([
         ("reasoning", "Stream reasoning..."),
         ("content", "Stream content."),
     ])
 
     history = [{"role": "system", "content": "test"}]
-    tokens = list(run_tool_loop_sync(
+    gen = run_tool_loop_sync(
         history=history, model="test-model", session_id=None,
         tagged=True, debug=None, phases_output=None,
         used_tools=[], tool_detail=[],
         run_parallel_tools_fn=_empty_generator,
         tool_map={}, max_turns=5,
-    ))
+    )
+    tokens = await _collect_async(gen)
 
     types = [t[0] for t in tokens]
     assert "reasoning" in types

@@ -1,10 +1,11 @@
-import logging
 import os
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from src.api.debug import get_debug_info
+from src.api.session import _require_session
 from web.logging_handler import get_backend_logs
 
 router = APIRouter()
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def _local_only(request: Request) -> None:
-    if os.environ.get("TESTING") or os.environ.get("ENVIRONMENT") == "development":
+    if os.getenv("TESTING") == "true":
         return
     host = request.client.host if request.client else "unknown"
     if host in ("127.0.0.1", "::1", "localhost"):
@@ -22,8 +23,9 @@ def _local_only(request: Request) -> None:
 
 
 @router.get("/sessions/{session_id}/debug", dependencies=[Depends(_local_only)])
-def debug_info(session_id: str) -> JSONResponse:
-    d = get_debug_info(session_id)
+async def debug_info(session_id: str) -> JSONResponse:
+    await _require_session(session_id)
+    d = await get_debug_info(session_id)
     return JSONResponse(d)
 
 

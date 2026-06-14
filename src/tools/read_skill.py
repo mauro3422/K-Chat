@@ -33,24 +33,16 @@ def run(name=None, **kwargs) -> str:
     if not safe_name:
         return "[ERROR] Invalid skill name."
 
-    # Get the absolute path of the skills/ folder
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    skills_dir = os.path.join(base_dir, "skills")
-    file_path = os.path.join(skills_dir, f"{safe_name}.md")
-
-    if not os.path.exists(file_path):
+    from src.skills import SkillRegistry
+    registry = SkillRegistry()
+    skill = registry.discover().get_skill(safe_name)
+    if not skill:
         # List available skills to guide the model
         try:
-            files = os.listdir(skills_dir)
-            available = [os.path.splitext(f)[0] for f in files if f.endswith(".md") and f != "INDEX.md"]
+            available = [s["name"] for s in registry.list_skills()]
         except Exception:
-            logger.exception("Failed to list skills directory: %s", skills_dir)
             available = ["html-widgets"]
-
         return f"[ERROR] Skill '{safe_name}' not found. Available skills: {', '.join(available)}"
 
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception:
-        return f"[ERROR] Could not read the skill '{safe_name}'."
+    return skill["content"]
+

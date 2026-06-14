@@ -188,11 +188,20 @@ function initSessionPage(deps) {
   });
   nav.onDomReady(bindModelSelect);
   nav.onDomReady(function() {
+    // Initialize Skills UI
+    import('./skills-ui.js').then(function(m) {
+      m.SkillsUI.init();
+    });
     if (nav.location.pathname.startsWith('/sessions/')) {
       loadSession(SessionContext.getSessionId(), deps);
     } else if (nav.location.pathname === '/') {
       nav.history.replaceState({sid: SessionContext.getSessionId()}, '', '/sessions/' + SessionContext.getSessionId());
     }
+
+    // Bind widget-unpinned event listener
+    document.addEventListener('widget-unpinned', function(e) {
+      loadSession(SessionContext.getSessionId(), deps);
+    });
     
     // Bind Theme Toggle
     var themeToggleBtn = document.getElementById('theme-toggle');
@@ -324,13 +333,20 @@ function loadSession(sid, deps) {
   if (typeof ChatForm.reset === 'function') {
     ChatForm.reset();
   }
+  // Refresh sidebar so the active session highlight moves
+  refreshSidebar();
+  
+  // Re-initialize canvas workspace
+  import('./widgets/canvas-workspace.js').then(function(m) {
+    m.CanvasWorkspace.init(sid);
+  });
   ApiClient.loadMessages(sid)
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var messagesDiv = document.getElementById('messages');
       if (messagesDiv) {
         var html = renderMessageList(data.messages, data.widget_states);
-        messagesDiv.innerHTML = html;
+        setMainHtml(messagesDiv, html);
         
         try {
           stateManager.loadFromJSON(data.widget_states || {});

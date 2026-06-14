@@ -1,5 +1,5 @@
 import logging
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from typing import Any
 
 from src.memory.connection_pool import get_conn
@@ -15,38 +15,38 @@ class _BaseRepository:
         self._conn = conn
         self._engine = engine
 
-    def _get_conn(self) -> Any:
+    async def _get_conn(self) -> Any:
         if self._conn is not None:
             return self._conn
-        return get_conn()
+        return await get_conn()
 
-    @contextmanager
-    def _transaction(self):
-        conn = self._get_conn()
+    @asynccontextmanager
+    async def _transaction(self):
+        conn = await self._get_conn()
         engine = self._engine or get_engine()
         try:
             yield conn
             if engine is not None:
-                engine.commit(conn)
+                await engine.commit(conn)
             else:
-                conn.commit()
+                await conn.commit()
         except Exception:
             if engine is not None:
-                engine.rollback(conn)
+                await engine.rollback(conn)
             else:
-                conn.rollback()
+                await conn.rollback()
             logger.exception("Database transaction failed")
             raise
 
-    def delete_by_session(self, session_id: str, cursor: Any = None) -> None:
+    async def delete_by_session(self, session_id: str, cursor: Any = None) -> None:
         if not self._table_name:
             raise NotImplementedError("Subclass must set _table_name")
         sql = f"DELETE FROM {self._table_name} WHERE session_id = ?"
         if cursor is not None:
-            cursor.execute(sql, (session_id,))
+            await cursor.execute(sql, (session_id,))
         else:
-            with self._transaction() as conn:
-                conn.cursor().execute(sql, (session_id,))
+            async with self._transaction() as conn:
+                await conn.execute(sql, (session_id,))
 
 
 __all__ = ["_BaseRepository"]

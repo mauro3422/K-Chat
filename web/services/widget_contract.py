@@ -15,26 +15,12 @@ def normalize_inline_widget_code(code: str) -> str:
     return code.replace("?.", ".")
 
 
-def _get_message_field(message: Any, key: str, default: Any = None) -> Any:
-    if hasattr(message, key):
-        return getattr(message, key)
-    if hasattr(message, "get"):
-        try:
-            return message.get(key, default)
-        except TypeError:
-            pass
-    try:
-        return message[key]
-    except Exception:
-        return default
-
-
 def extract_inline_widget_states(messages: Iterable[Any]) -> dict[str, str]:
     """Extract inline widget code blocks as persisted widget code entries, ignoring patterns inside standard code blocks."""
     combined_text = "\n".join(
-        str(_get_message_field(row, "content"))
+        str(row.content)
         for row in messages
-        if _get_message_field(row, "role") == "assistant" and _get_message_field(row, "content")
+        if row.role == "assistant" and row.content
     )
 
     # Find ignored ranges (standard code blocks and inline code blocks)

@@ -41,13 +41,22 @@ def favicon() -> FileResponse:
 
 
 @router.get("/", response_class=HTMLResponse)
-def home(request: Request) -> HTMLResponse:
+def home(request: Request, new: bool = False) -> HTMLResponse:
+    # ?new=1 forces a brand new session
+    if new:
+        session_id = str(uuid.uuid4())
+    else:
+        session_id = request.cookies.get("kchat_session_id")
+        if not session_id:
+            session_id = str(uuid.uuid4())
     resp = templates.TemplateResponse(request, "chat.html", {
-        "session_id": str(uuid.uuid4()),
+        "session_id": session_id,
         "model": FALLBACK_MODEL,
         "models": get_available_models(),
     })
     resp.headers.update(_NOCACHE_HEADERS)
+    # Always refresh the cookie so "new" actually persists
+    resp.set_cookie("kchat_session_id", session_id, max_age=86400 * 30)
     return resp
 
 
@@ -63,8 +72,8 @@ def session_page(request: Request, session_id: str) -> HTMLResponse:
 
 
 @router.get("/sidebar", response_class=HTMLResponse)
-def sidebar(request: Request) -> HTMLResponse:
-    raw = get_sessions(50)
+async def sidebar(request: Request) -> HTMLResponse:
+    raw = await get_sessions(50)
     current = request.query_params.get("current", "")
     sessions = []
     for s in raw:
@@ -81,5 +90,5 @@ def sidebar(request: Request) -> HTMLResponse:
 
 
 @router.get("/sessions/{session_id}/messages")
-def session_messages(session_id: str) -> dict:
-    return render_session_messages(session_id, deps=MessageRenderDeps(repos=get_repos()))
+async def session_messages(session_id: str) -> dict:
+    return await render_session_messages(session_id, deps=MessageRenderDeps(repos=get_repos()))

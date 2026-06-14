@@ -71,7 +71,7 @@ def _paginate_and_format(path: str, lines: list[str], start_line: int, end_line:
     return metadata + content_str
 
 
-def run(**kwargs) -> str:
+async def run(**kwargs) -> str:
     path = kwargs.get("path") or kwargs.get("file_path") or kwargs.get("filepath", "")
     start_line = int(kwargs.get("start_line", kwargs.get("start", 1)))
     end_line = kwargs.get("end_line", kwargs.get("end"))
@@ -81,15 +81,21 @@ def run(**kwargs) -> str:
     if err:
         return err
 
-    if not os.path.exists(resolved):
+    import asyncio
+    import os
+
+    if not await asyncio.to_thread(os.path.exists, resolved):
         return f"[ERROR] The file '{path}' does not exist."
 
-    if os.path.isdir(resolved):
+    if await asyncio.to_thread(os.path.isdir, resolved):
         return f"[ERROR] '{path}' is a directory, not a file."
 
     try:
-        with open(resolved, "r", encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
+        def _read_sync():
+            with open(resolved, "r", encoding="utf-8", errors="replace") as f:
+                return f.readlines()
+        
+        lines = await asyncio.to_thread(_read_sync)
 
         return _paginate_and_format(path, lines, start_line, end_line, max_lines)
     except Exception:

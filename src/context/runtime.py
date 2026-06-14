@@ -1,4 +1,5 @@
 import os
+import threading
 from dataclasses import dataclass
 from typing import Final
 
@@ -12,6 +13,7 @@ TOOLS_PATH: Final[str] = os.path.join(CONTEXT_DIR, "TOOLS.md")
 
 _CONTEXT_CACHE: str | None = None
 _TOOLS_MD_CACHE: str | None = None
+_CACHE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -30,8 +32,9 @@ def _write_if_changed(path: str, content: str) -> None:
 def build_context_snapshot(force: bool = False) -> ContextSnapshot:
     global _CONTEXT_CACHE, _TOOLS_MD_CACHE
 
-    if _CONTEXT_CACHE is not None and _TOOLS_MD_CACHE is not None and not force:
-        return ContextSnapshot(text=_CONTEXT_CACHE, tools_md=_TOOLS_MD_CACHE)
+    with _CACHE_LOCK:
+        if _CONTEXT_CACHE is not None and _TOOLS_MD_CACHE is not None and not force:
+            return ContextSnapshot(text=_CONTEXT_CACHE, tools_md=_TOOLS_MD_CACHE)
 
     segments: list[str] = []
     for filename in ["SOUL.md", "MEMORY.md", "AGENTS.md"]:
@@ -45,8 +48,9 @@ def build_context_snapshot(force: bool = False) -> ContextSnapshot:
     tools_md = _build_tools_md()
     _write_if_changed(TOOLS_PATH, tools_md)
 
-    _CONTEXT_CACHE = "\n\n".join(segments)
-    _TOOLS_MD_CACHE = tools_md
+    with _CACHE_LOCK:
+        _CONTEXT_CACHE = "\n\n".join(segments)
+        _TOOLS_MD_CACHE = tools_md
     return ContextSnapshot(text=_CONTEXT_CACHE, tools_md=tools_md)
 
 def get_context_text(force: bool = False) -> str:
@@ -60,5 +64,6 @@ def invalidate_context_cache() -> None:
     to ensure the next system prompt reflects the latest changes.
     """
     global _CONTEXT_CACHE, _TOOLS_MD_CACHE
-    _CONTEXT_CACHE = None
-    _TOOLS_MD_CACHE = None
+    with _CACHE_LOCK:
+        _CONTEXT_CACHE = None
+        _TOOLS_MD_CACHE = None

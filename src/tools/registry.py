@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 import importlib
+import importlib.util
 import os
 import logging
 
@@ -19,7 +20,6 @@ class ToolRegistry:
     _definitions: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
     _built: bool = field(default=False, init=False)
     _package: str = field(default="src.tools", init=False)
-    _use_module_globals: bool = field(default=True, init=False)
     
     def discover(self, package: str = "src.tools") -> "ToolRegistry":
         """Discover tools from package without building. Returns self for chaining."""
@@ -37,28 +37,10 @@ class ToolRegistry:
         self._definitions[name] = definition
         return self
     
-    def _get_tool_map(self) -> dict[str, Callable[..., str]]:
-        """Get the backing tool map (module globals or internal)."""
-        if self._use_module_globals:
-            from src.tools import TOOL_MAP
-            return TOOL_MAP
-        return self._tool_map
-    
-    def _get_definitions(self) -> dict[str, dict[str, Any]]:
-        """Get the backing definitions (module globals or internal)."""
-        if self._use_module_globals:
-            from src.tools import TOOL_DEFINITIONS
-            return TOOL_DEFINITIONS
-        return self._definitions
-    
     def build(self) -> "ToolRegistry":
         """Build registry by discovering tools from package. Returns self for chaining."""
         if self._built:
             return self
-        
-        # Use module globals as backing store for the default registry.
-        tool_map = self._get_tool_map()
-        definitions = self._get_definitions()
         
         # Discover tools from package
         try:
@@ -81,12 +63,22 @@ class ToolRegistry:
                     logger.warning("Tool %s: does not export run(), ignored", mod_name)
                     continue
                 tool_name: str = mod.DEFINITION['function']['name']
-                tool_map[tool_name] = mod.run
-                definitions[tool_name] = mod.DEFINITION
+                self._tool_map[tool_name] = mod.run
+                self._definitions[tool_name] = mod.DEFINITION
                 logger.debug("Tool loaded into registry: %s", mod_name)
             except Exception as e:
                 logger.warning("Tool %s: error loading (%s), ignored", mod_name, e)
         
+        
+        # Discover tools from skills directory
+        try:
+            from src.skills.registry import SkillRegistry
+            for tool_name, (run_fn, definition) in SkillRegistry().discover_tools().items():
+                self._tool_map[tool_name] = run_fn
+                self._definitions[tool_name] = definition
+        except Exception as e:
+            logger.warning("Error scanning skills folder for tools via SkillRegistry: %s", e)
+
         self._built = True
         return self
     
@@ -95,21 +87,21 @@ class ToolRegistry:
         """Get tool map (triggers lazy build if needed)."""
         if not self._built:
             self.build()
-        return self._get_tool_map()
+        return self._tool_map
     
     @property
     def definitions(self) -> dict[str, dict[str, Any]]:
         """Get tool definitions (triggers lazy build if needed)."""
         if not self._built:
             self.build()
-        return self._get_definitions()
+        return self._definitions
     
     @property
     def tools_openai(self) -> list[dict[str, Any]]:
         """Get OpenAI-format tool definitions (triggers lazy build if needed)."""
         if not self._built:
             self.build()
-        definitions = self._get_definitions()
+        definitions = self._definitions
         return [
             {"type": "function", "function": {**definitions[name]["function"]}}
             for name in sorted(definitions.keys())
@@ -119,4 +111,4 @@ class ToolRegistry:
         """Get a single tool by name (triggers lazy build if needed)."""
         if not self._built:
             self.build()
-        return self._get_tool_map().get(name)
+        return self._tool_map.get(name)

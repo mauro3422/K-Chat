@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Any
 
 from src.memory.connection_pool import configure_connection as _configure_connection, get_raw_conn as _get_raw_conn
 from src.memory.db_path import resolve_db_path as _get_db_path
@@ -13,31 +12,31 @@ from src.memory.migrations import MIGRATIONS
 logger = logging.getLogger(__name__)
 
 
-def init_db() -> None:
-    init_db_for_path(_get_db_path())
+async def init_db() -> None:
+    await init_db_for_path(_get_db_path())
 
 
-def init_db_for_path(db_path: str) -> None:
+async def init_db_for_path(db_path: str) -> None:
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = _get_raw_conn(db_path)
+    conn = await _get_raw_conn(db_path)
+    engine = None
     try:
-        _configure_connection(conn)
-        cursor = conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER)")
+        await _configure_connection(conn)
+        cursor = await conn.cursor()
+        await cursor.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER)")
         try:
-            cursor.execute("SELECT version FROM schema_version LIMIT 1")
-            row = cursor.fetchone()
+            await cursor.execute("SELECT version FROM schema_version LIMIT 1")
+            row = await cursor.fetchone()
             current = row["version"] if row else 0
-        except Exception:
-            logger.exception("Failed to read schema version")
+        except Exception as e:
+            logger.warning("Failed to read schema version, assuming 0: %s", e)
             current = 0
 
         engine = get_engine() or SQLiteEngine()
-        run_pending_migrations(conn, engine, MIGRATIONS, current)
+        await run_pending_migrations(conn, engine, MIGRATIONS, current)
         _mark_initialized(db_path)
     finally:
-        engine = get_engine()
         if engine is not None:
-            engine.close(conn)
+            await engine.close(conn)
         else:
-            conn.close()
+            await conn.close()

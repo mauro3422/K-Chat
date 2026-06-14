@@ -1,11 +1,16 @@
 {% for s in sessions %}
+{% set is_telegram = s.sid.startswith('tele_') %}
+{% set icon = "📱 " if is_telegram else "" %}
 {% set label = s.name if s.name else s.sid[:8] %}
 {% set meta = s.user_count ~ " msgs - " ~ s.last_str[:10] %}
 {% set active = " active" if s.sid == current else "" %}
 <div class="session-item{{ active }}" data-sid="{{ s.sid }}">
   <div class="session-main">
-    <div class="session-preview">{{ label }}</div>
+    <div class="session-preview">{{ icon }}{{ label }}</div>
     <div class="session-actions">
+      {% if is_telegram %}
+      <span class="session-channel-badge" title="Canal Telegram">📱</span>
+      {% endif %}
       <button class="act-rename" title="Renombrar">&#9998;</button>
       <button class="act-delete" title="Eliminar">&#128465;</button>
     </div>

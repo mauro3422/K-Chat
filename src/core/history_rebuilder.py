@@ -5,7 +5,7 @@ from src.core.history_contract import HistoryRebuildDeps
 from src.memory.repos import MessageRepository
 
 
-def rebuild_history(
+async def rebuild_history(
     session_id: str,
     model: str,
     messages_repo: MessageRepository | None = None,
@@ -15,7 +15,7 @@ def rebuild_history(
     repo = _deps.messages_repo
     if repo is None:
         raise ValueError("messages_repo is required for rebuild_history()")
-    rows = repo.get_session_messages(session_id)
+    rows = await repo.get_session_messages(session_id)
     raw_msgs = _parse_rows(rows)
     sanitized = _sanitize_messages(raw_msgs)
     rebuilt = [build_system_prompt(model)]

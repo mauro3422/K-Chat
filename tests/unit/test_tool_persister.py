@@ -1,14 +1,16 @@
+import pytest
 """Tests for _tool_persister.py"""
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 from src.tools._tool_persister import _persist_tool_results
 
 
-def test_empty_tcs_info_does_nothing():
+@pytest.mark.anyio
+async def test_empty_tcs_info_does_nothing():
     repos = MagicMock()
     history: list = []
     tool_detail: list = []
-    _persist_tool_results(
+    await _persist_tool_results(
         tcs_info=[],
         results={},
         session_id="s1",
@@ -22,8 +24,10 @@ def test_empty_tcs_info_does_nothing():
     assert tool_detail == []
 
 
-def test_persists_tool_calls():
+@pytest.mark.anyio
+async def test_persists_tool_calls():
     repos = MagicMock()
+    repos.tool_calls.record_execution = AsyncMock()
     tc1 = MagicMock(); tc1.id = "call_1"
     tc2 = MagicMock(); tc2.id = "call_2"
 
@@ -38,7 +42,7 @@ def test_persists_tool_calls():
     history: list = []
     tool_detail: list = []
 
-    _persist_tool_results(
+    await _persist_tool_results(
         tcs_info=tcs_info,
         results=results,
         session_id="s1",
@@ -59,8 +63,12 @@ def test_persists_tool_calls():
     )
 
     assert len(history) == 2
-    assert history[0] == {"role": "tool", "content": '{"temp": 22}', "tool_call_id": "call_1"}
-    assert history[1] == {"role": "tool", "content": '{"time": "12:00"}', "tool_call_id": "call_2"}
+    assert history[0].role == "tool"
+    assert history[0].content == '{"temp": 22}'
+    assert history[0].tool_call_id == "call_1"
+    assert history[1].role == "tool"
+    assert history[1].content == '{"time": "12:00"}'
+    assert history[1].tool_call_id == "call_2"
 
     assert len(tool_detail) == 2
     assert tool_detail[0]["name"] == "get_weather"
@@ -68,14 +76,16 @@ def test_persists_tool_calls():
     assert tool_detail[1]["name"] == "get_time"
 
 
-def test_result_truncated_to_300_chars():
+@pytest.mark.anyio
+async def test_result_truncated_to_300_chars():
     repos = MagicMock()
+    repos.tool_calls.record_execution = AsyncMock()
     tc = MagicMock(); tc.id = "call_1"
     long_result = "x" * 500
     results = {"call_1": (long_result, "success")}
     tool_detail: list = []
 
-    _persist_tool_results(
+    await _persist_tool_results(
         tcs_info=[(tc, "test_func", {})],
         results=results,
         session_id="s1",
@@ -87,13 +97,15 @@ def test_result_truncated_to_300_chars():
     assert len(tool_detail[0]["result_truncated"]) == 300
 
 
-def test_missing_result_defaults_to_error():
+@pytest.mark.anyio
+async def test_missing_result_defaults_to_error():
     repos = MagicMock()
+    repos.tool_calls.record_execution = AsyncMock()
     tc = MagicMock(); tc.id = "call_missing"
     tool_detail: list = []
     history: list = []
 
-    _persist_tool_results(
+    await _persist_tool_results(
         tcs_info=[(tc, "missing_func", {})],
         results={},
         session_id="s1",
@@ -102,15 +114,16 @@ def test_missing_result_defaults_to_error():
         tool_detail=tool_detail,
         repos=repos,
     )
-    assert history[0]["content"] == "[ERROR]: Missing"
+    assert history[0].content == "[ERROR]: Missing"
     assert tool_detail[0]["status"] == "error"
 
 
-def test_empty_session_id_skips_db():
+@pytest.mark.anyio
+async def test_empty_session_id_skips_db():
     repos = MagicMock()
     tc = MagicMock(); tc.id = "call_1"
 
-    _persist_tool_results(
+    await _persist_tool_results(
         tcs_info=[(tc, "test", {})],
         results={"call_1": ("ok", "success")},
         session_id="",

@@ -1,3 +1,5 @@
+import pytest
+from unittest.mock import AsyncMock
 import json
 from unittest.mock import MagicMock, patch
 
@@ -15,7 +17,8 @@ def _make_tc(name, arguments, tc_id="call_test_1"):
 TOOL_MAP = {"web_search": MagicMock(), "save_memory": MagicMock()}
 
 
-def test_parse_tool_call_valid():
+@pytest.mark.anyio
+async def test_parse_tool_call_valid():
     tc = _make_tc("web_search", {"query": "test"})
     name, args, error = _parse_tool_call(tc, TOOL_MAP)
     assert name == "web_search"
@@ -23,7 +26,8 @@ def test_parse_tool_call_valid():
     assert error is None
 
 
-def test_parse_tool_call_corrupt_json():
+@pytest.mark.anyio
+async def test_parse_tool_call_corrupt_json():
     tc = _make_tc("web_search", "not-json{")
     name, args, error = _parse_tool_call(tc, TOOL_MAP)
     assert name == "web_search"
@@ -32,7 +36,8 @@ def test_parse_tool_call_corrupt_json():
     assert "Missing required parameters" in error
 
 
-def test_parse_tool_call_empty_name():
+@pytest.mark.anyio
+async def test_parse_tool_call_empty_name():
     tc = _make_tc("", {"query": "test"})
     name, args, error = _parse_tool_call(tc, TOOL_MAP)
     assert name == ""
@@ -40,7 +45,8 @@ def test_parse_tool_call_empty_name():
     assert "does not exist" in error
 
 
-def test_parse_tool_call_unknown_tool():
+@pytest.mark.anyio
+async def test_parse_tool_call_unknown_tool():
     tc = _make_tc("execute_action", {"query": "test"})
     name, args, error = _parse_tool_call(tc, TOOL_MAP)
     assert name == "execute_action"
@@ -48,7 +54,8 @@ def test_parse_tool_call_unknown_tool():
     assert "does not exist" in error
 
 
-def test_get_required_params_existing_tool():
+@pytest.mark.anyio
+async def test_get_required_params_existing_tool():
     with patch("src.tools.loader.TOOL_DEFINITIONS", {
         "web_search": {
             "function": {
@@ -61,7 +68,8 @@ def test_get_required_params_existing_tool():
         assert result == ["query"]
 
 
-def test_get_required_params_non_existing_tool():
+@pytest.mark.anyio
+async def test_get_required_params_non_existing_tool():
     with patch("src.tools.loader.TOOL_DEFINITIONS", {}):
         result = _get_required_params("nonexistent_tool")
         assert result == []

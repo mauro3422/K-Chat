@@ -8,17 +8,26 @@ from src.memory.repos.session_repository import SessionRepository
 from src.memory.repos.tool_call_repository import ToolCallRepository
 from src.memory.repos.memory_index_repository import MemoryIndexRepository
 from src.memory.repos.widget_state_repository import WidgetStateRepository
+from src.memory.repos.protocols import (
+    MessageRepositoryProtocol,
+    SessionRepositoryProtocol,
+    ToolCallRepositoryProtocol,
+    WidgetStateRepositoryProtocol,
+    DebugRepositoryProtocol,
+    SavedWidgetRepositoryProtocol,
+    MemoryIndexRepositoryProtocol,
+)
 
 
 @dataclass
 class Repositories:
-    messages: MessageRepository
-    sessions: SessionRepository
-    tool_calls: ToolCallRepository
-    widget_states: WidgetStateRepository
-    debug: DebugRepository
-    saved_widgets: SavedWidgetRepository
-    memory_index: MemoryIndexRepository
+    messages: MessageRepositoryProtocol
+    sessions: SessionRepositoryProtocol
+    tool_calls: ToolCallRepositoryProtocol
+    widget_states: WidgetStateRepositoryProtocol
+    debug: DebugRepositoryProtocol
+    saved_widgets: SavedWidgetRepositoryProtocol
+    memory_index: MemoryIndexRepositoryProtocol
 
 
 def get_repos(conn=None) -> Repositories:

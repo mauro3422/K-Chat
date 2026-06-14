@@ -294,7 +294,87 @@ def _format_summary(
     return '\n'.join(lines_out)
 
 
+def _read_and_parse(path: str) -> tuple[list[str], ast.Module | None, str | None]:
+    """Lee un archivo y parsea su AST.
+
+    Devuelve (content_lines, tree, error_msg). Si hay error, tree es None.
+    """
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+            content_lines = content.splitlines(keepends=True)
+    except Exception as e:
+        return [], None, f"[ERROR] No se pudo leer: {e}"
+
+    try:
+        tree = ast.parse(content)
+    except SyntaxError as e:
+        return content_lines, None, f"[ERROR] Error de sintaxis: {e}"
+
+    return content_lines, tree, None
+
+
+def _build_analysis_output(
+    path: str,
+    content_lines: list[str],
+    tree: ast.Module,
+    func_name: str,
+    find_dups: bool,
+    cross_ref: bool,
+) -> str:
+    """Construye el output completo del análisis de código."""
+    funcs = _iter_func_nodes(tree)
+    all_func_names = {f[0].name for f in funcs}
+    classes = _iter_class_nodes(tree)
+
+    call_graph: dict[str, list[dict[str, Any]]] = {}
+    for f_node, _ in funcs:
+        call_graph[f_node.name] = _get_function_calls(f_node)
+
+    imports = [n.names[0].name for n in ast.walk(tree)
+               if isinstance(n, (ast.Import, ast.ImportFrom))]
+
+    lang_name, lang_type = detect_language(path)
+    lang_icon = icon(lang_type)
+    basename = os.path.basename(path)
+    output = [f"\n{lang_icon} ANALISIS PROFUNDO: {basename}  ({lang_name})"]
+    output.append(f"   Ruta: {path}")
+    output.append(f"   Imports: {len(imports)}")
+
+    if func_name:
+        found = False
+        for f_node, is_async in funcs:
+            if f_node.name == func_name:
+                output.append(_format_function_deep(
+                    f_node, is_async, content_lines, call_graph, all_func_names
+                ))
+                found = True
+                break
+        if not found:
+            output.append(f"\n[ERROR] Funcion '{func_name}' no encontrada en el archivo.")
+            available = sorted(all_func_names)
+            if available:
+                output.append(f"Funciones disponibles: {', '.join(available[:10])}")
+    else:
+        output.append(_format_summary(funcs, classes, content_lines, call_graph))
+
+    if find_dups or cross_ref:
+        from src.tools._cross_analyzer import context_report as _ctx
+        src_root = os.path.dirname(os.path.dirname(path))
+        if os.path.isdir(src_root):
+            ctx = _ctx(target_path=path, root=src_root,
+                       find_duplicates_flag=find_dups, cross_reference_flag=cross_ref)
+            if ctx.strip():
+                output.append(ctx)
+
+    result = '\n'.join(output)
+    if len(result) > 30000:
+        result = result[:30000] + "\n...[truncado]"
+    return result
+
+
 def run(**kwargs: Any) -> str:
+    """Punto de entrada principal para analyze_code."""
     path = kwargs.get("path", "").strip()
     func_name = kwargs.get("function", "").strip()
     find_dups = kwargs.get("find_duplicates", False)
@@ -314,80 +394,12 @@ def run(**kwargs: Any) -> str:
     if size > MAX_FILE_SIZE:
         return f"[ERROR] Archivo demasiado grande ({size / 1024:.0f}KB)."
 
-    # Solo analisis Python por ahora (con AST)
     lang_name, lang_type = detect_language(path)
     if lang_type != 'snake':
         return f"[INFO] analyze_code solo soporta Python por ahora ({lang_name} detectado). Usa list_files o search_files."
 
-    try:
-        with open(path, 'r', encoding='utf-8', errors='replace') as f:
-            content = f.read()
-            content_lines = content.splitlines(keepends=True)
-    except Exception as e:
-        return f"[ERROR] No se pudo leer: {e}"
+    content_lines, tree, error = _read_and_parse(path)
+    if error:
+        return error
 
-    try:
-        tree = ast.parse(content)
-    except SyntaxError as e:
-        return f"[ERROR] Error de sintaxis: {e}"
-
-    # Extraer funciones y call graph
-    funcs = _iter_func_nodes(tree)
-    all_func_names = {f[0].name for f in funcs}
-    classes = _iter_class_nodes(tree)
-
-    # Build call graph
-    call_graph: dict[str, list[dict[str, Any]]] = {}
-    for f_node, _ in funcs:
-        call_graph[f_node.name] = _get_function_calls(f_node)
-
-    imports = [n.names[0].name for n in ast.walk(tree)
-               if isinstance(n, (ast.Import, ast.ImportFrom))]
-
-    # Encabezado
-    lang_icon = icon(lang_type)
-    basename = os.path.basename(path)
-    output = [f"\n{lang_icon} ANALISIS PROFUNDO: {basename}  ({lang_name})"]
-    output.append(f"   Ruta: {path}")
-    output.append(f"   Imports: {len(imports)}")
-
-    if func_name:
-        # Analisis de una funcion especifica
-        found = False
-        for f_node, is_async in funcs:
-            if f_node.name == func_name:
-                result = _format_function_deep(
-                    f_node, is_async, content_lines, call_graph, all_func_names
-                )
-                output.append(result)
-                found = True
-                break
-        if not found:
-            output.append(f"\n[ERROR] Funcion '{func_name}' no encontrada en el archivo.")
-            # Sugerir funciones disponibles
-            available = sorted(all_func_names)
-            if available:
-                output.append(f"Funciones disponibles: {', '.join(available[:10])}")
-    else:
-        # Resumen general del archivo
-        output.append(_format_summary(funcs, classes, content_lines, call_graph))
-    # Cross-file analysis (opcional) — solo contra src/
-    if find_dups or cross_ref:
-        from src.tools._cross_analyzer import context_report as _ctx
-        # path ya es absoluto: /home/maurol/dev/K-Chat/src/tools/X.py
-        # src_root = /home/maurol/dev/K-Chat/src/
-        src_root = os.path.dirname(os.path.dirname(path))
-        if os.path.isdir(src_root):
-            ctx = _ctx(
-                target_path=path,
-                root=src_root,
-                find_duplicates_flag=find_dups,
-                cross_reference_flag=cross_ref,
-            )
-            if ctx.strip():
-                output.append(ctx)
-    result = '\n'.join(output)
-    if len(result) > 30000:
-        result = result[:30000] + "\n...[truncado]"
-
-    return result
+    return _build_analysis_output(path, content_lines, tree, func_name, find_dups, cross_ref)

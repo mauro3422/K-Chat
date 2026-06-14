@@ -18,5 +18,4 @@ class MessageRenderDeps:
     match_tools_fn: Callable[[list, list], dict[str, list[Any]]] | None = None
     get_widget_states_fn: Callable[[str], dict[str, Any]] | None = None
     extract_inline_widget_states_fn: Callable[[list], dict[str, str]] | None = None
-    render_msg_fn: Callable[..., str] | None = None
     repos: Repositories | None = None

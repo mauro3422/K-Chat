@@ -25,7 +25,7 @@ DEFINITION: dict[str, Any] = {
 }
 
 
-def run(**kwargs) -> str:
+async def run(**kwargs) -> str:
     path = kwargs.get("path") or kwargs.get("file_path") or kwargs.get("filepath", "")
     content = kwargs.get("content") or kwargs.get("data") or kwargs.get("text", "")
     _session_id = kwargs.get("_session_id")
@@ -33,15 +33,21 @@ def run(**kwargs) -> str:
     if err:
         return err
 
-    try:
-        dir_name = os.path.dirname(resolved)
-        if dir_name:
-            os.makedirs(dir_name, exist_ok=True)
+    import asyncio
+    import os
 
-        with open(resolved, "w", encoding="utf-8") as f:
-            f.write(content)
-        from src.tools._validators import validate_file
-        vresult = validate_file(resolved, content)
+    try:
+        def _write_sync():
+            dir_name = os.path.dirname(resolved)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
+
+            with open(resolved, "w", encoding="utf-8") as f:
+                f.write(content)
+            from src.tools._validators import validate_file
+            return validate_file(resolved, content)
+
+        vresult = await asyncio.to_thread(_write_sync)
         if vresult['status'] in ('warning', 'error'):
             return f"[OK] File written correctly to '{path}'. {vresult['message']}"
         return f"[OK] File written correctly to '{path}'."

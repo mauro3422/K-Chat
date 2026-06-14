@@ -1,9 +1,12 @@
+import pytest
+from unittest.mock import AsyncMock
 from types import SimpleNamespace
 
 from src.tools._validators import validate_javascript
 
 
-def test_validate_javascript_uses_node_check_on_temp_file(monkeypatch):
+@pytest.mark.anyio
+async def test_validate_javascript_uses_node_check_on_temp_file(monkeypatch):
     seen = {}
 
     def fake_run(cmd, capture_output, text, timeout):
@@ -21,7 +24,8 @@ def test_validate_javascript_uses_node_check_on_temp_file(monkeypatch):
     assert seen["cmd"][2].endswith(".js")
 
 
-def test_validate_javascript_reports_syntax_error(monkeypatch):
+@pytest.mark.anyio
+async def test_validate_javascript_reports_syntax_error(monkeypatch):
     def fake_run(cmd, capture_output, text, timeout):
         return SimpleNamespace(returncode=1, stderr="SyntaxError: Unexpected token\n")
 

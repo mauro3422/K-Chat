@@ -1,7 +1,16 @@
+import pytest
+from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock, mock_open
 
 
-def test_build_tools_md_with_tools():
+def _make_registry(mock_defs):
+    mock_registry = MagicMock()
+    type(mock_registry).definitions = property(lambda self: mock_defs)
+    return mock_registry
+
+
+@pytest.mark.anyio
+async def test_build_tools_md_with_tools():
     mock_defs = {
         "web_search": {
             "function": {
@@ -32,8 +41,8 @@ def test_build_tools_md_with_tools():
         },
     }
 
-    with patch("src.tools.TOOL_DEFINITIONS", mock_defs):
-        from src.context import _build_tools_md
+    with patch("src.tools.get_default_registry", return_value=_make_registry(mock_defs)):
+        from src.context.tools_docs import _build_tools_md
 
         result = _build_tools_md()
 
@@ -52,9 +61,10 @@ def test_build_tools_md_with_tools():
         assert 'path="example path"' in result
 
 
-def test_build_tools_md_empty():
-    with patch("src.tools.TOOL_DEFINITIONS", {}):
-        from src.context import _build_tools_md
+@pytest.mark.anyio
+async def test_build_tools_md_empty():
+    with patch("src.tools.get_default_registry", return_value=_make_registry({})):
+        from src.context.tools_docs import _build_tools_md
 
         result = _build_tools_md()
         assert "# Available Tools" in result
@@ -62,7 +72,8 @@ def test_build_tools_md_empty():
         assert "**" not in result[len("# Available Tools\n"):]
 
 
-def test_build_tools_md_integer_param():
+@pytest.mark.anyio
+async def test_build_tools_md_integer_param():
     mock_defs = {
         "get_tool_history": {
             "function": {
@@ -79,8 +90,8 @@ def test_build_tools_md_integer_param():
         },
     }
 
-    with patch("src.tools.TOOL_DEFINITIONS", mock_defs):
-        from src.context import _build_tools_md
+    with patch("src.tools.get_default_registry", return_value=_make_registry(mock_defs)):
+        from src.context.tools_docs import _build_tools_md
 
         result = _build_tools_md()
 
@@ -89,7 +100,8 @@ def test_build_tools_md_integer_param():
         assert "(integer)" in result
 
 
-def test_auto_section_generates_table():
+@pytest.mark.anyio
+async def test_auto_section_generates_table():
     mock_fn = {
         "description": "Test tool",
         "parameters": {
@@ -114,7 +126,8 @@ def test_auto_section_generates_table():
     assert "| `param2` | integer | No | 10 | Second param |" in result
 
 
-def test_build_rules_files_creates_files():
+@pytest.mark.anyio
+async def test_build_rules_files_creates_files():
     mock_defs = {
         "tool1": {
             "function": {
@@ -140,7 +153,7 @@ def test_build_rules_files_creates_files():
         },
     }
 
-    with patch("src.tools.TOOL_DEFINITIONS", mock_defs):
+    with patch("src.tools.get_default_registry", return_value=_make_registry(mock_defs)):
         with patch("os.path.exists", return_value=False):
             with patch("builtins.open", mock_open()) as mock_file:
                 from src.context.tools_docs import _build_rules_files
@@ -150,7 +163,8 @@ def test_build_rules_files_creates_files():
                 assert mock_file().write.call_count == 2
 
 
-def test_build_rules_files_preserves_manual_section():
+@pytest.mark.anyio
+async def test_build_rules_files_preserves_manual_section():
     mock_defs = {
         "tool1": {
             "function": {
@@ -176,7 +190,7 @@ def test_build_rules_files_preserves_manual_section():
 Manual section below
 """
 
-    with patch("src.tools.TOOL_DEFINITIONS", mock_defs):
+    with patch("src.tools.get_default_registry", return_value=_make_registry(mock_defs)):
         with patch("os.path.exists", return_value=True):
             with patch("builtins.open", mock_open(read_data=existing_content)) as mock_file:
                 from src.context.tools_docs import _build_rules_files

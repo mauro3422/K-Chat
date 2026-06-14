@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 import pytest
 from src.memory.schema import init_db
 from src.api.session import ensure_session, get_sessions
@@ -9,71 +10,80 @@ from src.memory.repos import MessageRecord, get_repos
 
 
 @pytest.fixture(autouse=True)
-def setup_db():
-    init_db()
+async def setup_db():
+    await init_db()
 
 
-def test_schema_get_sessions():
-    sessions = get_sessions()
+@pytest.mark.anyio
+async def test_schema_get_sessions():
+    sessions = await get_sessions()
     assert isinstance(sessions, list)
     if sessions:
         assert isinstance(sessions[0], tuple)
         assert len(sessions[0]) >= 3
 
 
-def test_schema_get_session_messages():
-    messages = get_session_messages("nonexistent-session", repos=get_repos())
+@pytest.mark.anyio
+async def test_schema_get_session_messages():
+    messages = await get_session_messages("nonexistent-session", repos=get_repos())
     assert isinstance(messages, list)
     if messages:
         assert isinstance(messages[0], tuple)
 
 
-def test_schema_get_tool_history():
-    history = get_tool_history("nonexistent-session", repos=get_repos())
+@pytest.mark.anyio
+async def test_schema_get_tool_history():
+    history = await get_tool_history("nonexistent-session", repos=get_repos())
     assert isinstance(history, list)
     if history:
         assert isinstance(history[0], tuple)
 
 
-def test_schema_get_widget_states():
-    states = get_widget_states("nonexistent-session")
+@pytest.mark.anyio
+async def test_schema_get_widget_states():
+    states = await get_widget_states("nonexistent-session")
     assert isinstance(states, dict)
 
 
-def test_schema_get_debug_info():
-    info = get_debug_info("nonexistent-session")
+@pytest.mark.anyio
+async def test_schema_get_debug_info():
+    info = await get_debug_info("nonexistent-session")
     assert isinstance(info, dict)
 
 
-def test_init_db_no_exception():
-    init_db()
+@pytest.mark.anyio
+async def test_init_db_no_exception():
+    await init_db()
 
 
-def test_ensure_session_creates_session():
+@pytest.mark.anyio
+async def test_ensure_session_creates_session():
     session_id = "contract-test-session"
-    ensure_session(session_id)
-    messages = get_session_messages(session_id, repos=get_repos())
+    await ensure_session(session_id)
+    messages = await get_session_messages(session_id, repos=get_repos())
     assert isinstance(messages, list)
 
 
-def test_save_message_accepts_record():
+@pytest.mark.anyio
+async def test_save_message_accepts_record():
     session_id = "contract-test-record"
-    ensure_session(session_id)
+    await ensure_session(session_id)
     record = MessageRecord(
         session_id=session_id,
         role="user",
         content="test message",
         model="test-model",
     )
-    save_message_record(record, repos=get_repos())
-    messages = get_session_messages(session_id, repos=get_repos())
+    await save_message_record(record, repos=get_repos())
+    messages = await get_session_messages(session_id, repos=get_repos())
     assert len(messages) >= 1
 
 
-def test_save_message_record_explicit_contract():
+@pytest.mark.anyio
+async def test_save_message_record_explicit_contract():
     session_id = "contract-test-explicit-record"
-    ensure_session(session_id)
-    save_message_record(
+    await ensure_session(session_id)
+    await save_message_record(
         MessageRecord(
             session_id=session_id,
             role="assistant",
@@ -82,5 +92,5 @@ def test_save_message_record_explicit_contract():
         ),
         repos=get_repos(),
     )
-    messages = get_session_messages(session_id, repos=get_repos())
+    messages = await get_session_messages(session_id, repos=get_repos())
     assert len(messages) >= 1

@@ -1,14 +1,16 @@
 import json
+from datetime import datetime
 from typing import Any
 from src.memory.repos import Repositories
+from src.core.history_contract import HistoryMessage
 
 
-def _persist_tool_results(
+async def _persist_tool_results(
     tcs_info: list[tuple[Any, str, dict[str, Any]]],
     results: dict[str, tuple[str, str]],
     session_id: str,
     turn: int,
-    history: list[dict[str, Any]],
+    history: list[Any],
     tool_detail: list[dict[str, Any]],
     repos: Repositories,
 ) -> None:
@@ -17,7 +19,7 @@ def _persist_tool_results(
         tool_result, status = results.get(tc.id, ("[ERROR]: Missing", "error"))
         tool_detail.append({"name": name, "args": args, "status": status, "result_truncated": tool_result[:300]})
         if session_id:
-            repo.record_execution(
+            await repo.record_execution(
                 session_id,
                 name,
                 json.dumps(args, ensure_ascii=False),
@@ -26,4 +28,9 @@ def _persist_tool_results(
                 turn=turn,
                 tool_call_id=tc.id,
             )
-        history.append({"role": "tool", "content": tool_result, "tool_call_id": tc.id})
+        history.append(HistoryMessage(
+            role="tool",
+            content=tool_result,
+            tool_call_id=tc.id,
+            created_at=datetime.now().isoformat()
+        ))

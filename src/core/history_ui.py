@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from src.core.history_contract import HistoryMessage
@@ -17,16 +18,26 @@ def _get_field(msg: Any, key: str, default: Any = None) -> Any:
         return default
 
 
+def _parse_json_field(value: Any) -> Any:
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return value
+
+
 def _coerce_message(msg: Any) -> HistoryMessage:
     if isinstance(msg, HistoryMessage):
         return msg
+    tool_calls_raw = _get_field(msg, "tool_calls")
     return HistoryMessage(
         role=_get_field(msg, "role", ""),
         content=_get_field(msg, "content"),
         created_at=_get_field(msg, "created_at", ""),
         reasoning=_get_field(msg, "reasoning", "") or "",
         phases=_get_field(msg, "phases", "[]") or "[]",
-        tool_calls=_get_field(msg, "tool_calls"),
+        tool_calls=_parse_json_field(tool_calls_raw),
         tool_call_id=_get_field(msg, "tool_call_id"),
     )
 

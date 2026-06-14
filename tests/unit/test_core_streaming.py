@@ -1,17 +1,18 @@
 import json
+import pytest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock, MagicMock
+
+from src.core.orchestrator_contract import OrchestratorDeps
+from src.tools.registry import ToolRegistry
 
 
-
-def _stream_events(events):
+async def _stream_events(events):
     for e in events:
         yield e
 
 
 def _make_stream_mock(events_by_call, tool_calls_by_call=None):
-    """Crea un side_effect para llm_stream que yield eventos y opcionalmente
-    popula tool_calls_output con objetos SimpleNamespace."""
     if tool_calls_by_call is None:
         tool_calls_by_call = [None] * len(events_by_call)
 
@@ -25,14 +26,18 @@ def _make_stream_mock(events_by_call, tool_calls_by_call=None):
             tco[:] = tcs
 
         events = events_by_call[call_idx] if call_idx < len(events_by_call) else []
-        return _stream_events(events)
+
+        async def gen():
+            for e in events:
+                yield e
+
+        return gen()
 
     factory.call_count = 0
     return factory
 
 
 def _make_tool_call_obj(name: str, args: dict, tc_id: str = "call_1"):
-    """Crea un SimpleNamespace como el que produce llm_stream vía tool_calls_output."""
     tc = SimpleNamespace()
     tc.id = tc_id
     tc.function = SimpleNamespace()
@@ -41,10 +46,20 @@ def _make_tool_call_obj(name: str, args: dict, tc_id: str = "call_1"):
     return tc
 
 
-@patch("src.llm.client.chat")
+def _make_deps(tool_map):
+    reg = ToolRegistry()
+    reg._tool_map = tool_map
+    reg._definitions = {}
+    reg._built = True
+    deps = OrchestratorDeps()
+    deps.tool_registry = reg
+    return deps
+
+
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
 @patch("src.llm.client.chat_stream")
-def test_streaming_content_only(mock_stream, mock_chat):
-    """Streaming path: solo contenido, sin tools."""
+async def test_streaming_content_only(mock_stream, mock_chat):
     from src.core.orchestrator import chat_stream
 
     mock_stream.side_effect = _make_stream_mock([
@@ -52,7 +67,9 @@ def test_streaming_content_only(mock_stream, mock_chat):
     ])
 
     history = [{"role": "system", "content": "test"}]
-    tokens = list(chat_stream("Hola", history, model="test-model", tagged=True, streaming=True))
+    tokens = []
+    async for t in chat_stream("Hola", history, model="test-model", tagged=True, streaming=True):
+        tokens.append(t)
 
     types = [t[0] for t in tokens]
     texts = [t[1] for t in tokens if t[0] == "content"]
@@ -62,10 +79,10 @@ def test_streaming_content_only(mock_stream, mock_chat):
     mock_chat.assert_not_called()
 
 
-@patch("src.llm.client.chat")
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
 @patch("src.llm.client.chat_stream")
-def test_streaming_tool_then_content(mock_stream, mock_chat):
-    """Streaming path: tool_call en stream → ejecuta tool → stream final."""
+async def test_streaming_tool_then_content(mock_stream, mock_chat):
     from src.core.orchestrator import chat_stream
 
     tcs = [_make_tool_call_obj("web_search", {"query": "test"}, "c1")]
@@ -77,9 +94,15 @@ def test_streaming_tool_then_content(mock_stream, mock_chat):
         tool_calls_by_call=[tcs, None],
     )
 
+    async def mock_tool(**kw):
+        return "ok result"
+
+    deps = _make_deps({"web_search": mock_tool})
+
     history = [{"role": "system", "content": "test"}]
-    with patch("src.tools.TOOL_MAP", {"web_search": lambda **kw: "ok result"}):
-        tokens = list(chat_stream("Busca", history, model="test-model", tagged=True, streaming=True))
+    tokens = []
+    async for t in chat_stream("Busca", history, model="test-model", tagged=True, streaming=True, deps=deps):
+        tokens.append(t)
 
     types = [t[0] for t in tokens]
     assert "reasoning" in types, f"Falta reasoning, types={types}"
@@ -93,17 +116,18 @@ def test_streaming_tool_then_content(mock_stream, mock_chat):
     contents = [t[1] for t in tokens if t[0] == "content"]
     assert any("Resultado final" in c for c in contents)
 
-    tool_msgs = [m for m in history if m["role"] == "tool"]
+    tool_msgs = [m for m in history if (m["role"] if isinstance(m, dict) else m.role) == "tool"]
     assert len(tool_msgs) == 1
-    assert "ok result" in tool_msgs[0]["content"]
+    content = tool_msgs[0]["content"] if isinstance(tool_msgs[0], dict) else tool_msgs[0].content
+    assert "ok result" in content
 
     mock_chat.assert_not_called()
 
 
-@patch("src.llm.client.chat")
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
 @patch("src.llm.client.chat_stream")
-def test_streaming_multiple_tools(mock_stream, mock_chat):
-    """Streaming path: multiples tool_calls en paralelo desde el stream."""
+async def test_streaming_multiple_tools(mock_stream, mock_chat):
     from src.core.orchestrator import chat_stream
 
     tcs = [
@@ -121,13 +145,15 @@ def test_streaming_multiple_tools(mock_stream, mock_chat):
 
     called = []
 
-    def tracking_tool(**kw):
+    async def tracking_tool(**kw):
         called.append(kw.get("query", ""))
         return "res"
 
+    deps = _make_deps({"web_search": tracking_tool})
     history = [{"role": "system", "content": "test"}]
-    with patch("src.tools.TOOL_MAP", {"web_search": tracking_tool}):
-        tokens = list(chat_stream("test", history, model="test-model", tagged=True, streaming=True))
+    tokens = []
+    async for t in chat_stream("test", history, model="test-model", tagged=True, streaming=True, deps=deps):
+        tokens.append(t)
 
     tcs_events = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     calling = [t for t in tcs_events if t["status"] == "calling"]
@@ -139,10 +165,10 @@ def test_streaming_multiple_tools(mock_stream, mock_chat):
     mock_chat.assert_not_called()
 
 
-@patch("src.llm.client.chat")
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
 @patch("src.llm.client.chat_stream")
-def test_streaming_no_tools_from_stream(mock_stream, mock_chat):
-    """Streaming path: eventos de tool_call en stream pero tool_calls_output vacío (no se ejecutan tools)."""
+async def test_streaming_no_tools_from_stream(mock_stream, mock_chat):
     from src.core.orchestrator import chat_stream
 
     mock_stream.side_effect = _make_stream_mock([
@@ -150,7 +176,9 @@ def test_streaming_no_tools_from_stream(mock_stream, mock_chat):
     ])
 
     history = [{"role": "system", "content": "test"}]
-    tokens = list(chat_stream("test", history, model="test-model", tagged=True, streaming=True))
+    tokens = []
+    async for t in chat_stream("test", history, model="test-model", tagged=True, streaming=True):
+        tokens.append(t)
 
     types = [t[0] for t in tokens]
     assert "content" in types
@@ -158,10 +186,10 @@ def test_streaming_no_tools_from_stream(mock_stream, mock_chat):
     mock_chat.assert_not_called()
 
 
-@patch("src.llm.client.chat")
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
 @patch("src.llm.client.chat_stream")
-def test_streaming_content_then_tool(mock_stream, mock_chat):
-    """Streaming path: contenido primero, luego tool_call en el stream."""
+async def test_streaming_content_then_tool(mock_stream, mock_chat):
     from src.core.orchestrator import chat_stream
 
     tcs = [_make_tool_call_obj("web_search", {"query": "test"}, "c1")]
@@ -177,15 +205,21 @@ def test_streaming_content_then_tool(mock_stream, mock_chat):
         tool_calls_by_call=[tcs, None],
     )
 
+    async def mock_tool(**kw):
+        return "ok"
+
+    deps = _make_deps({"web_search": mock_tool})
+
     history = [{"role": "system", "content": "test"}]
-    with patch("src.tools.TOOL_MAP", {"web_search": lambda **kw: "ok"}):
-        tokens = list(chat_stream("test", history, model="test-model", tagged=True, streaming=True))
+    tokens = []
+    async for t in chat_stream("test", history, model="test-model", tagged=True, streaming=True, deps=deps):
+        tokens.append(t)
 
     types = [t[0] for t in tokens]
     assert "reasoning" in types, f"Falta reasoning, types={types}"
     assert "content" in types, f"Falta content, types={types}"
 
-    tool_msgs = [m for m in history if m["role"] == "tool"]
+    tool_msgs = [m for m in history if (m["role"] if isinstance(m, dict) else m.role) == "tool"]
     assert len(tool_msgs) == 1
 
     contents = [t[1] for t in tokens if t[0] == "content"]
@@ -194,12 +228,12 @@ def test_streaming_content_then_tool(mock_stream, mock_chat):
     mock_chat.assert_not_called()
 
 
-@patch("src.llm.client.chat")
+@pytest.mark.anyio
+@patch("src.llm.client.chat", new_callable=AsyncMock)
 @patch("src.llm.client.chat_stream")
-def test_streaming_session_id_propagates(mock_stream, mock_chat):
-    """Streaming path: session_id se pasa a los tools."""
+async def test_streaming_session_id_propagates(mock_stream, mock_chat):
     from src.api.session import ensure_session
-    ensure_session("ses-s")
+    await ensure_session("ses-s")
     from src.core.orchestrator import chat_stream
 
     tcs = [_make_tool_call_obj("web_search", {"query": "x"}, "c1")]
@@ -213,13 +247,15 @@ def test_streaming_session_id_propagates(mock_stream, mock_chat):
 
     captured = {}
 
-    def tracking_tool(**kw):
+    async def tracking_tool(**kw):
         captured["session_id"] = kw.get("_session_id")
         return "ok"
 
+    deps = _make_deps({"web_search": tracking_tool})
     history = [{"role": "system", "content": "test"}]
-    with patch("src.tools.TOOL_MAP", {"web_search": tracking_tool}):
-        list(chat_stream("test", history, model="test-model", session_id="ses-s", tagged=True, streaming=True))
+    tokens = []
+    async for t in chat_stream("test", history, model="test-model", session_id="ses-s", tagged=True, streaming=True, deps=deps):
+        tokens.append(t)
 
     assert captured.get("session_id") == "ses-s"
     mock_chat.assert_not_called()
