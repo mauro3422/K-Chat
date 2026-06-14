@@ -1,3 +1,5 @@
+> **Last updated:** 2026-06-14 — Added: `src/api/exceptions.py` (ServiceException), `src/memory/types.py` (MessageRecord canonical type). Updated: `OrchestratorDeps` → 4 sub-dataclasses, `config` param DI in tools/LLM, llm layer map (providers.py deps).
+
 # Module Guide
 
 This document maps every module in the system with its single responsibility, its public interface, and what it depends on.
@@ -35,10 +37,11 @@ llm/
   protocol.py         → LLMProvider Protocol (runtime-checkable)
   adapters/openai_adapter.py  → OpenAI/OpenCode SDK provider implementation
   model_state.py      → Thread-safe ModelState class (failed/verified/cached models)
+  providers.py        → Provider registry + singleton, accepts optional `config` for DI (fallback to DEFAULT_CONFIG)
   api_call.py         → `_api_call()` wrapper with retry
-  retry.py            → execute_with_retry() with exponential backoff
+  retry.py            → execute_with_retry() with exponential backoff, accepts optional `config` for DI
   client.py           → chat() and chat_stream() with fallback, tool delta processing
-  discovery.py        → Model discovery and verification
+  discovery.py        → Model discovery and verification, accepts optional `config` for DI
   selector.py         → Default model selection
   verifier.py         → Model verification probe
   failover.py         → Model fallback switching
@@ -71,7 +74,7 @@ context/
   runtime.py          → Runtime context injection
 
 web/
-  app_factory.py      → FastAPI app factory
+  app_factory.py      → FastAPI app factory, registers exception handlers (ServiceException → JSONResponse)
   dev_server.py       → Development server runner
   routers/chat.py     → Streaming POST endpoint (ChatPayload, NDJSON, error classification)
   routers/pages.py    → HTML pages, sidebar, message rendering, model selector
@@ -190,6 +193,17 @@ paths.py             → Path constants (DATA_DIR, DB_PATH, STATIC_DIR, etc.)
 
 ---
 
+## `src/api/exceptions.py`
+
+**Responsibility:** Framework-agnostic exception for the API layer, replacing `HTTPException` to avoid coupling to FastAPI.
+
+**Public Interface:**
+- `ServiceException(status_code: int, detail: str)` — raised by domain modules; translated to `JSONResponse` by the web layer's exception handler.
+
+**Depends on:** stdlib only
+
+---
+
 ## `src/api/debug.py`
 
 **Responsibility:** Debug payload persistence and ASR telemetry.
@@ -277,10 +291,24 @@ Use the direct modules instead:
 
 ## `src/core/orchestrator_contract.py`
 
-**Responsibility:** Optional dependency bundle for orchestration.
+**Responsibility:** Dependency injection contracts for orchestration. `OrchestratorDeps` is a backward-compatible facade that composes 4 focused sub-dataclasses.
 
 **Public Interface:**
-- `OrchestratorDeps` — dataclass for orchestration hooks and injected deps
+- `LLMDeps` — model selection, LLM client functions, telemetry
+- `ToolDeps` — tool registry, execution service
+- `StorageDeps` — repositories, history service, compression
+- `RequestStateDeps` — per-request state (session, debug, background tasks)
+- `OrchestratorDeps` — facade: accepts all fields from the 4 sub-groups as keyword args, delegates each to the appropriate sub-dataclass. Supports attribute access and `__init__` with any combination of fields.
+
+**Sub-group access:**
+```python
+deps.llm        # → LLMDeps
+deps.tools      # → ToolDeps
+deps.storage    # → StorageDeps
+deps.state      # → RequestStateDeps
+deps.repos      # → StorageDeps.repos (legacy access)
+deps.session_id # → RequestStateDeps.session_id (legacy access)
+```
 
 **Depends on:** stdlib only
 
@@ -417,6 +445,19 @@ Use the direct modules instead:
 - `_rate_lock` — threading.Lock for thread-safe rate checking
 
 **Depends on:** `src.memory.repos`
+
+---
+
+## `src/memory/types.py`
+
+**Responsibility:** Shared types module. Canonical definition of `MessageRecord` — the explicit contract for message persistence used by `save_message_record()`.
+
+**Public Interface:**
+- `MessageRecord` — dataclass with fields: `session_id`, `role`, `content`, `model`, `reasoning`, `phases`, `prompt_tokens`, `completion_tokens`, `total_tokens`, `tool_calls`, `tool_call_id`
+
+**Depends on:** stdlib only
+
+**Note:** Re-exported from `src.memory.repos` for backward compatibility; new code should import from `src.memory.types` directly.
 
 ---
 

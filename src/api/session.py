@@ -1,9 +1,8 @@
 """Session operations."""
 
-from fastapi import HTTPException
-
 from src.memory.repos import Repositories, SessionRepository
 from src.api.session_contract import SessionOpsDeps
+from src.api.exceptions import ServiceException
 
 
 def _resolve_session_deps(
@@ -58,7 +57,7 @@ async def get_sessions(limit: int = 50, session_repo: SessionRepository | None =
 async def _require_session(session_id: str) -> None:
     """Validate that a session exists. Raises 404 if not found."""
     if not session_id or not session_id.strip():
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise ServiceException(status_code=404, detail="Session not found")
     repo = SessionRepository()
     if not await repo.exists(session_id):
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise ServiceException(status_code=404, detail="Session not found")

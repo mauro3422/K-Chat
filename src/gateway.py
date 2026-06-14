@@ -23,8 +23,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from src.config_loader import DEFAULT_CONFIG
-
 logger = logging.getLogger("gateway")
 
 _services: dict[str, dict[str, Any]] = {}
@@ -140,9 +138,11 @@ def _start_searxng(verbose: bool) -> bool:
     return True
 
 
-def _start_web(verbose: bool) -> subprocess.Popen | None:
-    host = DEFAULT_CONFIG.host
-    port = DEFAULT_CONFIG.port
+def _start_web(verbose: bool, config=None) -> subprocess.Popen | None:
+    from src.config_loader import DEFAULT_CONFIG
+    cfg = config or DEFAULT_CONFIG
+    host = cfg.host
+    port = cfg.port
     cmd = [
         sys.executable, "-m", "uvicorn",
         "web.server:app",
@@ -152,7 +152,7 @@ def _start_web(verbose: bool) -> subprocess.Popen | None:
     ]
     env = os.environ.copy()
     env["SEARXNG_AUTO_START"] = "false"
-    log_dir = Path(DEFAULT_CONFIG.kairos_log_dir)
+    log_dir = Path(cfg.kairos_log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     stderr_log = open(log_dir / "web_server.log", "a")
     kwargs: dict[str, Any] = {
@@ -168,11 +168,13 @@ def _start_web(verbose: bool) -> subprocess.Popen | None:
         return None
 
 
-def _start_telegram(verbose: bool) -> subprocess.Popen | None:
-    if not DEFAULT_CONFIG.telegram_bot_token:
+def _start_telegram(verbose: bool, config=None) -> subprocess.Popen | None:
+    from src.config_loader import DEFAULT_CONFIG
+    cfg = config or DEFAULT_CONFIG
+    if not cfg.telegram_bot_token:
         return None
     cmd = [sys.executable, "-m", "channels.telegram"]
-    log_dir = Path(DEFAULT_CONFIG.kairos_log_dir)
+    log_dir = Path(cfg.kairos_log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     stderr_log = open(log_dir / "telegram.log", "a")
     kwargs: dict[str, Any] = {
@@ -232,9 +234,11 @@ def _check_alive() -> str | None:
 
 # ── Health Check ────────────────────────────────────────────────────────
 
-def _health_check() -> dict[str, Any]:
+def _health_check(config=None) -> dict[str, Any]:
     """Check web server health endpoint."""
-    url = f"http://{DEFAULT_CONFIG.host}:{DEFAULT_CONFIG.port}/health"
+    from src.config_loader import DEFAULT_CONFIG
+    cfg = config or DEFAULT_CONFIG
+    url = f"http://{cfg.host}:{cfg.port}/health"
     try:
         req = urllib.request.Request(url, method="GET")
         start = time.time()
@@ -328,6 +332,8 @@ verbose = False
 
 def main() -> None:
     global verbose, _start_time
+    from src.config_loader import DEFAULT_CONFIG
+    cfg = DEFAULT_CONFIG
     _start_time = time.time()
 
     parser = argparse.ArgumentParser(description="Kairos Gateway — unified launcher")
@@ -362,48 +368,48 @@ def main() -> None:
     from src.gateway_log import log_startup
 
     _log_starting("Memory DB")
-    _log_ok("Memory DB", DEFAULT_CONFIG.memory_db_path)
-    log_startup("memory_db", DEFAULT_CONFIG.memory_db_path)
+    _log_ok("Memory DB", cfg.memory_db_path)
+    log_startup("memory_db", cfg.memory_db_path)
 
     services: dict[str, dict[str, Any]] = {}
     services["Web Dashboard"] = {
         "running": False,
-        "url": f"http://{DEFAULT_CONFIG.host}:{DEFAULT_CONFIG.port}",
+        "url": f"http://{cfg.host}:{cfg.port}",
     }
     services["SearXNG"] = {
         "running": False,
-        "url": DEFAULT_CONFIG.searxng_url,
+        "url": cfg.searxng_url,
     }
-    if DEFAULT_CONFIG.telegram_bot_token:
+    if cfg.telegram_bot_token:
         services["Telegram Bot"] = {"running": False, "detail": "polling"}
     else:
         services["Telegram Bot"] = {"running": False, "detail": "no token"}
-    services["Memory DB"] = {"running": True, "url": DEFAULT_CONFIG.memory_db_path, "detail": "sqlite"}
+    services["Memory DB"] = {"running": True, "url": cfg.memory_db_path, "detail": "sqlite"}
 
     if not args.no_searxng:
         _log_starting("SearXNG")
         services["SearXNG"]["running"] = _start_searxng(verbose)
         if services["SearXNG"]["running"]:
-            _log_ok("SearXNG", DEFAULT_CONFIG.searxng_url)
-            log_startup("searxng", DEFAULT_CONFIG.searxng_url)
+            _log_ok("SearXNG", cfg.searxng_url)
+            log_startup("searxng", cfg.searxng_url)
         else:
             _log_skip("SearXNG", "not installed or disabled")
 
     if not args.no_web:
         _log_starting("Web Dashboard")
-        web_proc = _start_web(verbose)
+        web_proc = _start_web(verbose, cfg)
         services["Web Dashboard"]["running"] = web_proc is not None
         services["Web Dashboard"]["process"] = web_proc
         if web_proc:
-            _log_ok("Web Dashboard", f"http://{DEFAULT_CONFIG.host}:{DEFAULT_CONFIG.port}")
-            log_startup("web", f"http://{DEFAULT_CONFIG.host}:{DEFAULT_CONFIG.port}", web_proc.pid)
+            _log_ok("Web Dashboard", f"http://{cfg.host}:{cfg.port}")
+            log_startup("web", f"http://{cfg.host}:{cfg.port}", web_proc.pid)
         else:
             _log_fail("Web Dashboard", "failed to start")
             log_startup("web", "failed to start")
 
-    if not args.no_telegram and DEFAULT_CONFIG.telegram_bot_token:
+    if not args.no_telegram and cfg.telegram_bot_token:
         _log_starting("Telegram Bot")
-        tg_proc = _start_telegram(verbose)
+        tg_proc = _start_telegram(verbose, cfg)
         services["Telegram Bot"]["running"] = tg_proc is not None
         services["Telegram Bot"]["process"] = tg_proc
         if tg_proc:

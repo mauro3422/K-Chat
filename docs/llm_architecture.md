@@ -1,4 +1,6 @@
 > ⚠️ This document may lag behind the current version. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/MODULES.md](MODULES.md) for the latest.
+>
+> **Last updated:** 2026-06-14 — Updated deps: providers.py/discovery.py/retry.py now depend on config_loader for `config` param DI; all accept optional `config` parameter.
 
 # Arquitectura de `src/llm/`
 
@@ -9,7 +11,7 @@
 | `__init__.py` | Package marker only |
 | `protocol.py` | Define `LLMProvider` Protocol (interfaz con `chat`, `chat_stream`, `list_models`) |
 | `adapters/openai_adapter.py` | Implementación concreta de `LLMProvider` usando el SDK de OpenAI |
-| `providers.py` | Registro de providers (dict nombre→clase) + singleton lazy `_get_provider()` |
+| `providers.py` | Registro de providers (dict nombre→clase) + singleton lazy `_get_provider()`, acepta `config` param opcional para DI |
 | `model_state.py` | Estado thread-safe: modelos fallidos, verificados, caché de modelos. Lógica de fallback por prioridad con `_switch_model()`. |
 | `api_call.py` | Wrapper `_api_call()` con backoff exponencial |
 | `discovery.py` | `get_models()` — consulta modelos disponibles del provider, filtra free models |
@@ -56,14 +58,14 @@ Stream tiene su propio fallback en `_try_stream()` con la misma lógica.
 __init__.py ──→ (package marker only)
 protocol.py ──→ (ninguna)
 adapters/openai_adapter.py ──→ openai, config
-providers.py ──→ protocol, adapters
+providers.py ──→ protocol, adapters, config_loader
 model_state.py ──→ (ninguna, solo stdlib)
 api_call.py ──→ providers, retry
-discovery.py ──→ model_state, adapters
+discovery.py ──→ model_state, adapters, config_loader
 verifier.py ──→ adapters
 selector.py ──→ model_state
 failover.py ──→ model_state, discovery
-retry.py ──→ (ninguna, solo stdlib + time)
+retry.py ──→ config_loader, stdlib + time
 client.py ──→ api_call, model_state, discovery, failover, selector, retry
 ```
 

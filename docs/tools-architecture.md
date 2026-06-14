@@ -1,4 +1,6 @@
 > ⚠️ This document may lag behind the current version. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/MODULES.md](MODULES.md) for the latest.
+>
+> **Last updated:** 2026-06-14 — Documented: web_search and fetch_url now accept optional `config` param for DEFAULT_CONFIG DI; section 5 updated with helper migration notes.
 
 # Arquitectura de `src/tools/`
 
@@ -21,8 +23,8 @@
 | `search_files.py` | Búsqueda tipo grep con contexto, detección de función/clase, estadísticas, brace globs `*.{py,js}`. |
 | `edit_file.py` | Edición quirúrgica de líneas: reemplazar rango, insertar, eliminar. Sin reescribir archivos enteros. |
 | `analyze_code.py` | Análisis profundo Python con AST: funciones, parámetros, call graph, imports, métricas por función. |
-| `web_search.py` | Busca en SearXNG local con retry, formato de resultados, infoboxes y suggestions. |
-| `fetch_url.py` | Descarga página web, extrae texto con lxml, anti-SSRF, detección de binarios, retry. |
+| `web_search.py` | Busca en SearXNG local con retry, formato de resultados, infoboxes y suggestions. Acepta `config` param opcional para DI. |
+| `fetch_url.py` | Descarga página web, extrae texto con lxml, anti-SSRF, detección de binarios, retry. Acepta `config` param opcional para DI. |
 | `read_file.py` | Lee archivo con paginación (100 líneas max/call), formato numerado, validación de path. |
 | `write_file.py` | Crea/sobreescribe archivo, crea directorios padres si faltan, validación de path + validación post-write. |
 | `save_memory.py` | Lee/escribe `MEMORY.md` con sección `## Memories`, thread-safe con lock, reparación de header corrupto, invalida cache de contexto. |
@@ -107,6 +109,7 @@ def run(param1: str, param2: int = 0, _session_id: str | None = None) -> str:
 **Convenciones observadas**:
 - `_session_id` es inyectado por el runner, no es param del LLM
 - `_retries` se usa en tools de red (web_search, fetch_url)
+- `config` (opcional) se acepta en web_search y fetch_url para DI de configuración, con fallback a DEFAULT_CONFIG global
 - Retornos exitosos: string plano
 - Retornos de error: prefijo `[ERROR]`
 - `_path_helpers` se usa en tools de filesystem
@@ -132,6 +135,10 @@ def run(param1: str, param2: int = 0, _session_id: str | None = None) -> str:
 - **Reintentos**: `web_search` (2 retries) y `fetch_url` (1 retry) con backoff.
 - **Bootstrap de SearXNG**: el arranque no instala dependencias por defecto; la instalación debe activarse explícitamente con `SEARXNG_AUTO_INSTALL=1`.
 - **Truncado de seguridad**: Resultados > 30K chars y archivos > 100 líneas se cortan para evitar overflow de tokens.
+
+## 6b. DEFAULT_CONFIG → Dependency Injection
+
+`web_search.py` y `fetch_url.py` ya aceptan un parámetro `config` opcional en sus helpers internos (`_searxng_url(config=None)`, etc.). Cuando se omite, usan `DEFAULT_CONFIG` global como fallback. El resto de tools continúa usando `DEFAULT_CONFIG` directamente. La migración es progresiva: nuevas tools deberían aceptar `config` como parámetro.
 
 ## 7. Lo que podría mejorar
 

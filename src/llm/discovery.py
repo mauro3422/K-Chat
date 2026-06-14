@@ -9,12 +9,18 @@ import src.llm.verifier as verifier
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-async def get_models(force_refresh: bool = False) -> list[Any]:
+def _is_go_mode(config=None) -> bool:
+    from src.config_loader import DEFAULT_CONFIG
+    cfg = config or DEFAULT_CONFIG
+    return cfg.llm_mode == "go"
+
+
+async def get_models(force_refresh: bool = False, config=None) -> list[Any]:
     """Returns all available models from the API (with in-memory cache)."""
     cached = models.get_cached_models_safe()
     if cached is None or force_refresh:
         try:
-            provider = _get_provider()
+            provider = _get_provider(config=config)
             result = await provider.list_models()
             models.set_cached_models(result)
         except Exception as e:
@@ -26,9 +32,9 @@ async def get_models(force_refresh: bool = False) -> list[Any]:
     return models.get_cached_models_safe() or []
 
 
-async def get_free_models(force_refresh: bool = False) -> list[Any]:
+async def get_free_models(force_refresh: bool = False, config=None) -> list[Any]:
     """Returns only free models (IDs ending in -free)."""
-    all_models = await get_models(force_refresh=force_refresh)
+    all_models = await get_models(force_refresh=force_refresh, config=config)
     free_models = []
     for model in all_models:
         model_id = model if isinstance(model, str) else getattr(model, "id", None)
@@ -37,12 +43,29 @@ async def get_free_models(force_refresh: bool = False) -> list[Any]:
     return free_models
 
 
-async def get_verified_models(force_refresh: bool = False) -> list[str]:
-    """Returns the list of free models that are active and working."""
+async def get_verified_models(force_refresh: bool = False, config=None) -> list[str]:
+    """Returns the list of models that are active and working.
+
+    In Go mode: all models from the API are pre-verified by OpenCode, skip verification.
+    In Zen mode: verify each free model with a test call.
+    """
     cached = models.get_verified_models_safe()
-    if cached is None or force_refresh:
+    if cached is not None and not force_refresh:
+        return cached
+
+    if _is_go_mode(config=config):
         try:
-            free_models = await get_free_models(force_refresh=force_refresh)
+            all_models = await get_models(force_refresh=force_refresh, config=config)
+            all_ids = [m if isinstance(m, str) else getattr(m, "id", "") for m in all_models]
+            all_ids = [mid for mid in all_ids if mid]
+            models.set_verified_models(all_ids)
+            logger.info("Go mode: all %d models trusted as verified", len(all_ids))
+        except Exception as e:
+            logger.error("Error fetching Go models: %s", e)
+            models.set_verified_models([models.FALLBACK_MODEL])
+    else:
+        try:
+            free_models = await get_free_models(force_refresh=force_refresh, config=config)
             verified: list[str] = []
 
             model_ids = [m if isinstance(m, str) else getattr(m, "id", "") for m in free_models]
@@ -59,10 +82,12 @@ async def get_verified_models(force_refresh: bool = False) -> list[str]:
                 if isinstance(res, str):
                     verified.append(res)
             models.set_verified_models(verified)
+            logger.info("Zen mode: verified %d/%d free models", len(verified), len(model_ids))
         except Exception as e:
-            logger.error("Error verifying models: %s", e)
+            logger.error("Error verifying Zen models: %s", e)
             cached = models.get_verified_models_safe()
             if cached is not None:
                 return cached
             models.set_verified_models([models.FALLBACK_MODEL])
+
     return models.get_verified_models_safe() or []

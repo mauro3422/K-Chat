@@ -1,6 +1,6 @@
 from typing import Any, Protocol
 
-from src.memory.repos.message_repository import MessageRecord
+from src.memory.types import MessageRecord
 
 
 class MessageRepositoryProtocol(Protocol):

@@ -1,4 +1,6 @@
 > ⚠️ This document may lag behind the current version. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/MODULES.md](MODULES.md) for the latest.
+>
+> **Last updated:** 2026-06-14 — Verified: backend-only changes (ServiceException, MessageRecord, OrchestratorDeps, DEFAULT_CONFIG DI) do not affect frontend architecture.
 
 # Arquitectura Frontend — K-Chat
 

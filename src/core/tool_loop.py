@@ -1,16 +1,17 @@
 import logging
 import json
-from datetime import datetime
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable, Awaitable
 from dataclasses import dataclass
-from typing import Any, Callable
+from datetime import datetime
+from typing import Any
 
-from src.constants import MAX_TOOL_TURNS, TOOL_OUTPUT_CHUNK_SIZE
+from src.constants import max_tool_turns
 from src.core.debug_info import DebugInfo
 from src.memory.repos import Repositories
 from src.core.history_contract import HistoryMessage
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class _ToolLoopContext:
@@ -25,10 +26,44 @@ class _ToolLoopContext:
     run_parallel_tools_fn: Callable[..., Any] | None = None
     tool_map: dict[str, Any] | None = None
     repos: 'Repositories | None' = None
-    max_turns: int = MAX_TOOL_TURNS
+    max_turns: int = max_tool_turns()
     llm_chat_fn: Callable[..., Any] | None = None
     llm_chat_stream_fn: Callable[..., Any] | None = None
     tool_defs: list[dict[str, Any]] | None = None
+
+
+# ── helpers ──────────────────────────────────────────────────────
+
+
+def _build_ctx(
+    history: list[dict[str, Any]],
+    model: str,
+    session_id: str | None,
+    tagged: bool,
+    debug: DebugInfo | None,
+    phases_output: list[dict[str, Any]] | None,
+    used_tools: list[str],
+    tool_detail: list[dict[str, Any]],
+    run_parallel_tools_fn: Any,
+    tool_map: dict[str, Any],
+    max_turns: int,
+    repos: 'Repositories | None',
+    llm_chat_fn: Callable[..., Any] | None,
+    llm_chat_stream_fn: Callable[..., Any] | None,
+    tool_defs: list[dict[str, Any]] | None,
+) -> _ToolLoopContext:
+    import src.llm.client as llm_client
+    import src.tools as tools
+
+    return _ToolLoopContext(
+        history=history, model=model, session_id=session_id, tagged=tagged,
+        debug=debug, phases_output=phases_output, used_tools=used_tools,
+        tool_detail=tool_detail, run_parallel_tools_fn=run_parallel_tools_fn,
+        tool_map=tool_map, max_turns=max_turns, repos=repos,
+        llm_chat_fn=llm_chat_fn or llm_client.chat,
+        llm_chat_stream_fn=llm_chat_stream_fn or llm_client.chat_stream,
+        tool_defs=tool_defs or tools.get_default_registry().tools_openai,
+    )
 
 
 def _build_tool_calls_list(tool_calls_out: list[Any]) -> list[dict[str, Any]]:
@@ -80,6 +115,15 @@ def _append_phase(phases_output: list[dict[str, Any]] | None, reasoning: str, to
         })
 
 
+def _set_debug(ctx: _ToolLoopContext, reasoning: str) -> None:
+    if ctx.debug is not None:
+        ctx.debug.tool_calls = ctx.tool_detail
+        ctx.debug.reasoning = reasoning
+
+
+# ── tool execution (shared) ──────────────────────────────────────
+
+
 async def _execute_tools(
     ctx: _ToolLoopContext,
     turn: int,
@@ -104,39 +148,24 @@ async def _execute_tools(
     phase_tool_ids.clear()
 
 
-async def run_tool_loop_streaming(
-    history: list[dict[str, Any]],
-    model: str,
-    session_id: str | None,
-    tagged: bool,
-    debug: DebugInfo | None,
-    phases_output: list[dict[str, Any]] | None,
-    used_tools: list[str],
-    tool_detail: list[dict[str, Any]],
-    run_parallel_tools_fn: Any,
-    tool_map: dict[str, Any],
-    max_turns: int = MAX_TOOL_TURNS,
-    repos: 'Repositories | None' = None,
-    llm_chat_fn: Callable[..., Any] | None = None,
-    llm_chat_stream_fn: Callable[..., Any] | None = None,
-    tool_defs: list[dict[str, Any]] | None = None,
-) -> AsyncGenerator[Any, None]:
-    """Tool loop for streaming path. Yields NDJSON events."""
-    import src.llm.client as llm_client
-    import src.tools as tools
+# ── core streaming loop (internal, unifies yielԁ mechanism) ──────
 
-    ctx = _ToolLoopContext(
-        history=history, model=model, session_id=session_id, tagged=tagged,
-        debug=debug, phases_output=phases_output, used_tools=used_tools,
-        tool_detail=tool_detail, run_parallel_tools_fn=run_parallel_tools_fn,
-        tool_map=tool_map, max_turns=max_turns, repos=repos,
-        llm_chat_fn=llm_chat_fn or llm_client.chat,
-        llm_chat_stream_fn=llm_chat_stream_fn or llm_client.chat_stream,
-        tool_defs=tool_defs or tools.get_default_registry().tools_openai,
-    )
+
+async def _run_tool_loop(
+    ctx: _ToolLoopContext,
+    *,
+    yield_event: Callable[[Any], Awaitable[None]] | None = None,
+) -> AsyncGenerator[Any, None]:
+    """Core streaming tool loop.
+
+    Yields events directly. When *yield_event* is provided, each event
+    is also dispatched through the callback instead of (or in addition
+    to) the generator yield — this lets the sync path intercept events
+    without changing the loop structure.
+    """
     turn = 0
-    phase_tool_ids = []
-    total_reasoning = []
+    phase_tool_ids: list[str] = []
+    total_reasoning: list[str] = []
     prev_content: str | None = None
 
     while turn < ctx.max_turns:
@@ -148,15 +177,19 @@ async def run_tool_loop_streaming(
         try:
             async for tipo, token in ctx.llm_chat_stream_fn(
                 ctx.history, ctx.model, reasoning_output=reasoning_out, tagged=True,
-                tools=ctx.tool_defs, tool_calls_output=tool_calls_out, debug=ctx.debug
+                tools=ctx.tool_defs, tool_calls_output=tool_calls_out, debug=ctx.debug,
             ):
                 accumulated.append((tipo, token))
                 if tipo == "reasoning":
                     total_reasoning.append(token)
                     phase_reasoning += token
                 if ctx.tagged:
+                    if yield_event:
+                        await yield_event((tipo, token))
                     yield (tipo, token)
                 elif tipo == "content":
+                    if yield_event:
+                        await yield_event(token)
                     yield token
         except Exception as e:
             logger.error("Error reading from stream: %s", e)
@@ -171,24 +204,53 @@ async def run_tool_loop_streaming(
             break
 
         prev_content = curr_content
-        has_tool_call = bool(tool_calls_out)
 
-        if has_tool_call:
+        if tool_calls_out:
             turn += 1
             assistant_content = "".join(t[1] for t in accumulated if t[0] == "content") or None
             async for event in _execute_tools(ctx, turn, phase_tool_ids, tool_calls_out, assistant_content, phase_reasoning):
+                if yield_event:
+                    await yield_event(event)
                 yield event
             phase_reasoning = ""
             continue
-        else:
-            final_content = "".join(t[1] for t in accumulated if t[0] == "content") or ""
-            if phase_reasoning or final_content:
-                _append_phase(ctx.phases_output, phase_reasoning, [], final_content)
-            break
 
-    if ctx.debug is not None:
-        ctx.debug.tool_calls = ctx.tool_detail
-        ctx.debug.reasoning = "".join(total_reasoning)
+        final_content = "".join(t[1] for t in accumulated if t[0] == "content") or ""
+        if phase_reasoning or final_content:
+            _append_phase(ctx.phases_output, phase_reasoning, [], final_content)
+        break
+
+    _set_debug(ctx, "".join(total_reasoning))
+
+
+# ── public API ────────────────────────────────────────────────────
+
+
+async def run_tool_loop_streaming(
+    history: list[dict[str, Any]],
+    model: str,
+    session_id: str | None,
+    tagged: bool,
+    debug: DebugInfo | None,
+    phases_output: list[dict[str, Any]] | None,
+    used_tools: list[str],
+    tool_detail: list[dict[str, Any]],
+    run_parallel_tools_fn: Any,
+    tool_map: dict[str, Any],
+    max_turns: int = max_tool_turns(),
+    repos: 'Repositories | None' = None,
+    llm_chat_fn: Callable[..., Any] | None = None,
+    llm_chat_stream_fn: Callable[..., Any] | None = None,
+    tool_defs: list[dict[str, Any]] | None = None,
+) -> AsyncGenerator[Any, None]:
+    """Tool loop for streaming path. Yields NDJSON events."""
+    ctx = _build_ctx(
+        history, model, session_id, tagged, debug, phases_output,
+        used_tools, tool_detail, run_parallel_tools_fn, tool_map,
+        max_turns, repos, llm_chat_fn, llm_chat_stream_fn, tool_defs,
+    )
+    async for event in _run_tool_loop(ctx):
+        yield event
 
 
 async def run_tool_loop_sync(
@@ -202,78 +264,42 @@ async def run_tool_loop_sync(
     tool_detail: list[dict[str, Any]],
     run_parallel_tools_fn: Any,
     tool_map: dict[str, Any],
-    max_turns: int = MAX_TOOL_TURNS,
+    max_turns: int = max_tool_turns(),
     repos: 'Repositories | None' = None,
     llm_chat_fn: Callable[..., Any] | None = None,
     llm_chat_stream_fn: Callable[..., Any] | None = None,
     tool_defs: list[dict[str, Any]] | None = None,
 ) -> AsyncGenerator[Any, None]:
-    """Tool loop for synchronous path (tests). Yields NDJSON events."""
-    import src.llm.client as llm_client
-    import src.tools as tools
+    """Tool loop for synchronous path (tests). Yields NDJSON events.
 
-    ctx = _ToolLoopContext(
-        history=history, model=model, session_id=session_id, tagged=tagged,
-        debug=debug, phases_output=phases_output, used_tools=used_tools,
-        tool_detail=tool_detail, run_parallel_tools_fn=run_parallel_tools_fn,
-        tool_map=tool_map, max_turns=max_turns, repos=repos,
-        llm_chat_fn=llm_chat_fn or llm_client.chat,
-        llm_chat_stream_fn=llm_chat_stream_fn or llm_client.chat_stream,
-        tool_defs=tool_defs or tools.get_default_registry().tools_openai,
+    Delegates to the shared streaming loop (``_run_tool_loop``) and adds
+    sync‑specific post‑processing: final assistant message persistence and
+    *used_tools* logging.
+
+    ``max_turns`` is interpreted as the maximum number of *tool‑call* turns
+    (matching the legacy sync behaviour) — one extra LLM call is made for the
+    final assistant response.
+    """
+    ctx = _build_ctx(
+        history, model, session_id, tagged, debug, phases_output,
+        used_tools, tool_detail, run_parallel_tools_fn, tool_map,
+        max_turns + 1, repos, llm_chat_fn, llm_chat_stream_fn, tool_defs,
     )
-    turn = 0
-    phase_reasoning = ""
-    phase_tool_ids = []
 
-    result = await ctx.llm_chat_fn(ctx.history, ctx.model, tools=ctx.tool_defs, debug=ctx.debug)
-    while result.finish_reason == "tool_calls" and turn < ctx.max_turns:
-        turn += 1
-        rc = getattr(result.message, 'reasoning_content', None)
-        if rc and ctx.tagged:
-            yield ("reasoning", rc)
-            phase_reasoning += rc
-        if result.message.content:
-            interim = result.message.content
-            if ctx.tagged:
-                yield ("content", interim)
-            phase_reasoning += interim
-
-        tool_calls = result.message.tool_calls or []
-        async for event in _execute_tools(ctx, turn, phase_tool_ids, tool_calls, result.message.content, phase_reasoning):
-            yield event
-
-        phase_reasoning = ""
-        result = await ctx.llm_chat_fn(ctx.history, ctx.model, tools=ctx.tool_defs)
+    async for event in _run_tool_loop(ctx):
+        yield event
 
     if ctx.used_tools:
         logger.info("Using: %s", ", ".join(ctx.used_tools))
 
-    final_reasoning = getattr(result.message, 'reasoning_content', None) or ""
-    content_str = ""
-    if result.message.content:
-        content_str = result.message.content
-        if final_reasoning and ctx.tagged:
-            yield ("reasoning", final_reasoning)
-            _append_phase(ctx.phases_output, final_reasoning, [], content_str)
-        for i in range(0, len(content_str), TOOL_OUTPUT_CHUNK_SIZE):
-            token = content_str[i:i + TOOL_OUTPUT_CHUNK_SIZE]
-            if ctx.tagged:
-                yield ("content", token)
-            else:
-                yield token
-    else:
-        reasoning_out: list[str] = []
-        async for item in ctx.llm_chat_stream_fn(ctx.history, ctx.model, reasoning_output=reasoning_out, tagged=ctx.tagged):
-            if ctx.tagged:
-                tipo, token = item
-                yield (tipo, token)
-            else:
-                yield item
-        final_reasoning = "".join(reasoning_out)
+    final_content = ""
+    if ctx.phases_output:
+        last_phase = ctx.phases_output[-1]
+        final_content = last_phase.get("content", "") or ""
 
     ctx.history.append(HistoryMessage(
         role="assistant",
-        content=content_str,
+        content=final_content or None,
         tool_calls=[],
         created_at=datetime.now().isoformat()
     ))
@@ -281,11 +307,7 @@ async def run_tool_loop_sync(
         await ctx.repos.messages.save(
             session_id=ctx.session_id,
             role="assistant",
-            content=content_str,
+            content=final_content or None,
             model=ctx.model,
             tool_calls="[]",
         )
-
-    if ctx.debug is not None:
-        ctx.debug.tool_calls = ctx.tool_detail
-        ctx.debug.reasoning = final_reasoning

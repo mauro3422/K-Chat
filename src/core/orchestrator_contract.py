@@ -1,46 +1,133 @@
-"""Contracts for orchestrator dependency injection."""
+"""Contracts for orchestrator dependency injection.
+
+Split into focused dependency groups:
+- ``LLMDeps``       — model selection, client functions, telemetry
+- ``ToolDeps``      — tool registry, execution service
+- ``StorageDeps``   — repositories, history service, compression
+- ``RequestStateDeps`` — per-request state (session, debug, background tasks)
+
+``OrchestratorDeps`` remains as a backward-compatible facade that composes
+all four groups.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from src.memory.repos import Repositories
 from src.tools.registry import ToolRegistry
 from src.core.debug_info import DebugInfo
 
-# Type hinting for services to avoid circular imports if any, 
-# although we'll use proper imports here as they are in a sub-package.
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from src.core.services.history_service import HistoryService
     from src.core.services.llm_service import LLMService
     from src.core.services.tool_execution_service import ToolExecutionService
     from src.core.services.telemetry_service import TelemetryService
 
-@dataclass(slots=True)
-class OrchestratorDeps:
-    """Optional dependency bundle for chat_stream orchestration."""
 
-    repos: Repositories | None = None
+# ── Focused dependency groups ──────────────────────────────────────────────
+
+
+@dataclass(slots=True)
+class LLMDeps:
+    """LLM-related dependencies: model selection, client functions, telemetry."""
     default_model_fn: Callable[[], str] | None = None
     llm_chat_fn: Callable[..., Any] | None = None
     llm_chat_stream_fn: Callable[..., Any] | None = None
-    compress_fn: Callable[[list[dict[str, Any]], str], None] | None = None
-    should_compress_fn: Callable[[list[dict[str, Any]]], bool] | None = None
-    tool_registry: ToolRegistry | None = None  # NEW: injectable tool registry
-
-    # --- NEW: Service-oriented architecture ---
-    history_service: HistoryService | None = None
     llm_service: LLMService | None = None
-    tool_service: ToolExecutionService | None = None
     telemetry_service: TelemetryService | None = None
 
-    # --- Per-request state (extracted from chat_stream positional params) ---
+
+@dataclass(slots=True)
+class ToolDeps:
+    """Tool-related dependencies: registry and execution service."""
+    tool_registry: ToolRegistry | None = None
+    tool_service: ToolExecutionService | None = None
+
+
+@dataclass(slots=True)
+class StorageDeps:
+    """Storage/history dependencies: repos, history service, compression."""
+    repos: Repositories | None = None
+    history_service: HistoryService | None = None
+    compress_fn: Callable[[list[dict[str, Any]], str], None] | None = None
+    should_compress_fn: Callable[[list[dict[str, Any]]], bool] | None = None
+
+
+@dataclass(slots=True)
+class RequestStateDeps:
+    """Per-request state: session metadata, debug info, background tasks."""
     session_id: str | None = None
     tagged: bool = False
     streaming: bool = True
     debug: DebugInfo | None = None
     phases_output: list[dict[str, Any]] = field(default_factory=list)
     background_tasks: Any | None = None
+
+
+# ── Field → sub-group mapping (used by OrchestratorDeps delegation) ────────
+
+_FIELD_MAP: dict[str, str] = {
+    "default_model_fn": "llm",
+    "llm_chat_fn": "llm",
+    "llm_chat_stream_fn": "llm",
+    "llm_service": "llm",
+    "telemetry_service": "llm",
+    "tool_registry": "tools",
+    "tool_service": "tools",
+    "repos": "storage",
+    "history_service": "storage",
+    "compress_fn": "storage",
+    "should_compress_fn": "storage",
+    "session_id": "state",
+    "tagged": "state",
+    "streaming": "state",
+    "debug": "state",
+    "phases_output": "state",
+    "background_tasks": "state",
+}
+
+
+# ── Backward-compatible facade ─────────────────────────────────────────────
+
+
+class OrchestratorDeps:
+    """Backward-compatible facade that composes the four dependency groups.
+
+    All original fields are accessible as plain attributes (e.g. ``deps.repos``,
+    ``deps.session_id``). New code can also access sub-groups directly via
+    ``deps.llm``, ``deps.tools``, ``deps.storage``, ``deps.state``.
+
+    Accepts the same keyword arguments as before for full backward compatibility.
+    """
+
+    __slots__ = ("llm", "tools", "storage", "state")
+
+    def __init__(self, **kwargs: Any) -> None:
+        object.__setattr__(self, "llm", LLMDeps())
+        object.__setattr__(self, "tools", ToolDeps())
+        object.__setattr__(self, "storage", StorageDeps())
+        object.__setattr__(self, "state", RequestStateDeps())
+        for k, v in kwargs.items():
+            group = _FIELD_MAP.get(k)
+            if group:
+                setattr(getattr(self, group), k, v)
+            else:
+                raise TypeError(
+                    f"OrchestratorDeps got unexpected keyword argument {k!r}"
+                )
+
+    def __getattr__(self, name: str) -> Any:
+        group = _FIELD_MAP.get(name)
+        if group:
+            return getattr(getattr(self, group), name)
+        raise AttributeError(f"OrchestratorDeps has no attribute {name!r}")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        group = _FIELD_MAP.get(name)
+        if group:
+            setattr(getattr(self, group), name, value)
+        else:
+            super().__setattr__(name, value)

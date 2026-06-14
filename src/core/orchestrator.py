@@ -10,7 +10,9 @@ from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
 from src.core.debug_info import DebugInfo
 from src.memory.repos import Repositories, get_repos
-from src.core.orchestrator_contract import OrchestratorDeps
+from src.core.orchestrator_contract import (
+    OrchestratorDeps, LLMDeps, ToolDeps, StorageDeps, RequestStateDeps,
+)
 from src.tools.registry import ToolRegistry
 import src.tools as tools
 from src.llm.selector import get_default_model
@@ -57,9 +59,21 @@ async def chat_stream(
     llm_chat_fn: Callable[..., Any] | None = None,
     llm_chat_stream_fn: Callable[..., Any] | None = None,
     deps: OrchestratorDeps | None = None,
+    llm: LLMDeps | None = None,
+    tools: ToolDeps | None = None,
+    storage: StorageDeps | None = None,
+    state: RequestStateDeps | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Same as chat() but yields tokens. history must be a mutable list."""
     _deps = deps or OrchestratorDeps()
+    if llm is not None:
+        _deps.llm = llm
+    if tools is not None:
+        _deps.tools = tools
+    if storage is not None:
+        _deps.storage = storage
+    if state is not None:
+        _deps.state = state
     # Backward-compat: positional/keyword params override deps defaults
     if repos is not None:
         _deps.repos = repos

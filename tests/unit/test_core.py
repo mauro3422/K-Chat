@@ -3,15 +3,29 @@ from unittest.mock import patch, AsyncMock, MagicMock
 import pytest
 import json
 from datetime import datetime
+from types import SimpleNamespace
 
 from src.core.debug_info import DebugInfo
 from src.core.history_contract import HistoryMessage
 
+
+def _tool_call(tc_id: str, name: str, args: dict[str, object]) -> SimpleNamespace:
+    tc = SimpleNamespace()
+    tc.id = tc_id
+    tc.function = SimpleNamespace()
+    tc.function.name = name
+    tc.function.arguments = json.dumps(args)
+    return tc
+
+
 @pytest.mark.anyio
-@patch("src.llm.client.chat", new_callable=AsyncMock)
-async def test_no_tools(mock_chat, make_choice):
+@patch("src.llm.client.chat_stream")
+async def test_no_tools(mock_chat_stream):
     """Simple text response, no tools needed."""
-    mock_chat.return_value = make_choice(content="¡Hola!")
+    async def _stream(messages, model, **kwargs):
+        yield ("content", "¡Hola!")
+
+    mock_chat_stream.side_effect = _stream
     from src.core.orchestrator import chat_stream
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
@@ -22,32 +36,36 @@ async def test_no_tools(mock_chat, make_choice):
     # Final assistant message appended to history
     assert history[-1].role == "assistant"
     assert history[-1].content == "¡Hola!"
-    mock_chat.assert_called_once()
+    mock_chat_stream.assert_called_once()
 
 
 @pytest.mark.anyio
-@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.llm.client.chat_stream")
 @patch("src.tools.get_default_registry")
-async def test_tool_call_then_response(mock_get_reg, mock_chat, make_choice):
+async def test_tool_call_then_response(mock_get_reg, mock_chat_stream):
     """Model calls a tool, then responds."""
     mock_reg = MagicMock()
     mock_reg.tool_map = {"web_search": AsyncMock(return_value="ok result")}
     mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
     mock_get_reg.return_value = mock_reg
 
-    from src.core.orchestrator import chat_stream
+    call_count = [0]
 
-    # First call: tool_calls
-    mock_chat.side_effect = [
-        make_choice(
-            content="Let me search...",
-            finish_reason="tool_calls",
-            tool_calls=[{"id": "c1", "name": "web_search", "args": {"query": "test"}}],
-            reasoning_content="I need info",
-        ),
-        # Second call after tool result: final answer
-        make_choice(content="Aquí está la info.", reasoning_content="Done thinking"),
-    ]
+    async def _stream(messages, model, **kwargs):
+        tool_calls_output = kwargs.get("tool_calls_output")
+        idx = call_count[0]
+        call_count[0] += 1
+        if idx == 0:
+            if tool_calls_output is not None:
+                tool_calls_output[:] = [_tool_call("c1", "web_search", {"query": "test"})]
+            yield ("reasoning", "I need info")
+            yield ("content", "Let me search...")
+        else:
+            yield ("reasoning", "Done thinking")
+            yield ("content", "Aquí está la info.")
+
+    mock_chat_stream.side_effect = _stream
+    from src.core.orchestrator import chat_stream
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     debug = DebugInfo()
@@ -76,27 +94,31 @@ async def test_tool_call_then_response(mock_get_reg, mock_chat, make_choice):
 
 
 @pytest.mark.anyio
-@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.llm.client.chat_stream")
 @patch("src.tools.get_default_registry")
-async def test_tool_error(mock_get_reg, mock_chat, make_choice):
+async def test_tool_error(mock_get_reg, mock_chat_stream):
     """Tool raises an exception."""
     mock_reg = MagicMock()
-    # Use a real side effect that raises
     async def failing_run(**kwargs):
         raise ValueError("API error")
     mock_reg.tool_map = {"web_search": failing_run}
     mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
     mock_get_reg.return_value = mock_reg
 
-    from src.core.orchestrator import chat_stream
+    call_count = [0]
 
-    mock_chat.side_effect = [
-        make_choice(
-            finish_reason="tool_calls",
-            tool_calls=[{"id": "c1", "name": "web_search", "args": {"query": "test"}}],
-        ),
-        make_choice(content="Lo siento, hubo un error."),
-    ]
+    async def _stream(messages, model, **kwargs):
+        tool_calls_output = kwargs.get("tool_calls_output")
+        idx = call_count[0]
+        call_count[0] += 1
+        if idx == 0:
+            if tool_calls_output is not None:
+                tool_calls_output[:] = [_tool_call("c1", "web_search", {"query": "test"})]
+        else:
+            yield ("content", "Lo siento, hubo un error.")
+
+    mock_chat_stream.side_effect = _stream
+    from src.core.orchestrator import chat_stream
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
@@ -107,9 +129,9 @@ async def test_tool_error(mock_get_reg, mock_chat, make_choice):
 
 
 @pytest.mark.anyio
-@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.llm.client.chat_stream")
 @patch("src.tools.get_default_registry")
-async def test_session_id_propagates_to_tools(mock_get_reg, mock_chat, make_choice):
+async def test_session_id_propagates_to_tools(mock_get_reg, mock_chat_stream):
     """session_id is passed as _session_id to tools."""
     from src.api.session import ensure_session
     await ensure_session("ses-123")
@@ -123,15 +145,20 @@ async def test_session_id_propagates_to_tools(mock_get_reg, mock_chat, make_choi
     mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
     mock_get_reg.return_value = mock_reg
 
-    from src.core.orchestrator import chat_stream
+    call_count = [0]
 
-    mock_chat.side_effect = [
-        make_choice(
-            finish_reason="tool_calls",
-            tool_calls=[{"id": "c1", "name": "web_search", "args": {"query": "x"}}],
-        ),
-        make_choice(content="done"),
-    ]
+    async def _stream(messages, model, **kwargs):
+        tool_calls_output = kwargs.get("tool_calls_output")
+        idx = call_count[0]
+        call_count[0] += 1
+        if idx == 0:
+            if tool_calls_output is not None:
+                tool_calls_output[:] = [_tool_call("c1", "web_search", {"query": "x"})]
+        else:
+            yield ("content", "done")
+
+    mock_chat_stream.side_effect = _stream
+    from src.core.orchestrator import chat_stream
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
@@ -141,9 +168,9 @@ async def test_session_id_propagates_to_tools(mock_get_reg, mock_chat, make_choi
 
 
 @pytest.mark.anyio
-@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.llm.client.chat_stream")
 @patch("src.tools.get_default_registry")
-async def test_multiple_tool_calls_same_turn(mock_get_reg, mock_chat, make_choice):
+async def test_multiple_tool_calls_same_turn(mock_get_reg, mock_chat_stream):
     """Multiple tools called in a single turn."""
     from src.api.session import ensure_session
     await ensure_session("ses-1")
@@ -157,19 +184,24 @@ async def test_multiple_tool_calls_same_turn(mock_get_reg, mock_chat, make_choic
     mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
     mock_get_reg.return_value = mock_reg
 
-    from src.core.orchestrator import chat_stream
+    call_count = [0]
 
-    mock_chat.side_effect = [
-        make_choice(
-            finish_reason="tool_calls",
-            tool_calls=[
-                {"id": "c1", "name": "web_search", "args": {"query": "test1"}},
-                {"id": "c2", "name": "web_search", "args": {"query": "test2"}},
-                {"id": "c3", "name": "web_search", "args": {"query": "test3"}},
-            ],
-        ),
-        make_choice(content="Resultados combinados."),
-    ]
+    async def _stream(messages, model, **kwargs):
+        tool_calls_output = kwargs.get("tool_calls_output")
+        idx = call_count[0]
+        call_count[0] += 1
+        if idx == 0:
+            if tool_calls_output is not None:
+                tool_calls_output[:] = [
+                    _tool_call("c1", "web_search", {"query": "test1"}),
+                    _tool_call("c2", "web_search", {"query": "test2"}),
+                    _tool_call("c3", "web_search", {"query": "test3"}),
+                ]
+        else:
+            yield ("content", "Resultados combinados.")
+
+    mock_chat_stream.side_effect = _stream
+    from src.core.orchestrator import chat_stream
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
@@ -184,9 +216,9 @@ async def test_multiple_tool_calls_same_turn(mock_get_reg, mock_chat, make_choic
 
 
 @pytest.mark.anyio
-@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.llm.client.chat_stream")
 @patch("src.tools.get_default_registry")
-async def test_mixed_tool_results(mock_get_reg, mock_chat, make_choice):
+async def test_mixed_tool_results(mock_get_reg, mock_chat_stream):
     """One tool succeeds, one fails in the same turn."""
     from src.api.session import ensure_session
     await ensure_session("ses-2")
@@ -202,18 +234,23 @@ async def test_mixed_tool_results(mock_get_reg, mock_chat, make_choice):
     mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
     mock_get_reg.return_value = mock_reg
 
-    from src.core.orchestrator import chat_stream
+    inner_count = [0]
 
-    mock_chat.side_effect = [
-        make_choice(
-            finish_reason="tool_calls",
-            tool_calls=[
-                {"id": "c1", "name": "web_search", "args": {"query": "a"}},
-                {"id": "c2", "name": "web_search", "args": {"query": "b"}},
-            ],
-        ),
-        make_choice(content="done"),
-    ]
+    async def _stream(messages, model, **kwargs):
+        tool_calls_output = kwargs.get("tool_calls_output")
+        idx = inner_count[0]
+        inner_count[0] += 1
+        if idx == 0:
+            if tool_calls_output is not None:
+                tool_calls_output[:] = [
+                    _tool_call("c1", "web_search", {"query": "a"}),
+                    _tool_call("c2", "web_search", {"query": "b"}),
+                ]
+        else:
+            yield ("content", "done")
+
+    mock_chat_stream.side_effect = _stream
+    from src.core.orchestrator import chat_stream
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
@@ -227,9 +264,9 @@ async def test_mixed_tool_results(mock_get_reg, mock_chat, make_choice):
 
 
 @pytest.mark.anyio
-@patch("src.llm.client.chat", new_callable=AsyncMock)
+@patch("src.llm.client.chat_stream")
 @patch("src.tools.get_default_registry")
-async def test_tool_result_truncation(mock_get_reg, mock_chat, make_choice):
+async def test_tool_result_truncation(mock_get_reg, mock_chat_stream):
     """Tool result >30000 chars gets truncated."""
     from src.api.session import ensure_session
     await ensure_session("ses-3")
@@ -240,15 +277,20 @@ async def test_tool_result_truncation(mock_get_reg, mock_chat, make_choice):
     mock_reg.tools_openai = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
     mock_get_reg.return_value = mock_reg
 
-    from src.core.orchestrator import chat_stream
+    inner_count = [0]
 
-    mock_chat.side_effect = [
-        make_choice(
-            finish_reason="tool_calls",
-            tool_calls=[{"id": "c1", "name": "web_search", "args": {"query": "test"}}],
-        ),
-        make_choice(content="done"),
-    ]
+    async def _stream(messages, model, **kwargs):
+        tool_calls_output = kwargs.get("tool_calls_output")
+        idx = inner_count[0]
+        inner_count[0] += 1
+        if idx == 0:
+            if tool_calls_output is not None:
+                tool_calls_output[:] = [_tool_call("c1", "web_search", {"query": "test"})]
+        else:
+            yield ("content", "done")
+
+    mock_chat_stream.side_effect = _stream
+    from src.core.orchestrator import chat_stream
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
@@ -261,12 +303,15 @@ async def test_tool_result_truncation(mock_get_reg, mock_chat, make_choice):
 
 
 @pytest.mark.anyio
-@patch("src.llm.client.chat", new_callable=AsyncMock)
-async def test_empty_message(mock_chat, make_choice):
+@patch("src.llm.client.chat_stream")
+async def test_empty_message(mock_chat_stream):
     """Empty message still works."""
+    async def _stream(messages, model, **kwargs):
+        yield ("content", "OK")
+
+    mock_chat_stream.side_effect = _stream
     from src.core.orchestrator import chat_stream
 
-    mock_chat.return_value = make_choice(content="OK")
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     tokens = [t async for t in chat_stream("", history, model="test-model", tagged=True, streaming=False)]
     contents = [t[1] for t in tokens if t[0] == "content"]

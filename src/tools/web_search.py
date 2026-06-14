@@ -89,6 +89,7 @@ async def _search_with_retry(
     timeout: float,
     _retries: int,
     *,
+    config=None,
     categories: str = "general",
     page: int = 1,
     safe_search: int = 0,
@@ -109,7 +110,7 @@ async def _search_with_retry(
     async with httpx.AsyncClient() as client:
         for attempt in range(_retries + 1):
             try:
-                resp = await client.get(f"{_searxng_url()}/search", params=params, timeout=timeout)
+                resp = await client.get(f"{_searxng_url(config=config)}/search", params=params, timeout=timeout)
                 resp.raise_for_status()
                 return resp.json(), None
             except Exception:
@@ -131,10 +132,11 @@ async def _search_and_format_results(
     page: int,
     safe_search: int,
     _retries: int,
+    config=None,
 ) -> str:
     data, error = await _search_with_retry(
         query, language, 15.0, _retries,
-        categories=categories, page=page, safe_search=safe_search, time_range=time_range,
+        config=config, categories=categories, page=page, safe_search=safe_search, time_range=time_range,
     )
     if error or data is None:
         return error or "Search failed."
@@ -171,7 +173,7 @@ async def _search_and_format_results(
     return "\n".join(out).strip()
 
 
-async def run(**kwargs: Any) -> str:
+async def run(config=None, **kwargs: Any) -> str:
     query = kwargs.get("query") or kwargs.get("q") or kwargs.get("search_query", "")
     max_results = int(kwargs.get("max_results", kwargs.get("max", kwargs.get("limit", 3))))
     categories = kwargs.get("categories") or kwargs.get("category", "general")
@@ -195,6 +197,6 @@ async def run(**kwargs: Any) -> str:
     page = max(page, 1)
 
     result = await _search_and_format_results(
-        query, max_results, categories, language, time_range, page, safe_search, _retries,
+        query, max_results, categories, language, time_range, page, safe_search, _retries, config=config,
     )
     return result

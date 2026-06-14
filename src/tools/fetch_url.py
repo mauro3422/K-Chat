@@ -94,8 +94,8 @@ def _skip_ssrf(config=None) -> bool:
     return cfg.testing
 
 
-def _deny_private_ip(url: str) -> str | None:
-    if _skip_ssrf():
+def _deny_private_ip(url: str, config=None) -> str | None:
+    if _skip_ssrf(config=config):
         return None
     hostname = urlparse(url).hostname
     if not hostname:
@@ -121,13 +121,13 @@ async def _do_fetch(url: str) -> httpx.Response:
         return resp
 
 
-def _check_redirect_ssrf(resp: httpx.Response) -> str | None:
+def _check_redirect_ssrf(resp: httpx.Response, config=None) -> str | None:
     for redirect_response in resp.history:
-        redirect_err = _deny_private_ip(str(redirect_response.url))
+        redirect_err = _deny_private_ip(str(redirect_response.url), config=config)
         if redirect_err:
             return redirect_err
     if resp.url:
-        ssrf_err = _deny_private_ip(str(resp.url))
+        ssrf_err = _deny_private_ip(str(resp.url), config=config)
         if ssrf_err:
             return ssrf_err
     return None
@@ -156,9 +156,9 @@ def _format_output(url: str, status_code: int, title: str, text: str, max_chars:
     return "\n".join(out)
 
 
-async def _try_fetch(url: str, max_chars: int) -> str:
+async def _try_fetch(url: str, max_chars: int, config=None) -> str:
     resp = await _do_fetch(url)
-    ssrf_err = _check_redirect_ssrf(resp)
+    ssrf_err = _check_redirect_ssrf(resp, config=config)
     if ssrf_err:
         return ssrf_err
     validate_err = _validate_response(url, resp, max_chars)
@@ -171,10 +171,10 @@ async def _try_fetch(url: str, max_chars: int) -> str:
     return _format_output(url, resp.status_code, title, text, max_chars)
 
 
-async def _fetch_with_retry(url: str, max_chars: int, _retries: int, **kwargs: Any) -> str | None:
+async def _fetch_with_retry(url: str, max_chars: int, _retries: int, config=None, **kwargs: Any) -> str | None:
     for attempt in range(_retries + 1):
         try:
-            return await _try_fetch(url, max_chars)
+            return await _try_fetch(url, max_chars, config=config)
         except TimeoutException:
             logger.warning("Timeout fetching %s", url)
             if attempt < _retries:
@@ -197,7 +197,7 @@ async def _fetch_with_retry(url: str, max_chars: int, _retries: int, **kwargs: A
                 return f"[ERROR] Error processing {url}."
 
 
-async def run(**kwargs: Any) -> str | None:
+async def run(config=None, **kwargs: Any) -> str | None:
     url = kwargs.get("url") or kwargs.get("link") or kwargs.get("page_url", "")
     max_chars = int(kwargs.get("max_chars", kwargs.get("max", kwargs.get("max_length", 10000))))
     _retries = int(kwargs.get("_retries", 1))
@@ -214,8 +214,8 @@ async def run(**kwargs: Any) -> str | None:
     elif not url.startswith(("http://", "https://")):
         url = "https://" + url
 
-    ssrf_err = _deny_private_ip(url)
+    ssrf_err = _deny_private_ip(url, config=config)
     if ssrf_err:
         return ssrf_err
 
-    return await _fetch_with_retry(url, max_chars, _retries)
+    return await _fetch_with_retry(url, max_chars, _retries, config=config)

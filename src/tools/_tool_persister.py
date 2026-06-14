@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import Any
 from src.memory.repos import Repositories
-from src.core.history_contract import HistoryMessage
+from src.tools._contract import HistoryMessage
 
 
 async def _persist_tool_results(

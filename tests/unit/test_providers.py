@@ -36,9 +36,9 @@ async def test_get_provider_creates_provider_singleton():
         mock_cls.return_value = mock_instance
         providers._PROVIDER_REGISTRY["test"] = mock_cls
 
-        with patch.object(providers, "DEFAULT_CONFIG") as mock_config:
-            mock_config.llm_provider = "test"
-            result = _get_provider()
+        mock_config = MagicMock()
+        mock_config.llm_provider = "test"
+        result = _get_provider(config=mock_config)
 
         assert result is mock_instance
         assert providers._provider is mock_instance

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Model name constants ────────────────────────────────────────────────
-DEFAULT_MODEL: str = "deepseek-v4-flash-free"
+DEFAULT_MODEL: str = "deepseek-v4-flash"
 SECONDARY_MODEL: str = "big-pickle"
 
 
@@ -15,7 +15,9 @@ SECONDARY_MODEL: str = "big-pickle"
 class Config:
     opencode_zen_api_key: str = ""
     opencode_zen_base_url: str = "https://opencode.ai/zen/v1"
+    opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
     llm_provider: str = "openai"
+    llm_mode: str = "go"
     memory_db_path: str = ""
     searxng_url: str = "http://127.0.0.1:8080"
     host: str = "127.0.0.1"
@@ -46,7 +48,9 @@ def load_config(overrides: dict | None = None) -> Config:
     cfg = Config(
         opencode_zen_api_key=os.getenv("OPENCODE_ZEN_API_KEY", "") or os.getenv("OPENCODE_ZEN_API_KEY_FALLBACK", ""),
         opencode_zen_base_url=os.getenv("OPENCODE_ZEN_BASE_URL", "https://opencode.ai/zen/v1"),
+        opencode_go_base_url=os.getenv("OPENCODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1"),
         llm_provider=os.getenv("LLM_PROVIDER", "openai"),
+        llm_mode=os.getenv("LLM_MODE", "go"),
         memory_db_path=os.getenv("MEMORY_DB_PATH", str(root / "memory" / "kairos_memory.db")),
         searxng_url=os.getenv("SEARXNG_URL", "http://127.0.0.1:8080"),
         host=os.getenv("HOST", "127.0.0.1"),

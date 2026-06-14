@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from dependencies import manage as deps
+from src.api.exceptions import ServiceException
 from src.config_loader import DEFAULT_CONFIG
 from src.memory.schema import init_db
 
@@ -91,6 +92,10 @@ def register_middlewares(app: FastAPI) -> None:
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(ServiceException)
+    def service_exception(request: Request, exc: ServiceException) -> JSONResponse:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
     @app.exception_handler(404)
     def not_found(request: Request, exc: HTTPException) -> JSONResponse:
         return JSONResponse({"detail": "Not found"}, status_code=404)

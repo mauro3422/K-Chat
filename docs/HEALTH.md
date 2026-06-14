@@ -1,4 +1,6 @@
 > ⚠️ This document may lag behind the current version. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/MODULES.md](MODULES.md) for the latest.
+>
+> **Last updated:** 2026-06-14 — Documented: ServiceException (src/api/exceptions.py) replaces HTTPException in API layer; OrchestratorDeps split into 4 sub-dataclasses (LLMDeps/ToolDeps/StorageDeps/RequestStateDeps); MessageRecord canonical type lives in src/memory/types.py; DEFAULT_CONFIG → DI migration in tools and LLM.
 
 # Code Health Analysis
 
@@ -8,7 +10,7 @@ This document analyzes the current codebase against SOLID principles and the pro
 
 | Grade | Area |
 |-------|------|
-| A | Tools auto-registry, widget system, memory schema, migrations, error classification, core orchestrator split, save_message_record() explicit contract, DebugInfo dataclass, direct API domain modules, LLMProvider protocol alignment |
+| A | Tools auto-registry, widget system, memory schema, migrations, error classification, core orchestrator split, OrchestratorDeps → 4 sub-dataclasses (LLMDeps/ToolDeps/StorageDeps/RequestStateDeps), ServiceException in API layer, save_message_record() explicit contract, DebugInfo dataclass, direct API domain modules, LLMProvider protocol alignment |
 | B | Frontend module system, context decoupling |
 | C | — |
 | D | — |
@@ -32,6 +34,7 @@ All P1–P3 items completed. The codebase has been refactored with:
 Split into:
 - `src/core/tool_loop.py` — streaming and sync tool loops
 - `src/core/orchestrator.py` — generator setup, compression, debug (75 lines)
+- `src/core/orchestrator_contract.py` — `OrchestratorDeps` facade split into 4 focused sub-dataclasses: `LLMDeps`, `ToolDeps`, `StorageDeps`, `RequestStateDeps`
 
 ### ~~Issue: `web/routers/chat.py` mixes concerns (103 lines)~~ ✅ Fixed
 
@@ -73,7 +76,7 @@ Both files are now package markers only. The last `_deps` seam was removed after
 
 ### Issue: `save_message_record()` uses an explicit record object
 
-The runtime now writes messages through `save_message_record()` and `MessageRecord`, which removes the old positional-write path.
+The runtime now writes messages through `save_message_record()` and `MessageRecord`, which removes the old positional-write path. `MessageRecord` canonical type lives in `src/memory/types.py`; `src/memory/repos/protocols.py` imports from there rather than from the implementation.
 
 ### Issue: `chat_stream()` takes a `debug: dict` bag
 
@@ -102,6 +105,10 @@ class DebugInfo:
 ### ~~Issue: `src/llm/api_call.py` depends on `src.context`~~ ✅ Fixed
 
 `_update_system_prompt` se mantiene en `client.py`; `api_call.py` solo encapsula la llamada al proveedor.
+
+### In Progress: `DEFAULT_CONFIG` → dependency injection
+
+Tools (`web_search`, `fetch_url`) and LLM modules (`providers`, `discovery`, `retry`) now accept an optional `config` parameter. When provided, it overrides `DEFAULT_CONFIG`. When omitted, the global singleton is used as fallback. This allows tests and alternative configurations to inject custom settings without touching global state.
 
 ### Issue: `src/compressor.py` imports `src.llm.chat` directly
 
@@ -167,6 +174,10 @@ from src.memory.migration_runner import run_pending_migrations
 
 Extracted `StreamError` class and `_classify_error()` to `web/services/chat_stream.py`.
 
+### Change: `ServiceException` replaces `HTTPException` in API layer
+
+`src/api/exceptions.py` defines `ServiceException(status_code, detail)`. Domain modules raise this instead of `HTTPException` to avoid coupling to FastAPI. The web layer (`web/app_factory.py`) translates it via `@app.exception_handler(ServiceException)`, returning `JSONResponse` with the proper status code. This keeps domain logic framework-agnostic.
+
 ### Issue: `except Exception as e` without context
 
 Multiple places catch generic exceptions and only log:
@@ -220,8 +231,13 @@ Both `src/core/__init__.py` and `src/llm/__init__.py` are package markers only. 
 ## Appendix: Dependency Graph (Current)
 
 ```
+src/api/exceptions.py ──→ ServiceException (framework-agnostic)
+              │
+              ▼
+web/app_factory.py ──→ @exception_handler(ServiceException) → JSONResponse
+
 cli.py ──────┐
-             ▼
+              ▼
 web/server.py ──► web/routers/* ──► web/ui_utils.py
              │                       │
              │                       ▼

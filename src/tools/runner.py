@@ -7,9 +7,8 @@ from typing import Any
 from src.tools._rate_limiter import _check_rate_limit
 from src.tools._tool_parser import _parse_tool_call
 from src.tools._tool_persister import _persist_tool_results
-from src.config_loader import DEFAULT_CONFIG
 from src.memory.repos import Repositories
-from src.core.history_contract import HistoryMessage
+from src.tools._contract import HistoryMessage
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -40,12 +39,61 @@ async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], t
     if not tasks:
         return
 
-    # Use asyncio.gather for calling the now-async tool run methods.
     outputs = await asyncio.gather(*tasks)
     for tc, name, tool_result, status in outputs:
         results[tc.id] = (tool_result, status)
         if tagged:
             yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": status}))
+
+
+def _prepare_rate_limiters(session_id: str) -> tuple[bool, str]:
+    """Check rate limits. Returns (ok, message)."""
+    return _check_rate_limit(session_id)
+
+
+async def _yield_tool_error_events(
+    tcs_info: list[tuple[Any, str, dict[str, Any]]],
+    error_msg: str,
+    tagged: bool,
+    session_id: str,
+    turn: int,
+    history: list[dict[str, Any]],
+    tool_detail: list[dict[str, Any]],
+    repos: Repositories,
+) -> AsyncGenerator[Any, None]:
+    """Yield error events for tools that failed (parse error, rate limit)."""
+    tool_call_repo = repos.tool_calls
+    for tc, name, args in tcs_info:
+        display_name = name or "unknown"
+        if tagged:
+            yield ("tool_call", json.dumps({"id": tc.id, "name": display_name, "status": "calling"}))
+            yield ("tool_call", json.dumps({"id": tc.id, "name": display_name, "status": "error"}))
+        if session_id:
+            await tool_call_repo.log(session_id, display_name, json.dumps(args, ensure_ascii=False), "error", turn=turn)
+        history.append(HistoryMessage(
+            role="tool",
+            content=error_msg,
+            tool_call_id=tc.id,
+            created_at=datetime.now().isoformat()
+        ))
+        tool_detail.append({"name": display_name, "args": args, "status": "error", "result_truncated": error_msg[:300]})
+
+
+async def _execute_and_persist_tools(
+    tcs_info: list[tuple[Any, str, dict[str, Any]]],
+    tool_map: dict[str, Any],
+    session_id: str,
+    turn: int,
+    tagged: bool,
+    repos: Repositories,
+    history: list[dict[str, Any]],
+    tool_detail: list[dict[str, Any]],
+) -> AsyncGenerator[Any, None]:
+    """Execute tools in batch and persist results."""
+    results: dict[str, tuple[str, str]] = {}
+    async for event in _execute_tool_batch(tcs_info, tool_map, session_id, tagged, results, repos=repos):
+        yield event
+    await _persist_tool_results(tcs_info, results, session_id, turn, history, tool_detail, repos)
 
 
 async def run_parallel_tools(
@@ -65,22 +113,13 @@ async def run_parallel_tools(
         tool_map = src.tools.get_default_registry().tool_map
 
     tcs_info: list[tuple[Any, str, dict[str, Any]]] = []
-    tool_call_repo = repos.tool_calls
     for tc in tool_calls:
         name, args, error = _parse_tool_call(tc, tool_map)
         if error:
-            if tagged:
-                yield ("tool_call", json.dumps({"id": tc.id, "name": name or "unknown", "status": "calling"}))
-                yield ("tool_call", json.dumps({"id": tc.id, "name": name or "unknown", "status": "error"}))
-            if session_id:
-                await tool_call_repo.log(session_id, name or "unknown", json.dumps(args, ensure_ascii=False), "error", turn=turn)
-            history.append(HistoryMessage(
-                role="tool",
-                content=error,
-                tool_call_id=tc.id,
-                created_at=datetime.now().isoformat()
-            ))
-            tool_detail.append({"name": name or "unknown", "args": args, "status": "error", "result_truncated": error[:300]})
+            async for event in _yield_tool_error_events(
+                [(tc, name, args)], error, tagged, session_id, turn, history, tool_detail, repos
+            ):
+                yield event
             continue
 
         if name not in used_tools:
@@ -90,26 +129,15 @@ async def run_parallel_tools(
             yield ("tool_call", json.dumps({"id": tc.id, "name": name, "args": args, "status": "calling"}))
             phase_tool_ids.append(tc.id)
 
-    results: dict[str, tuple[str, str]] = {}
-
-    ok, msg = _check_rate_limit(session_id)
+    ok, msg = _prepare_rate_limiters(session_id)
     if not ok:
-        for tc, name, args in tcs_info:
-            if tagged:
-                yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": "calling"}))
-                yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": "error"}))
-            if session_id:
-                await tool_call_repo.log(session_id, name, json.dumps(args, ensure_ascii=False), "error", turn=turn)
-            history.append(HistoryMessage(
-                role="tool",
-                content=msg,
-                tool_call_id=tc.id,
-                created_at=datetime.now().isoformat()
-            ))
-            tool_detail.append({"name": name, "args": args, "status": "error", "result_truncated": msg[:300]})
+        async for event in _yield_tool_error_events(
+            tcs_info, msg, tagged, session_id, turn, history, tool_detail, repos
+        ):
+            yield event
         return
 
-    async for event in _execute_tool_batch(tcs_info, tool_map, session_id, tagged, results, repos=repos):
+    async for event in _execute_and_persist_tools(
+        tcs_info, tool_map, session_id, turn, tagged, repos, history, tool_detail
+    ):
         yield event
-
-    await _persist_tool_results(tcs_info, results, session_id, turn, history, tool_detail, repos)

@@ -1,26 +1,11 @@
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from src.memory.repos.base import _BaseRepository
+from src.memory.types import MessageRecord
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class MessageRecord:
-    session_id: str = ""
-    role: str = ""
-    content: str = ""
-    model: str | None = None
-    reasoning: str = ""
-    phases: str = "[]"
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-    tool_calls: str | None = None
-    tool_call_id: str | None = None
 
 
 class MessageRepository(_BaseRepository):
