@@ -67,7 +67,7 @@ class ModelRegistry:
     Usage:
         registry = ModelRegistry(config)
         await registry.refresh()               # fetch from APIs
-        tier = registry.get_tier("deepseek-v4-flash")  # "go_standard"
+        tier = registry.get_tier("model-id")   # e.g. "go_standard"
         all_go = registry.get_go_models()      # list[str]
 
     Thread-safe. Zero framework deps.
