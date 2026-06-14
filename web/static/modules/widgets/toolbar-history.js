@@ -5,7 +5,7 @@
  */
 import { ApiClient } from '../api-client.js';
 import { SessionContext } from '../session-context.js';
-import { KairosWidgets } from './core.js';
+import { WidgetManager } from './core.js';
 import { buildIframeSrc } from './iframe-builder.js';
 import stateManager from './state-manager.js';
 
@@ -50,7 +50,7 @@ export function toggleHistoryList(container, id, key) {
                         ApiClient.loadWidgetVersionCode(SessionContext.getSessionId(), key, v.version)
                             .then(function parseVersionCodeResponse(r) { return r.json(); })
                             .then(function loadVersionCode(verData) {
-                                KairosWidgets._registry[id] = verData.code;
+                                WidgetManager._registry[id] = verData.code;
                                 var iframe = container.querySelector('iframe');
                                 if (iframe) {
                                     var hashId = key;

@@ -1,6 +1,9 @@
 import logging
 import sqlite3
+import os
 from typing import Any
+
+from src.config_loader import DEFAULT_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +36,7 @@ DEFAULT_ORDER = {
     "memory_index": "updated_at",
     "widget_versions": "created_at",
 }
-
-
 def _get_db_path() -> str:
-    from src.config_loader import DEFAULT_CONFIG
-    import os
     return os.environ.get("MEMORY_DB_PATH", DEFAULT_CONFIG.memory_db_path)
 
 

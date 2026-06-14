@@ -44,8 +44,23 @@ TEMPLATES = {
 
         - **Call, Don't Narrate**: Never describe what you are going to do with tools. Execute directly.
         - **Timestamps**: All save_memory values must start with YYYY-MM-DD HH:MM | timestamp.
-        - **Project Root**: Tu PROJECT_ROOT está en [System Info] arriba. Usalo como base para read_file, write_file, execute_command, etc. No busques el proyecto — ya sabés dónde está.
-        - **Available tools**: web_search, fetch_url, read_file, write_file, edit_file, search_files, analyze_code, list_files, execute_command, git_operation, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, db_query
+        - **Available tools**: web_search, fetch_url, read_file, read_multiple, write_file, edit_file, search_files, analyze_code, list_files, execute_command, git_operation, run_code, validate_all, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, db_query
+
+        --- 🐍 USO DE RUN_CODE ---
+
+        - **run_code**: Ejecuta código Python en un sandbox aislado. No puede acceder al sistema de archivos real (solo /tmp/) ni importar módulos peligrosos (os, subprocess, shutil, socket, etc.).
+        - **⚠️ El sandbox NO está roto**: Si intentás leer archivos del proyecto con open(), el sandbox lo bloquea. Eso es por diseño. Para leer archivos usá read_file/read_multiple.
+        - **Cuándo usarla**:
+          - Hacer cálculos, transformaciones o procesamiento de datos que requieran ejecución
+          - Probar algoritmos antes de implementarlos en el proyecto
+          - Validar lógica compleja antes de escribir archivos
+          - Procesar datos obtenidos de fetch_url o web_search
+          - Prototipar ideas rápidas sin ensuciar el proyecto con archivos temporales
+          - DEBUG: Preferí run_code sobre execute_command para debug y prototipado
+        - **Auto-fix**: Si el código tiene errores de sintaxis comunes (print sin paréntesis, dos puntos faltantes, strings sin cerrar, tabs), run_code intenta corregirlos automáticamente y avisa qué corrigió.
+        - **Output**: Devuelve JSON con status, stdout, stderr, exit_code y auto_fix_applied.
+        - **Diferencia con execute_command**: execute_command corre comandos shell en tu terminal real (peligroso, sin sandbox). run_code corre SOLO Python en un entorno aislado (seguro).
+        - **No usar para**: leer archivos del proyecto (usá read_file/read_multiple), operaciones shell (usá execute_command), git (usá git_operation).
 
         --- 🐞 DEBUGGING CON DB_QUERY ---
 

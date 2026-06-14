@@ -6,8 +6,8 @@
  */
 import { ApiClient } from '../api-client.js';
 import { SessionContext } from '../session-context.js';
-import { KairosUtils } from '../utils.js';
-import { fnv1a_32, log, KairosWidgets } from './core.js';
+import { Utils } from '../utils.js';
+import { fnv1a_32, log, WidgetManager } from './core.js';
 import { createToolbar } from './toolbar-core.js';
 import stateManager from './state-manager.js';
 import { widgetCodeEntryKey } from './contract.js';
@@ -32,7 +32,7 @@ function createErrorNode(key) {
     wrap.style.borderLeft = '3px solid #ff6b6b';
 
     var strong = document.createElement('strong');
-    strong.textContent = 'Widget "' + KairosUtils.escHtml(key) + '" no encontrado';
+    strong.textContent = 'Widget "' + Utils.escHtml(key) + '" no encontrado';
     wrap.appendChild(strong);
     wrap.appendChild(document.createElement('br'));
 
@@ -83,7 +83,7 @@ export function createIframe(container, id, code) {
         var cachedCode = stateManager.getCodeCache(key);
         if (cachedCode) {
             log(id, 'cache-hit', 'key=' + key + ' code=' + cachedCode.length + 'b');
-            KairosWidgets._registry[id] = cachedCode;
+            WidgetManager._registry[id] = cachedCode;
             mountIframe(cachedCode);
         } else {
             log(id, 'fetch-init', 'key=' + key);
@@ -94,7 +94,7 @@ export function createIframe(container, id, code) {
                 })
                 .then(function(data) {
                     log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
-                    KairosWidgets._registry[id] = data.code;
+                    WidgetManager._registry[id] = data.code;
                     stateManager.setCodeCache(key, data.code);
                     ApiClient.saveWidgetState(SessionContext.getSessionId(), widgetCodeEntryKey(key), data.code)
                         .catch(function() {});

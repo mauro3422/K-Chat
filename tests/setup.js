@@ -204,8 +204,8 @@ global.sessionId = 'test-session';
 global.defaultModel = 'test-model';
 global.debugVisible = false;
 
-global.KairosUtils = { escHtml: (s) => String(s), scrollToBottom: () => {} };
-global.KairosWidgets = {
+global.Utils = { escHtml: (s) => String(s), scrollToBottom: () => {} };
+global.WidgetManager = {
   index: 0,
   nextIndex: function() { return this.index++; },
   registry: {},
@@ -214,9 +214,9 @@ global.KairosWidgets = {
   startMessageHandler: () => {},
   debug: {},
 };
-global.KairosMarkdown = { parse: (t) => '<p>' + t + '</p>' };
-global.KairosStream = { on: () => {}, emit: () => {} };
-global.KairosForm = { init: () => {}, reset: () => {}, retry: () => {} };
+global.MarkdownRenderer = { parse: (t) => '<p>' + t + '</p>' };
+global.StreamDispatcher = { on: () => {}, emit: () => {} };
+global.ChatForm = { init: () => {}, reset: () => {}, retry: () => {} };
 global.DOMPurify = { sanitize: (t) => t };
 global.logUI = () => {};
 global.logStream = () => {};

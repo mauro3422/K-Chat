@@ -1,6 +1,6 @@
 # Roadmap — K-Chat (Kairos)
 
-> Current version: **v0.0.54** (2026-06-13)
+> Current version: **v0.0.55** (2026-06-13)
 
 ## Philosophy
 
@@ -221,11 +221,17 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Frontend de transición acotado**: compatibilidad legacy aislada en `session-page.js`, `debug-panel.js` y `stream-orchestrator.js`
 - [x] **Docs alineadas**: roadmap, audit lego y changelog actualizados con el estado real del refactor
 
+### v0.0.55 — Lego UI & Layout Resizable (2026-06-13)
+- [x] **Premium UI y Layout Resizable**: Estética Glassmorphism ligera, tema claro/oscuro (🌓) y gutter interactivo resizable con persistencia en `localStorage`.
+- [x] **Lego Frontend**: Desacoplamiento total del renderizado de mensajes a JSON, inyectados dinámicamente desde el cliente (`message-renderer.js`).
+- [x] **Performance Fix**: Throttling del debug panel en eventos de telemetría de voz ASR.
+- [x] **Bug Fix**: Solucionado el fallo de scope de `os` en `db_query.py`.
+
 ## Próximas features
 
 | Priority | Area | What | Status |
 |----------|------|------|--------|
-| 1 | **UI modular + layout movible** | CSS partido en temas, gutter redimensionable, sidebar colapsable, layout responsive guardado en memoria | 🔥 |
+| 1 | **UI modular + layout movible** | CSS partido en temas, gutter redimensionable, sidebar colapsable, layout responsive guardado en memoria | ✅ |
 | 2 | **memory_search + list_memories** | Tools para consultar `MEMORY.md` de forma semántica (ahora con cache fresco) | 🔥 |
 | 3 | **Auto-exploration + Docs sync** | Kairos analiza la arquitectura actual y sincroniza docs/ con el código real | 🔥 |
 | 4 | **Inyección inteligente de memoria** | Sistema que inyecta recuerdos relevantes contextualmente antes de cada respuesta, basado en el tópico de la conversación | 📋 |
@@ -236,7 +242,7 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 | 9 | **Session Export** | Exportar sesiones a Markdown o JSON | 📋 |
 | 10 | **Scheduled Tasks** | Tareas programadas (cron-like) para automatizaciones | 📋 |
 | 11 | **Proactive Insights** | Insights proactivos basados en patrones de uso | 📋 |
-| 12 | **run_code** | Ejecución segura de Python con sandboxing | 📋 |
+| 12 | **run_code** | Ejecución segura de Python con sandboxing | ✅ |
 | 13 | **Telegram Bot** | `bot.py` como adapter a `core.chat_stream()` | 📋 |
 | 14 | **Widget versioning UI** | Mostrar versión actual del widget en toolbar sin fetch separado | 📋 |
 

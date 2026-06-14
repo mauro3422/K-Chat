@@ -1,6 +1,6 @@
-import { KairosUtils } from './utils.js';
+import { Utils } from './utils.js';
 import C from './dom-contracts.js';
-import { KairosDebugPanel } from './debug-panel.js';
+import { DebugPanel } from './debug-panel.js';
 
 function clearElement(el) {
   while (el.firstChild) {
@@ -12,7 +12,7 @@ export function markPillAsError(pill) {
   pill.className = C.TC_ITEM_ERROR;
   var toolName = pill.getAttribute('data-tool') || 'tool';
   pill.textContent = '✗ ' + toolName;
-  KairosDebugPanel.logUI('tool_error', toolName);
+  DebugPanel.logUI('tool_error', toolName);
 }
 
 export function markCallingPillsError(asstDiv) {

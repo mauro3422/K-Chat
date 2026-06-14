@@ -1,9 +1,10 @@
 /* eslint-disable no-redeclare, no-unused-vars */
 
-import { KairosUtils } from './utils.js';
+import { Utils } from './utils.js';
 import { logUI, logStream } from './log-ui.js';
 
 const listeners = {};
+const ALL_EVENTS = ['reasoning', 'content', 'tool_call', 'error'];
 
 function on(event, cb) {
   if (!listeners[event]) listeners[event] = [];
@@ -23,13 +24,22 @@ function off(event, cb) {
   listeners[event] = listeners[event].filter(fn => fn !== cb);
 }
 
+function removeAllListeners(event) {
+  if (event) {
+    listeners[event] = [];
+  } else {
+    ALL_EVENTS.forEach(function(ev) { listeners[ev] = []; });
+  }
+}
+
+// Logging listeners — registrados una vez, no se limpian
 on('reasoning', function(token) { logStream('reasoning', token); });
 on('content', function(token) { logStream('content', token); });
 on('tool_call', function(dataStr) { logStream('tool_call', dataStr); });
 on('error', function(errorData) {
   logStream('error', JSON.stringify(errorData));
   logUI('stream_backend_error', errorData.type + ': ' + errorData.message);
-  KairosUtils.showToast(errorData.message, 'error');
+  Utils.showToast(errorData.message, 'error');
 });
 
-export const KairosStream = { on, emit, off };
+export const StreamDispatcher = { on, emit, off, removeAllListeners, ALL_EVENTS };

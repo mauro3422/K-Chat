@@ -2,15 +2,15 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import './setup.js';
 
 vi.mock('../web/static/modules/markdown-renderer.js', () => ({
-  KairosMarkdown: { renderAll: vi.fn() }
+  MarkdownRenderer: { renderAll: vi.fn() }
 }));
 
 // Override chat-stream specific mocks
 const _utils = { escHtml: (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') };
 
-global.KairosUtils = _utils;
+global.Utils = _utils;
 global.defaultModel = 'test-model';
-global.KairosStream = { on() {}, emit() {} };
+global.StreamDispatcher = { on() {}, emit() {} };
 const mockFetchResponse = (data = { messages: [], widget_states: {} }) => Promise.resolve({
   text: () => Promise.resolve(JSON.stringify(data)),
   json: () => Promise.resolve(data)
@@ -32,7 +32,7 @@ global.window = Object.assign(global.window || {}, {
   widgetStates: {},
   location: { pathname: '/' },
   history: { replaceState(state, title, url) { global.window._lastState = state; global.window._lastUrl = url; } },
-  KairosUtils: _utils
+  Utils: _utils
 });
 
 var chatModule = await import('../web/static/modules/session-page.js');
@@ -44,20 +44,21 @@ var testNav = {
 };
 chatModule.initSessionPage({ nav: testNav });
 
-// Ensure KairosForm and KairosWidgets have mock reset/retry
-widgetsModule.KairosWidgets.startMessageHandler = () => {};
-widgetsModule.KairosWidgets.reset = () => {};
-formModule.KairosForm.reset = () => {};
-formModule.KairosForm.retry = () => {};
-global.KairosWidgets = widgetsModule.KairosWidgets;
-global.KairosForm = formModule.KairosForm;
-global.window.KairosWidgets = widgetsModule.KairosWidgets;
-global.window.KairosForm = formModule.KairosForm;
+// Ensure ChatForm and WidgetManager have mock reset/retry
+widgetsModule.WidgetManager.startMessageHandler = () => {};
+widgetsModule.WidgetManager.reset = () => {};
+formModule.ChatForm.reset = () => {};
+formModule.ChatForm.retry = () => {};
+global.WidgetManager = widgetsModule.WidgetManager;
+global.ChatForm = formModule.ChatForm;
+global.window.WidgetManager = widgetsModule.WidgetManager;
+global.window.ChatForm = formModule.ChatForm;
 
 function mockElement() {
   return {
     innerHTML: '',
-    getAttribute: () => '{}'
+    getAttribute: () => '{}',
+    addEventListener: () => {}
   };
 }
 
@@ -97,7 +98,7 @@ describe('chat-stream', () => {
 
   test('loadSession llama widgets.reset', () => {
     let wReset = false;
-    widgetsModule.KairosWidgets.reset = () => { wReset = true; };
+    widgetsModule.WidgetManager.reset = () => { wReset = true; };
     global.document.getElementById = () => mockElement();
     chatModule.loadSession('sid-reset', { nav: testNav });
     expect(wReset).toBe(true);
@@ -105,7 +106,7 @@ describe('chat-stream', () => {
 
   test('loadSession llama form.reset', () => {
     let fReset = false;
-    formModule.KairosForm.reset = () => { fReset = true; };
+    formModule.ChatForm.reset = () => { fReset = true; };
     global.document.getElementById = () => mockElement();
     chatModule.loadSession('sid-reset', { nav: testNav });
     expect(fReset).toBe(true);
@@ -143,13 +144,13 @@ describe('chat-stream', () => {
   });
 
   test('loadSession llama renderAll', async () => {
-    const { KairosMarkdown } = await import('../web/static/modules/markdown-renderer.js');
+    const { MarkdownRenderer } = await import('../web/static/modules/markdown-renderer.js');
     const fetchPromise = mockFetchResponse({ messages: [], widget_states: {} });
     global.fetch = () => fetchPromise;
     global.document.getElementById = () => mockElement();
     chatModule.loadSession('render-test-sid', { nav: testNav });
     await fetchPromise;
     await new Promise(r => setTimeout(r, 10));
-    expect(KairosMarkdown.renderAll).toHaveBeenCalled();
+    expect(MarkdownRenderer.renderAll).toHaveBeenCalled();
   });
 });

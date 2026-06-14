@@ -7,7 +7,7 @@ import { ApiClient } from '../api-client.js';
 import { SessionContext } from '../session-context.js';
 import { createToolbarButton } from './ui-helpers.js';
 import { buildIframeSrc } from './iframe-builder.js';
-import { KairosWidgets } from './core.js';
+import { WidgetManager } from './core.js';
 import { openEditor } from './toolbar-editor.js';
 import { toggleHistoryList } from './toolbar-history.js';
 import stateManager from './state-manager.js';
@@ -69,7 +69,7 @@ export function createToolbar(container, id, key, code, hashId) {
                     .then(function onResetResponse() {
                     var iframe = container.querySelector('iframe');
                     if (iframe) {
-                        iframe.srcdoc = buildIframeSrc(id, KairosWidgets._registry[id] || code, 'null');
+                        iframe.srcdoc = buildIframeSrc(id, WidgetManager._registry[id] || code, 'null');
                     }
                 }).catch(function(err) { console.error('Widget reset failed:', err); });
             }

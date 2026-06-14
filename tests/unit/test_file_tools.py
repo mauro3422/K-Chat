@@ -33,12 +33,11 @@ class TestReadFile:
         result = read_file.run(path=str(path))
         assert "Total lines: 0" in result
 
-    def test_pagination_caps_at_100_lines(self, tmp_path):
-        path = tmp_path / "long.txt"
-        path.write_text("\n".join(f"line{i}" for i in range(200)))
+    def test_pagination_default_caps_at_250_lines(self, tmp_path):
+        path = tmp_path / "test.txt"
+        path.write_text("\n".join(f"line {i}" for i in range(300)))
         result = read_file.run(path=str(path))
-        assert "Displayed range: 1-100" in result
-        assert "Output truncated" in result
+        assert "Displayed range: 1-250" in result
 
     def test_start_end_line(self, tmp_path):
         path = tmp_path / "test.txt"

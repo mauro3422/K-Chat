@@ -7,7 +7,7 @@ test('home page loads', async ({ page }) => {
 
 test('sidebar shows sessions', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('.session-item')).toBeVisible();
+  await expect(page.locator('.session-item').first()).toBeVisible();
 });
 
 test('new session has UUID in URL', async ({ page }) => {

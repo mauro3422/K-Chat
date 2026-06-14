@@ -2,18 +2,18 @@ import C from './dom-contracts.js';
 import { getLogger } from './logger.js';
 import { logUI } from './log-ui.js';
 import { processWidgetContainers } from './widget-container-renderer.js';
-import { KairosStream } from './stream-dispatcher.js';
-import { KairosWidgets } from './widgets/core.js';
+import { StreamDispatcher } from './stream-dispatcher.js';
+import { WidgetManager } from './widgets/core.js';
 import { initAll } from './widgets/iframe.js';
-import { KairosMarkdown } from './markdown-renderer.js';
-import { KairosUtils } from './utils.js';
+import { MarkdownRenderer } from './markdown-renderer.js';
+import { Utils } from './utils.js';
 var log = getLogger('content-handler');
 
 function setSegmentContent(targetSeg, html, incompleteTail) {
   if (!targetSeg) return;
   var renderedHtml = html || '';
   if (incompleteTail) {
-    renderedHtml += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteTail) + '</code></pre>';
+    renderedHtml += '<pre style="opacity:0.6"><code>' + Utils.escHtml(incompleteTail) + '</code></pre>';
   }
 
   var fragment = null;
@@ -46,7 +46,7 @@ function setSegmentContent(targetSeg, html, incompleteTail) {
 
 export function registerContentHandler() {
 
-  KairosStream.on('content', function(token, ctx) {
+  StreamDispatcher.on('content', function(token, ctx) {
     try {
       var sharedKeys = ctx._renderedKeys || (ctx._renderedKeys = {});
       var state = ctx;
@@ -73,7 +73,7 @@ export function registerContentHandler() {
         return;
       }
 
-      var widgetsApi = KairosWidgets;
+      var widgetsApi = WidgetManager;
 
       if (state._toolTurnSinceLastContent) {
         state._toolTurnSinceLastContent = false;
@@ -150,14 +150,14 @@ export function registerContentHandler() {
         var html = '';
         if (segText && widgetsApi && widgetsApi.extract) {
           var extracted = widgetsApi.extract(segText);
-          var parsed = KairosMarkdown.parse(extracted);
+          var parsed = MarkdownRenderer.parse(extracted);
           if (typeof DOMPurify !== 'undefined') {
             html += DOMPurify.sanitize(parsed, purifyConfig);
           } else {
             html += segText;
           }
         } else if (segText) {
-          var parsed = KairosMarkdown.parse(segText);
+          var parsed = MarkdownRenderer.parse(segText);
           if (typeof DOMPurify !== 'undefined') {
             html += DOMPurify.sanitize(parsed, purifyConfig);
           } else {

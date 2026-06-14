@@ -1,5 +1,5 @@
 import C from './dom-contracts.js';
-import { KairosStream } from './stream-dispatcher.js';
+import { StreamDispatcher } from './stream-dispatcher.js';
 import { logUI } from './log-ui.js';
 
 function createToolPillClass(status) {
@@ -29,7 +29,7 @@ function updateToolPill(pill, status, name) {
 }
 
 export function registerToolCallRenderer() {
-  KairosStream.on('tool_call', function(dataStr, ctx) {
+  StreamDispatcher.on('tool_call', function(dataStr, ctx) {
     try {
       var state = ctx;
       if (ctx && typeof ctx.markToolTurn === 'function') {

@@ -4,8 +4,8 @@ import './modules/content-handler.js';
 import './modules/tool-call-renderer.js';
 import './modules/asr-mic.js';
 import { initSessionPage } from './modules/session-page.js';
-import { KairosForm } from './modules/chat-form.js';
-import { KairosDebugPanel } from './modules/debug-panel.js';
+import { ChatForm } from './modules/chat-form.js';
+import { DebugPanel } from './modules/debug-panel.js';
 import { setAsrTransportConfig } from './modules/asr/contract.js';
 import { startMessageHandler } from './modules/widgets/index.js';
 
@@ -26,5 +26,5 @@ SessionContext.init(sessionId);
 setAsrTransportConfig({ transport: 'websocket' });
 startMessageHandler({ eventTarget: window, locationOrigin: window.location.origin, Observer: window.IntersectionObserver });
 initSessionPage({ nav });
-KairosDebugPanel.bindDebugControls();
-KairosForm.init({ nav });
+DebugPanel.bindDebugControls();
+ChatForm.init({ nav });

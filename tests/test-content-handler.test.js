@@ -110,9 +110,9 @@ function walkDeep(node, fn) {
 function mockExtract(text) {
   var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)(?:\n```|$)/g;
   var result = text.replace(widgetRegex, function(match, key, code) {
-    var id = 'widget-' + global.KairosWidgets.index++;
+    var id = 'widget-' + global.WidgetManager.index++;
     code = code.replace(/\?\.([\w.]+)\s*=(?!=)/g, '.$1 =');
-    global.KairosWidgets.registry[id] = code;
+    global.WidgetManager.registry[id] = code;
     if (key) {
       return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
     }
@@ -125,7 +125,7 @@ function mockExtract(text) {
     var lowerKey = key.toLowerCase();
     if (seenKeys[lowerKey]) return '';
     seenKeys[lowerKey] = true;
-    var id = 'widget-' + global.KairosWidgets.index++;
+    var id = 'widget-' + global.WidgetManager.index++;
     return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
   });
 
@@ -158,7 +158,7 @@ global.document = {
   _listeners: {}
 };
 
-global.KairosWidgets = {
+global.WidgetManager = {
   index: 0,
   nextIndex: function() { return this.index++; },
   registry: {},
@@ -168,21 +168,21 @@ global.KairosWidgets = {
   extract: mockExtract
 };
 global.DOMPurify = { sanitize: function(t) { return t; } };
-global.KairosMarkdown = { parse: function(t) { return '<p>' + t + '</p>'; } };
-global.KairosUtils = { escHtml: function(s) { return String(s); } };
+global.MarkdownRenderer = { parse: function(t) { return '<p>' + t + '</p>'; } };
+global.Utils = { escHtml: function(s) { return String(s); } };
 global.logUI = function() {};
 
-import { KairosStream } from '../web/static/modules/stream-dispatcher.js';
+import { StreamDispatcher } from '../web/static/modules/stream-dispatcher.js';
 
 beforeAll(async function() {
   await import('../web/static/modules/content-handler.js');
-  window.KairosWidgets = global.KairosWidgets;
+  window.WidgetManager = global.WidgetManager;
 });
 
 beforeEach(function() {
-  global.KairosWidgets.index = 0;
-  global.KairosWidgets.registry = {};
-  global.KairosWidgets.debug = {};
+  global.WidgetManager.index = 0;
+  global.WidgetManager.registry = {};
+  global.WidgetManager.debug = {};
 });
 
 describe('Content Handler', function() {
@@ -202,7 +202,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    KairosStream.emit('content', '[Widget: foo] y otro [Widget: foo] en el mismo texto', state);
+    StreamDispatcher.emit('content', '[Widget: foo] y otro [Widget: foo] en el mismo texto', state);
 
     expect(bodyDiv.children.length).toBe(5);
     expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
@@ -225,7 +225,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    KairosStream.emit('content', '[Widget: a] texto [Widget: b] otro [Widget: a] repetido', state);
+    StreamDispatcher.emit('content', '[Widget: a] texto [Widget: b] otro [Widget: a] repetido', state);
 
     expect(bodyDiv.children.length).toBe(7);
     var containers = bodyDiv.children.filter(function(c) {
@@ -250,7 +250,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    KairosStream.emit('content', 'antes [Widget: foo] despues', state);
+    StreamDispatcher.emit('content', 'antes [Widget: foo] despues', state);
 
     expect(bodyDiv.children.length).toBe(3);
     expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
@@ -272,7 +272,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    KairosStream.emit('content', '[Widget: foo]', state);
+    StreamDispatcher.emit('content', '[Widget: foo]', state);
 
     expect(bodyDiv.children.length).toBe(3);
     expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
@@ -295,7 +295,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    KairosStream.emit('content', 'Hello world, no widgets here', state);
+    StreamDispatcher.emit('content', 'Hello world, no widgets here', state);
 
     expect(bodyDiv.children.length).toBe(1);
     expect(bodyDiv.children[0].className).toBe('msg-text-segment');
@@ -318,7 +318,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    KairosStream.emit('content', 'before ```html-widget\n<div>incomplete', state);
+    StreamDispatcher.emit('content', 'before ```html-widget\n<div>incomplete', state);
 
     expect(bodyDiv.children[0].innerHTML).toContain('<code>');
     expect(bodyDiv.children[0].innerHTML).toContain('```html-widget');
@@ -340,7 +340,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    KairosStream.emit('content', 'Phase 0 content', state);
+    StreamDispatcher.emit('content', 'Phase 0 content', state);
 
     expect(bodyDiv.children.length).toBe(1);
     expect(bodyDiv.children[0].className).toBe('msg-text-segment');
@@ -362,8 +362,8 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    KairosStream.emit('content', 'Hello ', state);
-    KairosStream.emit('content', 'World', state);
+    StreamDispatcher.emit('content', 'Hello ', state);
+    StreamDispatcher.emit('content', 'World', state);
 
     expect(state.contentTexts[0]).toBe('Hello World');
     expect(bodyDiv.children[0].innerHTML).toContain('Hello World');
@@ -385,7 +385,7 @@ describe('Content Handler', function() {
       _toolTurnSinceLastContent: false
     };
 
-    KairosStream.emit('content', 'Text ```html-widget\n<div>widget</div>\n``` more', state);
+    StreamDispatcher.emit('content', 'Text ```html-widget\n<div>widget</div>\n``` more', state);
 
     expect(bodyDiv.children.length).toBe(3);
     expect(bodyDiv.children[1].className).toContain('interactive-widget-container');

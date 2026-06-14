@@ -1,7 +1,7 @@
 /* eslint-disable no-redeclare, no-unused-vars */
 
 import C from './dom-contracts.js';
-import { KairosWidgets, initAll } from './widgets/index.js';
+import { WidgetManager, initAll } from './widgets/index.js';
 
 function decodeHtml(html) {
   // Solo decodificar si contiene entidades HTML escapadas
@@ -25,7 +25,7 @@ function decodeHtml(html) {
 function parse(text) {
   if (typeof marked === 'undefined') return text;
 
-  var cleanText = KairosWidgets.extract(text);
+  var cleanText = WidgetManager.extract(text);
 
   cleanText = cleanText.replace(/^([ \t]*\|[ \t]*[:\-\+\| \t]+)$/gm, function(match) {
     return match.replace(/\+/g, '-');
@@ -100,4 +100,4 @@ function renderAll() {
   });
 }
 
-export const KairosMarkdown = { parse, renderAll };
+export const MarkdownRenderer = { parse, renderAll };

@@ -61,17 +61,23 @@ BLOCKED_MODULES: list[str] = [
     "threading", "importlib",
 ]
 
-# ─── SANDBOX WRAPPER ───────────────────────────────────────────────────
+# Project root para permitir lectura de archivos del proyecto
+import src.paths as _paths
+_PROJECT_ROOT: str = str(_paths.CONTEXT_DIR)
+
 
 def _build_sandbox_wrapper(code: str) -> str:
     """Construye el wrapper de seguridad insertando el código del usuario."""
     blocked_repr = repr(BLOCKED_MODULES)
+    project_root = _PROJECT_ROOT
     return f'''"""Sandbox de seguridad -- auto-generado por run_code tool."""
 import sys
 import builtins as _builtins
+import os as _os
 
 _original_import = _builtins.__import__
 _blocked = {blocked_repr}
+_PROJECT_ROOT = {project_root!r}
 
 def _safe_import(name, *args, **kwargs):
     top = name.split('.')[0]
@@ -87,8 +93,9 @@ _original_open = _builtins.open
 def _safe_open(file, mode='r', *args, **kwargs):
     f = str(file)
     is_read = set(mode) & {{'r', '+'}} or not (set(mode) & {{'w', 'a', 'x'}})
-    if is_read and not f.startswith('/tmp/'):
-        raise PermissionError(f"[SANDBOX] Solo se puede LEER archivos en /tmp/: {{f}}")
+    
+    # Lectura: permitida desde cualquier lado
+    # Escritura: solo en /tmp/
     if not is_read and not f.startswith('/tmp/'):
         raise PermissionError(f"[SANDBOX] Solo se puede ESCRIBIR en /tmp/: {{f}}")
     return _original_open(file, mode, *args, **kwargs)

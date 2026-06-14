@@ -15,7 +15,7 @@ var mockStream = {
 };
 
 vi.mock('../web/static/modules/stream-dispatcher.js', function() {
-  return { KairosStream: mockStream };
+  return { StreamDispatcher: mockStream };
 });
 
 function makeEl(tag) {
@@ -151,7 +151,7 @@ describe('Widget Detector', function() {
     expect(emittedEvents.length).toBe(3);
   });
 
-  test('does not populate KairosWidgets.registry', async function() {
+  test('does not populate WidgetManager.registry', async function() {
     await loadDetector();
 
     var bodyDiv = makeEl('div');

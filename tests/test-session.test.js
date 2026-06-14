@@ -2,18 +2,20 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import './setup.js';
 
 vi.mock('../web/static/modules/utils.js', () => ({
-  KairosUtils: { scrollToBottom: vi.fn() }
+  Utils: { scrollToBottom: vi.fn() }
 }));
 
 const sessionContextModule = await import('../web/static/modules/session-context.js');
 sessionContextModule.SessionContext.setSessionId('test-session-123');
 
 // Override specific mocks for session tests
-global.window.onpopstate = null;
-global.fetch = () => Promise.resolve({ text: () => Promise.resolve('') });
+global.fetch = () => Promise.resolve({
+  text: () => Promise.resolve(''),
+  json: () => Promise.resolve({ messages: [], widget_states: {} })
+});
 
 const sessionModule = await import('../web/static/modules/session-page.js');
-const KairosSession = sessionModule.KairosSessionPage;
+const Session = sessionModule.SessionPage;
 const testNav = {
   location: global.window.location,
   history: global.window.history,
@@ -69,7 +71,7 @@ function makeItem(origName) {
   };
 }
 
-describe('KairosSession', () => {
+describe('Session', () => {
   beforeEach(() => {
     sessionContextModule.SessionContext.setSessionId('test-session-123');
   });
@@ -80,7 +82,7 @@ describe('KairosSession', () => {
     global.fetch = function() { fetchCalled = true; return Promise.resolve(); };
     const item = makeItem('Original');
     item._inp.value = '   ';
-    KairosSession.confirmRename(item, 'sid-empty');
+    Session.confirmRename(item, 'sid-empty');
     global.fetch = origFetch;
     expect(fetchCalled).toBe(false);
   });
@@ -88,27 +90,27 @@ describe('KairosSession', () => {
   test('cancelEdit restaura textContent', () => {
     const item = makeItem('Mi Chat');
     item.dataset.origName = 'Mi Chat';
-    KairosSession.cancelEdit(item);
+    Session.cancelEdit(item);
     expect(item.preview.textContent).toBe('Mi Chat');
   });
 
   test('cancelEdit elimina origName del dataset', () => {
     const item = makeItem('Mi Chat');
     item.dataset.origName = 'Mi Chat';
-    KairosSession.cancelEdit(item);
+    Session.cancelEdit(item);
     expect(item.dataset.origName).toBeFalsy();
   });
 
   test('restoreActions tiene act-rename', () => {
     const item = makeItem('');
-    KairosSession.restoreActions(item);
+    Session.restoreActions(item);
     expect(item.actions.children.length).toBe(2);
     expect(item.actions.children[0].className).toContain('act-rename');
   });
 
   test('restoreActions tiene act-delete', () => {
     const item = makeItem('');
-    KairosSession.restoreActions(item);
+    Session.restoreActions(item);
     expect(item.actions.children[1].className).toContain('act-delete');
   });
 
@@ -127,10 +129,10 @@ describe('KairosSession', () => {
   });
 
   test('htmx:afterSwap llama scrollToBottom', async () => {
-    const { KairosUtils } = await import('../web/static/modules/utils.js');
+    const { Utils } = await import('../web/static/modules/utils.js');
     const h = global.document._listeners['htmx:afterSwap'];
     if (h) h();
-    expect(KairosUtils.scrollToBottom).toHaveBeenCalled();
+    expect(Utils.scrollToBottom).toHaveBeenCalled();
   });
 
   test('click rename guarda origName en dataset', () => {

@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import './setup.js';
-import { KairosStream } from '../web/static/modules/stream-dispatcher.js';
-import { KairosWidgets as RealKairosWidgets } from '../web/static/modules/widgets/core.js';
+import { StreamDispatcher } from '../web/static/modules/stream-dispatcher.js';
+import { WidgetManager as RealKairosWidgets } from '../web/static/modules/widgets/core.js';
 
 class MockElement {
   constructor(tag) {
@@ -124,9 +124,9 @@ global.document = { createElement: (tag) => new MockElement(tag) };
 function mockExtract(text) {
   var widgetRegex = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)(?:\n```|$)/g;
   var result = text.replace(widgetRegex, function(match, key, code) {
-    var id = 'widget-' + global.KairosWidgets.index++;
+    var id = 'widget-' + global.WidgetManager.index++;
     code = code.replace(/\?\.([\w.]+)\s*=(?!=)/g, '.$1 =');
-    global.KairosWidgets.registry[id] = code;
+    global.WidgetManager.registry[id] = code;
     if (key) {
       return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
     }
@@ -139,14 +139,14 @@ function mockExtract(text) {
     var lowerKey = key.toLowerCase();
     if (seenKeys[lowerKey]) return '';
     seenKeys[lowerKey] = true;
-    var id = 'widget-' + global.KairosWidgets.index++;
+    var id = 'widget-' + global.WidgetManager.index++;
     return '<div class="interactive-widget-container" data-widget-id="' + id + '" data-widget-key="' + key + '"></div>';
   });
 
   return result;
 }
 
-global.KairosWidgets = {
+global.WidgetManager = {
   index: 0,
   nextIndex: function() { return this.index++; },
   registry: {},
@@ -155,17 +155,17 @@ global.KairosWidgets = {
   debug: {},
   extract: mockExtract
 };
-global.KairosMarkdown = { parse: function(t) { return '<p>' + t + '</p>'; } };
+global.MarkdownRenderer = { parse: function(t) { return '<p>' + t + '</p>'; } };
 global.DOMPurify = { sanitize: function(t) { return t; } };
-global.KairosUtils = { escHtml: function(s) { return String(s); } };
+global.Utils = { escHtml: function(s) { return String(s); } };
 global.logUI = function() {};
 
 const mockReasoningState = { enter: () => false, exit: () => {} };
 
 await import('../web/static/modules/content-handler.js');
-global.KairosStream = KairosStream;
-global.window.KairosWidgets = global.KairosWidgets;
-globalThis.KairosWidgets = global.KairosWidgets;
+global.StreamDispatcher = StreamDispatcher;
+global.window.WidgetManager = global.WidgetManager;
+globalThis.WidgetManager = global.WidgetManager;
 
 function makeState(overrides) {
   return Object.assign({
@@ -182,25 +182,25 @@ describe('content-handler', () => {
 
   test('creates single msg-text-segment for text content', () => {
     const state = makeState();
-    KairosStream.emit('content', 'Hola ', state);
+    StreamDispatcher.emit('content', 'Hola ', state);
     const bodyDiv = state.bodyDivs[0];
     expect(bodyDiv.children.length).toBe(1);
     expect(bodyDiv.children[0].className).toBe('msg-text-segment');
   });
 
-  test('calls KairosWidgets.extract() which populates registry', () => {
+  test('calls WidgetManager.extract() which populates registry', () => {
     RealKairosWidgets.reset();
     const state = makeState();
-    KairosStream.emit('content', '```html-widget\n<div>Test</div>\n```', state);
+    StreamDispatcher.emit('content', '```html-widget\n<div>Test</div>\n```', state);
     const keys = Object.keys(RealKairosWidgets.registry);
     expect(keys.length).toBeGreaterThan(0);
     expect(RealKairosWidgets.registry[keys[0]]).toContain('<div>Test</div>');
   });
 
   test('renders widget containers as siblings for html-widget code block', () => {
-    KairosWidgets.reset();
+    WidgetManager.reset();
     const state = makeState();
-    KairosStream.emit('content', 'Widget:\n```html-widget\n<div>W</div>\n```\nEnd.', state);
+    StreamDispatcher.emit('content', 'Widget:\n```html-widget\n<div>W</div>\n```\nEnd.', state);
     const bodyDiv = state.bodyDivs[0];
     expect(bodyDiv.children.length).toBe(3);
     expect(bodyDiv.children[1].className).toBe('interactive-widget-container');
@@ -210,15 +210,15 @@ describe('content-handler', () => {
 
   test('cache key prevents redundant re-rendering', () => {
     const state = makeState({ contentTexts: ['Hello'] });
-    KairosStream.emit('content', '', state);
+    StreamDispatcher.emit('content', '', state);
     const prevRawText = state.bodyDivs[0].children[0]?.dataset?.rawText;
-    KairosStream.emit('content', '', state);
+    StreamDispatcher.emit('content', '', state);
     expect(state.bodyDivs[0].children[0]?.dataset?.rawText).toBe(prevRawText);
   });
 
   test('renders widget containers for [Widget: foo] marker', () => {
     const state = makeState();
-    KairosStream.emit('content', '[Widget: foo]', state);
+    StreamDispatcher.emit('content', '[Widget: foo]', state);
     const bodyDiv = state.bodyDivs[0];
     expect(bodyDiv.children.length).toBe(3);
     expect(bodyDiv.children[1].className).toContain('interactive-widget-container');
@@ -229,9 +229,9 @@ describe('content-handler', () => {
 describe('anti-regression', () => {
 
   test('widget dedup - handles [Widget: x] tags with alternating structure', () => {
-    KairosWidgets.reset();
+    WidgetManager.reset();
     const state = makeState();
-    KairosStream.emit('content', '[Widget: alpha] stuff [Widget: alpha] more [Widget: alpha]', state);
+    StreamDispatcher.emit('content', '[Widget: alpha] stuff [Widget: alpha] more [Widget: alpha]', state);
     const bodyDiv = state.bodyDivs[0];
     // At minimum, the content-handler creates the DOM structure with at least
     // a text segment and no widget containers inside text segments
@@ -252,13 +252,13 @@ describe('anti-regression', () => {
     const rs = new ReasoningState();
     const state = makeState({ reasoningState: rs });
 
-    KairosStream.emit('reasoning', 'Step 1...', state);
+    StreamDispatcher.emit('reasoning', 'Step 1...', state);
     expect(state.reasoningEls.length).toBe(1);
 
-    KairosStream.emit('content', 'Response', state);
+    StreamDispatcher.emit('content', 'Response', state);
     expect(rs.isActive).toBe(false);
 
-    KairosStream.emit('reasoning', 'Step 2...', state);
+    StreamDispatcher.emit('reasoning', 'Step 2...', state);
     expect(state.reasoningEls.length).toBe(2);
   });
 

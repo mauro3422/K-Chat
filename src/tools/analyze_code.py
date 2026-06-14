@@ -2,14 +2,15 @@
 
 Combina detección de funciones (vía AST), seguimiento de llamadas,
 análisis de dependencias y métricas de código en una sola herramienta.
+Soporta análisis cross-file de duplicados y referencias.
 """
 import ast
 import logging
 import os
 from typing import Any
-
 from src.tools._path_helpers import resolve_and_validate_path
 from src.tools._analyzers import detect_language, icon
+from src.tools._cross_analyzer import context_report
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ DEFINITION = {
             "Muestra funciones con lineas, parametros, llamadas internas, "
             "call graph, imports usados por cada funcion, y metricas. "
             "Usa analyze_code con function='nombre' para analizar una funcion especifica. "
+            "Opcionalmente detecta duplicados estructurales y referencias cruzadas cross-file. "
             "Sirve para entender rapidamente la estructura y flujo del codigo."
         ),
         "parameters": {
@@ -35,13 +37,22 @@ DEFINITION = {
                     "type": "string",
                     "description": "Nombre de funcion/clase especifica para analisis profundo (opcional)",
                     "default": ""
+                },
+                "find_duplicates": {
+                    "type": "boolean",
+                    "description": "Si True, busca funciones estructuralmente similares en todo el proyecto (opcional)",
+                    "default": False
+                },
+                "cross_reference": {
+                    "type": "boolean",
+                    "description": "Si True, muestra que otros archivos llaman a las funciones definidas aca (opcional)",
+                    "default": False
                 }
             },
             "required": ["path"]
         }
     }
 }
-
 MAX_FILE_SIZE = 500 * 1024
 
 
@@ -283,11 +294,11 @@ def _format_summary(
     return '\n'.join(lines_out)
 
 
-# ─── Run ──────────────────────────────────────────────────────────────
-
 def run(**kwargs: Any) -> str:
     path = kwargs.get("path", "").strip()
     func_name = kwargs.get("function", "").strip()
+    find_dups = kwargs.get("find_duplicates", False)
+    cross_ref = kwargs.get("cross_reference", False)
 
     if not path:
         return "[ERROR] Proporciona una ruta de archivo."
@@ -360,9 +371,22 @@ def run(**kwargs: Any) -> str:
     else:
         # Resumen general del archivo
         output.append(_format_summary(funcs, classes, content_lines, call_graph))
-
+    # Cross-file analysis (opcional) — solo contra src/
+    if find_dups or cross_ref:
+        from src.tools._cross_analyzer import context_report as _ctx
+        # path ya es absoluto: /home/maurol/dev/K-Chat/src/tools/X.py
+        # src_root = /home/maurol/dev/K-Chat/src/
+        src_root = os.path.dirname(os.path.dirname(path))
+        if os.path.isdir(src_root):
+            ctx = _ctx(
+                target_path=path,
+                root=src_root,
+                find_duplicates_flag=find_dups,
+                cross_reference_flag=cross_ref,
+            )
+            if ctx.strip():
+                output.append(ctx)
     result = '\n'.join(output)
-
     if len(result) > 30000:
         result = result[:30000] + "\n...[truncado]"
 

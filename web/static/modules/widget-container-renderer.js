@@ -1,11 +1,11 @@
 import C from './dom-contracts.js';
 import { getLogger } from './logger.js';
-import { KairosWidgets } from './widgets/core.js';
+import { WidgetManager } from './widgets/core.js';
 
 var log = getLogger('widget-container-renderer');
 
 export function processWidgetContainers(fullText, bodyDiv, existingByKey, renderedKeys) {
-  var widgetsApi = KairosWidgets;
+  var widgetsApi = WidgetManager;
   // Find all standard code blocks and inline code blocks that are NOT widgets
   var ignoredRanges = [];
   var codeBlockRegex = /```(html-widget)?[\s\S]*?(?:```|$)/g;

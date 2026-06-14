@@ -1,6 +1,6 @@
 import { StreamOrchestrator } from './stream-orchestrator.js';
 import { createRetryController } from './retry-handler.js';
-import { KairosUtils } from './utils.js';
+import { Utils } from './utils.js';
 import C from './dom-contracts.js';
 import { SessionContext } from './session-context.js';
 
@@ -11,7 +11,7 @@ var retryClickBound = false;
 
 function getNav(deps) {
   if (!deps || !deps.nav) {
-    throw new Error('KairosForm.init requires nav');
+    throw new Error('ChatForm.init requires nav');
   }
   return deps.nav;
 }
@@ -108,7 +108,7 @@ function init(deps) {
     if (messages) {
       messages.appendChild(asstDiv);
     }
-    KairosUtils.scrollToBottom();
+    Utils.scrollToBottom();
 
     StreamOrchestrator.startStream({
       text: text,
@@ -129,7 +129,7 @@ function resetForm() {
   currentRetryController.resetRetryCount();
 }
 
-export const KairosForm = {
+export const ChatForm = {
   init: init,
   retry: retryLastMessage,
   reset: resetForm

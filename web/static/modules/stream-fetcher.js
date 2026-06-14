@@ -1,4 +1,4 @@
-import { KairosStream } from './stream-dispatcher.js';
+import { StreamDispatcher } from './stream-dispatcher.js';
 import { parseStreamEvent } from './stream-contract.js';
 import { logUI } from './log-ui.js';
 import { ApiClient } from './api-client.js';
@@ -40,7 +40,7 @@ export function executeStreamFetch(params) {
             if (!lastMsg) {
               logUI('json_parse_error', buf.substring(0, 80));
             } else {
-              KairosStream.emit(lastMsg.t, lastMsg.d, context);
+              StreamDispatcher.emit(lastMsg.t, lastMsg.d, context);
             }
           }
           logUI('stream_complete', 'tokens=' + tokenCount + ' hasContent=' + hasContent);
@@ -77,7 +77,7 @@ export function executeStreamFetch(params) {
             tokenCount++;
           }
 
-          KairosStream.emit(msg.t, msg.d, context);
+          StreamDispatcher.emit(msg.t, msg.d, context);
         }
 
         return readLoop();

@@ -20,7 +20,12 @@ DEFINITION: dict[str, Any] = {
                 },
                 "end_line": {
                     "type": "integer",
-                    "description": "End line to read the file up to (inclusive). By default reads the whole file, but output is capped at 100 lines per call to prevent token overflow. Use multiple calls with start_line to read large files."
+                    "description": "End line to read the file up to (inclusive). By default reads the whole file. Max 500 lines per call."
+                },
+                "max_lines": {
+                    "type": "integer",
+                    "description": "Max lines to return (default: 250, max: 500). Use this to control how much you read.",
+                    "default": 250
                 }
             },
             "required": ["path"]
@@ -29,7 +34,7 @@ DEFINITION: dict[str, Any] = {
 }
 
 
-def _paginate_and_format(path: str, lines: list[str], start_line: int, end_line: int | None) -> str:
+def _paginate_and_format(path: str, lines: list[str], start_line: int, end_line: int | None, max_lines: int = 250) -> str:
     total_lines = len(lines)
 
     try:
@@ -45,7 +50,7 @@ def _paginate_and_format(path: str, lines: list[str], start_line: int, end_line:
     else:
         end_line = total_lines
 
-    MAX_LINES_PER_CALL = 100
+    MAX_LINES_PER_CALL = max_lines
     requested_count = end_line - start_line + 1
     was_truncated = False
     if requested_count > MAX_LINES_PER_CALL:
@@ -70,6 +75,7 @@ def run(**kwargs) -> str:
     path = kwargs.get("path") or kwargs.get("file_path") or kwargs.get("filepath", "")
     start_line = int(kwargs.get("start_line", kwargs.get("start", 1)))
     end_line = kwargs.get("end_line", kwargs.get("end"))
+    max_lines = min(int(kwargs.get("max_lines", 250)), 500)
     _session_id = kwargs.get("_session_id")
     resolved, err = resolve_and_validate_path(path)
     if err:
@@ -85,6 +91,6 @@ def run(**kwargs) -> str:
         with open(resolved, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
 
-        return _paginate_and_format(path, lines, start_line, end_line)
+        return _paginate_and_format(path, lines, start_line, end_line, max_lines)
     except Exception:
         return f"[ERROR] Could not read the file '{path}'."

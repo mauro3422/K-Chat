@@ -4,7 +4,7 @@
  * Inicialización de contenedores de widgets.
  */
 import C from '../dom-contracts.js';
-import { log, KairosWidgets } from './core.js';
+import { log, WidgetManager } from './core.js';
 import { createIframe } from './iframe-builder.js';
 
 let _widgetObserver = null;
@@ -29,7 +29,7 @@ export function initAll(parentEl, forceImmediate) {
         if (wmState && wmState.initialized) continue;
         if (!forceImmediate && wmState && wmState.observed) continue;
         var id = container.getAttribute('data-widget-id');
-        var code = KairosWidgets._registry[id];
+        var code = WidgetManager._registry[id];
         var key = container.getAttribute('data-widget-key');
         if (code === undefined && !key) continue;
 

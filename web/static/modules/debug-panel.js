@@ -1,6 +1,6 @@
 import { SessionContext } from './session-context.js';
-import { KairosUtils } from './utils.js';
-import { KairosWidgets } from './widgets/index.js';
+import { Utils } from './utils.js';
+import { WidgetManager } from './widgets/index.js';
 import { logUI, logStream, setDebugVisible, getStreamEvents, getUIEvents, registerStreamListener, registerUiListener } from './log-ui.js';
 import { ApiClient } from './api-client.js';
 
@@ -28,7 +28,7 @@ function timeToMs(t) {
   return (parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60 + parseFloat(p[2])) * 1000;
 }
 
-function escHtml(s) { return KairosUtils.escHtml(s); }
+function escHtml(s) { return Utils.escHtml(s); }
 
 function getAsrTransportStatus() {
   var telemetry = getAsrTelemetryBuffer();
@@ -167,8 +167,8 @@ function renderStreamLog() {
 
 function refreshWidgetInfo() {
   var el = document.getElementById('widget-log');
-  if (!el || !KairosWidgets.debug) return;
-  var widgetDebug = KairosWidgets.debug;
+  if (!el || !WidgetManager.debug) return;
+  var widgetDebug = WidgetManager.debug;
   if (Object.keys(widgetDebug).length === 0) {
     clearElement(el);
     el.appendChild(createSingleLogItem('sl-item', '(sin widgets aun)'));
@@ -232,8 +232,8 @@ function copyText(el) {
 }
 
 function copyWidgetLog(el) {
-  if (!KairosWidgets.debug || Object.keys(KairosWidgets.debug).length === 0) { el.textContent = '[]'; return; }
-  var widgetDebug = KairosWidgets.debug;
+  if (!WidgetManager.debug || Object.keys(WidgetManager.debug).length === 0) { el.textContent = '[]'; return; }
+  var widgetDebug = WidgetManager.debug;
   var lines = [];
   for (var wid in widgetDebug) {
     var w = widgetDebug[wid];
@@ -305,8 +305,8 @@ function copyAllDebug(el) {
   parts.push('=== ASR TEXT ===');
   parts.push(getAsrVisibleText());
   parts.push('');
-  if (KairosWidgets.debug && Object.keys(KairosWidgets.debug).length > 0) {
-    var widgetDebug = KairosWidgets.debug;
+  if (WidgetManager.debug && Object.keys(WidgetManager.debug).length > 0) {
+    var widgetDebug = WidgetManager.debug;
     parts.push('=== WIDGETS ===');
     for (var wid in widgetDebug) {
       var w = widgetDebug[wid];
@@ -439,15 +439,33 @@ function toggleDebug() {
   if (debugVisible) refreshDebug();
 }
 
+var refreshTimeout = null;
+var lastRefreshTime = 0;
+
+function throttledRefreshDebug() {
+  var now = Date.now();
+  var wait = 500;
+  if (now - lastRefreshTime >= wait) {
+    lastRefreshTime = now;
+    refreshDebug();
+  } else {
+    if (refreshTimeout) clearTimeout(refreshTimeout);
+    refreshTimeout = setTimeout(function() {
+      lastRefreshTime = Date.now();
+      refreshDebug();
+    }, wait - (now - lastRefreshTime));
+  }
+}
+
 function bindDebugControls(deps) {
   if (debugControlsBound) return;
   debugControlsBound = true;
   var eventTarget = getDebugEventTarget(deps);
   eventTarget.addEventListener(ASR_EVENT_TELEMETRY, function() {
-    if (debugVisible) refreshDebug();
+    if (debugVisible) throttledRefreshDebug();
   });
   eventTarget.addEventListener(ASR_EVENT_TEXT, function() {
-    if (debugVisible) refreshDebug();
+    if (debugVisible) throttledRefreshDebug();
   });
   document.addEventListener('click', function(event) {
     var copyTarget = event.target && event.target.closest ? event.target.closest('.db-copy') : null;
@@ -468,7 +486,7 @@ function bindDebugControls(deps) {
   });
 }
 
-export const KairosDebugPanel = {
+export const DebugPanel = {
   logUI,
   logStream,
   toggleDebug,

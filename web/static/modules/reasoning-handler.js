@@ -1,9 +1,9 @@
 import C from './dom-contracts.js';
 import { logUI } from './log-ui.js';
-import { KairosStream } from './stream-dispatcher.js';
+import { StreamDispatcher } from './stream-dispatcher.js';
 
 export function registerReasoningHandler() {
-  KairosStream.on('reasoning', function(token, ctx) {
+  StreamDispatcher.on('reasoning', function(token, ctx) {
     try {
       var state = ctx;
       if (ctx && typeof ctx.getReasoningState === 'function') {

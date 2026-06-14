@@ -103,7 +103,7 @@ export function reset() {
     log('system', 'reset', 'registro de widgets y contador reseteados');
 }
 
-export const KairosWidgets = {
+export const WidgetManager = {
     get _registry() { return _registry; },
     get registry() { return _registry; },
     get _debug() { return _debug; },

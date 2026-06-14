@@ -1,16 +1,16 @@
 /**
  * Kairos Widgets — Widget Detector
  *
- * Listens to KairosStream 'content' events, detects widget markers in the
+ * Listens to StreamDispatcher 'content' events, detects widget markers in the
  * accumulated text, and emits 'widget:detected' events for logging/debugging.
  *
  * Does NOT create DOM elements.
- * Does NOT populate KairosWidgets.registry.
+ * Does NOT populate WidgetManager.registry.
  */
-import { KairosStream } from '../stream-dispatcher.js';
+import { StreamDispatcher } from '../stream-dispatcher.js';
 
 export function registerWidgetDetector() {
-  KairosStream.on('content', function(token, state) {
+  StreamDispatcher.on('content', function(token, state) {
     try {
       if (!state || !state.bodyDivs) return;
 
@@ -95,7 +95,7 @@ export function registerWidgetDetector() {
         if (phaseCache[wm.index]) continue;
         phaseCache[wm.index] = true;
 
-        KairosStream.emit('widget:detected', {
+        StreamDispatcher.emit('widget:detected', {
           key: wm.key,
           code: wm.code,
           bodyDiv: state.bodyDivs[phaseIdx],

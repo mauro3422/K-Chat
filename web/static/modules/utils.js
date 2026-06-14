@@ -50,4 +50,4 @@ function finalizeStream(input) {
   scrollToBottom();
 }
 
-export const KairosUtils = { escHtml, scrollToBottom, initGlobalErrorHandlers, showToast, finalizeStream };
+export const Utils = { escHtml, scrollToBottom, initGlobalErrorHandlers, showToast, finalizeStream };

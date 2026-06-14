@@ -1,6 +1,6 @@
 import { RetryHandler } from './retry-handler.js';
 import { StreamErrorHandler } from './stream-error-handler.js';
-import { KairosUtils } from './utils.js';
+import { Utils } from './utils.js';
 
 export function attemptRetry(params) {
   var asstDiv = params.asstDiv;
@@ -44,5 +44,5 @@ export function handleRetryFinalization(params) {
   }
 
   retryController.resetRetryCount();
-  KairosUtils.finalizeStream(input);
+  Utils.finalizeStream(input);
 }

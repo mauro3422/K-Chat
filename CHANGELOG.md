@@ -4,6 +4,12 @@
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 > Las entradas describen el estado del proyecto en el momento de cada release.
 
+## [v0.0.55] — 2026-06-13 — [Detalle](changelogs/v0.0.55.md)
+- **Premium UI y Layout Resizable**: Estética Glassmorphism ligera, tema claro/oscuro (🌓) y gutter interactivo resizable con persistencia en `localStorage`.
+- **Lego Frontend**: Desacoplamiento total del renderizado de mensajes a JSON, inyectados dinámicamente desde el cliente (`message-renderer.js`).
+- **Performance Fix**: Throttling del debug panel en eventos de telemetría de voz ASR.
+- **Bug Fix**: Solucionado el fallo de scope de `os` en `db_query.py`.
+
 ## [v0.0.54] — 2026-06-13 — [Detalle](changelogs/v0.0.54.md)
 - **Lego hardening**: runtime sin wrappers viejos, historial tipado con `HistoryMessage`, sesión/memoria con contratos explícitos
 - **Contexto**: `load_context()` quedó pura; `TOOLS.md` se genera fuera del flujo de lectura

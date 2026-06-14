@@ -9,7 +9,7 @@ global.fetch = () => Promise.resolve();
 
 const widgetsDir = new URL('../web/static/modules/widgets/', import.meta.url).pathname;
 const coreModule = await import(`file://${widgetsDir}/core.js`);
-const KairosWidgets = coreModule.KairosWidgets;
+const WidgetManager = coreModule.WidgetManager;
 const iframeBuilder = await import(`file://${widgetsDir}/iframe-builder.js`);
 const iframeModule = await import(`file://${widgetsDir}/iframe.js`);
 await import(`file://${widgetsDir}/messaging.js`);
@@ -45,7 +45,7 @@ function makeScope(container) {
 }
 
 beforeEach(() => {
-    KairosWidgets.reset();
+    WidgetManager.reset();
     iframeModule.reset();
     setWidgetObserver({ observe: function() {} });
 });
@@ -58,7 +58,7 @@ describe('Widget Init — WeakMap tracking', () => {
         iframeModule.initAll(scope);
         iframeModule.initAll(scope);
 
-        var widget = KairosWidgets.debug['w-idem'];
+        var widget = WidgetManager.debug['w-idem'];
         expect(widget).toBeDefined();
         var inits = widget.events.filter(function(e) { return e.label === 'init'; });
         expect(inits.length).toBe(1);
@@ -77,7 +77,7 @@ describe('Widget Init — WeakMap tracking', () => {
         // Second call should still skip because WeakMap has the state
         iframeModule.initAll(scope);
 
-        var widget = KairosWidgets.debug['w-domclear'];
+        var widget = WidgetManager.debug['w-domclear'];
         expect(widget).toBeDefined();
         var inits = widget.events.filter(function(e) { return e.label === 'init'; });
         expect(inits.length).toBe(1);
@@ -102,12 +102,12 @@ describe('Widget Init — WeakMap tracking', () => {
         expect(newWm.has(container)).toBe(false);
 
         // Now initAll should log init again (fresh state)
-        // Note: KairosWidgets.reset() clears registry+index but not _debug,
+        // Note: WidgetManager.reset() clears registry+index but not _debug,
         // so we count total init events - should be 2 (one before reset, one after)
-        KairosWidgets.reset();
+        WidgetManager.reset();
         iframeModule.initAll(scope);
 
-        var widget = KairosWidgets.debug['w-reset'];
+        var widget = WidgetManager.debug['w-reset'];
         var inits = widget.events.filter(function(e) { return e.label === 'init'; });
         expect(inits.length).toBe(2);
     });

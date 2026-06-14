@@ -1,4 +1,4 @@
-import { KairosUtils } from './utils.js';
+import { Utils } from './utils.js';
 import C from './dom-contracts.js';
 import { logUI } from './log-ui.js';
 
@@ -14,7 +14,7 @@ export class RetryController {
   }
 
   showRetryNotice(attempt, reason) {
-    KairosUtils.showToast('Reintentando... (' + attempt + '/' + this.maxRetries + ') - ' + reason, 'warning');
+    Utils.showToast('Reintentando... (' + attempt + '/' + this.maxRetries + ') - ' + reason, 'warning');
     logUI('stream_retry', 'intento ' + attempt + '/' + this.maxRetries + ' - ' + reason);
   }
 

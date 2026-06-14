@@ -1,12 +1,12 @@
 import { StreamErrorHandler } from './stream-error-handler.js';
 import { createRetryController } from './retry-handler.js';
-import { KairosUtils } from './utils.js';
+import { Utils } from './utils.js';
 import C from './dom-contracts.js';
-import { KairosStream } from './stream-dispatcher.js';
+import { StreamDispatcher } from './stream-dispatcher.js';
 import { StreamContext } from './stream-context.js';
 import { executeStreamFetch } from './stream-fetcher.js';
 import { attemptRetry, shouldAutoRetryEmptyResponse } from './stream-retry-coordinator.js';
-import { KairosDebugPanel } from './debug-panel.js';
+import { DebugPanel } from './debug-panel.js';
 import { logUI } from './log-ui.js';
 import { SessionContext } from './session-context.js';
 import { refreshSidebar } from './sidebar-refresh.js';
@@ -28,7 +28,11 @@ export const StreamOrchestrator = {
     logUI('stream_start', 'mensaje=' + text.substring(0, 40) + '...');
 
     var errorHandler = StreamErrorHandler.createStreamErrorHandler();
-    KairosStream.on('error', errorHandler.handler);
+    StreamDispatcher.on('error', errorHandler.handler);
+
+    function cleanupStream() {
+      StreamDispatcher.off('error', errorHandler.handler);
+    }
 
     var timeoutId = null;
     var streamTimeout = retryController.getStreamTimeout();
@@ -70,7 +74,8 @@ export const StreamOrchestrator = {
           asstDiv.remove();
         }
         retryController.resetRetryCount();
-        KairosUtils.finalizeStream(input);
+        Utils.finalizeStream(input);
+        cleanupStream();
         return;
       }
 
@@ -87,11 +92,12 @@ export const StreamOrchestrator = {
         hasSuccessfulTools: hasSuccessfulTools,
         retryController: retryController
       })) {
+        cleanupStream();
         return;
       }
 
       StreamErrorHandler.markCallingPillsError(asstDiv);
-      StreamErrorHandler.showRetryMessage(asstDiv, 'No se pudo recibir la respuesta después de ' + retryController.getMaxRetries() + ' reintentos. Detalle: ' + KairosUtils.escHtml(e2.toString()));
+      StreamErrorHandler.showRetryMessage(asstDiv, 'No se pudo recibir la respuesta después de ' + retryController.getMaxRetries() + ' reintentos. Detalle: ' + Utils.escHtml(e2.toString()));
       logUI('stream_error_final', 'falló definitivamente: ' + e2.message);
       retryController.resetRetryCount();
     }
@@ -108,9 +114,9 @@ export const StreamOrchestrator = {
       var errorMsg = streamError.message || 'Error desconocido';
 
       if (errorType === 'auth' || errorType === 'rate_limit') {
-        StreamErrorHandler.showRetryMessage(asstDiv, errorMsg);
-        retryController.resetRetryCount();
-        KairosUtils.finalizeStream(input);
+        Utils.finalizeStream(input);
+        cleanupStream();
+        return;
         return;
       }
 
@@ -125,12 +131,13 @@ export const StreamOrchestrator = {
         hasSuccessfulTools: hasSuccessfulTools,
         retryController: retryController
       })) {
+        cleanupStream();
         return;
       }
-
-      StreamErrorHandler.showRetryMessage(asstDiv, errorMsg + ' (después de ' + retryController.getMaxRetries() + ' reintentos)');
-      retryController.resetRetryCount();
-      KairosUtils.finalizeStream(input);
+      Utils.finalizeStream(input);
+      cleanupStream();
+      return;
+      Utils.finalizeStream(input);
       return;
     }
 
@@ -165,8 +172,9 @@ export const StreamOrchestrator = {
         reason: 'respuesta vacía',
         hasContent: false,
         hasSuccessfulTools: hasSuccessfulTools,
-        retryController: retryController
       })) {
+        cleanupStream();
+        return;
         return;
       }
 
@@ -180,11 +188,11 @@ export const StreamOrchestrator = {
       handleSuccessfulStream({
         retryController: retryController,
         refreshSidebar: refreshSidebar,
-        debugPanel: KairosDebugPanel
+        debugPanel: DebugPanel
       });
     }
 
-    KairosUtils.finalizeStream(input);
+    Utils.finalizeStream(input);
   }
 
 };

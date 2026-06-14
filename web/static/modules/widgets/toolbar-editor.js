@@ -7,7 +7,7 @@ import { ApiClient } from '../api-client.js';
 import { SessionContext } from '../session-context.js';
 import { createToolbarButton } from './ui-helpers.js';
 import { createIframe } from './iframe-builder.js';
-import { KairosWidgets } from './core.js';
+import { WidgetManager } from './core.js';
 
 function clearContainer(container) {
     if (container && typeof container.replaceChildren === 'function') {
@@ -31,7 +31,7 @@ export function openEditor(container, id, key, code) {
 
     var textarea = document.createElement('textarea');
     textarea.className = 'widget-editor-textarea';
-    textarea.value = KairosWidgets._registry[id] || code;
+    textarea.value = WidgetManager._registry[id] || code;
     editorDiv.appendChild(textarea);
 
     var actionsDiv = document.createElement('div');
@@ -49,7 +49,7 @@ export function openEditor(container, id, key, code) {
             ApiClient.saveWidgetCode(SessionContext.getSessionId(), key, newCode, 'Edición manual desde UI')
             .then(function parseSaveResponse(r) { return r.json(); })
             .then(function onSaveSuccess(data) {
-                KairosWidgets._registry[id] = newCode;
+                WidgetManager._registry[id] = newCode;
                 clearContainer(container);
                 container.dataset.initialized = '';
                 createIframe(container, id, newCode);

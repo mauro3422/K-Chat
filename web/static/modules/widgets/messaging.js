@@ -4,7 +4,7 @@
  * Escucha postMessage desde los iframes y gestiona IntersectionObserver global.
  */
 import { SessionContext } from '../session-context.js';
-import { log, KairosWidgets, fnv1a_32 } from './core.js';
+import { log, WidgetManager, fnv1a_32 } from './core.js';
 import { createIframe } from './iframe-builder.js';
 import { getWidgetObserver, setWidgetObserver } from './iframe.js';
 import stateManager from './state-manager.js';
@@ -23,7 +23,7 @@ export function startMessageHandler(deps) {
                 if (entry.isIntersecting) {
                     var container = entry.target;
                     var id = container.getAttribute('data-widget-id');
-                    var code = KairosWidgets._registry[id];
+                    var code = WidgetManager._registry[id];
                     var key = container.getAttribute('data-widget-key');
                     if ((code !== undefined || key) && !container.dataset.initialized) {
                         log(id, 'lazy-load', 'visible en viewport');
@@ -48,7 +48,7 @@ export function startMessageHandler(deps) {
                 log(event.data.id, 'altura', event.data.height + 'px -> ' + (event.data.height + 4) + 'px');
             }
         } else if (event.data.type === 'save-widget-state') {
-            var code = KairosWidgets._registry[event.data.id];
+            var code = WidgetManager._registry[event.data.id];
             var hashId = code ? 'widget-' + fnv1a_32(code) : event.data.id;
             stateManager.setState(hashId, event.data.state);
             var codeEntries = {};

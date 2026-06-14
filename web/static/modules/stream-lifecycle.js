@@ -1,6 +1,6 @@
 import { StreamErrorHandler } from './stream-error-handler.js';
 import { attemptRetry, shouldAutoRetryEmptyResponse } from './stream-retry-coordinator.js';
-import { KairosUtils } from './utils.js';
+import { Utils } from './utils.js';
 import C from './dom-contracts.js';
 import { SessionContext } from './session-context.js';
 import { logUI } from './log-ui.js';
@@ -21,7 +21,7 @@ export function handleAbortError(params, retryController) {
     asstDiv.remove();
   }
   retryController.resetRetryCount();
-  KairosUtils.finalizeStream(input);
+  Utils.finalizeStream(input);
 }
 
 export function handleTransportError(params, retryController, error) {
@@ -47,7 +47,7 @@ export function handleTransportError(params, retryController, error) {
   }
 
   StreamErrorHandler.markCallingPillsError(asstDiv);
-  StreamErrorHandler.showRetryMessage(asstDiv, 'No se pudo recibir la respuesta después de ' + retryController.getMaxRetries() + ' reintentos. Detalle: ' + KairosUtils.escHtml(error.toString()));
+  StreamErrorHandler.showRetryMessage(asstDiv, 'No se pudo recibir la respuesta después de ' + retryController.getMaxRetries() + ' reintentos. Detalle: ' + Utils.escHtml(error.toString()));
   logUI('stream_error_final', 'falló definitivamente: ' + error.message);
   retryController.resetRetryCount();
   return false;
@@ -67,7 +67,7 @@ export function handleBackendError(params, retryController, streamError, hasCont
   if (errorType === 'auth' || errorType === 'rate_limit') {
     StreamErrorHandler.showRetryMessage(asstDiv, errorMsg);
     retryController.resetRetryCount();
-    KairosUtils.finalizeStream(input);
+    Utils.finalizeStream(input);
     return true;
   }
 
@@ -87,7 +87,7 @@ export function handleBackendError(params, retryController, streamError, hasCont
 
   StreamErrorHandler.showRetryMessage(asstDiv, errorMsg + ' (después de ' + retryController.getMaxRetries() + ' reintentos)');
   retryController.resetRetryCount();
-  KairosUtils.finalizeStream(input);
+  Utils.finalizeStream(input);
   return false;
 }
 
