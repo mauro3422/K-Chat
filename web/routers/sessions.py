@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
 
-from src.memory.repos import get_repos
+from src.api import get_repos
 
 router = APIRouter()
 

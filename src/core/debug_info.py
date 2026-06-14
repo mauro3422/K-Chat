@@ -1,5 +1,5 @@
-"""Structured debug info replacing the mutable dict bag."""
+"""Structured debug info — re-exported from neutral location for backward compat."""
 
-from src.memory.types import DebugInfo  # noqa: F401 — canonical location is src.memory.types
+from src._types import DebugInfo  # noqa: F401
 
 __all__ = ["DebugInfo"]

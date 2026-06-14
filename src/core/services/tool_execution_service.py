@@ -1,4 +1,5 @@
 from typing import Any, Generator, Callable, AsyncGenerator
+from src.core.services.protocols import ToolExecutionServiceProtocol
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
 from src.tools.runner import run_parallel_tools
 from src.tools.registry import ToolRegistry
@@ -6,10 +7,10 @@ import src.tools as tools
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from src.core.services.telemetry_service import TelemetryService
+    from src.core.services.protocols import TelemetryServiceProtocol
 
-class ToolExecutionService:
-    def __init__(self, tool_registry: ToolRegistry | None = None, telemetry_service: 'TelemetryService | None' = None):
+class ToolExecutionService(ToolExecutionServiceProtocol):
+    def __init__(self, tool_registry: ToolRegistry | None = None, telemetry_service: 'TelemetryServiceProtocol | None' = None):
         self.tool_registry = tool_registry or tools.get_default_registry()
         self.telemetry_service = telemetry_service
 

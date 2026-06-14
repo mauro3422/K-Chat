@@ -139,8 +139,10 @@ def _start_searxng(verbose: bool) -> bool:
 
 
 def _start_web(verbose: bool, config=None) -> subprocess.Popen | None:
-    from src.config_loader import DEFAULT_CONFIG
-    cfg = config or DEFAULT_CONFIG
+    if config is None:
+        from src.config_loader import load_config
+        config = load_config()
+    cfg = config
     host = cfg.host
     port = cfg.port
     cmd = [
@@ -169,8 +171,10 @@ def _start_web(verbose: bool, config=None) -> subprocess.Popen | None:
 
 
 def _start_telegram(verbose: bool, config=None) -> subprocess.Popen | None:
-    from src.config_loader import DEFAULT_CONFIG
-    cfg = config or DEFAULT_CONFIG
+    if config is None:
+        from src.config_loader import load_config
+        config = load_config()
+    cfg = config
     if not cfg.telegram_bot_token:
         return None
     cmd = [sys.executable, "-m", "channels.telegram"]
@@ -236,8 +240,10 @@ def _check_alive() -> str | None:
 
 def _health_check(config=None) -> dict[str, Any]:
     """Check web server health endpoint."""
-    from src.config_loader import DEFAULT_CONFIG
-    cfg = config or DEFAULT_CONFIG
+    if config is None:
+        from src.config_loader import load_config
+        config = load_config()
+    cfg = config
     url = f"http://{cfg.host}:{cfg.port}/health"
     try:
         req = urllib.request.Request(url, method="GET")
@@ -332,8 +338,8 @@ verbose = False
 
 def main() -> None:
     global verbose, _start_time
-    from src.config_loader import DEFAULT_CONFIG
-    cfg = DEFAULT_CONFIG
+    from src.config_loader import load_config
+    cfg = load_config()
     _start_time = time.time()
 
     parser = argparse.ArgumentParser(description="Kairos Gateway — unified launcher")
@@ -358,7 +364,7 @@ def main() -> None:
         print(f"  {CYAN}{line}{RESET}")
     print()
 
-    from src.memory.schema import init_db
+    from src.api import init_db
     root_logger = logging.getLogger()
     prev_level = root_logger.level
     root_logger.setLevel(logging.WARNING)

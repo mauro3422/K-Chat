@@ -10,9 +10,10 @@ SEARCH_TIMEOUT = 15.0
 
 
 def _searxng_url(config=None) -> str:
-    from src.config_loader import DEFAULT_CONFIG
-    cfg = config or DEFAULT_CONFIG
-    return cfg.searxng_url
+    if config is None:
+        from src.config_loader import load_config
+        config = load_config()
+    return config.searxng_url
 
 # Module-level constant, never mutated after init — thread-safe
 DEFINITION = {

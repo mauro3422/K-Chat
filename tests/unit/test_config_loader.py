@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock
 """Tests for src/config_loader.py"""
 import os
-from src.config_loader import Config, load_config, DEFAULT_CONFIG
+from src.config_loader import Config, load_config
 
 
 class TestConfigDataclass:
@@ -109,14 +109,5 @@ class TestLoadConfig:
 class TestDefaultConfig:
     @pytest.mark.anyio
     async def test_default_config_is_instance(self):
-        """DEFAULT_CONFIG is a Config instance."""
-        assert isinstance(DEFAULT_CONFIG, Config)
-
-    @pytest.mark.anyio
-    async def test_default_config_has_values(self):
-        """DEFAULT_CONFIG has reasonable non-None values for all fields."""
-        assert DEFAULT_CONFIG.opencode_zen_base_url is not None
-        assert DEFAULT_CONFIG.llm_provider is not None
-        assert DEFAULT_CONFIG.memory_db_path is not None
-        assert DEFAULT_CONFIG.port > 0
-        assert DEFAULT_CONFIG.http_rate_limit > 0
+        """load_config() returns a Config instance."""
+        assert isinstance(load_config(), Config)

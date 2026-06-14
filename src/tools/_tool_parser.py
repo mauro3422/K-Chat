@@ -28,7 +28,9 @@ def _parse_tool_call(tc: Any, tool_map: dict[str, Any]) -> tuple[str, dict[str, 
     return name, args, error
 
 
-def _get_required_params(tool_name: str) -> list[str]:
-    from src.tools import get_default_registry
-    defn = get_default_registry().definitions.get(tool_name, {})
+def _get_required_params(tool_name: str, tool_definitions: dict[str, Any] | None = None) -> list[str]:
+    if tool_definitions is None:
+        from src.tools import build_default_registry
+        tool_definitions = build_default_registry().definitions
+    defn = tool_definitions.get(tool_name, {})
     return defn.get("function", {}).get("parameters", {}).get("required", [])

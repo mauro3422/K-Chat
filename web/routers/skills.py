@@ -2,7 +2,7 @@ import logging
 from typing import Any
 from fastapi import APIRouter, HTTPException
 
-from src.skills import SkillRegistry
+from src.api import SkillRegistry
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -21,10 +21,12 @@ from src.tools.registry import ToolRegistry
 from src.core.debug_info import DebugInfo
 
 if TYPE_CHECKING:
-    from src.core.services.history_service import HistoryService
-    from src.core.services.llm_service import LLMService
-    from src.core.services.tool_execution_service import ToolExecutionService
-    from src.core.services.telemetry_service import TelemetryService
+    from src.core.services.protocols import (
+        HistoryServiceProtocol,
+        LLMServiceProtocol,
+        ToolExecutionServiceProtocol,
+        TelemetryServiceProtocol,
+    )
 
 
 # ── Focused dependency groups ──────────────────────────────────────────────
@@ -36,22 +38,22 @@ class LLMDeps:
     default_model_fn: Callable[[], str] | None = None
     llm_chat_fn: Callable[..., Any] | None = None
     llm_chat_stream_fn: Callable[..., Any] | None = None
-    llm_service: LLMService | None = None
-    telemetry_service: TelemetryService | None = None
+    llm_service: LLMServiceProtocol | None = None
+    telemetry_service: TelemetryServiceProtocol | None = None
 
 
 @dataclass(slots=True)
 class ToolDeps:
     """Tool-related dependencies: registry and execution service."""
     tool_registry: ToolRegistry | None = None
-    tool_service: ToolExecutionService | None = None
+    tool_service: ToolExecutionServiceProtocol | None = None
 
 
 @dataclass(slots=True)
 class StorageDeps:
     """Storage/history dependencies: repos, history service, compression."""
     repos: Repositories | None = None
-    history_service: HistoryService | None = None
+    history_service: HistoryServiceProtocol | None = None
     compress_fn: Callable[[list[dict[str, Any]], str], None] | None = None
     should_compress_fn: Callable[[list[dict[str, Any]]], bool] | None = None
 

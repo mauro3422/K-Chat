@@ -3,9 +3,10 @@ from textwrap import dedent
 
 
 def get_templates(config=None):
-    from src.config_loader import DEFAULT_CONFIG
-    cfg = config or DEFAULT_CONFIG
-    user_name = cfg.user_name
+    if config is None:
+        from src.config_loader import load_config
+        config = load_config()
+    user_name = config.user_name
     return {
         "SOUL.md": dedent("""\
             # SOUL.md

@@ -5,10 +5,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
-from src.llm.model_state import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
-from src.llm.model_registry import get_model_registry, ensure_registry_refreshed
-from src.llm.rate_limit_state import get_rate_limit_store
-from src.memory.repos import get_repos
+from src.api import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
+from src.api import get_model_registry, ensure_registry_refreshed
+from src.api import get_rate_limit_store, get_repos
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
 from web.services.model_catalog import format_model_label, get_model_metadata

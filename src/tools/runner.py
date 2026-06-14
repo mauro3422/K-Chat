@@ -1,19 +1,24 @@
+from __future__ import annotations
+
 import json
 import logging
 import asyncio
 from datetime import datetime
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
 from src.tools._rate_limiter import _check_rate_limit
 from src.tools._tool_parser import _parse_tool_call
 from src.tools._tool_persister import _persist_tool_results
-from src.memory.repos import Repositories
-from src.memory.types import HistoryMessage
+from src.tools._contract import HistoryMessage
+
+if TYPE_CHECKING:
+    from src.memory.repos import Repositories
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: Repositories) -> AsyncGenerator[Any, None]:
+async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: 'Repositories') -> AsyncGenerator[Any, None]:
     async def wrap_tool(tc, name, args):
         try:
             import inspect
@@ -59,7 +64,7 @@ async def _yield_tool_error_events(
     turn: int,
     history: list[dict[str, Any]],
     tool_detail: list[dict[str, Any]],
-    repos: Repositories,
+    repos: 'Repositories',
 ) -> AsyncGenerator[Any, None]:
     """Yield error events for tools that failed (parse error, rate limit)."""
     tool_call_repo = repos.tool_calls
@@ -85,7 +90,7 @@ async def _execute_and_persist_tools(
     session_id: str,
     turn: int,
     tagged: bool,
-    repos: Repositories,
+    repos: 'Repositories',
     history: list[dict[str, Any]],
     tool_detail: list[dict[str, Any]],
 ) -> AsyncGenerator[Any, None]:
@@ -104,7 +109,7 @@ async def run_parallel_tools(
     tool_detail: list[dict[str, Any]],
     used_tools: list[str],
     phase_tool_ids: list[str],
-    repos: Repositories,
+    repos: 'Repositories',
     tagged: bool = False,
     tool_map: dict[str, Any] | None = None,
 ) -> AsyncGenerator[Any, None]:

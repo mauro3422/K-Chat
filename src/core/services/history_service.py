@@ -7,7 +7,9 @@ from src.compressor import compress_history, should_compress
 
 logger = logging.getLogger(__name__)
 
-class HistoryService:
+from src.core.services.protocols import HistoryServiceProtocol
+
+class HistoryService(HistoryServiceProtocol):
     def __init__(self, repos: Repositories | None = None):
         self.repos = repos
 

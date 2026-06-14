@@ -9,7 +9,7 @@ import time
 
 import uvicorn
 
-from src.config_loader import DEFAULT_CONFIG
+from src.config_loader import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +30,14 @@ def _free_port_if_needed(host: str, port: int) -> None:
 
 
 def main() -> None:
+    cfg = load_config()
     logging.basicConfig(
-        level=DEFAULT_CONFIG.log_level.upper(),
+        level=cfg.log_level.upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    host = DEFAULT_CONFIG.host
-    port = DEFAULT_CONFIG.port
+    host = cfg.host
+    port = cfg.port
     _free_port_if_needed(host, port)
     uvicorn.run(
         "web.server:app",

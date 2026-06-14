@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import json
 from datetime import datetime
-from typing import Any
-from src.memory.repos import Repositories
+from typing import Any, TYPE_CHECKING
+
 from src.tools._contract import HistoryMessage
+
+if TYPE_CHECKING:
+    from src.memory.repos import Repositories
 
 
 async def _persist_tool_results(
@@ -12,7 +17,7 @@ async def _persist_tool_results(
     turn: int,
     history: list[Any],
     tool_detail: list[dict[str, Any]],
-    repos: Repositories,
+    repos: 'Repositories',
 ) -> None:
     repo = repos.tool_calls
     for tc, name, args in tcs_info:

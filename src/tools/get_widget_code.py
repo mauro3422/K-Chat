@@ -24,6 +24,7 @@ DEFINITION = {
 async def run(*args, **kwargs) -> str:
     widget_id = args[0] if args else kwargs.get("widget_id") or kwargs.get("key", "")
     _session_id = kwargs.get("_session_id")
+    _repos = kwargs.get("_repos")
     if len(args) > 1 and _session_id is None:
         _session_id = args[1]
     from src.tools._widget_helpers import validate_widget_args, get_saved_widget_repo
@@ -32,11 +33,13 @@ async def run(*args, **kwargs) -> str:
         return result
     _session_id, clean_id = result
 
+    repo = get_saved_widget_repo(repo=_repos.saved_widgets if _repos else None)
+
     try:
-        widget = await get_saved_widget_repo().get(clean_id)
+        widget = await repo.get(clean_id)
         if not widget:
             return f"[ERROR] The widget '{clean_id}' does not exist or has not been officially saved in this session."
-        
+
         return (
             f"Widget: {widget['widget_id']}\n"
             f"Active Version: {widget['version']}\n"

@@ -81,4 +81,4 @@ def load_config(overrides: dict | None = None) -> Config:
     return cfg
 
 
-DEFAULT_CONFIG: Config = load_config()
+

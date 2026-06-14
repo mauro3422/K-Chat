@@ -3,17 +3,19 @@
 from src.tools.registry import ToolRegistry
 from src.tools.runner import run_parallel_tools
 
-_DEFAULT_REGISTRY: ToolRegistry | None = None
 
-def get_default_registry() -> ToolRegistry:
-    """Get or create the default tool registry (lazy singleton)."""
-    global _DEFAULT_REGISTRY
-    if _DEFAULT_REGISTRY is None:
-        _DEFAULT_REGISTRY = ToolRegistry().discover().build()
-    return _DEFAULT_REGISTRY
+def build_default_registry() -> ToolRegistry:
+    """Build a fresh tool registry (not cached, no singleton)."""
+    from src.skills.registry import SkillRegistry
+    return ToolRegistry().discover().build(skill_registry=SkillRegistry())
+
+
+# Backward-compat alias — deprecated, prefer build_default_registry() or DI.
+get_default_registry = build_default_registry
 
 __all__ = [
     "run_parallel_tools",
+    "build_default_registry",
     "get_default_registry",
     "ToolRegistry",
 ]

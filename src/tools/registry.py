@@ -37,8 +37,14 @@ class ToolRegistry:
         self._definitions[name] = definition
         return self
     
-    def build(self) -> "ToolRegistry":
-        """Build registry by discovering tools from package. Returns self for chaining."""
+    def build(self, skill_registry: Any | None = None) -> "ToolRegistry":
+        """Build registry by discovering tools from package. Returns self for chaining.
+
+        *skill_registry* — an optional ``SkillRegistry`` instance (*or* a
+        ``.discover_tools()``-compatible duck).  When omitted, skill tools
+        are skipped (inject it explicitly when skill‑tool discovery is
+        needed).
+        """
         if self._built:
             return self
         
@@ -71,13 +77,13 @@ class ToolRegistry:
         
         
         # Discover tools from skills directory
-        try:
-            from src.skills.registry import SkillRegistry
-            for tool_name, (run_fn, definition) in SkillRegistry().discover_tools().items():
-                self._tool_map[tool_name] = run_fn
-                self._definitions[tool_name] = definition
-        except Exception as e:
-            logger.warning("Error scanning skills folder for tools via SkillRegistry: %s", e)
+        if skill_registry is not None:
+            try:
+                for tool_name, (run_fn, definition) in skill_registry.discover_tools().items():
+                    self._tool_map[tool_name] = run_fn
+                    self._definitions[tool_name] = definition
+            except Exception as e:
+                logger.warning("Error scanning skills folder for tools via SkillRegistry: %s", e)
 
         self._built = True
         return self

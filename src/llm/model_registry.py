@@ -74,9 +74,10 @@ class ModelRegistry:
     """
 
     def __init__(self, config: Any = None) -> None:
-        from src.config_loader import DEFAULT_CONFIG
-
-        self._config = config or DEFAULT_CONFIG
+        if config is None:
+            from src.config_loader import load_config
+            config = load_config()
+        self._config = config
         self._lock = threading.Lock()
         # Go API models (premium, standard, economy)
         self._go_models: list[str] = []
@@ -126,9 +127,9 @@ class ModelRegistry:
 
             fresh = copy.copy(self._config)
             fresh.llm_mode = "zen"
-            from src.llm.providers import _PROVIDER_REGISTRY
+            from src.llm.providers import _get_registry
 
-            pcls = _PROVIDER_REGISTRY.get(fresh.llm_provider)
+            pcls = _get_registry().get(fresh.llm_provider)
             if pcls:
                 zen_provider = pcls(
                     api_key=fresh.opencode_zen_api_key,

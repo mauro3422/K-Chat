@@ -2,8 +2,7 @@ import json
 import time
 from typing import Any
 
-from src.memory.types import DebugInfo
-from src.memory.repos import MessageRecord, get_repos
+from src.api import DebugInfo, MessageRecord, get_repos
 from web.services.message_persister_contract import MessagePersisterDeps
 
 
@@ -64,7 +63,7 @@ async def save_assistant_message(
     await repos.debug.save_info(session_id, debug_info.to_dict())
 
     try:
-        from src.chat_journal import log_turn
+        from src.api import log_turn
         log_turn(
             session_id=session_id,
             user_msg="",

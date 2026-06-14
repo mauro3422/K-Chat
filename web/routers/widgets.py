@@ -4,8 +4,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from src.tools._widget_helpers import sanitize_widget_id
-from src.memory.repos import get_repos
+from src.api import sanitize_widget_id, get_repos
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -19,11 +19,12 @@ async def execute_with_retry(fn: Callable[[], Awaitable[Any] | Any], model_name:
     """Wrapper that executes an async function with exponential backoff on rate limit or retryable errors."""
     last_error: Exception | None = None
     if max_retries is None or retry_delay is None:
-        from src.config_loader import DEFAULT_CONFIG
+        from src.config_loader import load_config
+        _cfg = load_config()
         if max_retries is None:
-            max_retries = DEFAULT_CONFIG.llm_max_retries
+            max_retries = _cfg.llm_max_retries
         if retry_delay is None:
-            retry_delay = DEFAULT_CONFIG.llm_retry_delay
+            retry_delay = _cfg.llm_retry_delay
     for attempt in range(max_retries):
         try:
             res = fn()

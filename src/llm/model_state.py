@@ -73,7 +73,54 @@ class ModelState:
         raise RuntimeError(f"All models have failed: {self._priority}")
 
 
-_DEFAULT_STATE = ModelState()
+# ── Lazy module-level state (not created at import time) ───────────────
+_state: ModelState | None = None
+
+
+def _get_state() -> ModelState:
+    global _state
+    if _state is None:
+        _state = ModelState()
+    return _state
+
+
+# Static constants (no dependency on ModelState instance)
+PRIORITY = [DEFAULT_MODEL, SECONDARY_MODEL]
+FALLBACK_MODEL = DEFAULT_MODEL
+
+
+# Convenience wrappers — accept optional state param for DI
+def is_model_failed(model: str, state: ModelState | None = None) -> bool:
+    return (state or _get_state()).is_model_failed(model)
+
+
+def mark_model_failed(model: str, state: ModelState | None = None) -> None:
+    (state or _get_state()).mark_model_failed(model)
+
+
+def clear_failed_models(state: ModelState | None = None) -> None:
+    (state or _get_state()).clear_failed_models()
+
+
+def get_verified_models_safe(state: ModelState | None = None) -> list[str] | None:
+    return (state or _get_state()).get_verified_models_safe()
+
+
+def set_verified_models(value: list[str] | None, state: ModelState | None = None) -> None:
+    (state or _get_state()).set_verified_models(value)
+
+
+def get_cached_models_safe(state: ModelState | None = None) -> Any:
+    return (state or _get_state()).get_cached_models_safe()
+
+
+def set_cached_models(value: Any, state: ModelState | None = None) -> None:
+    (state or _get_state()).set_cached_models(value)
+
+
+def _switch_model(model: str, state: ModelState | None = None) -> str:
+    return (state or _get_state()).switch_model(model)
+
 
 __all__ = [
     "ModelState",
@@ -81,17 +128,5 @@ __all__ = [
     "is_model_failed", "mark_model_failed", "clear_failed_models",
     "get_verified_models_safe", "set_verified_models",
     "get_cached_models_safe", "set_cached_models",
-    "_switch_model", "_DEFAULT_STATE",
+    "_switch_model",
 ]
-
-PRIORITY = _DEFAULT_STATE.priority
-FALLBACK_MODEL = _DEFAULT_STATE.fallback_model
-
-is_model_failed = _DEFAULT_STATE.is_model_failed
-mark_model_failed = _DEFAULT_STATE.mark_model_failed
-clear_failed_models = _DEFAULT_STATE.clear_failed_models
-get_verified_models_safe = _DEFAULT_STATE.get_verified_models_safe
-set_verified_models = _DEFAULT_STATE.set_verified_models
-get_cached_models_safe = _DEFAULT_STATE.get_cached_models_safe
-set_cached_models = _DEFAULT_STATE.set_cached_models
-_switch_model = _DEFAULT_STATE.switch_model

@@ -19,20 +19,29 @@ from fastapi.staticfiles import StaticFiles
 
 from dependencies import manage as deps
 from src.api.exceptions import ServiceException
-from src.config_loader import DEFAULT_CONFIG
-from src.memory.schema import init_db
+from src.config_loader import load_config
+from src.api import init_db
 
 logger = logging.getLogger(__name__)
 
 _rate_limit_store: dict[str, list[float]] = defaultdict(list)
-_RATE_LIMIT = DEFAULT_CONFIG.http_rate_limit
 _RATE_WINDOW = 60.0
+
+_config = None
+
+
+def _get_config():
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    cfg = _get_config()
     searxng_started = False
-    if DEFAULT_CONFIG.testing or os.environ.get("SEARXNG_AUTO_START", "false").lower() in ("1", "true"):
+    if cfg.testing or os.environ.get("SEARXNG_AUTO_START", "false").lower() in ("1", "true"):
         err = deps.searxng_start()
         if err:
             logger.warning("SearXNG auto-start: %s", err)
@@ -40,12 +49,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             searxng_started = True
     await init_db()
     try:
-        from src.skills import SkillRegistry
+        from src.api import SkillRegistry
         SkillRegistry().generate_index_md()
     except Exception as e:
         logger.warning("Failed to generate skills INDEX.md: %s", e)
-    if not DEFAULT_CONFIG.testing:
-        from src.llm.discovery import get_verified_models
+    if not cfg.testing:
+        from src.api import get_verified_models
         try:
             await asyncio.wait_for(get_verified_models(), timeout=10)
         except asyncio.TimeoutError:
@@ -54,7 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.warning("Failed to schedule model discovery: %s", e)
         # Auto-refresh the dynamic model registry
         try:
-            from src.llm.model_registry import ensure_registry_refreshed
+            from src.api import ensure_registry_refreshed
             await asyncio.wait_for(ensure_registry_refreshed(), timeout=10)
         except Exception:
             pass  # registry will lazy-refresh on first request
@@ -72,7 +81,7 @@ def register_middlewares(app: FastAPI) -> None:
         now = time.time()
         bucket = _rate_limit_store[client_ip]
         bucket[:] = [t for t in bucket if now - t < _RATE_WINDOW]
-        if len(bucket) >= _RATE_LIMIT:
+        if len(bucket) >= _get_config().http_rate_limit:
             return JSONResponse({"detail": "Rate limit exceeded. Try again later."}, status_code=429)
         bucket.append(now)
         return await call_next(request)

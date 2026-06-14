@@ -1,72 +1,57 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, ANY
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 from src.llm.providers import (
+    ProviderRegistry,
     register_provider,
     _get_provider,
-    _PROVIDER_REGISTRY,
+    _get_registry,
 )
 from src.llm.protocol import LLMProvider
 
 
 @pytest.mark.anyio
 async def test_register_provider_adds_to_registry():
-    from src.llm import providers
-    original = providers._PROVIDER_REGISTRY.copy()
-    try:
-        providers._PROVIDER_REGISTRY.clear()
-        mock_cls = MagicMock(spec=LLMProvider)
-        register_provider("test", mock_cls)
-        assert providers._PROVIDER_REGISTRY["test"] is mock_cls
-    finally:
-        providers._PROVIDER_REGISTRY.update(original)
+    registry = ProviderRegistry()
+    mock_cls = MagicMock(spec=LLMProvider)
+    registry.register("test", mock_cls)
+    assert registry.get("test") is mock_cls
 
 
 @pytest.mark.anyio
-async def test_get_provider_creates_provider_singleton():
-    from src.llm import providers
-    original_provider = providers._provider
-    original_registry = providers._PROVIDER_REGISTRY.copy()
-    try:
-        providers._provider = None
-        mock_cls = MagicMock(spec=LLMProvider)
-        mock_instance = MagicMock()
-        mock_cls.return_value = mock_instance
-        providers._PROVIDER_REGISTRY["test"] = mock_cls
+@patch("src.llm.providers._get_registry")
+@patch("src.llm.providers._provider", None)
+async def test_get_provider_creates_provider_singleton(mock_get_registry):
+    mock_cls = MagicMock(spec=LLMProvider)
+    mock_instance = MagicMock()
+    mock_cls.return_value = mock_instance
 
-        mock_config = MagicMock()
-        mock_config.llm_provider = "test"
-        result = _get_provider(config=mock_config)
+    registry = ProviderRegistry()
+    registry.register("test", mock_cls)
+    mock_get_registry.return_value = registry
 
-        assert result is mock_instance
-        assert providers._provider is mock_instance
-    finally:
-        providers._provider = original_provider
-        providers._PROVIDER_REGISTRY.clear()
-        providers._PROVIDER_REGISTRY.update(original_registry)
+    mock_config = MagicMock()
+    mock_config.llm_provider = "test"
+    result = _get_provider(config=mock_config)
+
+    assert result is mock_instance
 
 
 @pytest.mark.anyio
 async def test_provider_registry_has_default_openai_provider():
-    assert "openai" in _PROVIDER_REGISTRY
+    assert _get_registry().get("openai") is not None
 
 
 @pytest.mark.anyio
 async def test_register_provider_overwrites_existing_entry():
-    from src.llm import providers
-    original = providers._PROVIDER_REGISTRY.copy()
-    try:
-        mock_cls1 = MagicMock(spec=LLMProvider)
-        mock_cls2 = MagicMock(spec=LLMProvider)
+    registry = ProviderRegistry()
+    mock_cls1 = MagicMock(spec=LLMProvider)
+    mock_cls2 = MagicMock(spec=LLMProvider)
 
-        providers._PROVIDER_REGISTRY["openai"] = mock_cls1
-        register_provider("openai", mock_cls1)
-        assert providers._PROVIDER_REGISTRY["openai"] is mock_cls1
+    registry.register("openai", mock_cls1)
+    assert registry.get("openai") is mock_cls1
 
-        register_provider("openai", mock_cls2)
-        assert providers._PROVIDER_REGISTRY["openai"] is mock_cls2
-    finally:
-        providers._PROVIDER_REGISTRY.clear()
-        providers._PROVIDER_REGISTRY.update(original)
+    registry.register("openai", mock_cls2)
+    assert registry.get("openai") is mock_cls2

@@ -1,5 +1,9 @@
-"""Shared contracts for tools layer."""
+"""Shared contracts for tools layer.
 
-from src.memory.types import HistoryMessage  # noqa: F401 — canonical location is src.memory.types
+``HistoryMessage`` is re-exported from ``src._types`` (neutral location)
+so tools layer never imports from ``src.memory`` directly.
+"""
+
+from src._types import HistoryMessage  # noqa: F401
 
 __all__ = ["HistoryMessage"]

@@ -34,6 +34,7 @@ async def run(*args, **kwargs) -> str:
     code = args[1] if len(args) > 1 else kwargs.get("code", "")
     description = args[2] if len(args) > 2 else kwargs.get("description", "")
     _session_id = kwargs.get("_session_id")
+    _repos = kwargs.get("_repos")
     if len(args) > 3 and _session_id is None:
         _session_id = args[3]
     from src.tools._widget_helpers import validate_widget_args, get_saved_widget_repo
@@ -42,8 +43,10 @@ async def run(*args, **kwargs) -> str:
         return result
     _session_id, clean_id = result
 
+    repo = get_saved_widget_repo(repo=_repos.saved_widgets if _repos else None)
+
     try:
-        res = await get_saved_widget_repo().save(_session_id, clean_id, code, description)
+        res = await repo.save(_session_id, clean_id, code, description)
         return f"[OK] Widget '{clean_id}' saved correctly as Version {res['version']}."
     except Exception as e:
         logger.error("Error guardando widget %s para session %s: %s", clean_id, _session_id, e)

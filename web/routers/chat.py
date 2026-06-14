@@ -7,15 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response, 
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.core.orchestrator import chat_stream as core_chat_stream
-from src.llm.client import chat_stream as llm_chat_stream
-from src.core.orchestrator_contract import OrchestratorDeps
-from src.core.history_rebuilder import rebuild_history
-from src.core.history_contract import HistoryRebuildDeps
-from src.llm.selector import get_default_model
-from src.memory.types import DebugInfo
-from src.memory.repos import get_repos
-from src.memory.repos import MessageRecord
+from src.api import llm_chat_stream, rebuild_history, get_default_model, get_repos, MessageRecord, DebugInfo
 from web.services.chat_stream import build_stream_generator
 from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.stream_retry_handler import StreamRetryHandler
@@ -105,7 +97,7 @@ async def chat(
     async def _wrapped_save(*a, **kw):
         result = await save_assistant_message(*a, **kw, repos=repos)
         try:
-            from src.chat_journal import log_turn
+            from src.api import log_turn
             duration_ms = int((time.time() - _journal_start) * 1000)
             log_turn(
                 session_id=session_id,

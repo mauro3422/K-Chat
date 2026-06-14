@@ -5,11 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from src.config_loader import DEFAULT_CONFIG
-
-LOG_DIR = Path(DEFAULT_CONFIG.kairos_log_dir)
-SERVER_LOG_DIR = LOG_DIR / "server"
-CLIENT_LOG_DIR = LOG_DIR / "client"
+from src.config_loader import load_config
 
 
 class JsonlHandler(logging.Handler):
@@ -23,15 +19,19 @@ class JsonlHandler(logging.Handler):
       d  — optional data dict (from record.data or extra)
     """
 
-    def __init__(self, module: str = "app", level: int = logging.DEBUG):
+    def __init__(self, module: str = "app", level: int = logging.DEBUG, config=None):
         super().__init__(level)
         self.module = module
-        _ensure_dirs()
+        if config is None:
+            config = load_config()
+        self._server_log_dir = Path(config.kairos_log_dir) / "server"
+        self._client_log_dir = Path(config.kairos_log_dir) / "client"
+        self._ensure_dirs()
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             entry = self._build_entry(record)
-            path = SERVER_LOG_DIR / f"{datetime.now(timezone.utc).strftime('%Y%m%d')}.jsonl"
+            path = self._server_log_dir / f"{datetime.now(timezone.utc).strftime('%Y%m%d')}.jsonl"
             with open(path, "a") as f:
                 f.write(json.dumps(entry, default=str) + "\n")
         except Exception:
@@ -54,16 +54,11 @@ class JsonlHandler(logging.Handler):
 
 
 def _ensure_dirs() -> None:
-    SERVER_LOG_DIR.mkdir(parents=True, exist_ok=True)
-    CLIENT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    pass
 
 
-def install_jsonl_handler(module: str = "app") -> JsonlHandler:
-    handler = JsonlHandler(module)
+def install_jsonl_handler(module: str = "app", config=None) -> JsonlHandler:
+    handler = JsonlHandler(module, config=config)
     logger = logging.getLogger(module)
     logger.addHandler(handler)
     return handler
-
-
-# Install on root logger at import time so ALL named loggers are captured
-logging.root.addHandler(JsonlHandler("root"))

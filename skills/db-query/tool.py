@@ -3,7 +3,7 @@ import sqlite3
 import os
 from typing import Any
 
-from src.config_loader import DEFAULT_CONFIG
+from src.config_loader import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ DEFAULT_ORDER = {
     "widget_versions": "created_at",
 }
 def _get_db_path() -> str:
-    return os.environ.get("MEMORY_DB_PATH", DEFAULT_CONFIG.memory_db_path)
+    return os.environ.get("MEMORY_DB_PATH", load_config().memory_db_path)
 
 
 DEFINITION = {

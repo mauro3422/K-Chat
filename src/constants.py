@@ -4,9 +4,10 @@ TOOL_OUTPUT_CHUNK_SIZE = 12
 
 
 def max_tool_turns(config=None):
-    from src.config_loader import DEFAULT_CONFIG
-    cfg = config or DEFAULT_CONFIG
-    return cfg.max_tool_turns
+    if config is None:
+        from src.config_loader import load_config
+        config = load_config()
+    return config.max_tool_turns
 
 
 # Backward compat — module-level constant

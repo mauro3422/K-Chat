@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from src.memory.repos import get_repos
+from src.api import get_repos, get_rate_limit_store, get_model_registry
 from web.logging_handler import get_backend_logs
 
 router = APIRouter()
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 @router.get("/rate-limits")
 async def rate_limits(request: Request) -> dict:
     _local_only(request)
-    from src.llm.rate_limit_state import get_rate_limit_store
+    from src.api import get_rate_limit_store
     return get_rate_limit_store().summary()
 
 
@@ -26,11 +26,10 @@ async def model_availability(request: Request) -> dict:
     show live availability dots.
     """
     _local_only(request)
-    from src.llm.rate_limit_state import get_rate_limit_store
+    from src.api import get_rate_limit_store, get_model_registry
     from web.routers.pages import get_available_model_ids, _get_model_tier, get_available_models
 
     rl = get_rate_limit_store()
-    from src.llm.model_registry import get_model_registry
     reg = get_model_registry()
     result: dict[str, dict] = {}
 

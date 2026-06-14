@@ -89,9 +89,10 @@ def _extract_text(html_content: str) -> tuple[str, str]:
 
 
 def _skip_ssrf(config=None) -> bool:
-    from src.config_loader import DEFAULT_CONFIG
-    cfg = config or DEFAULT_CONFIG
-    return cfg.testing
+    if config is None:
+        from src.config_loader import load_config
+        config = load_config()
+    return config.testing
 
 
 def _deny_private_ip(url: str, config=None) -> str | None:

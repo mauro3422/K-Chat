@@ -4,7 +4,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-class TelemetryService:
+from src.core.services.protocols import TelemetryServiceProtocol
+
+class TelemetryService(TelemetryServiceProtocol):
     """Service to track system metrics and log them in a structured JSON format."""
     
     def __init__(self, log_file: str = "logs/telemetry.json"):

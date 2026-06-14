@@ -71,9 +71,7 @@ async def get_or_create_session(chat_id: int) -> tuple[str, list[dict[str, Any]]
     Session mapping is saved to disk so it survives bot restarts.
     Builds full history with system prompt + channel context.
     """
-    from src.memory.repos import get_repos
-    from src.context.builder import build_system_prompt
-    from src.llm.selector import get_default_model
+    from src.api import get_repos, build_system_prompt, get_default_model
 
     repos = get_repos()
 
@@ -112,7 +110,7 @@ async def get_or_create_session(chat_id: int) -> tuple[str, list[dict[str, Any]]
 
 def reset_session(chat_id: int) -> str:
     """Reset the session for a given chat, returning the new session ID."""
-    from src.memory.repos import get_repos
+    from src.api import get_repos
 
     session_id = _make_telegram_session_id()
     _save_session(chat_id, session_id)
@@ -135,13 +133,11 @@ async def process_message(
     Yields tagged messages for bot.py to display:
     ``__reasoning__:<text>``, ``__content__:<text>``, ``__tool__:<name>``, ``__error__:<msg>``
     """
-    from src.core.orchestrator import chat_stream
+    from src.api import chat_stream
 
     session_id, history = await get_or_create_session(chat_id)
 
-    from src.llm.selector import get_default_model
-    from src.memory.repos import get_repos
-    from src.memory.repos.message_repository import MessageRecord
+    from src.api import get_default_model, get_repos, MessageRecord
 
     model = get_default_model()
 
@@ -274,9 +270,7 @@ def _persist_conversation(session_id: str, user_text: str, assistant_text: str) 
     The user message was already saved before streaming started.
     """
     try:
-        from src.memory.repos import get_repos
-        from src.memory.repos.message_repository import MessageRecord
-        from src.llm.selector import get_default_model
+        from src.api import get_repos, MessageRecord, get_default_model
 
         repos = get_repos()
         model = get_default_model()

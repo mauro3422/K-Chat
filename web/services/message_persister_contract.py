@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Any
 
-from src.memory.repos import MessageRecord
+from src.api import MessageRecord
 
 
 @dataclass(slots=True)

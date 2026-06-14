@@ -6,15 +6,17 @@ from typing import Any
 
 from fastapi import BackgroundTasks
 
-from src.core.orchestrator import chat_stream
-from src.core.orchestrator_contract import OrchestratorDeps
-from src.core.services.history_service import HistoryService
-from src.core.services.llm_service import LLMService
-from src.core.services.tool_execution_service import ToolExecutionService
-from src.core.services.telemetry_service import TelemetryService
-from src.memory.types import DebugInfo
-from src.memory.repos import get_repos
-from src.background_tasks import auto_rename_session
+from src.api import (
+    chat_stream,
+    OrchestratorDeps,
+    HistoryService,
+    LLMService,
+    ToolExecutionService,
+    TelemetryService,
+    DebugInfo,
+    get_repos,
+    auto_rename_session,
+)
 from web.services.loop_detector import LoopDetector
 from web.services.message_persister import save_assistant_message
 from web.services.stream_error_classifier import classify_error

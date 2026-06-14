@@ -1,7 +1,7 @@
 import os
 import threading
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 from src.context.files import _ensure_file, _read_file
 from src.context.templates import TEMPLATES
@@ -29,7 +29,7 @@ def _write_if_changed(path: str, content: str) -> None:
             f.write(content)
 
 
-def build_context_snapshot(force: bool = False) -> ContextSnapshot:
+def build_context_snapshot(force: bool = False, tool_definitions: dict[str, Any] | None = None) -> ContextSnapshot:
     global _CONTEXT_CACHE, _TOOLS_MD_CACHE
 
     with _CACHE_LOCK:
@@ -44,8 +44,8 @@ def build_context_snapshot(force: bool = False) -> ContextSnapshot:
         if content:
             segments.append(content)
 
-    _build_rules_files(RULES_DIR)
-    tools_md = _build_tools_md()
+    _build_rules_files(RULES_DIR, tool_definitions=tool_definitions)
+    tools_md = _build_tools_md(tool_definitions=tool_definitions)
     _write_if_changed(TOOLS_PATH, tools_md)
 
     with _CACHE_LOCK:

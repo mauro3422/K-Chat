@@ -5,7 +5,7 @@ from collections.abc import Callable, AsyncGenerator, Generator
 from typing import Any
 import src.llm.model_state as models
 import src.llm.api_call as api_call
-from src.memory.types import DebugInfo
+from src._types import DebugInfo
 from src.llm.failover import _mark_and_refresh
 from src.llm.selector import get_default_model
 from src.llm.retry import is_rate_limit_error

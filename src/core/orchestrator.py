@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import json
 import uuid
@@ -23,6 +25,14 @@ from src.core.services.history_service import HistoryService
 from src.core.services.llm_service import LLMService
 from src.core.services.tool_execution_service import ToolExecutionService
 from src.core.services.telemetry_service import TelemetryService
+
+if TYPE_CHECKING:
+    from src.core.services.protocols import (
+        HistoryServiceProtocol,
+        LLMServiceProtocol,
+        ToolExecutionServiceProtocol,
+        TelemetryServiceProtocol,
+    )
 
 logger: logging.Logger = logging.getLogger(__name__)
 

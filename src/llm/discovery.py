@@ -10,9 +10,10 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 def _is_go_mode(config=None) -> bool:
-    from src.config_loader import DEFAULT_CONFIG
-    cfg = config or DEFAULT_CONFIG
-    return cfg.llm_mode == "go"
+    if config is None:
+        from src.config_loader import load_config
+        config = load_config()
+    return config.llm_mode == "go"
 
 
 async def get_models(force_refresh: bool = False, config=None) -> list[Any]:
@@ -60,14 +61,16 @@ async def get_verified_models(force_refresh: bool = False, config=None) -> list[
             all_ids = [mid for mid in all_ids if mid]
             # In Go mode, also fetch FREE models (cost=0, -free suffix) from Zen API
             try:
-                from src.config_loader import DEFAULT_CONFIG, Config
-                zen_cfg = config or DEFAULT_CONFIG
+                if config is None:
+                    from src.config_loader import load_config
+                    config = load_config()
+                zen_cfg = config
                 import copy
                 fresh = copy.copy(zen_cfg)
                 fresh.llm_mode = "zen"
                 # Create a fresh Zen provider (bypass global singleton)
-                from src.llm.providers import _PROVIDER_REGISTRY
-                provider_cls = _PROVIDER_REGISTRY.get(fresh.llm_provider)
+                from src.llm.providers import _get_registry
+                provider_cls = _get_registry().get(fresh.llm_provider)
                 if provider_cls:
                     zen_provider = provider_cls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
                     zen_models = await zen_provider.list_models()
@@ -137,13 +140,15 @@ async def _ping_free_model_availability(free_ids: list[str], config=None) -> Non
     store = get_rate_limit_store()
 
     # Build Zen provider once
-    from src.config_loader import DEFAULT_CONFIG
-    ping_cfg = config or DEFAULT_CONFIG
+    if config is None:
+        from src.config_loader import load_config
+        config = load_config()
+    ping_cfg = config
     import copy
     fresh = copy.copy(ping_cfg)
     fresh.llm_mode = "zen"
-    from src.llm.providers import _PROVIDER_REGISTRY
-    pcls = _PROVIDER_REGISTRY.get(fresh.llm_provider)
+    from src.llm.providers import _get_registry
+    pcls = _get_registry().get(fresh.llm_provider)
     if not pcls:
         return
     zen_provider = pcls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)

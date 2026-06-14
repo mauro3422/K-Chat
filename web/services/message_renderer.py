@@ -1,7 +1,6 @@
 import json
 
-from src.core.history_ui import filter_messages_for_ui, match_tools_to_msgs
-from src.memory.repos import get_repos
+from src.api import filter_messages_for_ui, match_tools_to_msgs, get_repos
 from web.services.widget_contract import extract_inline_widget_states
 from web.services.message_renderer_contract import MessageRenderDeps
 

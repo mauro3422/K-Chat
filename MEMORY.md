@@ -231,3 +231,27 @@ System: ebo
 - **widget-nochero-2026-06-09**: 2026-06-09 03:56 | Widget 'Nochero' creado y guardado oficialmente (v1). Panel de estado de ánimo y enfoque con 5 vibes.
 - **widget-notas-rapidas-2026-06-09**: 2026-06-09 03:40 | Widget 'notas-rapidas' creado y guardado oficialmente (v1). Notas con persistencia, timestamps, eliminación individual.
 - **widget:tag-auto-renderiza-funcional-2026-06-09**: 2026-06-09 16:20 | ✅ El sistema de tag [Widget: id] SÍ funciona y auto-renderiza. NO escribir [Widget: ...] a menos que sea para invocar un widget real.
+
+## 2026-06-14 17:11 | Model Registry Lego
+
+Creado `src/llm/model_registry.py` — lego que autodetecta TODO sin hardcodeo:
+- **Modelos Go**: se obtienen dinámicamente de la Go API (`GET /models`)
+- **Modelos free**: candidatos `-free` de la Zen API, verificados individualmente
+- **Tiers**: inferidos por heurística de naming patterns (no nombres hardcodeados)
+- **Cuota Go**: detecta 401 "insufficient balance" y marca en registry
+- **Rate limits**: trackeados por `RateLimitStore` (per-modelo)
+- **Refresh automático**: en startup (lifespan) y lazy en primer request
+
+Los sets `GO_PREMIUM/GO_STANDARD/GO_ECONOMY` hardcodeados fueron ELIMINADOS.
+Ahora `pages.py` usa `registry.get_tier()` que clasifica dinámicamente.
+
+Flujo de disponibilidad:
+1. Registry descubre modelos de Go + Zen API (solo IDs, rápido)
+2. Background task pinguea cada modelo `-free` individualmente via Zen API
+3. Resultados: available (🟢), rate_limited (🔴), unavailable/expired (❌)
+4. Store se consulta desde `/models/availability` cada 30s por el frontend
+5. Go quota agotada muestra warning rojo en el header
+
+Modelos free detectados como EXPIRADOS (promotion ended):
+- qwen3.6-plus-free
+- minimax-m3-free

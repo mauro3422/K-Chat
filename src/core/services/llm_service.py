@@ -1,19 +1,20 @@
 import time
 from typing import Any, AsyncGenerator, Callable
+from src.core.services.protocols import LLMServiceProtocol
 import src.llm.client as llm_client
 from src.llm.selector import get_default_model
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from src.core.services.telemetry_service import TelemetryService
+    from src.core.services.protocols import TelemetryServiceProtocol
 
-class LLMService:
+class LLMService(LLMServiceProtocol):
     def __init__(
         self,
         chat_fn: Callable[..., Any] | None = None,
         chat_stream_fn: Callable[..., Any] | None = None,
         default_model_fn: Callable[[], str] | None = None,
-        telemetry_service: 'TelemetryService | None' = None
+        telemetry_service: 'TelemetryServiceProtocol | None' = None
     ):
         self._chat_fn = chat_fn or llm_client.chat
         self._chat_stream_fn = chat_stream_fn or llm_client.chat_stream
