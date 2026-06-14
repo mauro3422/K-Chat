@@ -71,13 +71,21 @@ def get_available_model_ids() -> list[str]:
 
 
 def get_available_models() -> list[dict[str, str]]:
-    """Return models grouped by tier for the UI selector."""
+    """Return models grouped by tier for the UI selector.
+
+    Only shows Go (paid) and Free (rate-limited) models from OpenCode.
+    Zen-only models (paid per-use, not OpenCode) are hidden.
+    """
     rl = get_rate_limit_store()
-    grouped = {"go_premium": [], "go_standard": [], "go_economy": [], "free_ratelimited": [], "zen": []}
+    grouped: dict[str, list[dict[str, str]]] = {
+        "go_premium": [], "go_standard": [], "go_economy": [],
+        "free_ratelimited": [],
+    }
     for model_id in get_available_model_ids():
         tier = _get_model_tier(model_id)
+        if tier == "zen":
+            continue  # Hide Zen-only models — paid per-use, not OpenCode
         label = format_model_label(model_id)
-        meta = get_model_metadata(model_id)
         # Add visual indicators
         if tier == "free_ratelimited":
             label = "⚠️ " + label
