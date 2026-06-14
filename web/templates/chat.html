@@ -49,8 +49,15 @@
           <div class="model-select-wrapper">
             <span class="robot-icon" title="Modelos">🤖</span>
             <select id="model-select" class="model-select">
-              {% for m in models %}
-                <option value="{{ m.id }}" title="{{ m.label }}">{{ m.label }}</option>
+              {% for group_name, group_models in models.items() %}
+                {% if group_models %}
+                  {% set group_labels = {"go_premium": "🚀 GO Premium", "go_standard": "⚡ GO Standard", "go_economy": "💰 GO Económico", "free_ratelimited": "⚠️ Free (Rate Limited)", "zen": "🔵 Zen"} %}
+                  <optgroup label="{{ group_labels.get(group_name, group_name) }}">
+                    {% for m in group_models %}
+                      <option value="{{ m.id }}" class="model-option-{{ m.tier }}" title="{{ m.label }}">{{ m.label }}</option>
+                    {% endfor %}
+                  </optgroup>
+                {% endif %}
               {% endfor %}
             </select>
           </div>

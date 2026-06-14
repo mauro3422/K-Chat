@@ -93,6 +93,21 @@
   color: var(--text-main);
 }
 
+.model-select-wrapper select.model-select optgroup {
+  font-style: normal;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  padding: 4px 0;
+}
+
+.model-select-wrapper select.model-select option.model-option-free_ratelimited {
+  color: #f85149;
+}
+
+.light-theme .model-select-wrapper select.model-select option.model-option-free_ratelimited {
+  color: #cf222e;
+}
+
 /* Mic Button */
 #asr-mic-btn {
   background: rgba(255, 255, 255, 0.03);
