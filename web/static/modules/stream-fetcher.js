@@ -28,6 +28,10 @@ export function executeStreamFetch(params) {
       throw new Error('HTTP ' + resp.status);
     }
 
+    if (params.onResponse) {
+      try { params.onResponse(); } catch(e) {}
+    }
+
     var reader = resp.body.getReader();
     var decoder = new TextDecoder();
 

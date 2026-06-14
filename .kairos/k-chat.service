@@ -1,0 +1,37 @@
+[Unit]
+Description=K-Chat AI Assistant (FastAPI web server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dev/K-Chat
+
+# ── Environment ────────────────────────────────────────────────────
+EnvironmentFile=%h/dev/K-Chat/.env
+Environment=PYTHONUNBUFFERED=1
+
+# ── Execute ────────────────────────────────────────────────────────
+ExecStart=%h/dev/K-Chat/.venv/bin/uvicorn web.server:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --log-level info \
+    --no-access-log
+
+# ── Lifecycle ──────────────────────────────────────────────────────
+Restart=on-failure
+RestartSec=10
+RestartSteps=5
+RestartMaxDelaySec=30
+
+# ── Security ───────────────────────────────────────────────────────
+User=%u
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=full
+ReadWritePaths=%h/dev/K-Chat/memory %h/dev/K-Chat/logs
+AmbientCapabilities=
+
+[Install]
+WantedBy=default.target

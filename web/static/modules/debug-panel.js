@@ -354,7 +354,9 @@ function copyAllDebug(el) {
 function refreshDebug() {
   var dc = document.getElementById('debug-content');
   if (!dc) return;
-  dc.textContent = 'Cargando...';
+  if (!dc.firstElementChild || dc.textContent.indexOf('Envia') >= 0 || dc.textContent.indexOf('Cargando') >= 0) {
+    dc.textContent = 'Cargando...';
+  }
   ApiClient.loadDebugInfo(SessionContext.getSessionId()).then(function(r) { return r.json(); }).then(function(d) {
     clearElement(dc);
     dc.appendChild(createSection('Modelo:', 'all', {

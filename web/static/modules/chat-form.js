@@ -79,6 +79,12 @@ function init(deps) {
     if (form.id !== 'chat-form') return;
     e.preventDefault();
 
+    var submitBtn = document.getElementById('chat-submit-btn');
+    if (submitBtn && submitBtn.classList.contains('btn-stop')) {
+      if (currentController) currentController.abort();
+      return;
+    }
+
     var input = document.getElementById('msg-input');
     if (!input) input = form.querySelector('input[name="message"]');
     if (!input) return;
@@ -99,6 +105,13 @@ function init(deps) {
 
     input.disabled = true;
     document.getElementById('spinner').textContent = '...';
+
+    // Set button to stop state
+    if (submitBtn) {
+      submitBtn.className = 'btn-stop';
+      submitBtn.title = 'Detener generación (Esc)';
+      submitBtn.innerHTML = '<svg class="stop-svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>';
+    }
 
     var messages = document.getElementById('messages');
     if (messages) {
@@ -121,6 +134,18 @@ function init(deps) {
       sessionId: SessionContext.getSessionId(),
       defaultModel: getDefaultModel()
     });
+  });
+
+  window.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+      var submitBtn = document.getElementById('chat-submit-btn');
+      if (submitBtn && submitBtn.classList.contains('btn-stop')) {
+        if (currentController) {
+          event.preventDefault();
+          currentController.abort();
+        }
+      }
+    }
   });
 }
 

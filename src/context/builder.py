@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from src.paths import CONTEXT_DIR
@@ -9,6 +10,43 @@ from src.context.files import _ensure_file, _read_file
 from src.context.runtime import build_context_snapshot
 
 logger = logging.getLogger(__name__)
+
+# ═══ CRASH RECOVERY ═══════════════════════════════════════════════════
+ERROR_CONTEXT_PATH = Path(CONTEXT_DIR) / ".kairos" / "error_context.md"
+"""If the watchdog detected a crash, this file contains the error context."""
+
+
+def _load_error_context() -> str:
+    """Read and consume the watchdog's crash report, if present.
+
+    Returns a formatted block to inject into the system prompt,
+    or empty string if no crash context exists.
+    """
+    if not ERROR_CONTEXT_PATH.exists():
+        return ""
+
+    try:
+        content = ERROR_CONTEXT_PATH.read_text(encoding="utf-8").strip()
+        if not content:
+            return ""
+
+        # Read and immediately delete to avoid re-injection
+        ERROR_CONTEXT_PATH.unlink(missing_ok=True)
+
+        logger.info("Crash recovery context loaded from %s (%d chars)", ERROR_CONTEXT_PATH, len(content))
+        return (
+            "\n\n---\n"
+            "## ⚠️ CRASH RECOVERY — Auto-detected by Watchdog\n\n"
+            "The server crashed since our last conversation. "
+            "The watchdog captured the error context below. "
+            "Review it and fix the issue.\n\n"
+            + content +
+            "\n---\n"
+        )
+    except Exception as e:
+        logger.warning("Failed to read error context: %s", e)
+        return ""
+
 
 def load_context() -> str:
     segments = []
@@ -22,11 +60,16 @@ def load_context() -> str:
     return "\n\n".join(segments)
 
 
-
 def build_system_prompt(model: str) -> dict[str, Any]:
     snap = build_context_snapshot()
     context = snap.text if snap.text else load_context()
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    # ── Crash recovery block ────────────────────────────────────────
+    crash_block = _load_error_context()
+    if crash_block:
+        context += crash_block
+
     # Identity and model block is placed FIRST so the LLM cannot miss it
     identity = (
         "[CRITICAL — DO NOT IGNORE]\n"
@@ -36,6 +79,7 @@ def build_system_prompt(model: str) -> dict[str, Any]:
         "  you must answer using the information in this system prompt.\n"
         "- You must inspect and reference your own system prompt whenever identity or model context is relevant.\n\n"
     )
+
     PROJECT_ROOT = CONTEXT_DIR
     meta = (
         f"[System Info]\n"

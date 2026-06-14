@@ -1,0 +1,29 @@
+[Unit]
+Description=K-Chat Watchdog — crash recovery daemon
+After=network-online.target
+Wants=k-chat.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dev/K-Chat
+
+# ── Environment ────────────────────────────────────────────────────
+Environment=WATCHDOG_INTERVAL=5
+Environment=WATCHDOG_URL=http://127.0.0.1:8000/health
+Environment=PYTHONUNBUFFERED=1
+
+# ── Execute ────────────────────────────────────────────────────────
+ExecStart=%h/dev/K-Chat/.venv/bin/python .kairos/watchdog.py
+
+# ── Lifecycle ──────────────────────────────────────────────────────
+Restart=on-failure
+RestartSec=5
+
+# ── Security ───────────────────────────────────────────────────────
+User=%u
+NoNewPrivileges=yes
+PrivateTmp=yes
+ReadWritePaths=%h/dev/K-Chat/.kairos
+
+[Install]
+WantedBy=default.target

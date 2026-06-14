@@ -61,7 +61,8 @@ export const StreamOrchestrator = {
         controller: controller,
         errorHandler: errorHandler,
         context: context,
-        onChunk: resetTimeout
+        onChunk: resetTimeout,
+        onResponse: refreshSidebar
       });
     } catch(e2) {
       clearTimeout(timeoutId);
@@ -75,6 +76,7 @@ export const StreamOrchestrator = {
         }
         retryController.resetRetryCount();
         Utils.finalizeStream(input);
+        try { refreshSidebar(); } catch(e) {}
         cleanupStream();
         return;
       }

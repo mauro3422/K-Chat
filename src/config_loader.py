@@ -26,7 +26,12 @@ class Config:
     testing: bool = False
     environment: str = "production"
     user_name: str = "user"
-
+    # ── Telegram Bot ────────────────────────────────────────────────
+    telegram_bot_token: str = ""
+    telegram_allowed_users: str = ""
+    # ── Watchdog ────────────────────────────────────────────────────
+    watchdog_interval: int = 5
+    watchdog_url: str = "http://127.0.0.1:8000/health"
 
 def _resolve_project_root() -> Path:
     return Path(__file__).resolve().parent.parent
@@ -52,6 +57,12 @@ def load_config(overrides: dict | None = None) -> Config:
         testing=os.getenv("TESTING", "").lower() in ("1", "true", "yes"),
         environment=os.getenv("ENVIRONMENT", "production"),
         user_name=os.getenv("USER", "") or os.getenv("USERNAME", "user"),
+        # ── Telegram ────────────────────────────────────────────────
+        telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+        telegram_allowed_users=os.getenv("TELEGRAM_ALLOWED_USERS", ""),
+        # ── Watchdog ───────────────────────────────────────────────
+        watchdog_interval=int(os.getenv("WATCHDOG_INTERVAL", "5")),
+        watchdog_url=os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/health"),
     )
 
     if overrides:

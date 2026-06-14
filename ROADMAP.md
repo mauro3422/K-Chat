@@ -227,6 +227,14 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Performance Fix**: Throttling del debug panel en eventos de telemetría de voz ASR.
 - [x] **Bug Fix**: Solucionado el fallo de scope de `os` en `db_query.py`.
 
+### v0.0.56 — Telegram Bot + Watchdog (2026-06-13)
+- [x] **Channel system**: `channels/` package con auto-descubrimiento, siguiendo el patrón Lego de `src/tools/`.
+- [x] **Telegram adapter**: `channels/telegram/` — bot polling, handlers, adapter a `core.chat_stream()`.
+- [x] **Watchdog daemon**: `.kairos/watchdog.py` — health check cada 5s, captura `git diff` + commits en crash, reinicia el servicio.
+- [x] **Self-healing**: `error_context.md` escrito en crash → leído por `builder.py` en reinicio → inyectado en system prompt.
+- [x] **Systemd services**: `k-chat.service`, `k-chat-watchdog.service`, `k-chat-telegram.service`.
+- [x] **Config extendida**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `WATCHDOG_INTERVAL` en `.env`.
+
 ## Próximas features
 
 | Priority | Area | What | Status |
@@ -235,18 +243,18 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 | 2 | **memory_search + list_memories** | Tools para consultar `MEMORY.md` de forma semántica (ahora con cache fresco) | 🔥 |
 | 3 | **Auto-exploration + Docs sync** | Kairos analiza la arquitectura actual y sincroniza docs/ con el código real | 🔥 |
 | 4 | **Inyección inteligente de memoria** | Sistema que inyecta recuerdos relevantes contextualmente antes de cada respuesta, basado en el tópico de la conversación | 📋 |
-| 5 | **Nocturnal Agent** | Síntesis diaria de sesiones en `MEMORY.md` con contexto fresco | 📋 |
+| 5 | **Telegram voice → ASR** | Conectar mensajes de voz de Telegram con el bridge ASR de DuckSugar | 📋 |
 | 6 | **Widget Events → AI** | Widgets enviando acciones del usuario de vuelta al AI como contexto inyectado | 📋 |
 | 7 | **Cross-Session Topic Tracer** | Rastreo de temas a través de múltiples sesiones (ahora con MEMORY.md confiable) | 📋 |
 | 8 | **Temas visuales** | Matrix rain sidebar, fondos anime, burbujas custom, iconos temáticos, switcher de temas en UI | 📋 |
 | 9 | **Session Export** | Exportar sesiones a Markdown o JSON | 📋 |
 | 10 | **Scheduled Tasks** | Tareas programadas (cron-like) para automatizaciones | 📋 |
-| 11 | **Proactive Insights** | Insights proactivos basados en patrones de uso | 📋 |
-| 12 | **run_code** | Ejecución segura de Python con sandboxing | ✅ |
-| 13 | **Telegram Bot** | `bot.py` como adapter a `core.chat_stream()` | 📋 |
+| 11 | **Nocturnal Agent** | Síntesis diaria de sesiones en `MEMORY.md` con contexto fresco | 📋 |
+| 12 | **Proactive Insights** | Insights proactivos basados en patrones de uso | 📋 |
+| 13 | **Discord Bot** | Segundo channel adapter siguiendo el patrón `channels/` | 📋 |
 | 14 | **Widget versioning UI** | Mostrar versión actual del widget en toolbar sin fetch separado | 📋 |
 
-> **Hecho**: Stream heartbeat (ya existe, 20s backend + 10s tools), cache de contexto invalidado (v0.0.53)
+> **Hecho**: Stream heartbeat (20s backend + 10s tools), cache de contexto invalidado (v0.0.53), watchdog auto-recuperación (v0.0.56), Telegram channel (v0.0.56)
 
 ## Architecture Decisions
 
@@ -258,10 +266,12 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 | Stream | Sync generator | Async complex |
 | Config | `.env` + Markdown | Large YAML |
 | Tools | `importlib` auto-registry | Manual registration |
+| Channels | `channels/` auto-discovery | Hardcoded adapters |
 | Frontend | Vanilla JS + Vite | React / Vue / Svelte |
 | Serialization | NDJSON | SSE |
 | Growth | Channels as adapters | Heavy gateway from day one |
 | DI | `_Container` dataclass | Framework injection |
+| Crash recovery | Watchdog + error_context.md | Manual debugging |
 
 ## Guiding Principle
 

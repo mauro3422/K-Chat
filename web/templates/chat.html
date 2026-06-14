@@ -15,11 +15,6 @@
       <img src="/static/logo.png" alt="Kairos Logo" class="brand-logo">
       <h2>Kairos</h2>
     </div>
-    <select id="model-select" class="model-select">
-      {% for m in models %}
-        <option value="{{ m.id }}" title="{{ m.label }}">{{ m.label }}</option>
-      {% endfor %}
-    </select>
     <a href="/" class="btn-new">+ Nueva</a>
   </div>
   <div id="session-list"
@@ -35,10 +30,36 @@
   </div>
   <div id="messages"><div class="empty-state">Envia un mensaje para empezar</div></div>
   <form id="chat-form">
-    <div class="input-row">
+    <div class="chat-input-container">
       <textarea id="msg-input" placeholder="Escribe un mensaje..." autofocus rows="1"></textarea>
-      <button type="button" id="asr-mic-btn" class="asr-mic-idle" title="Grabar voz (Speech-to-Text)">🎤</button>
-      <button type="submit">Enviar</button>
+      <div class="chat-input-toolbar">
+        <div class="toolbar-left">
+          <div class="model-select-wrapper">
+            <span class="robot-icon" title="Modelos">🤖</span>
+            <select id="model-select" class="model-select">
+              {% for m in models %}
+                <option value="{{ m.id }}" title="{{ m.label }}">{{ m.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="button" id="asr-mic-btn" class="asr-mic-idle" title="Grabar voz (Speech-to-Text)">
+            <svg class="mic-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="toolbar-right">
+          <button type="submit" id="chat-submit-btn" title="Enviar mensaje">
+            <svg class="send-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
     <span id="spinner" class="htmx-indicator"></span>
   </form>

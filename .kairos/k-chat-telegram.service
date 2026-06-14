@@ -1,0 +1,30 @@
+[Unit]
+Description=K-Chat Telegram Bot Channel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dev/K-Chat
+
+# ── Environment ────────────────────────────────────────────────────
+EnvironmentFile=%h/dev/K-Chat/.env
+Environment=PYTHONUNBUFFERED=1
+
+# ── Execute ────────────────────────────────────────────────────────
+ExecStart=%h/dev/K-Chat/.venv/bin/python -m channels.telegram
+
+# ── Lifecycle ──────────────────────────────────────────────────────
+Restart=on-failure
+RestartSec=5
+RestartSteps=3
+RestartMaxDelaySec=20
+
+# ── Security ───────────────────────────────────────────────────────
+User=%u
+NoNewPrivileges=yes
+PrivateTmp=yes
+ReadWritePaths=%h/dev/K-Chat/memory %h/dev/K-Chat/logs
+
+[Install]
+WantedBy=default.target

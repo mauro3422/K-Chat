@@ -37,6 +37,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         else:
             searxng_started = True
     init_db()
+    if not DEFAULT_CONFIG.testing:
+        from src.llm.discovery import get_verified_models
+        import asyncio
+        try:
+            asyncio.get_running_loop().run_in_executor(None, get_verified_models)
+        except Exception as e:
+            logger.warning("Failed to schedule model discovery: %s", e)
     yield
     if searxng_started:
         deps.searxng_stop()
