@@ -11,7 +11,23 @@ These instructions apply ONLY to the opencode debug agent (you), NOT to Kairos.
   - `get_tool_history(limit=5)` — `save_widget(widget_id, code)`
   - `get_widget_code(widget_id)` — `update_widget(widget_id, code)`
 
-## DB Direct Access
+## 🧪 Test Efficiency (CRITICAL)
+- **NUNCA correr `pytest tests/` completo.** Usar `pytest --testmon` SIEMPRE para runs incrementales.
+  Testmon ya está instalado. Solo corre tests afectados por cambios desde la última vez.
+- **Para un archivo específico rápido**: `pytest tests/unit/test_foo.py -v --tb=short`
+- **Resetear testmon** si resultados inconsistentes: borrar `.testmondata*` y correr `pytest --testmon` una vez.
+- **No esperar** a que terminen tests largos. Con testmon son segundos.
+
+## Opencode CLI Context
+- El usuario te ejecuta via `opencode run --agent debug [mensaje]` (CLI, no TUI).
+- Tus herramientas disponibles incluyen TODAS las de opencode: bash, read, write, edit,
+  glob, grep, task, webfetch, chrome-devtools_*, etc.
+- No tenés `db_query` o `execute_command` como herramientas separadas — usá `bash` para
+  todo (sqlite3, curl, python3 -c, git, etc.).
+- `opencode db path` da la ruta a la DB de opencode (NO la de Kairos).
+- La DB de Kairos está en `memory/kairos_memory.db` (SQLite).
+
+## DB Direct Access (Kairos)
 All session data persists in `memory/kairos_memory.db` (SQLite). Query it directly instead of asking the user for logs.
 - `sqlite3 memory/kairos_memory.db "SELECT ..."` — session messages, debug_info, widgets, tool_calls
 - `curl localhost:8000/sessions/{id}/debug` — debug info via API
@@ -19,7 +35,7 @@ All session data persists in `memory/kairos_memory.db` (SQLite). Query it direct
 - See `.opencode/skills/db-query/SKILL.md` for ready-to-use queries
 - Or use `scripts/db.sh search <term>`, `scripts/db.sh recent`, etc.
 
-## Session Data
+## Session Data (Kairos)
 - `messages` table: full conversation history per session
 - `debug_info` table: model, reasoning, tool_calls per session
 - `tool_calls` table: individual tool call records

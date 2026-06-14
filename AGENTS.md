@@ -54,6 +54,13 @@ These rules apply to ALL code modifications. Violations are regressions.
 - **Timestamps**: All `save_memory` values must start with `YYYY-MM-DD HH:MM |` timestamp.
 - **Resume from Last State**: `MEMORY.md` contains all state — y ya está inyectado en tu contexto. No lo leas.
 
+--- 🧪 TEST EFFICIENCY (CRITICAL) ---
+
+- **NUNCA correr `pytest tests/` completo.** Usar `pytest --testmon` SIEMPRE para runs incrementales. Testmon ya está instalado y configurado, solo corre tests afectados por cambios desde la última vez.
+- **Para correr un archivo específico rápido**: `pytest tests/unit/test_foo.py -v --tb=short`
+- **Para resetear testmon** (si los resultados son inconsistentes): borrar `.testmondata*` y correr `pytest --testmon` una vez (construye el mapa de dependencias).
+- **No esperar a que terminen tests lentos.** Si testmon ya tiene el mapa de dependencias, corre en segundos. Si no hay cambios, corre 0 tests.
+
 --- 🐞 DEBUGGING CON DB_QUERY ---
 
 - **db_query**: Consulta la base de datos SQLite del sistema en modo solo lectura. 
