@@ -75,7 +75,7 @@ def register_middlewares(app: FastAPI) -> None:
             "default-src 'self'; "
             "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
+            "img-src 'self' data: blob:; "
             "frame-src 'self'; "
             "connect-src 'self'"
         )
