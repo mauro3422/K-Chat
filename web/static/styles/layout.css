@@ -32,7 +32,40 @@
 .main-header {
   display: flex;
   justify-content: flex-end;
-  padding: 4px 16px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border-dim);
   flex-shrink: 0;
 }
+
+.theme-toggle-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+}
+
+.sidebar-gutter {
+  width: 4px;
+  background: var(--border-dim);
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.2s;
+  z-index: 100;
+}
+
+.sidebar-gutter:hover,
+.sidebar-gutter.dragging {
+  background: var(--border-accent);
+}
+

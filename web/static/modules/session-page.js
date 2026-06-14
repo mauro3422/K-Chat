@@ -1,9 +1,9 @@
 import { SessionContext } from './session-context.js';
-import { KairosUtils } from './utils.js';
-import { KairosMarkdown } from './markdown-renderer.js';
+import { Utils } from './utils.js';
+import { MarkdownRenderer } from './markdown-renderer.js';
 import { ApiClient } from './api-client.js';
-import { KairosWidgets } from './widgets/index.js';
-import { KairosForm } from './chat-form.js';
+import { WidgetManager } from './widgets/index.js';
+import { ChatForm } from './chat-form.js';
 import stateManager from './widgets/state-manager.js';
 import { renderMessageList } from './message-renderer.js';
 
@@ -11,6 +11,22 @@ import { renderMessageList } from './message-renderer.js';
 import { refreshSidebar } from './sidebar-refresh.js';
 
 var deletedItemSnapshots = new WeakMap();
+
+var safeStorage = {
+  getItem: function(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch(e) {
+      return null;
+    }
+  },
+  setItem: function(key, val) {
+    try {
+      localStorage.setItem(key, val);
+    } catch(e) {}
+  }
+};
+
 
 function getNav(deps) {
   if (!deps || !deps.nav) {
@@ -140,9 +156,9 @@ function restoreActions(item) {
 function bindModelSelect() {
   var select = document.getElementById('model-select');
   if (!select) return;
-  select.value = localStorage.getItem('selected_model') || select.value;
+  select.value = safeStorage.getItem('selected_model') || select.value;
   select.addEventListener('change', function() {
-    localStorage.setItem('selected_model', select.value);
+    safeStorage.setItem('selected_model', select.value);
   });
 }
 
@@ -159,14 +175,65 @@ function loadInitialWidgetStates() {
 
 function initSessionPage(deps) {
   var nav = getNav(deps);
+  
+  // Theme sync
+  var currentTheme = safeStorage.getItem('selected_theme') || 'dark';
+  if (currentTheme === 'light') {
+    document.body.classList.add('light-theme');
+  }
+
   loadInitialWidgetStates();
   document.addEventListener('htmx:afterSwap', function() {
-    KairosUtils.scrollToBottom();
+    Utils.scrollToBottom();
   });
   nav.onDomReady(bindModelSelect);
   nav.onDomReady(function() {
     if (nav.location.pathname.startsWith('/sessions/')) {
       loadSession(SessionContext.getSessionId(), deps);
+    } else if (nav.location.pathname === '/') {
+      nav.history.replaceState({sid: SessionContext.getSessionId()}, '', '/sessions/' + SessionContext.getSessionId());
+    }
+    
+    // Bind Theme Toggle
+    var themeToggleBtn = document.getElementById('theme-toggle');
+    if (themeToggleBtn) {
+      themeToggleBtn.addEventListener('click', function() {
+        if (document.body.classList.contains('light-theme')) {
+          document.body.classList.remove('light-theme');
+          safeStorage.setItem('selected_theme', 'dark');
+        } else {
+          document.body.classList.add('light-theme');
+          safeStorage.setItem('selected_theme', 'light');
+        }
+      });
+    }
+
+    // Bind Sidebar Gutter Resizing
+    var sidebar = document.getElementById('sidebar');
+    var gutter = document.getElementById('sidebar-gutter');
+    if (sidebar && gutter) {
+      var savedWidth = safeStorage.getItem('sidebar_width');
+      if (savedWidth) {
+        sidebar.style.width = savedWidth + 'px';
+      }
+      gutter.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        gutter.classList.add('dragging');
+        function onMouseMove(ev) {
+          var w = ev.clientX;
+          if (w < 180) w = 180;
+          if (w > 500) w = 500;
+          sidebar.style.width = w + 'px';
+          safeStorage.setItem('sidebar_width', w);
+        }
+        function onMouseUp() {
+          gutter.classList.remove('dragging');
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+        }
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
     }
   });
   document.addEventListener('click', function(e) {
@@ -251,11 +318,11 @@ function loadSession(sid, deps) {
   var nav = getNav(deps);
   SessionContext.setSessionId(sid);
   nav.history.replaceState({sid: sid}, '', '/sessions/' + sid);
-  if (typeof KairosWidgets.reset === 'function') {
-    KairosWidgets.reset();
+  if (typeof WidgetManager.reset === 'function') {
+    WidgetManager.reset();
   }
-  if (typeof KairosForm.reset === 'function') {
-    KairosForm.reset();
+  if (typeof ChatForm.reset === 'function') {
+    ChatForm.reset();
   }
   ApiClient.loadMessages(sid)
     .then(function(r) { return r.json(); })
@@ -272,15 +339,15 @@ function loadSession(sid, deps) {
           stateManager.clear();
         }
 
-        KairosMarkdown.renderAll();
-        KairosUtils.scrollToBottom();
+        MarkdownRenderer.renderAll();
+        Utils.scrollToBottom();
       }
     })
     .catch(function(err) { console.error('Failed to load messages:', err); });
 
 }
 
-export const KairosSessionPage = {
+export const SessionPage = {
   refreshSidebar,
   confirmRename,
   cancelEdit,
