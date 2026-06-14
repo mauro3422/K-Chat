@@ -8,7 +8,7 @@ from src.tools._rate_limiter import _check_rate_limit
 from src.tools._tool_parser import _parse_tool_call
 from src.tools._tool_persister import _persist_tool_results
 from src.memory.repos import Repositories
-from src.tools._contract import HistoryMessage
+from src.memory.types import HistoryMessage
 
 logger: logging.Logger = logging.getLogger(__name__)
 

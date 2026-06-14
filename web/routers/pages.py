@@ -6,7 +6,6 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
 from src.llm.model_state import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
-from src.api.session import get_sessions
 from src.memory.repos import get_repos
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
@@ -88,7 +87,8 @@ def session_page(request: Request, session_id: str) -> HTMLResponse:
 
 @router.get("/sidebar", response_class=HTMLResponse)
 async def sidebar(request: Request) -> HTMLResponse:
-    raw = await get_sessions(50)
+    repos = get_repos()
+    raw = await repos.sessions.get_all(50)
     current = request.query_params.get("current", "")
     sessions = []
     for s in raw:

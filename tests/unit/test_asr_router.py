@@ -92,7 +92,7 @@ async def test_asr_websocket_stream_roundtrip():
     fake_ws = _FakeWebSocket(messages=[{"type": "websocket.receive", "bytes": b"wav-bytes"}])
 
     with patch("web.routers.asr._transcribe_segment", return_value={"success": True, "transcript": "hola"}), \
-         patch("web.routers.asr.append_asr_telemetry") as mock_telemetry:
+         patch("web.routers.asr._append_telemetry", new_callable=AsyncMock) as mock_telemetry:
         await asr_stream(fake_ws)
 
     assert fake_ws.accepted is True

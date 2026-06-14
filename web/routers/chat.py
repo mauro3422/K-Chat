@@ -13,9 +13,7 @@ from src.core.orchestrator_contract import OrchestratorDeps
 from src.core.history_rebuilder import rebuild_history
 from src.core.history_contract import HistoryRebuildDeps
 from src.llm.selector import get_default_model
-from src.api.messages import save_message_record as db_save_message
-from src.api.session import ensure_session
-from src.core.debug_info import DebugInfo
+from src.memory.types import DebugInfo
 from src.memory.repos import get_repos
 from src.memory.repos import MessageRecord
 from web.services.chat_stream import build_stream_generator
@@ -64,7 +62,8 @@ def _build_message_with_attachments(message: str, attachments: list[dict]) -> st
         return message
     lines = [message, ""]
     for a in attachments:
-        lines.append(f"[Archivo: {a['original_name']}]")
+        # Marker includes both original name and saved name for frontend rendering
+        lines.append(f"[Archivo: {a['original_name']}|{a['saved_name']}]")
     return "\n".join(lines)
 
 
@@ -85,8 +84,8 @@ async def chat(
     attachments = _save_attachments(session_id, files)
     full_message = _build_message_with_attachments(message, attachments)
 
-    await ensure_session(session_id)
     repos = get_repos()
+    await repos.sessions.ensure(session_id)
     try:
         history = await rebuild_history(session_id, model, messages_repo=repos.messages)
     except Exception as e:
@@ -94,7 +93,7 @@ async def chat(
         raise HTTPException(500, "Error loading history")
 
     try:
-        await db_save_message(MessageRecord(session_id=session_id, role="user", content=full_message, model=model), repos=repos)
+        await repos.messages.save_record(MessageRecord(session_id=session_id, role="user", content=full_message, model=model))
     except Exception as e:
         logger.error("Error saving user message for %s: %s", session_id, e)
 
@@ -134,3 +133,29 @@ async def chat(
     )
     return StreamingResponse(generate(), media_type="application/x-ndjson")
 
+
+@router.get("/chat/{session_id}/attachment/{filename}")
+async def get_attachment(session_id: str, filename: str):
+    """Serve an attachment file (images, PDFs, etc.) from the session's attachments dir."""
+    import re
+    if not re.match(r'^[\w\-\.]+$', filename):
+        raise HTTPException(400, "Invalid filename")
+    safe_dir = os.path.join("memory", "attachments", session_id)
+    file_path = os.path.join(safe_dir, filename)
+    if not os.path.isfile(file_path):
+        raise HTTPException(404, "Attachment not found")
+
+    ext = os.path.splitext(filename)[1].lower()
+    content_types = {
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+        ".tiff": "image/tiff", ".tif": "image/tiff",
+        ".pdf": "application/pdf",
+        ".mp3": "audio/mpeg", ".wav": "audio/wav",
+    }
+    ct = content_types.get(ext, "application/octet-stream")
+
+    with open(file_path, "rb") as f:
+        content = f.read()
+
+    return Response(content=content, media_type=ct)

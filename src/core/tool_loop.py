@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from src.constants import max_tool_turns
-from src.core.debug_info import DebugInfo
+from src.memory.types import DebugInfo
 from src.memory.repos import Repositories
 from src.core.history_contract import HistoryMessage
 

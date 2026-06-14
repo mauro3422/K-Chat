@@ -22,20 +22,37 @@ function _fileIcon(ext) {
   return icons[ext] || "\uD83D\uDCCE";
 }
 
-function _renderFileCard(filename) {
-  var ext = filename.split('.').pop().toLowerCase();
+function _isImageFile(filename) {
+  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'tif'].indexOf(ext) !== -1;
+}
+
+function _renderFileCard(originalName, savedName) {
+  var ext = originalName.split('.').pop().toLowerCase();
   var icon = _fileIcon(ext);
-  var displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
+  var displayName = originalName.length > 30 ? originalName.substring(0, 27) + '...' : originalName;
+
+  // Si es imagen y tenemos el saved_name, mostrar inline
+  if (_isImageFile(originalName) && savedName) {
+    var src = '/chat/' + _currentSessionId + '/attachment/' + savedName;
+    return '<div class="file-attach-card file-attach-image">' +
+      '<img src="' + src + '" alt="' + escapeHtml(originalName) + '" class="file-attach-preview" loading="lazy" />' +
+      '<span class="file-attach-name">' + escapeHtml(displayName) + '</span>' +
+      '</div>';
+  }
+
   return '<div class="file-attach-card">' +
     '<span class="file-attach-icon">' + icon + '</span>' +
     '<span class="file-attach-name">' + escapeHtml(displayName) + '</span>' +
     '</div>';
 }
 
+var _currentSessionId = '';
+export function setCurrentSessionId(sid) { _currentSessionId = sid; }
+
 function _renderAttachments(content) {
   if (!content) return content;
-  return content.replace(/\[Archivo:\s*([^\]]+)\]/g, function(match, filename) {
-    return _renderFileCard(filename.trim());
+  return content.replace(/\[Archivo:\s*([^|\]]+?)(?:\|([^\]]+))?\]/g, function(match, filename, savedName) {
+    return _renderFileCard(filename.trim(), savedName ? savedName.trim() : '');
   });
 }
 

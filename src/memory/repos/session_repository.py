@@ -79,6 +79,13 @@ class SessionRepository(_BaseRepository):
             logger.exception("Failed to get all sessions")
             return []
 
+    async def require_session(self, session_id: str) -> None:
+        """Validate that a session exists. Raises ValueError if not found."""
+        if not session_id or not session_id.strip():
+            raise ValueError("Session not found")
+        if not await self.exists(session_id):
+            raise ValueError("Session not found")
+
     async def check_should_rename(self, session_id: str) -> bool:
         """Check if the session should be auto-renamed (single user message, no name set)."""
         try:
@@ -94,9 +101,6 @@ class SessionRepository(_BaseRepository):
         except Exception:
             logger.exception("Failed to check should_rename for %s", session_id)
             return False
-
-
-__all__ = ["SessionRepository"]
 
 
 __all__ = ["SessionRepository"]

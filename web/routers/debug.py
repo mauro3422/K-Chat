@@ -4,8 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from src.api.debug import get_debug_info
-from src.api.session import _require_session
+from src.memory.repos import get_repos
 from web.logging_handler import get_backend_logs
 
 router = APIRouter()
@@ -24,8 +23,9 @@ def _local_only(request: Request) -> None:
 
 @router.get("/sessions/{session_id}/debug", dependencies=[Depends(_local_only)])
 async def debug_info(session_id: str) -> JSONResponse:
-    await _require_session(session_id)
-    d = await get_debug_info(session_id)
+    repos = get_repos()
+    await repos.sessions.require_session(session_id)
+    d = await repos.debug.get_info(session_id)
     return JSONResponse(d)
 
 

@@ -12,7 +12,7 @@ from src.core.services.history_service import HistoryService
 from src.core.services.llm_service import LLMService
 from src.core.services.tool_execution_service import ToolExecutionService
 from src.core.services.telemetry_service import TelemetryService
-from src.core.debug_info import DebugInfo
+from src.memory.types import DebugInfo
 from src.memory.repos import get_repos
 from src.background_tasks import auto_rename_session
 from web.services.loop_detector import LoopDetector

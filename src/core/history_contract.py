@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.memory.repos import MessageRepository
-from src.tools._contract import HistoryMessage  # noqa: F401 — re-exported for backward compat
+from src.memory.types import HistoryMessage  # noqa: F401 — re-exported for backward compat
 
 
 @dataclass(slots=True)

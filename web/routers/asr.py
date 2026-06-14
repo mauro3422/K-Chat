@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-from src.api.debug import append_asr_telemetry
+from src.memory.repos import get_repos
 from web.services.asr_service import transcribe_audio
 
 router = APIRouter()
@@ -67,7 +67,7 @@ async def asr_transcribe(request: Request):
 
     if result.get("success"):
         logger.info("ASR: transcribed %d chars", len(result.get("transcript", "")))
-        _append_telemetry(
+        await _append_telemetry(
             session_id,
             {
                 "transport": "http",
@@ -81,7 +81,7 @@ async def asr_transcribe(request: Request):
         return JSONResponse(result)
     else:
         logger.warning("ASR: transcription failed: %s", result.get("error"))
-        _append_telemetry(
+        await _append_telemetry(
             session_id,
             {
                 "transport": "http",
@@ -116,7 +116,7 @@ async def asr_stream(websocket: WebSocket):
                 continue
 
             if len(audio_data) > MAX_AUDIO_SIZE:
-                _append_telemetry(
+                await _append_telemetry(
                     session_id,
                     {
                         "transport": "ws",
@@ -138,7 +138,7 @@ async def asr_stream(websocket: WebSocket):
                 result = _transcribe_segment(audio_data, content_type="audio/wav")
             except Exception as e:
                 logger.exception("ASR websocket: transcription failed")
-                _append_telemetry(
+                await _append_telemetry(
                     session_id,
                     {
                         "transport": "ws",
@@ -156,7 +156,7 @@ async def asr_stream(websocket: WebSocket):
                 })
                 continue
 
-            _append_telemetry(
+            await _append_telemetry(
                 session_id,
                 {
                     "transport": "ws",
@@ -194,10 +194,11 @@ def _transcribe_segment(audio_data: bytes, content_type: str | None = None):
     return transcribe_audio(audio_data, content_type=content_type)
 
 
-def _append_telemetry(session_id: str | None, event: dict) -> None:
+async def _append_telemetry(session_id: str | None, event: dict) -> None:
     if not session_id:
         return
     try:
-        append_asr_telemetry(session_id, event)
+        repos = get_repos()
+        await repos.debug.append_asr_telemetry(session_id, event)
     except Exception:
         logger.exception("ASR telemetry append failed for %s", session_id)

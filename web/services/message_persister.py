@@ -2,10 +2,8 @@ import json
 import time
 from typing import Any
 
-from src.api.debug import save_debug_info
-from src.api.messages import save_message_record as db_save_message
-from src.core.debug_info import DebugInfo
-from src.memory.repos import MessageRecord
+from src.memory.types import DebugInfo
+from src.memory.repos import MessageRecord, get_repos
 from web.services.message_persister_contract import MessagePersisterDeps
 
 
@@ -36,12 +34,10 @@ async def save_assistant_message(
 ) -> None:
     """Persists the assistant message and debug info to the database."""
     _deps = _resolve_persister_deps(deps)
-    save_debug_fn = _deps.save_debug_fn or save_debug_info
     record_cls = _deps.message_record_cls or MessageRecord
 
     if repos is None:
-        from src.memory.repos import get_repos as _get_repos
-        repos = _get_repos()
+        repos = get_repos()
 
     phases_output[:] = _dedup_phases(phases_output)
     phases_json = json.dumps(phases_output, ensure_ascii=False)
@@ -62,14 +58,10 @@ async def save_assistant_message(
     if _deps.save_message_fn is not None:
         await _deps.save_message_fn(record)
     else:
-        await db_save_message(record, repos=repos)
+        await repos.messages.save_record(record)
     if not debug_info.phases or debug_info.phases == "[]":
         debug_info.phases = phases_json
-    import inspect
-    res = save_debug_fn(session_id, debug_info.to_dict())
-    if inspect.iscoroutine(res):
-        await res
-
+    await repos.debug.save_info(session_id, debug_info.to_dict())
 
     try:
         from src.chat_journal import log_turn
@@ -85,4 +77,3 @@ async def save_assistant_message(
         )
     except Exception:
         pass
-

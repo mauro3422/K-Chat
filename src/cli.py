@@ -11,7 +11,6 @@ from src.core.services.llm_service import LLMService
 from src.core.services.tool_execution_service import ToolExecutionService
 from src.core.services.telemetry_service import TelemetryService
 from src.memory.schema import init_db
-from src.api.messages import save_message_record
 from src.memory.repos import MessageRecord, get_repos
 from src.cli_commands import handle_command
 
@@ -72,8 +71,8 @@ async def main() -> None:
                 respuesta += token
             print("\n")
 
-            await save_message_record(MessageRecord(session_id=session_id, role="user", content=entry, model="kairos"), repos=repos)
-            await save_message_record(MessageRecord(session_id=session_id, role="assistant", content=respuesta, model="kairos"), repos=repos)
+            await repos.messages.save_record(MessageRecord(session_id=session_id, role="user", content=entry, model="kairos"))
+            await repos.messages.save_record(MessageRecord(session_id=session_id, role="assistant", content=respuesta, model="kairos"))
         except Exception as e:
             logger.error("Error en chat_stream: %s", e)
 

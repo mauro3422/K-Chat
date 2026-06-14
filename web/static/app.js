@@ -8,7 +8,7 @@ import { ChatForm } from './modules/chat-form.js';
 import { DebugPanel } from './modules/debug-panel.js';
 import { setAsrTransportConfig } from './modules/asr/contract.js';
 import { startMessageHandler } from './modules/widgets/index.js';
-
+import { setCurrentSessionId } from './modules/message-renderer.js';
 const nav = {
   location: window.location,
   history: window.history,
@@ -23,6 +23,7 @@ const nav = {
 const appRoot = document.getElementById('app');
 const sessionId = appRoot ? appRoot.dataset.sessionId : '';
 SessionContext.init(sessionId);
+setCurrentSessionId(sessionId);
 setAsrTransportConfig({ transport: 'websocket' });
 startMessageHandler({ eventTarget: window, locationOrigin: window.location.origin, Observer: window.IntersectionObserver });
 initSessionPage({ nav });

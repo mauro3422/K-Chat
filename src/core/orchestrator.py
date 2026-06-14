@@ -8,7 +8,7 @@ from typing import Any, TYPE_CHECKING
 from src.context import build_system_prompt
 from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
-from src.core.debug_info import DebugInfo
+from src.memory.types import DebugInfo
 from src.memory.repos import Repositories, get_repos
 from src.core.orchestrator_contract import (
     OrchestratorDeps, LLMDeps, ToolDeps, StorageDeps, RequestStateDeps,

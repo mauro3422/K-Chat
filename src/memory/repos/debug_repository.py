@@ -58,5 +58,17 @@ class DebugRepository(_BaseRepository):
             logger.exception("Failed to get debug info for %s", session_id)
             return {}
 
+    async def append_asr_telemetry(self, session_id: str, event: dict[str, Any]) -> None:
+        """Append an ASR telemetry event, keeping the last 100 entries."""
+        info = await self.get_info(session_id)
+        telemetry = info.get("asr_telemetry") or []
+        if not isinstance(telemetry, list):
+            telemetry = []
+        telemetry.append(event)
+        if len(telemetry) > 100:
+            telemetry = telemetry[-100:]
+        info["asr_telemetry"] = telemetry
+        await self.save_info(session_id, info)
+
 
 __all__ = ["DebugRepository"]

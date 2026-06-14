@@ -11,10 +11,12 @@ def mock_deps():
     async def async_gen():
         yield "resp"
 
+    mock_repos = AsyncMock()
+
     with (
         patch("src.cli.get_default_model", return_value="test-model") as m_model,
         patch("src.cli.init_db") as m_init_db,
-        patch("src.cli.save_message_record", new_callable=AsyncMock) as m_save,
+        patch("src.cli.get_repos", return_value=mock_repos) as m_get_repos,
         patch("src.cli.chat_stream") as m_chat,
         patch("sys.stdout.reconfigure") as m_reconf,
     ):
@@ -22,7 +24,7 @@ def mock_deps():
         yield {
             "model": m_model,
             "init_db": m_init_db,
-            "save_message": m_save,
+            "repos": mock_repos,
             "chat_stream": m_chat,
             "reconfigure": m_reconf,
         }
@@ -133,9 +135,9 @@ async def test_main_saves_messages(mock_deps):
         patch("builtins.input", side_effect=["hello", "salir", EOFError]),
     ):
         await main()
-    calls = mock_deps["save_message"].call_args_list
+    calls = mock_deps["repos"].messages.save_record.call_args_list
     assert len(calls) == 2
-    # save_message_record is called with MessageRecord object as first arg
+    # save_record is called with MessageRecord object as first arg
     assert calls[0][0][0].role == "user"
     assert calls[0][0][0].content == "hello"
     assert calls[1][0][0].role == "assistant"
