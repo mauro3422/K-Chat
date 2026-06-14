@@ -135,7 +135,10 @@
         var cd = info.cooldown_remaining || 0;
         opt.textContent = '🔴 ' + clean + '  🔒 ' + Math.round(cd) + 's';
         opt.style.opacity = '0.5';
-      } else if (info.status === 'unknown') {
+      } else if (info.status === 'available') {
+        opt.textContent = '🟢 ' + clean;
+        opt.style.opacity = '1';
+      } else {
         opt.textContent = '⚪ ' + clean;
         opt.style.opacity = '0.85';
       }

@@ -39,6 +39,8 @@ async def model_availability(request: Request) -> dict:
         cooldown = rl.get_cooldown_remaining(model_id)
         if cooldown is not None:
             status = "rate_limited"
+        elif rl.is_available(model_id):
+            status = "available"
         else:
             status = "unknown"  # never tried since last restart
         result[model_id] = {

@@ -37,7 +37,10 @@ async def _with_fallback(
         res = fn(model)
         import asyncio
         if asyncio.iscoroutine(res):
-            return await res
+            res = await res
+        # Mark model as available on success
+        from src.llm.rate_limit_state import get_rate_limit_store
+        get_rate_limit_store().mark_available(model)
         return res
     except Exception as e:
         logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
@@ -61,6 +64,9 @@ async def _try_stream(
     try:
         s = await api_call._api_call(model=model, messages=messages, stream=True, **kwargs)
         logger.info("Stream started successfully with model: %s", model)
+        # Mark model as available on stream start
+        from src.llm.rate_limit_state import get_rate_limit_store
+        get_rate_limit_store().mark_available(model)
         return s
     except Exception as e:
         logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)

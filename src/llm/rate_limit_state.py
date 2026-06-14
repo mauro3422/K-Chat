@@ -16,6 +16,8 @@ class ModelRateLimitStore:
     """Tracks rate-limited models and their cooldown expiration.
 
     Thread-safe (Lock). Pure Python, no framework deps.
+    Also tracks models confirmed working (available) so the UI
+    can show live status without guessing.
     """
 
     def __init__(self) -> None:
@@ -24,22 +26,37 @@ class ModelRateLimitStore:
         self._limited: dict[str, float] = {}
         # model_id -> last error detail
         self._details: dict[str, str] = {}
+        # model_ids confirmed working (survives clear)
+        self._available: set[str] = set()
 
-    # ── Public API ───────────────────────────────────────────────────
+    # --- Public API ---------------------------------------------------
 
     def mark_rate_limited(self, model_id: str, retry_after: float = 60.0, detail: str = "") -> None:
-        """Record that a model is rate limited until `retry_after` seconds from now."""
+        """Record that a model is rate limited until ``retry_after`` seconds from now."""
         expires = time.monotonic() + retry_after
         with self._lock:
             self._limited[model_id] = expires
             if detail:
                 self._details[model_id] = detail
+            self._available.discard(model_id)
 
     def clear_rate_limit(self, model_id: str) -> None:
         """Manually clear a rate limit (e.g. after a successful call)."""
         with self._lock:
             self._limited.pop(model_id, None)
             self._details.pop(model_id, None)
+
+    def mark_available(self, model_id: str) -> None:
+        """Confirm a model works (e.g. after a successful ping or user call)."""
+        with self._lock:
+            self._available.add(model_id)
+            self._limited.pop(model_id, None)
+            self._details.pop(model_id, None)
+
+    def is_available(self, model_id: str) -> bool:
+        """Has this model been confirmed working since last restart?"""
+        with self._lock:
+            return model_id in self._available
 
     def is_rate_limited(self, model_id: str) -> bool:
         """Check if a model is currently rate limited (cooldown still active)."""
@@ -87,11 +104,12 @@ class ModelRateLimitStore:
         limited = self.get_all_rate_limited()
         return {
             "limited_count": len(limited),
+            "available_models": sorted(self._available),
             "limited_models": limited,
         }
 
 
-# ── Global singleton (for convenience, can be injected) ──────────────
+# --- Global singleton (for convenience, can be injected) --------------
 _RATE_LIMIT_STORE: ModelRateLimitStore | None = None
 _lock = threading.Lock()
 

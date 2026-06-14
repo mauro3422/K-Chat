@@ -112,21 +112,11 @@ async def get_verified_models(force_refresh: bool = False, config=None) -> list[
                 return cached
             models.set_verified_models([models.FALLBACK_MODEL])
 
-    # Single-ping availability check for free models
+    # Fire-and-forget availability ping for free models.
+    # Runs in background so it doesn't block the caller (e.g. lifespan timeout=10s).
     free_ids = [m for m in (models.get_verified_models_safe() or []) if m.endswith("-free")]
     if free_ids:
-        try:
-            await _ping_free_model_availability(free_ids, config=config)
-        except Exception:
-            pass
-
-    # Single-ping availability check for free models
-    free_ids = [m for m in (models.get_verified_models_safe() or []) if m.endswith("-free")]
-    if free_ids:
-        try:
-            await _ping_free_model_availability(free_ids, config=config)
-        except Exception:
-            pass
+        asyncio.create_task(_ping_free_model_availability(free_ids, config=config))
 
     return models.get_verified_models_safe() or []
 
@@ -146,32 +136,29 @@ async def _ping_free_model_availability(free_ids: list[str], config=None) -> Non
     # Try the first free model
     ping_model = free_ids[0]
     try:
-        if _is_go_mode(config=config):
-            from src.config_loader import DEFAULT_CONFIG
-            ping_cfg = config or DEFAULT_CONFIG
-            import copy
-            fresh = copy.copy(ping_cfg)
-            fresh.llm_mode = "zen"
-            from src.llm.providers import _PROVIDER_REGISTRY
-            pcls = _PROVIDER_REGISTRY.get(fresh.llm_provider)
-            if not pcls:
-                return
-            provider = pcls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
-        else:
-            from src.llm.providers import _get_provider
-            provider = _get_provider(config=config)
-
-        # Minimal ping: 1 token, 1 word
-        from src.llm.api_call import _api_call
-        await _api_call(
-            model=ping_model,
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1,
-            stream=False,
+        # Free models are served through the Zen API, not Go
+        from src.config_loader import DEFAULT_CONFIG
+        ping_cfg = config or DEFAULT_CONFIG
+        import copy
+        fresh = copy.copy(ping_cfg)
+        fresh.llm_mode = "zen"
+        from src.llm.providers import _PROVIDER_REGISTRY
+        pcls = _PROVIDER_REGISTRY.get(fresh.llm_provider)
+        if not pcls:
+            return
+        zen_provider = pcls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
+        from src.llm.protocol import UnifiedRequest
+        result = await zen_provider.chat(
+            UnifiedRequest(
+                messages=[{"role": "user", "content": "hi"}],
+                model=ping_model,
+                max_tokens=1,
+                stream=False,
+            )
         )
         # Success → clear any stale rate limits on all free models
         for mid in free_ids:
-            store.clear_rate_limit(mid)
+            store.mark_available(mid)
         logger.info("Free model ping OK: %s — all free models available", ping_model)
     except Exception as e:
         from src.llm.retry import is_rate_limit_error
