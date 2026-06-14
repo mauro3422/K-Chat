@@ -48,20 +48,18 @@ def test_get_available_model_ids_fallback_on_error(mock_verified):
 class TestPageEndpoints:
     """Verify page endpoint functions return correct response types."""
 
-    @patch("web.routers.pages.get_default_model", return_value="m1")
     @patch("web.routers.pages.get_available_model_ids", return_value=["m1", "m2"])
     @patch("web.routers.pages.templates.TemplateResponse")
-    def test_home_returns_html(self, mock_tpl, mock_models, mock_default):
+    def test_home_returns_html(self, mock_tpl, mock_models):
         request = MagicMock()
         mock_tpl.return_value = HTMLResponse("<html></html>")
         from web.routers.pages import home
         resp = home(request)
         assert isinstance(resp, HTMLResponse)
 
-    @patch("web.routers.pages.get_default_model", return_value="m1")
     @patch("web.routers.pages.get_available_model_ids", return_value=["m1"])
     @patch("web.routers.pages.templates.TemplateResponse")
-    def test_session_page_returns_html(self, mock_tpl, mock_models, mock_default):
+    def test_session_page_returns_html(self, mock_tpl, mock_models):
         request = MagicMock()
         mock_tpl.return_value = HTMLResponse("<html></html>")
         from web.routers.pages import session_page

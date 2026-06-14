@@ -54,6 +54,8 @@ def chat(
     except Exception as e:
         logger.error("Error saving user message for %s: %s", session_id, e)
 
+    from web.services.message_persister import save_assistant_message
+
     generate = build_stream_generator(
         session_id,
         payload.message,
@@ -63,6 +65,8 @@ def chat(
         deps=StreamGeneratorDeps(
             chat_stream_fn=lambda *a, **kw: core_chat_stream(*a, **kw, deps=OrchestratorDeps(repos=repos)),
             retry_handler=StreamRetryHandler(max_retries=2, llm_chat_stream_fn=llm_chat_stream),
+            save_fn=lambda *a, **kw: save_assistant_message(*a, **kw, repos=repos),
         ),
     )
     return StreamingResponse(generate(), media_type="application/x-ndjson")
+

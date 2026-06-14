@@ -124,12 +124,36 @@ def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_
         model = models._switch_model(model)
         _update_system_prompt(messages, model, build_prompt_fn)
 
+    from src.llm.protocol import UnifiedResponse
+
     def _call(m: str) -> Any:
         response = api_call._api_call(model=m, messages=messages, **kwargs)
         _extract_debug_usage(response, debug)
+        if isinstance(response, UnifiedResponse):
+            tool_calls = None
+            if response.tool_calls:
+                tool_calls = [
+                    SimpleNamespace(
+                        id=tc.id,
+                        type="function",
+                        function=SimpleNamespace(name=tc.name, arguments=tc.arguments)
+                    )
+                    for tc in response.tool_calls
+                ]
+            message = SimpleNamespace(
+                role="assistant",
+                content=response.content,
+                reasoning_content=response.reasoning,
+                tool_calls=tool_calls
+            )
+            return SimpleNamespace(
+                message=message,
+                finish_reason=response.finish_reason
+            )
         return response.choices[0]
 
     return _with_fallback(model, messages, build_prompt_fn, _call)
+
 
 
 def _process_chunks(
@@ -146,32 +170,81 @@ def _process_chunks(
 
     for chunk in stream:
         chunk_count += 1
-        _update_debug_usage(chunk, debug)
 
-        if not getattr(chunk, 'choices', None):
-            logger.debug("Chunk %d sin choices", chunk_count)
-            continue
+        if isinstance(chunk, tuple) and len(chunk) == 2 and isinstance(chunk[0], str):
+            event_type, payload = chunk
+            if event_type == "usage":
+                if isinstance(debug, DebugInfo) and payload:
+                    debug.prompt_tokens = payload.prompt_tokens
+                    debug.completion_tokens = payload.completion_tokens
+                    debug.total_tokens = payload.total_tokens
 
-        delta = chunk.choices[0].delta
-        r = getattr(delta, 'reasoning_content', None) or getattr(delta, 'reasoning', None) if delta else None
-        if r:
-            has_reasoning = True
-            if reasoning_output is not None:
-                reasoning_output.append(r)
-            if tagged:
-                yield ("reasoning", r)
+            elif event_type == "reasoning":
+                has_reasoning = True
+                if reasoning_output is not None:
+                    reasoning_output.append(payload)
+                if tagged:
+                    yield ("reasoning", payload)
 
-        yield from _process_tool_delta(delta, _tool_map, reasoning_output, tool_calls_output, tagged)
+            elif event_type == "content":
+                has_content = True
+                if tagged:
+                    yield ("content", payload)
+                else:
+                    yield payload
 
-        content = delta.content if delta else None
-        if content:
-            has_content = True
-            if tagged:
-                yield ("content", content)
-            else:
-                yield content
+            elif event_type == "tool_call":
+                delta = payload
+                idx = delta.index
+                if idx not in _tool_map:
+                    _tool_map[idx] = SimpleNamespace(
+                        id=delta.id or "",
+                        function=SimpleNamespace(name="", arguments="")
+                    )
+                if delta.id:
+                    _tool_map[idx].id = delta.id
+                if delta.name:
+                    _tool_map[idx].function.name = delta.name
+                if delta.arguments:
+                    _tool_map[idx].function.arguments += delta.arguments
+                if tool_calls_output is not None:
+                    tool_calls_output[:] = [v for _, v in sorted(_tool_map.items())]
+                if tagged:
+                    yield ("tool_call", json.dumps({
+                        "name": "_stream_args", "idx": idx,
+                        "args": _tool_map[idx].function.arguments,
+                        "status": "partial"
+                    }))
+        else:
+            # Legacy raw OpenAI chunk object
+            _update_debug_usage(chunk, debug)
+
+            if not getattr(chunk, 'choices', None):
+                logger.debug("Chunk %d sin choices", chunk_count)
+                continue
+
+            delta = chunk.choices[0].delta
+            r = getattr(delta, 'reasoning_content', None) or getattr(delta, 'reasoning', None) if delta else None
+            if r:
+                has_reasoning = True
+                if reasoning_output is not None:
+                    reasoning_output.append(r)
+                if tagged:
+                    yield ("reasoning", r)
+
+            yield from _process_tool_delta(delta, _tool_map, reasoning_output, tool_calls_output, tagged)
+
+            content = delta.content if delta else None
+            if content:
+                has_content = True
+                if tagged:
+                    yield ("content", content)
+                else:
+                    yield content
 
     return chunk_count, has_content, has_reasoning
+
+
 
 
 def chat_stream(

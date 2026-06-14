@@ -41,9 +41,11 @@ def test_rename_empty_name_fallback(mock_rename):
 
 
 @patch("web.routers.sessions.delete_session")
-def test_delete_success(mock_delete):
+@patch("web.routers.sessions.get_repos")
+def test_delete_success(mock_get_repos, mock_delete):
     """Delete calls delete_session and returns OK."""
     result = delete("sid-1")
     assert isinstance(result, HTMLResponse)
     assert result.body == b"OK"
-    mock_delete.assert_called_once_with("sid-1")
+    mock_delete.assert_called_once_with("sid-1", repos=mock_get_repos.return_value)
+

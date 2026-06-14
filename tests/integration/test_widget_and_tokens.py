@@ -21,6 +21,9 @@ def save_message(
     phases="[]",
     tool_calls=None,
     tool_call_id=None,
+    prompt_tokens=0,
+    completion_tokens=0,
+    total_tokens=0,
     **kwargs,
 ):
     return save_message_record(MessageRecord(
@@ -32,7 +35,11 @@ def save_message(
         phases=phases,
         tool_calls=tool_calls,
         tool_call_id=tool_call_id,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
     ), repos=get_repos())
+
 
 
 def test_widget_db_operations():

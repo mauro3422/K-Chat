@@ -30,6 +30,7 @@ def save_assistant_message(
     phases_output: list[dict[str, Any]],
     debug_info: DebugInfo,
     model: str,
+    repos: 'Repositories | None' = None,
     deps: MessagePersisterDeps | None = None,
 ) -> None:
     """Persists the assistant message and debug info to the database."""
@@ -38,24 +39,61 @@ def save_assistant_message(
     save_debug_fn = _deps.save_debug_fn or save_debug_info
     record_cls = _deps.message_record_cls or MessageRecord
 
+    if repos is None:
+        from src.memory.repos import get_repos as _get_repos
+        repos = _get_repos()
+
     phases_output[:] = _dedup_phases(phases_output)
     phases_json = json.dumps(phases_output, ensure_ascii=False)
     pt = debug_info.prompt_tokens
     ct = debug_info.completion_tokens
     tt = debug_info.total_tokens
-    save_message_fn(
-        record_cls(
-            session_id=session_id,
-            role="assistant",
-            content=full_content,
-            model=model,
-            reasoning=full_reasoning,
-            phases=phases_json,
-            prompt_tokens=pt,
-            completion_tokens=ct,
-            total_tokens=tt,
-        ),
-    )
+    if _deps.save_message_fn is not None:
+        try:
+            save_message_fn(
+                record_cls(
+                    session_id=session_id,
+                    role="assistant",
+                    content=full_content,
+                    model=model,
+                    reasoning=full_reasoning,
+                    phases=phases_json,
+                    prompt_tokens=pt,
+                    completion_tokens=ct,
+                    total_tokens=tt,
+                ),
+                repos=repos,
+            )
+        except TypeError:
+            save_message_fn(
+                record_cls(
+                    session_id=session_id,
+                    role="assistant",
+                    content=full_content,
+                    model=model,
+                    reasoning=full_reasoning,
+                    phases=phases_json,
+                    prompt_tokens=pt,
+                    completion_tokens=ct,
+                    total_tokens=tt,
+                ),
+            )
+    else:
+        save_message_fn(
+            record_cls(
+                session_id=session_id,
+                role="assistant",
+                content=full_content,
+                model=model,
+                reasoning=full_reasoning,
+                phases=phases_json,
+                prompt_tokens=pt,
+                completion_tokens=ct,
+                total_tokens=tt,
+            ),
+            repos=repos,
+        )
     if not debug_info.phases or debug_info.phases == "[]":
         debug_info.phases = phases_json
     save_debug_fn(session_id, debug_info.to_dict())
+

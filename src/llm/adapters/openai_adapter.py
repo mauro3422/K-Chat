@@ -86,9 +86,12 @@ class OpenAIAdapter(LLMProvider):
             if m.get("tool_calls"):
                 m["tool_calls"] = [
                     {
-                        "id": tc["id"],
+                        "id": tc.get("id"),
                         "type": "function",
-                        "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                        "function": {
+                            "name": tc["function"]["name"] if "function" in tc else tc.get("name"),
+                            "arguments": tc["function"]["arguments"] if "function" in tc else tc.get("arguments"),
+                        },
                     }
                     for tc in m["tool_calls"]
                 ]
@@ -156,7 +159,7 @@ class OpenAIAdapter(LLMProvider):
                                 index=idx,
                                 id=tool_map[idx].id,
                                 name=tool_map[idx].name,
-                                arguments=tool_map[idx].arguments,
+                                arguments=tc.function.arguments,
                                 status="partial"
                             ))
 

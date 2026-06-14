@@ -1,8 +1,9 @@
 import { SessionContext } from './session-context.js';
 import { KairosUtils } from './utils.js';
 import { KairosWidgets } from './widgets/index.js';
-import { logUI, logStream, setDebugVisible, getStreamEvents, getUIEvents } from './log-ui.js';
+import { logUI, logStream, setDebugVisible, getStreamEvents, getUIEvents, registerStreamListener, registerUiListener } from './log-ui.js';
 import { ApiClient } from './api-client.js';
+
 import {
   ASR_EVENT_TELEMETRY,
   ASR_EVENT_TEXT,
@@ -485,3 +486,7 @@ export const KairosDebugPanel = {
 };
 
 export { refreshDebug };
+
+registerStreamListener(renderStreamLog);
+registerUiListener(renderUILog);
+

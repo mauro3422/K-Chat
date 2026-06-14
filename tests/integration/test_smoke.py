@@ -10,19 +10,18 @@ def _make_client():
 
 
 @patch("web.routers.pages.get_available_model_ids", return_value=["test-model"])
-@patch("web.routers.pages.get_default_model", return_value="test-model")
-def test_homepage_loads(_mock_default, _mock_models):
+def test_homepage_loads(_mock_models):
     client = _make_client()
     resp = client.get("/")
     assert resp.status_code == 200
 
 
 @patch("web.routers.pages.get_available_model_ids", return_value=["test-model"])
-@patch("web.routers.pages.get_default_model", return_value="test-model")
-def test_session_page_loads(_mock_default, _mock_models):
+def test_session_page_loads(_mock_models):
     client = _make_client()
     resp = client.get("/sessions/smoke-test-session")
     assert resp.status_code == 200
+
 
 
 def test_sidebar_loads():

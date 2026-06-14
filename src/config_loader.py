@@ -22,7 +22,7 @@ class Config:
     llm_max_retries: int = 3
     llm_retry_delay: float = 5.0
     tool_heartbeat_interval: float = 10.0
-    max_tool_turns: int = 25
+    max_tool_turns: int = 50
     testing: bool = False
     environment: str = "production"
     user_name: str = "user"
@@ -48,7 +48,7 @@ def load_config(overrides: dict | None = None) -> Config:
         llm_max_retries=int(os.getenv("LLM_MAX_RETRIES", "3")),
         llm_retry_delay=float(os.getenv("LLM_RETRY_DELAY", "5.0")),
         tool_heartbeat_interval=float(os.getenv("TOOL_HEARTBEAT_INTERVAL", "10.0")),
-        max_tool_turns=int(os.getenv("MAX_TOOL_TURNS", "25")),
+        max_tool_turns=int(os.getenv("MAX_TOOL_TURNS", "50")),
         testing=os.getenv("TESTING", "").lower() in ("1", "true", "yes"),
         environment=os.getenv("ENVIRONMENT", "production"),
         user_name=os.getenv("USER", "") or os.getenv("USERNAME", "user"),

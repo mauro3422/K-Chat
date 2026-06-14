@@ -85,6 +85,10 @@ def chat_stream(
         compress_fn=compress_fn,
         should_compress_fn=should_compress_fn,
     )
+    if _deps.repos is None:
+        from src.memory.repos import get_repos as _get_repos
+        _deps.repos = _get_repos()
+
 
     # Lazy init tool registry if not injected
     tool_registry = _get_tool_registry(_deps)

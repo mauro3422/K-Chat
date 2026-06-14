@@ -17,11 +17,14 @@ def test_api_call_calls_provider_chat_with_correct_args(
 
     mock_execute_with_retry.side_effect = lambda fn, *a, **kw: fn()
 
+    from src.llm.protocol import UnifiedRequest
+
     _api_call(model="test-model", messages=[{"role": "user", "content": "hello"}])
 
     mock_provider.chat.assert_called_once_with(
-        model="test-model", messages=[{"role": "user", "content": "hello"}]
+        UnifiedRequest(messages=[{"role": "user", "content": "hello"}], model="test-model")
     )
+
     mock_execute_with_retry.assert_called_once()
 
 
