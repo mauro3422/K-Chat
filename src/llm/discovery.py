@@ -112,4 +112,74 @@ async def get_verified_models(force_refresh: bool = False, config=None) -> list[
                 return cached
             models.set_verified_models([models.FALLBACK_MODEL])
 
+    # Single-ping availability check for free models
+    free_ids = [m for m in (models.get_verified_models_safe() or []) if m.endswith("-free")]
+    if free_ids:
+        try:
+            await _ping_free_model_availability(free_ids, config=config)
+        except Exception:
+            pass
+
+    # Single-ping availability check for free models
+    free_ids = [m for m in (models.get_verified_models_safe() or []) if m.endswith("-free")]
+    if free_ids:
+        try:
+            await _ping_free_model_availability(free_ids, config=config)
+        except Exception:
+            pass
+
     return models.get_verified_models_safe() or []
+
+
+async def _ping_free_model_availability(free_ids: list[str], config=None) -> None:
+    """Make ONE lightweight ping to a free model to check rate-limit status.
+
+    If 429 → all free models are rate-limited (cooldown tracked).
+    If success → all free models are available (clear any stale limits).
+    """
+    if not free_ids:
+        return
+
+    from src.llm.rate_limit_state import get_rate_limit_store
+    store = get_rate_limit_store()
+
+    # Try the first free model
+    ping_model = free_ids[0]
+    try:
+        if _is_go_mode(config=config):
+            from src.config_loader import DEFAULT_CONFIG
+            ping_cfg = config or DEFAULT_CONFIG
+            import copy
+            fresh = copy.copy(ping_cfg)
+            fresh.llm_mode = "zen"
+            from src.llm.providers import _PROVIDER_REGISTRY
+            pcls = _PROVIDER_REGISTRY.get(fresh.llm_provider)
+            if not pcls:
+                return
+            provider = pcls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
+        else:
+            from src.llm.providers import _get_provider
+            provider = _get_provider(config=config)
+
+        # Minimal ping: 1 token, 1 word
+        from src.llm.api_call import _api_call
+        await _api_call(
+            model=ping_model,
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=1,
+            stream=False,
+        )
+        # Success → clear any stale rate limits on all free models
+        for mid in free_ids:
+            store.clear_rate_limit(mid)
+        logger.info("Free model ping OK: %s — all free models available", ping_model)
+    except Exception as e:
+        from src.llm.retry import is_rate_limit_error
+        if is_rate_limit_error(e):
+            # 429 → all free models are rate-limited
+            for mid in free_ids:
+                store.mark_rate_limited(mid, retry_after=60, detail=str(e)[:200])
+            logger.warning("Free model ping 429: %s — all free models rate-limited", ping_model)
+        else:
+            # Other error → model-specific issue, don't mark all
+            logger.info("Free model ping error (non-rate-limit): %s — %s", ping_model, e)
