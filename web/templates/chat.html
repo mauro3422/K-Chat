@@ -164,6 +164,21 @@
       }
     }
 
+    // Show Go quota warning if exhausted
+    var quotaWarning = document.getElementById('go-quota-warning');
+    if (data.go_quota_exhausted) {
+      if (!quotaWarning) {
+        quotaWarning = document.createElement('div');
+        quotaWarning.id = 'go-quota-warning';
+        quotaWarning.textContent = '⚠️ Go plan quota agotada — los modelos Go no funcionarán hasta que recargues';
+        quotaWarning.style.cssText = 'background:var(--accent-red);color:#fff;padding:6px 12px;font-size:13px;text-align:center;border-radius:6px;margin-bottom:8px;';
+        var header = document.querySelector('.chat-header') || select.parentNode;
+        header.parentNode.insertBefore(quotaWarning, header);
+      }
+    } else if (quotaWarning) {
+      quotaWarning.remove();
+    }
+
     // Refresh every 30s
     setTimeout(arguments.callee, 30000);
   } catch(e) { /* silently retry */ setTimeout(arguments.callee, 60000); }

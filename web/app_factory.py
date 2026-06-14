@@ -52,6 +52,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.warning("Model discovery timed out (10s) — will lazy-load on first request")
         except Exception as e:
             logger.warning("Failed to schedule model discovery: %s", e)
+        # Auto-refresh the dynamic model registry
+        try:
+            from src.llm.model_registry import ensure_registry_refreshed
+            await asyncio.wait_for(ensure_registry_refreshed(), timeout=10)
+        except Exception:
+            pass  # registry will lazy-refresh on first request
     yield
     if searxng_started:
         deps.searxng_stop()

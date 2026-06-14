@@ -30,6 +30,8 @@ async def model_availability(request: Request) -> dict:
     from web.routers.pages import get_available_model_ids, _get_model_tier, get_available_models
 
     rl = get_rate_limit_store()
+    from src.llm.model_registry import get_model_registry
+    reg = get_model_registry()
     result: dict[str, dict] = {}
 
     for model_id in get_available_model_ids():
@@ -51,9 +53,13 @@ async def model_availability(request: Request) -> dict:
             "cooldown_remaining": cooldown,
         }
 
+    reg_summary = reg.summary()
     return {
         "models": result,
         "limited_count": rl.summary()["limited_count"],
+        "go_quota_exhausted": reg.is_quota_exhausted(),
+        "total_models": reg_summary["total_models"],
+        "tier_counts": reg_summary["tier_counts"],
     }
 
 

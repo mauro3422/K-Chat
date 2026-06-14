@@ -6,12 +6,12 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
 from src.llm.model_state import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
+from src.llm.model_registry import get_model_registry, ensure_registry_refreshed
 from src.llm.rate_limit_state import get_rate_limit_store
 from src.memory.repos import get_repos
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
 from web.services.model_catalog import format_model_label, get_model_metadata
-from src.config_loader import DEFAULT_CONFIG
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
@@ -19,61 +19,64 @@ templates.env.auto_reload = True
 
 _NOCACHE_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
-# ── Model tier definitions ────────────────────────────────────────────
-GO_PREMIUM = {"glm-5.1", "glm-5", "kimi-k2.7-code", "qwen3.7-max"}
-GO_STANDARD = {"deepseek-v4-pro", "deepseek-v4-flash", "kimi-k2.6", "kimi-k2.5", "mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-pro", "mimo-v2-omni"}
-GO_ECONOMY = {"minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "hy3-preview"}
-ALL_GO = GO_PREMIUM | GO_STANDARD | GO_ECONOMY
-# All models ending in -free are truly free/rate-limited (cost=0)
-# Models ending in -mini or -nano are PAID Zen models, NOT free
+# ── NO HARDCODED MODEL NAMES ──────────────────────────────────────────
+# Model discovery is fully dynamic via ModelRegistry (src/llm/model_registry.py).
+# Models come from the Go and Zen APIs, tiers are inferred heuristically.
+# See _infer_tier() in model_registry.py for the naming heuristics.
 
 
 def _get_model_tier(model_id: str) -> str:
-    """Classify a model ID into a tier group.
+    """Classify a model into a tier using the dynamic ModelRegistry.
 
-    Rules:
-      - Go sets → GO (paid via Go API)
-      - Ends with -free → FREE / rate-limited (cost_in=0)
-      - Everything else → ZEN (paid per-use via Zen API)
+    No hardcoded model names — everything comes from the API.
     """
-    if model_id in GO_PREMIUM:
-        return "go_premium"
-    if model_id in GO_STANDARD:
-        return "go_standard"
-    if model_id in GO_ECONOMY:
-        return "go_economy"
-    if model_id.endswith("-free"):
-        return "free_ratelimited"
-    return "zen"
+    reg = get_model_registry()
+    return reg.get_tier(model_id)
+
+
+def _get_registry_go_models() -> list[str]:
+    """Get Go models from the dynamic registry (not hardcoded)."""
+    reg = get_model_registry()
+    return reg.get_go_models()
 
 
 def get_available_model_ids() -> list[str]:
+    reg = get_model_registry()
+    all_registry = reg.get_all_models()
     verified = get_verified_models_safe()
-    all_ids = verified or []
-    models = list(PRIORITY)
-    for fid in all_ids:
-        if fid not in models:
-            models.append(fid)
-    if (not verified or not all_ids) and FALLBACK_MODEL not in models:
+    seen: set[str] = set()
+
+    # 1. Priority models first
+    models = []
+    for mid in list(PRIORITY):
+        if mid not in seen and (mid in all_registry or mid in (verified or [])):
+            models.append(mid)
+            seen.add(mid)
+
+    # 2. Verified models (includes Go + free from discovery)
+    if verified:
+        for mid in verified:
+            if mid not in seen:
+                models.append(mid)
+                seen.add(mid)
+    elif FALLBACK_MODEL not in seen:
         models.append(FALLBACK_MODEL)
-    if DEFAULT_CONFIG.llm_mode == "go":
-        seen = set(models)
-        for m in ALL_GO:
-            if m not in seen and (not all_ids or m in all_ids):
-                models.append(m)
-                seen.add(m)
-        if not all_ids:
-            for m in ALL_GO:
-                if m not in seen:
-                    models.append(m)
-                    seen.add(m)
+        seen.add(FALLBACK_MODEL)
+
+    # 3. All known registry models (Go API as source of truth)
+    for mid in all_registry:
+        if mid not in seen:
+            models.append(mid)
+            seen.add(mid)
+
     return models
 
 
 def get_available_models() -> list[dict[str, str]]:
     """Return models grouped by tier for the UI selector.
 
-    Only shows Go (paid) and Free (rate-limited) models from OpenCode.
+    Fully dynamic — no hardcoded model names.
+    Only shows Go (paid) and Free (rate-limited) models.
     Zen-only models (paid per-use, not OpenCode) are hidden.
     """
     rl = get_rate_limit_store()

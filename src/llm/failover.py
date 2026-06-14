@@ -23,11 +23,21 @@ def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None 
     models.mark_model_failed(model)
 
     # Track rate limit separately with cooldown
-    if error is not None and is_rate_limit_error(error):
-        store = get_rate_limit_store()
-        detail = str(error)[:200]
-        store.mark_rate_limited(model, retry_after=60.0, detail=detail)
-        logger.warning("Rate limit recorded for %s — will retry after cooldown", model)
+    if error is not None:
+        err_str = str(error)
+        if is_rate_limit_error(error):
+            store = get_rate_limit_store()
+            detail = err_str[:200]
+            store.mark_rate_limited(model, retry_after=60.0, detail=detail)
+            logger.warning("Rate limit recorded for %s — will retry after cooldown", model)
+        elif "insufficient balance" in err_str.lower():
+            # Go quota exhausted — mark registry so UI can show a warning
+            try:
+                from src.llm.model_registry import get_model_registry
+                get_model_registry().mark_quota_exhausted()
+                logger.warning("Go quota exhausted detected for model %s", model)
+            except Exception:
+                pass
 
     try:
         next_model = models._switch_model(model)
