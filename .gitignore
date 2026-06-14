@@ -27,6 +27,8 @@ env/
 .coverage
 htmlcov/
 coverage.xml
+.testmondata*
+.testmon*
 
 # Node
 node_modules/
