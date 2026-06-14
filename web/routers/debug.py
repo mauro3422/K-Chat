@@ -18,6 +18,41 @@ async def rate_limits(request: Request) -> dict:
     return get_rate_limit_store().summary()
 
 
+@router.get("/models/availability")
+async def model_availability(request: Request) -> dict:
+    """Return real-time availability for all discoverable models.
+
+    Combines rate-limit state with known model tiers so the UI can
+    show live availability dots.
+    """
+    _local_only(request)
+    from src.llm.rate_limit_state import get_rate_limit_store
+    from web.routers.pages import get_available_model_ids, _get_model_tier, get_available_models
+
+    rl = get_rate_limit_store()
+    result: dict[str, dict] = {}
+
+    for model_id in get_available_model_ids():
+        tier = _get_model_tier(model_id)
+        if tier == "zen":
+            continue  # hide Zen from UI
+        cooldown = rl.get_cooldown_remaining(model_id)
+        if cooldown is not None:
+            status = "rate_limited"
+        else:
+            status = "unknown"  # never tried since last restart
+        result[model_id] = {
+            "status": status,
+            "tier": tier,
+            "cooldown_remaining": cooldown,
+        }
+
+    return {
+        "models": result,
+        "limited_count": rl.summary()["limited_count"],
+    }
+
+
 def _local_only(request: Request) -> None:
     if os.getenv("TESTING") == "true":
         return

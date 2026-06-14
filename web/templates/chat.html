@@ -109,4 +109,57 @@
 </div>
 </div>
 <script type="module" src="/static/dist/assets/app.js"></script>
+<script>
+// Model availability checker — live status dots
+(async function() {
+  try {
+    var res = await fetch('/models/availability');
+    if (!res.ok) return;
+    var data = await res.json();
+    if (!data.models) return;
+    var select = document.getElementById('model-select');
+    if (!select) return;
+    var limitedCount = data.limited_count || 0;
+
+    for (var i = 0; i < select.options.length; i++) {
+      var opt = select.options[i];
+      var info = data.models[opt.value];
+      if (!info) continue;
+
+      // Remove old status prefix
+      var clean = opt.textContent.replace(/^[🔴🟢⚪]?\s*/, '');
+      // Remove cooldown badge if any
+      clean = clean.replace(/\s+🔒\s*\d+s$/, '');
+
+      if (info.status === 'rate_limited') {
+        var cd = info.cooldown_remaining || 0;
+        opt.textContent = '🔴 ' + clean + '  🔒 ' + Math.round(cd) + 's';
+        opt.style.opacity = '0.5';
+      } else if (info.status === 'unknown') {
+        opt.textContent = '⚪ ' + clean;
+        opt.style.opacity = '0.85';
+      }
+    }
+
+    if (limitedCount > 0) {
+      var mic = document.getElementById('asr-mic-btn');
+      if (mic && !document.getElementById('rl-badge')) {
+        var badge = document.createElement('span');
+        badge.id = 'rl-badge';
+        badge.textContent = '⚠️ ' + limitedCount;
+        badge.title = limitedCount + ' modelo(s) rate-limited';
+        badge.style.cssText = 'font-size:10px;color:var(--accent-red);margin-left:4px;cursor:pointer;';
+        badge.onclick = function() {
+          var d = document.getElementById('debug-panel');
+          if (d) d.style.display = d.style.display === 'none' ? 'flex' : 'none';
+        };
+        select.parentNode.appendChild(badge);
+      }
+    }
+
+    // Refresh every 30s
+    setTimeout(arguments.callee, 30000);
+  } catch(e) { /* silently retry */ setTimeout(arguments.callee, 60000); }
+})();
+</script>
 </body></html>
