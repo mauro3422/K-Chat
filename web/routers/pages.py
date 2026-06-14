@@ -24,18 +24,25 @@ GO_PREMIUM = {"glm-5.1", "kimi-k2.7-code", "qwen3.7-max"}
 GO_STANDARD = {"deepseek-v4-pro", "deepseek-v4-flash", "mimo-v2.5-pro", "mimo-v2.5"}
 GO_ECONOMY = {"minimax-m3", "minimax-m2.7", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus"}
 ALL_GO = GO_PREMIUM | GO_STANDARD | GO_ECONOMY
-FREE_SUFFIXES = ("-free", "-mini", "-nano")
+# All models ending in -free are truly free/rate-limited (cost=0)
+# Models ending in -mini or -nano are PAID Zen models, NOT free
 
 
 def _get_model_tier(model_id: str) -> str:
-    """Classify a model ID into a tier group."""
+    """Classify a model ID into a tier group.
+
+    Rules:
+      - Go sets → GO (paid via Go API)
+      - Ends with -free → FREE / rate-limited (cost_in=0)
+      - Everything else → ZEN (paid per-use via Zen API)
+    """
     if model_id in GO_PREMIUM:
         return "go_premium"
     if model_id in GO_STANDARD:
         return "go_standard"
     if model_id in GO_ECONOMY:
         return "go_economy"
-    if model_id.endswith(FREE_SUFFIXES) or model_id in {"mimo-v2.5-free", "nemotron-3-ultra-free", "north-mini-code-free"}:
+    if model_id.endswith("-free"):
         return "free_ratelimited"
     return "zen"
 
