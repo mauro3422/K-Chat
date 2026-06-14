@@ -66,46 +66,101 @@
 .model-select-wrapper {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.03);
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 4px 8px;
-  transition: all 0.2s;
+  padding: 5px 10px;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(4px);
 }
 
 .model-select-wrapper:hover {
   background: rgba(255, 255, 255, 0.08);
-  border-color: var(--accent-neon);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 8px rgba(56, 139, 253, 0.12);
+}
+
+.model-select-wrapper .robot-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+  filter: grayscale(0.2);
+  transition: filter 0.2s, transform 0.2s;
+}
+
+.model-select-wrapper:hover .robot-icon {
+  filter: grayscale(0);
+  transform: scale(1.1);
 }
 
 .model-select-wrapper select.model-select {
   background: transparent;
   border: none;
-  color: var(--text-main);
-  font-size: 0.85rem;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
   outline: none;
+  max-width: 240px;
+  min-width: 140px;
 }
 
-.model-select-wrapper select.model-select option {
-  background: var(--bg-primary);
-  color: var(--text-main);
+.model-select-wrapper select.model-select {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  max-width: 240px;
 }
 
 .model-select-wrapper select.model-select optgroup {
   font-style: normal;
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-  padding: 4px 0;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent-blue);
+  padding: 6px 4px 2px;
+  background: transparent;
+}
+
+.model-select-wrapper select.model-select option {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 400;
+  padding: 4px 8px;
+}
+
+.model-select-wrapper select.model-select option.model-option-go_premium {
+  color: #f0883e;
+  font-weight: 500;
+}
+
+.model-select-wrapper select.model-select option.model-option-go_standard {
+  color: #58a6ff;
 }
 
 .model-select-wrapper select.model-select option.model-option-free_ratelimited {
-  color: #f85149;
+  color: var(--accent-red);
+  opacity: 0.85;
+}
+
+.model-select-wrapper select.model-select option.model-option-zen {
+  color: var(--text-secondary);
+}
+
+.light-theme .model-select-wrapper select.model-select option.model-option-go_premium {
+  color: #d4760e;
 }
 
 .light-theme .model-select-wrapper select.model-select option.model-option-free_ratelimited {
-  color: #cf222e;
+  color: var(--accent-red);
 }
 
 /* Mic Button */
