@@ -67,16 +67,20 @@ class TestLocalOnly:
 
 
 @pytest.mark.anyio
-@patch("web.routers.debug.get_debug_info", new_callable=AsyncMock)
-@patch("web.routers.debug._require_session", new_callable=AsyncMock)
-async def test_debug_info_returns_json(mock_req, mock_debug):
-    mock_debug.return_value = {"key": "val"}
+@patch("web.routers.debug.get_repos")
+async def test_debug_info_returns_json(mock_get_repos):
+    mock_repos = MagicMock()
+    mock_repos.sessions = AsyncMock()
+    mock_repos.debug = MagicMock()
+    mock_repos.debug.get_info = AsyncMock()
+    mock_repos.debug.get_info.return_value = {"key": "val"}
+    mock_get_repos.return_value = mock_repos
     result = await debug_info("sid-1")
     assert isinstance(result, JSONResponse)
     import json
     body = json.loads(result.body.decode())
     assert body == {"key": "val"}
-    mock_debug.assert_called_once_with("sid-1")
+    mock_repos.debug.get_info.assert_called_once_with("sid-1")
 
 
 @pytest.mark.anyio

@@ -60,7 +60,10 @@ async def save_assistant_message(
         await repos.messages.save_record(record)
     if not debug_info.phases or debug_info.phases == "[]":
         debug_info.phases = phases_json
-    await repos.debug.save_info(session_id, debug_info.to_dict())
+    if _deps.save_debug_fn is not None:
+        _deps.save_debug_fn(session_id, debug_info.to_dict())
+    else:
+        await repos.debug.save_info(session_id, debug_info.to_dict())
 
     try:
         from src.api import log_turn

@@ -52,9 +52,9 @@ class JsonlHandler(logging.Handler):
             "d": data,
         }
 
-
-def _ensure_dirs() -> None:
-    pass
+    def _ensure_dirs(self) -> None:
+        self._server_log_dir.mkdir(parents=True, exist_ok=True)
+        self._client_log_dir.mkdir(parents=True, exist_ok=True)
 
 
 def install_jsonl_handler(module: str = "app", config=None) -> JsonlHandler:

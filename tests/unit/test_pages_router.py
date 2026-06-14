@@ -26,9 +26,11 @@ async def test_router_has_routes():
 
 @patch("web.routers.pages.PRIORITY", ["model-a", "model-b"])
 @patch("web.routers.pages.get_verified_models_safe", return_value=["model-c", "model-a"])
+@patch("web.routers.pages.get_model_registry")
 @pytest.mark.anyio
-async def test_get_available_model_ids_includes_all(mock_verified):
+async def test_get_available_model_ids_includes_all(mock_registry, mock_verified):
     """Returns priority models first, then any additional verified models not in priority."""
+    mock_registry.return_value.get_all_models.return_value = ["model-a", "model-b", "model-c"]
     result = get_available_model_ids()
     # order: PRIORITY order first, then extras
     assert result == ["model-a", "model-b", "model-c"]
@@ -45,9 +47,11 @@ async def test_get_available_model_ids_no_duplicates(mock_verified):
 
 @patch("web.routers.pages.PRIORITY", ["model-a"])
 @patch("web.routers.pages.get_verified_models_safe", return_value=None)
+@patch("web.routers.pages.get_model_registry")
 @pytest.mark.anyio
-async def test_get_available_model_ids_fallback_on_error(mock_verified):
+async def test_get_available_model_ids_fallback_on_error(mock_registry, mock_verified):
     """If get_verified_models raises, fallback list is used."""
+    mock_registry.return_value.get_all_models.return_value = ["model-a"]
     result = get_available_model_ids()
     assert result == ["model-a", "deepseek-v4-flash"]
 
@@ -75,10 +79,14 @@ class TestPageEndpoints:
         resp = session_page(request, "sid-1")
         assert isinstance(resp, HTMLResponse)
 
-    @patch("web.routers.pages.get_sessions", new_callable=AsyncMock)
+    @patch("web.routers.pages.get_repos")
     @patch("web.routers.pages.templates.TemplateResponse")
     @pytest.mark.anyio
-    async def test_sidebar_returns_html(self, mock_tpl, mock_sessions):
+    async def test_sidebar_returns_html(self, mock_tpl, mock_get_repos):
+        mock_repos = MagicMock()
+        mock_repos.sessions = AsyncMock()
+        mock_repos.sessions.get_all.return_value = []
+        mock_get_repos.return_value = mock_repos
         request = MagicMock()
         request.query_params.get.return_value = ""
         mock_tpl.return_value = HTMLResponse("<div></div>")

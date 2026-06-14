@@ -19,6 +19,23 @@ import pytest
 
 pytestmark = pytest.mark.anyio
 
+
+@pytest.fixture(autouse=True)
+async def _cleanup_async():
+    """Ensure any lingering async resources are cleaned up between tests.
+
+    Prevents 'Event loop is closed' RuntimeError from httpx or other
+    async clients that try to close after the event loop shuts down.
+    """
+    yield
+    # Give pending callbacks a chance to complete before loop teardown
+    import anyio
+    try:
+        await anyio.sleep(0.001)
+    except Exception:
+        pass
+
+
 from src.llm.model_registry import (
     ModelRegistry,
     _infer_tier,
@@ -140,7 +157,11 @@ def registry():
     cfg.opencode_zen_base_url = "https://example.com/zen/v1"
     cfg.opencode_go_base_url = "https://example.com/go/v1"
     cfg.llm_provider = "openai"
-    return ModelRegistry(config=cfg)
+    reg = ModelRegistry(config=cfg)
+    yield reg
+    # Force GC to prevent httpx cleanup after event loop shutdown
+    import gc
+    gc.collect()
 
 
 class TestModelRegistry:
@@ -160,13 +181,13 @@ class TestModelRegistry:
     # inside the method body, so we patch the source modules.
 
     @patch("src.llm.providers._get_provider")
-    @patch("src.llm.providers._PROVIDER_REGISTRY", new_callable=dict)
-    async def test_refresh_go_only(self, mock_registry, mock_get_provider, registry):
+    @patch("src.llm.providers._get_registry")
+    async def test_refresh_go_only(self, mock_get_registry, mock_get_provider, registry):
         """Only Go API models, no Zen API (no -free suffix)."""
         mock_get_provider.return_value = FakeProvider([
             "deepseek-v4-pro", "deepseek-v4-flash", "minimax-m3",
         ])
-        mock_registry.clear()  # no Zen provider registered
+        mock_get_registry.return_value.get.return_value = None  # no Zen provider
 
         await registry.refresh()
 
@@ -179,23 +200,25 @@ class TestModelRegistry:
         assert registry.get_all_models() == go
 
     @patch("src.llm.providers._get_provider")
-    @patch("src.llm.providers._PROVIDER_REGISTRY", new_callable=dict)
+    @patch("src.llm.providers._get_registry")
     async def test_refresh_with_free_models(
-        self, mock_registry, mock_get_provider, registry
+        self, mock_get_registry, mock_get_provider, registry
     ):
         """Go + Zen API with -free models."""
         mock_get_provider.return_value = FakeProvider([
             "deepseek-v4-flash", "minimax-m3",
         ])
 
-        # Register a fake Zen provider class in the registry
+        # Register a fake Zen provider class in the provider registry
         zen_provider = FakeProvider([
             "deepseek-v4-flash-free", "mimo-v2.5-free",
             "claude-sonnet-4", "gpt-5.4",
         ])
         mock_provider_cls = MagicMock()
         mock_provider_cls.return_value = zen_provider
-        mock_registry["openai"] = mock_provider_cls
+        mock_registry = MagicMock()
+        mock_registry.get.return_value = mock_provider_cls
+        mock_get_registry.return_value = mock_registry
 
         await registry.refresh()
 

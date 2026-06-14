@@ -7,7 +7,7 @@ from src.background_tasks import auto_rename_session
 @pytest.mark.anyio
 async def test_auto_rename_skips_when_already_named():
     mock_repo = MagicMock()
-    mock_repo.check_should_rename.return_value = False
+    mock_repo.check_should_rename = AsyncMock(return_value=False)
     mock_chat = AsyncMock()
     await auto_rename_session("sess_1", "Hello", "model-x", chat_fn=mock_chat, session_repo=mock_repo)
     mock_chat.assert_not_called()
@@ -19,7 +19,7 @@ async def test_auto_rename_generates_and_saves_title():
     mock_response = MagicMock()
     mock_response.message.content = '"My Great Title"'
     mock_repo = MagicMock()
-    mock_repo.check_should_rename.return_value = True
+    mock_repo.check_should_rename = AsyncMock(return_value=True)
 
     mock_chat = AsyncMock(return_value=mock_response)
     await auto_rename_session("sess_1", "This is my first message", "model-x", chat_fn=mock_chat, session_repo=mock_repo)
@@ -34,7 +34,7 @@ async def test_auto_rename_skips_on_empty_title():
     mock_response = MagicMock()
     mock_response.message.content = "   "
     mock_repo = MagicMock()
-    mock_repo.check_should_rename.return_value = True
+    mock_repo.check_should_rename = AsyncMock(return_value=True)
 
     mock_chat = AsyncMock(return_value=mock_response)
     await auto_rename_session("sess_1", "Hello", "model-x", chat_fn=mock_chat, session_repo=mock_repo)
@@ -44,7 +44,7 @@ async def test_auto_rename_skips_on_empty_title():
 @pytest.mark.anyio
 async def test_auto_rename_handles_llm_error():
     mock_repo = MagicMock()
-    mock_repo.check_should_rename.return_value = True
+    mock_repo.check_should_rename = AsyncMock(return_value=True)
 
     mock_chat = AsyncMock(side_effect=Exception("API error"))
     await auto_rename_session("sess_1", "Hello", "model-x", chat_fn=mock_chat, session_repo=mock_repo)

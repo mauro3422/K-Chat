@@ -12,17 +12,30 @@ def _resolve_render_deps(deps: MessageRenderDeps | None = None) -> MessageRender
 async def render_session_messages(session_id: str, deps: MessageRenderDeps | None = None) -> dict:
     """Returns a dict containing messages and widget states for a session."""
     _deps = _resolve_render_deps(deps)
+    get_session_messages_fn = _deps.get_session_messages_fn
     filter_messages_fn = _deps.filter_messages_fn or filter_messages_for_ui
     match_tools_fn = _deps.match_tools_fn or match_tools_to_msgs
+    get_tool_history_fn = _deps.get_tool_history_fn
+    get_widget_states_fn = _deps.get_widget_states_fn
     extract_inline_widget_states_fn = _deps.extract_inline_widget_states_fn or extract_inline_widget_states
     repos = _deps.repos or get_repos()
 
-    raw_msgs = await repos.messages.get_session_messages(session_id)
+    if get_session_messages_fn:
+        raw_msgs = await get_session_messages_fn(session_id)
+    else:
+        raw_msgs = await repos.messages.get_session_messages(session_id)
     msgs = filter_messages_fn(raw_msgs)
 
-    all_tools = await repos.tool_calls.get_history(session_id, 100)
+    if get_tool_history_fn:
+        all_tools = await get_tool_history_fn(session_id, 100)
+    else:
+        all_tools = await repos.tool_calls.get_history(session_id, 100)
     msg_tool_map = match_tools_fn(msgs, all_tools)
-    widget_states = await repos.widget_states.get_states(session_id)
+
+    if get_widget_states_fn:
+        widget_states = await get_widget_states_fn(session_id)
+    else:
+        widget_states = await repos.widget_states.get_states(session_id)
     widget_states.update(extract_inline_widget_states_fn(msgs))
 
     from web.ui_utils import _ensure_dict

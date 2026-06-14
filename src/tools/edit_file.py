@@ -75,7 +75,7 @@ def run(**kwargs: Any) -> str:
 
     size = os.path.getsize(path)
     if size > MAX_FILE_SIZE:
-        return f"[ERROR] Archivo demasiado grande ({size / 1024:.0f}KB)."
+        return f"[ERROR] Archivo demasiado grande ({size / 1024:.0f}KB."
 
     # Leer archivo
     try:
@@ -84,6 +84,12 @@ def run(**kwargs: Any) -> str:
     except Exception as e:
         return f"[ERROR] No se pudo leer: {e}"
 
+    # ── PRE-FLIGHT CHECK ────────────────────────────────────────────
+    from src.tools._preflight import preflight_check
+    preflight = preflight_check(path, start_line, end_line, new_content)
+    preflight_warnings = preflight.get("warnings", [])
+
+    total_lines = len(original_lines)
     total_lines = len(original_lines)
     start = _lineno_safety(original_lines, start_line)
 

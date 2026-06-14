@@ -3,6 +3,8 @@
 Use these fixtures to replace heavy mocking patterns in tests.
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
 import aiosqlite
 
@@ -145,6 +147,15 @@ async def in_memory_db():
     yield conn
 
     await conn.close()
+
+
+@pytest.fixture
+def mock_conn():
+    """Tuple of (conn, cursor) AsyncMocks for patched get_conn tests."""
+    conn = AsyncMock()
+    cursor = AsyncMock()
+    conn.execute.return_value = cursor
+    return conn, cursor
 
 
 @pytest.fixture

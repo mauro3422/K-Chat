@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
 from collections.abc import AsyncIterator
@@ -321,7 +321,7 @@ class TestChat:
 
         assert result is mock_choice
         assert mock_api_call._api_call.call_count == 2
-        mock_failover.assert_called_once_with("gpt-4", refresh=True)
+        mock_failover.assert_called_once_with("gpt-4", refresh=True, error=ANY)
 
     @pytest.mark.anyio
     async def test_populates_debug(self, mock_models, mock_policy, mock_api_call):
@@ -572,7 +572,7 @@ class TestChatStream:
         results, _ = await _collect(gen)
         assert results == ["Retried"]
         assert mock_api_call._api_call.call_count == 2
-        mock_failover.assert_called_once_with("gpt-4", refresh=True)
+        mock_failover.assert_called_once_with("gpt-4", refresh=True, error=ANY)
 
     @pytest.mark.anyio
     async def test_stream_fallback_updates_system_prompt(self, mock_models, mock_policy, mock_api_call, mock_retry, mock_failover):
@@ -595,7 +595,7 @@ class TestChatStream:
         assert results == ["Recovered"]
         assert messages[0]["content"] == "Now backup"
         assert mock_api_call._api_call.call_count == 2
-        mock_failover.assert_called_once_with("gpt-4", refresh=True)
+        mock_failover.assert_called_once_with("gpt-4", refresh=True, error=ANY)
 
     @pytest.mark.anyio
     async def test_updates_debug(self, mock_models, mock_policy, mock_api_call):

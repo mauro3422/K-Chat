@@ -48,9 +48,9 @@ async def test_get_default_model():
         with patch("src.llm.selector.models.get_verified_models_safe") as mock_verified:
             mock_verified.return_value = None
             with patch("src.llm.selector.discovery.get_free_models", new_callable=AsyncMock) as mock_free:
-                mock_free.return_value = [MagicMock(id="deepseek-v4-flash-free")]
+                mock_free.return_value = [MagicMock(id="deepseek-v4-flash")]
                 mock_failed.return_value = False
-                assert get_default_model() == "deepseek-v4-flash-free"
+                assert get_default_model() == "deepseek-v4-flash"
 
 
 @pytest.mark.anyio

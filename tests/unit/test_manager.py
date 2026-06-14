@@ -115,15 +115,16 @@ class TestGetVerifiedModels:
 
         assert result == ["deepseek-v4-flash-free"]
 
+    @patch("src.llm.discovery._is_go_mode", return_value=False)
     @patch("src.llm.discovery.get_free_models", new_callable=AsyncMock)
     @patch("src.llm.verifier.verify_model", new_callable=AsyncMock)
     @patch("src.llm.discovery.models.set_verified_models")
     @patch("src.llm.discovery.models.get_verified_models_safe")
     @pytest.mark.anyio
     async def test_verifies_free_models(
-        self, mock_get_verified, mock_set_verified, mock_verify, mock_get_free
+        self, mock_get_verified, mock_set_verified, mock_verify, mock_get_free, _
     ):
-        mock_get_verified.side_effect = [None, ["good-free"]]
+        mock_get_verified.side_effect = [None, ["good-free"], ["good-free"]]
         mock_m1 = MagicMock()
         mock_m1.id = "good-free"
         mock_m2 = MagicMock()
@@ -136,15 +137,16 @@ class TestGetVerifiedModels:
         assert result == ["good-free"]
         mock_set_verified.assert_called_once_with(["good-free"])
 
+    @patch("src.llm.discovery._is_go_mode", return_value=False)
     @patch("src.llm.discovery.get_free_models", new_callable=AsyncMock)
     @patch("src.llm.verifier.verify_model", new_callable=AsyncMock)
     @patch("src.llm.discovery.models.set_verified_models")
     @patch("src.llm.discovery.models.get_verified_models_safe")
     @pytest.mark.anyio
     async def test_forces_refresh(
-        self, mock_get_verified, mock_set_verified, mock_verify, mock_get_free
+        self, mock_get_verified, mock_set_verified, mock_verify, mock_get_free, _
     ):
-        mock_get_verified.side_effect = [["cached"], ["m1-free"]]
+        mock_get_verified.side_effect = [["cached"], ["m1-free"], ["m1-free"]]
         mock_m1 = MagicMock()
         mock_m1.id = "m1-free"
         mock_get_free.return_value = [mock_m1]
@@ -152,15 +154,16 @@ class TestGetVerifiedModels:
 
         result = await get_verified_models(force_refresh=True)
 
-        mock_get_free.assert_called_once_with(force_refresh=True)
+        mock_get_free.assert_called_once_with(force_refresh=True, config=None)
         assert result == ["m1-free"]
 
+    @patch("src.llm.discovery._is_go_mode", return_value=False)
     @patch("src.llm.discovery.get_free_models", new_callable=AsyncMock)
     @patch("src.llm.discovery.models.set_verified_models")
     @patch("src.llm.discovery.models.get_verified_models_safe")
     @pytest.mark.anyio
     async def test_fallback_on_error(
-        self, mock_get_verified, mock_set_verified, mock_get_free
+        self, mock_get_verified, mock_set_verified, mock_get_free, _
     ):
         mock_get_verified.side_effect = [None, ["fallback_model"]]
         mock_get_free.side_effect = Exception("API error")
@@ -169,19 +172,20 @@ class TestGetVerifiedModels:
 
         assert result == ["fallback_model"]
 
+    @patch("src.llm.discovery._is_go_mode", return_value=False)
     @patch("src.llm.discovery.get_free_models", new_callable=AsyncMock)
     @patch("src.llm.discovery.models.set_verified_models")
     @patch("src.llm.discovery.models.get_verified_models_safe")
     @pytest.mark.anyio
     async def test_uses_fallback_model_when_no_cache(
-        self, mock_get_verified, mock_set_verified, mock_get_free
+        self, mock_get_verified, mock_set_verified, mock_get_free, _
     ):
-        mock_get_verified.side_effect = [None, None, None]
+        mock_get_verified.side_effect = [None, None, None, None]
         mock_get_free.side_effect = Exception("API error")
 
         result = await get_verified_models()
 
-        mock_set_verified.assert_called_once_with(["deepseek-v4-flash-free"])
+        mock_set_verified.assert_called_once_with(["deepseek-v4-flash"])
         assert result == []
 
 
@@ -193,15 +197,15 @@ class TestGetDefaultModel:
     async def test_returns_priority_model_when_available(self, mock_get_free, mock_get_verified, mock_failed):
         mock_get_verified.return_value = None
         mock_m1 = MagicMock()
-        mock_m1.id = "big-pickle"
+        mock_m1.id = "deepseek-v4-flash"
         mock_m2 = MagicMock()
-        mock_m2.id = "deepseek-v4-flash-free"
+        mock_m2.id = "big-pickle"
         mock_get_free.return_value = [mock_m1, mock_m2]
         mock_failed.return_value = False
 
         result = get_default_model()
 
-        assert result == "deepseek-v4-flash-free"
+        assert result == "deepseek-v4-flash"
 
     @patch("src.llm.selector.models.is_model_failed")
     @patch("src.llm.selector.models.get_verified_models_safe")
@@ -210,15 +214,15 @@ class TestGetDefaultModel:
     async def test_skips_failed_model(self, mock_get_free, mock_get_verified, mock_failed):
         mock_get_verified.return_value = None
         mock_m1 = MagicMock()
-        mock_m1.id = "big-pickle"
+        mock_m1.id = "deepseek-v4-flash"
         mock_m2 = MagicMock()
-        mock_m2.id = "deepseek-v4-flash-free"
+        mock_m2.id = "big-pickle"
         mock_get_free.return_value = [mock_m1, mock_m2]
-        mock_failed.side_effect = lambda m: m == "big-pickle"
+        mock_failed.side_effect = lambda m: m == "deepseek-v4-flash"
 
         result = get_default_model()
 
-        assert result == "deepseek-v4-flash-free"
+        assert result == "big-pickle"
 
     @patch("src.llm.selector.discovery.get_free_models", new_callable=AsyncMock)
     @pytest.mark.anyio
@@ -227,7 +231,7 @@ class TestGetDefaultModel:
 
         result = get_default_model()
 
-        assert result == "deepseek-v4-flash-free"
+        assert result == "deepseek-v4-flash"
 
     @patch("src.llm.selector.models.is_model_failed")
     @patch("src.llm.selector.models.get_verified_models_safe")
@@ -236,26 +240,26 @@ class TestGetDefaultModel:
     async def test_prefers_deepseek_even_when_big_pickle_is_available(self, mock_get_free, mock_get_verified, mock_failed):
         mock_get_verified.return_value = None
         mock_m1 = MagicMock()
-        mock_m1.id = "deepseek-v4-flash-free"
+        mock_m1.id = "deepseek-v4-flash"
         mock_get_free.return_value = [mock_m1]
         mock_failed.return_value = False
 
         result = get_default_model()
 
-        assert result == "deepseek-v4-flash-free"
+        assert result == "deepseek-v4-flash"
 
     @patch("src.llm.selector.models.is_model_failed")
     @patch("src.llm.selector.models.get_verified_models_safe")
     @patch("src.llm.selector.discovery.get_free_models", new_callable=AsyncMock)
     @pytest.mark.anyio
     async def test_prefers_verified_cache_when_available(self, mock_get_free, mock_get_verified, mock_failed):
-        mock_get_verified.return_value = ["deepseek-v4-flash-free"]
+        mock_get_verified.return_value = ["deepseek-v4-flash"]
         mock_failed.return_value = False
 
         result = get_default_model()
 
         mock_get_free.assert_not_called()
-        assert result == "deepseek-v4-flash-free"
+        assert result == "deepseek-v4-flash"
 
 
 class TestMarkAndRefresh:

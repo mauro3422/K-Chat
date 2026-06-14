@@ -1,11 +1,42 @@
 # 🧠 K-Chat Memory Architecture — Roadmap
 
 > Documento de planificación para el sistema de memoria multicapa de K-Chat.
-> Creado: 2026-06-12 | Para compartir entre IAs del proyecto.
+> Creado: 2026-06-12 | Actualizado: 2026-06-14 18:55
 
 ---
 
-## 📐 Arquitectura General
+## 📐 Estado Actual (v0.0.56)
+
+**Lo que YA existe y funciona:**
+
+```
+✅ MEMORY.md — archivo de texto plano, reescrito completo por save_memory
+✅ save_memory tool — thread-safe, keys ordenadas alfabéticamente
+✅ invalidate_context_cache() — se llama después de cada save_memory
+✅ build_context_snapshot() — cache con Lock thread-safe, invalidation manual
+✅ build_system_prompt() — lee SOUL.md + MEMORY.md + AGENTS.md + crash recovery
+✅ MemoryIndexRepository — tabla memory_index con upsert/get/get_all/delete
+✅ compressor.py — should_compress() + compress_history() con LLM
+✅ history_rebuilder.py — rebuild desde SQLite
+✅ 7 repositorios SQLite — Message, Session, ToolCall, SavedWidget, WidgetState, Debug, MemoryIndex
+✅ Context cache con TTL (invalidation tras save_memory)
+```
+
+**Lo que NO existe todavía:**
+
+```
+❌ Embeddings (no hay modelo cargado, no hay vectores)
+❌ Vector store (sqlite-vec no instalado)
+❌ Entity graph (tablas entities/relationships no existen)
+❌ Búsqueda semántica (no hay recall_memories)
+❌ Session summarization automática (compressor existe pero no se usa al cierre)
+❌ Hybrid retriever (no hay fusión vector+grafo)
+❌ Proactividad (no hay "recuerdos pendientes")
+```
+
+---
+
+## 📐 Arquitectura Objetivo
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -35,15 +66,15 @@
 │   │  │ messages         │  │ ─ embeddings de cada  │   │    │
 │   │  │ tool_calls       │  │   entidad/memoria     │   │    │
 │   │  │ saved_widgets    │  │ ─ búsqueda semántica  │   │    │
-│   │  │ ─── YA ES UN     │  │ ─ inline en SQL       │   │    │
-│   │  │     GRAFO (FKs)  │  └──────────────────────┘   │    │
-│   │  └──────────────────┘                            │    │
-│   │  ┌──────────────────────────────────────────────┐│    │
-│   │  │ Nuevo: Entity Graph                           ││    │
-│   │  │ entities (nodos: persona, proyecto, tema...)  ││    │
-│   │  │ relationships (aristas con FK + CASCADE)      ││    │
-│   │  │ ─ CTE recursivo para traversal                ││    │
-│   │  └──────────────────────────────────────────────┘│    │
+│   │  │ widget_states    │  │ ─ inline en SQL       │   │    │
+│   │  │ debug_info       │  └──────────────────────┘   │    │
+│   │  │ memory_index     │                            │    │
+│   │  │ widget_versions  │  ┌──────────────────────┐   │    │
+│   │  │ ─── YA ES UN     │  │ Nuevo: Entity Graph   │   │    │
+│   │  │     GRAFO (FKs)  │  │ entities (nodos)      │   │    │
+│   │  └──────────────────┘  │ relationships (aristas)│   │    │
+│   │                        │ ─ CTE recursivo        │   │    │
+│   │                        └──────────────────────┘   │    │
 │   └────────────────────────────────────────────────────┘    │
 │                                                              │
 │   Modelo de embeddings: sentence-transformers                │
@@ -92,10 +123,25 @@
 
 ## 🗺️ Roadmap por Fases
 
-### FASE 0 — Setup (hoy/mañana)
+### FASE 0 — Setup (✅ COMPLETADO parcialmente)
 
-**Objetivo:** instalar dependencias y verificar que todo funcione
+**Estado:** La infraestructura base existe. Falta solo la capa de vectores.
 
+```
+✅ src/memory/repos/ — 7 repositorios con base repository
+✅ src/memory/repos/memory_index_repository.py — tabla memory_index funcional
+✅ src/memory/schema.py — init_db_for_path() con migraciones
+✅ src/memory/connection_pool.py — PooledConnection con WAL mode
+✅ src/memory/bootstrap.py — ensure_db_initialized()
+✅ src/memory/migration_runner.py — run_pending_migrations()
+✅ src/memory/engine_state.py — DatabaseEngine Protocol
+✅ src/memory/lifecycle.py — Thread-safe init tracking
+✅ src/compressor.py — should_compress() + compress_history()
+✅ src/context/runtime.py — ContextSnapshot con cache thread-safe
+✅ src/context/builder.py — build_system_prompt() con crash recovery
+```
+
+**Pendiente para completar Fase 0:**
 ```
 [ ] pip install sentence-transformers
 [ ] Instalar sqlite-vec (.so o binario precompilado)
@@ -118,14 +164,44 @@ src/memory/vector/models.py
 
 ---
 
-### FASE 1 — Memoria de Sesiones (esta semana)
+### FASE 1 — Memoria de Sesiones (⏳ PRÓXIMA)
 
 **Objetivo:** guardar y recuperar memoria entre sesiones
 
+**Puntos de integración identificados (v0.0.56):**
+
+```
+1. src/context/builder.py → build_system_prompt() Línea 63-91
+   → Aquí se inyectan las memorias recuperadas
+   → Se agrega bloque "## Relevant Past Memories" al system prompt
+   → Ya tiene crash recovery block como patrón a seguir
+
+2. web/services/chat_stream.py → build_stream_generator() Línea 56-187
+   → En el finally block (L179-185) → disparar session summarization
+   → Ya tiene save periódico (30s) y save final como patrón
+
+3. src/tools/ → Nuevas tools con patrón DEFINITION + run()
+   → recall_memories(query, limit) → búsqueda semántica
+   → search_entities(query, type) → búsqueda de entidades
+   → explore_graph(entity_id, depth) → traversal
+
+4. src/memory/repos/ → Nuevos repositorios con patrón _BaseRepository
+   → MemoryRepository → session_memories table
+   → EntityRepository → entities + relationships
+   → VectorRepository → sqlite-vec operations
+
+5. src/memory/schema.py → Nuevas migraciones
+   → migration_009_session_memories
+   → migration_010_entities
+   → migration_011_relationships
+```
+
+**Plan de implementación:**
 ```
 [ ] Crear tabla `session_memories` en SQLite
     → id, session_id, summary TEXT, embedding BLOB, created_at
 [ ] Session summarization al cerrar sesión
+    → Hook en chat_stream.py finally block
     → LLM genera resumen de la conversación
     → Extrae temas principales, decisiones, entidades
 [ ] Generar embedding del resumen
@@ -136,16 +212,12 @@ src/memory/vector/models.py
     → Inyectar resúmenes en system prompt
 [ ] Tool: `recall_memories(query, limit=5)`
     → Búsqueda semántica de memorias pasadas
+[ ] Tests: 7+ tests para MemoryRepository, embedding, retrieval
 ```
-
-**Integración con el sistema actual:**
-- Hook en `chat_stream.py` al finalizar el stream
-- Hook en `build_system_prompt` (en `builder.py`)
-- Nueva tool para el agente
 
 ---
 
-### FASE 2 — Entity Graph (próxima semana)
+### FASE 2 — Entity Graph (semana 2)
 
 **Objetivo:** estructura de conocimiento relacional
 
@@ -164,6 +236,7 @@ src/memory/vector/models.py
     → Buscar entidades por nombre o similitud
 [ ] Tool: `explore_graph(entity_id, depth=2)`
     → Explorar relaciones de una entidad
+[ ] Tests: 7+ tests para EntityRepository, graph traversal
 ```
 
 **Ejemplo de consulta:**
@@ -202,6 +275,7 @@ JOIN entities e ON e.id = c.target_id;
 [ ] Inyección en system prompt
     → Bloque "## Relevant Past Memories" auto-generado
     → Solo aparece si hay memorias relevantes
+[ ] Tests: integration tests del retriever completo
 ```
 
 **Arquitectura del retriever:**
@@ -276,10 +350,13 @@ Esto es FUTURO. Primero hay que tener las bases sólidas.
 |----------|---------------|---------|
 | Vector DB | **sqlite-vec** | Misma DB que ya usamos, 0 servers extra, suficiente para miles de vectores |
 | Embeddings | **all-MiniLM-L6-v2** | ~80MB RAM, corre local, calidad decente, sin API keys |
-| Grafo | **SQLite puro** (FK + cascade + CTE) | Maura ya usó este patrón, funciona, no necesita Neo4j |
+| Grafo | **SQLite puro** (FK + cascade + CTE) | Mauro ya usó este patrón, funciona, no necesita Neo4j |
 | Framework memoria | **Custom** sobre SQLite | Control total, cero dependencias externas, se adapta a K-Chat |
 | Session summary | **LLM al cierre** | El mismo modelo genera resúmenes, no requiere otro sistema |
 | Retrieval trigger | **Al inicio + cuando el agente lo pida** | Híbrido: automático + bajo demanda |
+| DI pattern | **Repository pattern** con _BaseRepository | Ya establecido en los 7 repos actuales |
+| Tool pattern | **DEFINITION + run()** con auto-discovery | Ya establecido en las 20+ tools actuales |
+| Migration pattern | **Sequential** con schema_version table | Ya establecido en 8 migraciones |
 
 ---
 
@@ -296,31 +373,37 @@ Esto es FUTURO. Primero hay que tener las bases sólidas.
 
 ## 🔗 Integración con el Sistema Actual
 
-### Puntos de inyección en el código existente:
+### Puntos de inyección en el código existente (v0.0.56):
 
-1. **`src/context/builder.py`** → `build_system_prompt()`:
+1. **`src/context/builder.py:63-91`** → `build_system_prompt()`:
    - Aquí se inyectan las memorias recuperadas
    - Se agrega bloque `## Relevant Past Memories` al system prompt
+   - Ya tiene crash recovery block como patrón (L68-71)
 
-2. **`web/services/chat_stream.py`** → `build_stream_generator()`:
+2. **`web/services/chat_stream.py:179-185`** → `finally` block:
    - Al finalizar el stream → disparar session summarization
-   - En el `finally` block o después de `yield` final
+   - Ya tiene save periódico (30s) y save final como patrón
 
-3. **`src/tools/`** → Nuevas tools:
+3. **`src/tools/`** → Nuevas tools con patrón DEFINITION + run():
    - `recall_memories(query, limit)` → búsqueda semántica
    - `search_entities(query, type)` → búsqueda de entidades
    - `explore_graph(entity_id, depth)` → traversal
 
-4. **`src/memory/repos/`** → Nuevos repositorios:
+4. **`src/memory/repos/`** → Nuevos repositorios con patrón _BaseRepository:
    - `MemoryRepository` → session_memories table
    - `EntityRepository` → entities + relationships
    - `VectorRepository` → sqlite-vec operations
+
+5. **`src/memory/schema.py`** → Nuevas migraciones:
+   - `migration_009_session_memories`
+   - `migration_010_entities`
+   - `migration_011_relationships`
 
 ---
 
 ## 🚀 Primer Paso Concreto
 
-**Lo PRIMERO que hay que hacer:**
+**Lo PRIMERO que hay que hacer (FASE 0 pendiente):**
 
 ```
 1. pip install sentence-transformers
@@ -337,7 +420,15 @@ Esto es FUTURO. Primero hay que tener las bases sólidas.
 
 Eso es **TODO** el paso 1. Una vez que eso funcione, el resto es agregar lógica arriba.
 
+**Prerequisito antes de FASE 0:**
+```
+[ ] Verificar que sentence-transformers cabe en 4GB RAM (el modelo son ~80MB)
+[ ] Verificar compatibilidad de sqlite-vec con Python 3.14
+[ ] Decidir: ¿instalar sentence-transformers o usar una API de embeddings?
+    → Si RAM es problema, usar API (pero agrega dependencia externa)
+```
+
 ---
 
-*Documento generado por Kairos (big-pickle) para el proyecto K-Chat.*
-*2026-06-12 17:36*
+*Documento actualizado por Kairos (mimo-v2.5) para el proyecto K-Chat.*
+*2026-06-14 18:55 — v0.0.56*

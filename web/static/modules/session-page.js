@@ -175,7 +175,27 @@ function loadInitialWidgetStates() {
 
 function initSessionPage(deps) {
   var nav = getNav(deps);
-  
+
+  // Bind Canvas Toggle — immediate, modules are deferred so DOM is ready
+  var toggleBtn = document.getElementById('canvas-toggle');
+  var closeBtn = document.getElementById('canvas-close');
+  var canvasEl = document.getElementById('canvas-workspace');
+  var gutterEl = document.getElementById('canvas-gutter');
+  if (toggleBtn && canvasEl) {
+    toggleBtn.addEventListener('click', function() {
+      var collapsed = canvasEl.classList.toggle('collapsed');
+      if (gutterEl) gutterEl.classList.toggle('collapsed', collapsed);
+      toggleBtn.classList.toggle('active', !collapsed);
+    });
+  }
+  if (closeBtn && canvasEl) {
+    closeBtn.addEventListener('click', function() {
+      canvasEl.classList.add('collapsed');
+      if (gutterEl) gutterEl.classList.add('collapsed');
+      if (toggleBtn) toggleBtn.classList.remove('active');
+    });
+  }
+
   // Theme sync
   var currentTheme = safeStorage.getItem('selected_theme') || 'dark';
   if (currentTheme === 'light') {

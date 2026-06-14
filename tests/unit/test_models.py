@@ -52,5 +52,5 @@ async def test_api_call_uses_retry_via_execute_with_retry(
 async def test_api_call_keeps_model_state_defaults():
     from src.llm.model_state import PRIORITY, FALLBACK_MODEL
 
-    assert PRIORITY == ["deepseek-v4-flash-free", "big-pickle"]
-    assert FALLBACK_MODEL == "deepseek-v4-flash-free"
+    assert PRIORITY == ["deepseek-v4-flash", "big-pickle"]
+    assert FALLBACK_MODEL == "deepseek-v4-flash"
