@@ -58,6 +58,28 @@ async def get_verified_models(force_refresh: bool = False, config=None) -> list[
             all_models = await get_models(force_refresh=force_refresh, config=config)
             all_ids = [m if isinstance(m, str) else getattr(m, "id", "") for m in all_models]
             all_ids = [mid for mid in all_ids if mid]
+            # In Go mode, also fetch FREE models (cost=0, -free suffix) from Zen API
+            try:
+                from src.config_loader import DEFAULT_CONFIG, Config
+                zen_cfg = config or DEFAULT_CONFIG
+                import copy
+                fresh = copy.copy(zen_cfg)
+                fresh.llm_mode = "zen"
+                # Create a fresh Zen provider (bypass global singleton)
+                from src.llm.providers import _PROVIDER_REGISTRY
+                provider_cls = _PROVIDER_REGISTRY.get(fresh.llm_provider)
+                if provider_cls:
+                    zen_provider = provider_cls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
+                    zen_models = await zen_provider.list_models()
+                else:
+                    zen_models = []
+                for m in zen_models:
+                    mid = m if isinstance(m, str) else getattr(m, "id", "")
+                    if mid and mid.endswith("-free") and mid not in all_ids:
+                        all_ids.append(mid)
+                logger.info("Go mode: added free models from Zen API")
+            except Exception as ze:
+                logger.warning("Could not fetch free models from Zen: %s", ze)
             models.set_verified_models(all_ids)
             logger.info("Go mode: all %d models trusted as verified", len(all_ids))
         except Exception as e:
