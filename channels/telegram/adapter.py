@@ -116,33 +116,33 @@ async def process_message(
         return
 
     # ── Save user message ───────────────────────────────────────────────
-        repos = _late_imports.get_repos()
-        await repos.messages.save_record(_late_imports.MessageRecord(
-            session_id=session_id,
-            role="user",
-            content=text,
-            model=model,
-            reasoning="",
-            phases="[]",
-        ))
-        # Notify web UI via SSE so user message appears in real-time
-        try:
-            import httpx
-            async with httpx.AsyncClient() as sse_client:
-                await sse_client.post(
-                    _get_sse_notify_url(),
-                    json={
-                        "type": "new_message",
-                        "data": {
-                            "session_id": session_id,
-                            "role": "user",
-                            "preview": text[:80],
-                        },
+    repos = _late_imports.get_repos()
+    await repos.messages.save_record(_late_imports.MessageRecord(
+        session_id=session_id,
+        role="user",
+        content=text,
+        model=model,
+        reasoning="",
+        phases="[]",
+    ))
+    # Notify web UI via SSE so user message appears in real-time
+    try:
+        import httpx
+        async with httpx.AsyncClient() as sse_client:
+            await sse_client.post(
+                _get_sse_notify_url(),
+                json={
+                    "type": "new_message",
+                    "data": {
+                        "session_id": session_id,
+                        "role": "user",
+                        "preview": text[:80],
                     },
-                    timeout=3,
-                )
-        except Exception:
-            logger.warning("SSE notify failed (user msg): %s", _get_sse_notify_url())
+                },
+                timeout=3,
+            )
+    except Exception:
+        logger.warning("SSE notify failed (user msg): %s", _get_sse_notify_url())
 
     # ── Stream processing ───────────────────────────────────────────────
     logger.info("TG[%d] processing: %.60s", chat_id, text)
