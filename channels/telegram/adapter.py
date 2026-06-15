@@ -301,9 +301,27 @@ async def process_message(
                 return
 
         logger.info("TG[%d] no text content generated", chat_id)
+        # Save partial data even if no final content was generated
+        partial = "".join(content_buf or reasoning_buf or full_reasoning).strip()
+        if partial:
+            partial_reasoning = "".join(full_reasoning).strip()
+            partial_content = "".join(content_buf).strip()
+            asyncio.create_task(_persist_partial_conversation(
+                session_id, text, partial_content or partial,
+                partial_reasoning, _late_imports,
+            ))
 
     except Exception as e:
         logger.exception("TG[%d] processing error", chat_id)
+        # Save whatever we have before yielding the error
+        partial = "".join(content_buf or reasoning_buf or full_reasoning).strip() if 'content_buf' in dir() else ""
+        if partial:
+            partial_reasoning = "".join(full_reasoning).strip() if 'full_reasoning' in dir() else ""
+            partial_content = "".join(content_buf).strip() if 'content_buf' in dir() else ""
+            asyncio.create_task(_persist_partial_conversation(
+                session_id, text, partial_content or partial,
+                partial_reasoning, _late_imports,
+            ))
         yield f"__error__:{e}"
 
 
@@ -466,6 +484,33 @@ async def _persist_conversation(
 
 
 # ─── Lazy imports helper ───────────────────────────────────────────────
+
+async def _persist_partial_conversation(
+    session_id: str,
+    user_text: str,
+    partial_text: str,
+    reasoning: str,
+    li: _LazyImports,
+) -> None:
+    """Save partial assistant data when streaming is interrupted
+    (error, timeout, or cancellation). Ensures the user sees partial
+    reasoning/content on reload instead of just tool pills."""
+    try:
+        repos = li.get_repos()
+        model = li.get_default_model()
+        await repos.messages.save_record(li.MessageRecord(
+            session_id=session_id,
+            role="assistant",
+            content=partial_text,
+            model=model,
+            reasoning=reasoning or "",
+            phases="[]",
+        ))
+        logger.info("Saved partial TG conversation to session %s (%d chars)",
+                     session_id, len(partial_text))
+    except Exception as e:
+        logger.warning("Failed to persist partial TG conversation: %s", e)
+
 
 class _LazyImports:
     """Lazy imports from src.api — avoids module-level coupling to the core.
