@@ -118,7 +118,8 @@ async def process_message(
     logger.info("TG[%d] processing: %.60s", chat_id, text)
 
     try:
-        reasoning_buf: list[str] = []
+        reasoning_buf: list[str] = []    # flush buffer (20-token chunks)
+        full_reasoning: list[str] = []   # accumulates ALL reasoning for DB
         content_buf: list[str] = []
         reasoning_flush_interval = 20
         content_flush_interval = 15
@@ -144,6 +145,7 @@ async def process_message(
             # ── Reasoning ──────────────────────────────────────────────
             if event_type == "reasoning":
                 reasoning_buf.append(token)
+                full_reasoning.append(token)  # keep for DB persistence
                 if len(reasoning_buf) == 1:
                     # First token → flush immediately (show user something)
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
@@ -203,10 +205,11 @@ async def process_message(
 
         if content_buf:
             final_content = "".join(content_buf).strip()
+            final_reasoning = "".join(full_reasoning).strip()
             if final_content:
                 yield f"__content__:{final_content}"
                 await _persist_conversation(
-                    session_id, text, final_content, _late_imports,
+                    session_id, text, final_content, final_reasoning, _late_imports,
                 )
                 return
 
@@ -308,9 +311,10 @@ async def _persist_conversation(
     session_id: str,
     user_text: str,
     assistant_text: str,
+    reasoning: str,
     li: _LazyImports,
 ) -> None:
-    """Save the assistant message to SQLite.
+    """Save the assistant message to SQLite (with reasoning for web UI display).
 
     The user message was saved before streaming started.
     """
@@ -322,7 +326,7 @@ async def _persist_conversation(
             role="assistant",
             content=assistant_text,
             model=model,
-            reasoning="",
+            reasoning=reasoning,
             phases="[]",
         ))
         logger.info("Persisted TG conversation to session %s", session_id)

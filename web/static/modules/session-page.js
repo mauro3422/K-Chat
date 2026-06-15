@@ -381,6 +381,10 @@ function loadSession(sid, deps) {
     })
     .catch(function(err) { console.error('Failed to load messages:', err); });
 
+  // Periodic sidebar refresh (picks up Telegram messages in real time)
+  if (!window._sidebarPollInterval) {
+    window._sidebarPollInterval = setInterval(refreshSidebar, 5000);
+  }
 }
 
 export const SessionPage = {
