@@ -822,11 +822,15 @@ def test_reasoning_has_double_newline():
 
 def test_renderer_persists_msg_ids():
     """The renderer must persist main message IDs via
-    MessageManager.store_msg_id so _clear_chat_messages can find them."""
+    MessageManager.store_msg_id so _clear_chat_messages can find them.
+    Uses incrementing keys ('main:0', 'main:1', ...) to preserve history."""
     source = _read_source("channels/telegram/renderer.py")
     assert 'store_msg_id' in source, (
         "Renderer must call store_msg_id to persist message IDs"
     )
-    assert 'self._mm.store_msg_id(chat_id, "main"' in source, (
-        "Main message ID must be stored as 'main' key"
+    assert 'main:{cnt}' in source, (
+        "Main message IDs must use incrementing keys (main:0, main:1, ...)"
+    )
+    assert '_msg_counter' in source, (
+        "Missing msg_counter to generate unique keys"
     )

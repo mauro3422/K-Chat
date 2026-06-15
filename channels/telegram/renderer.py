@@ -77,6 +77,9 @@ class TelegramRenderer:
         self._has_content: dict[int, bool] = defaultdict(bool)
         # Continuation tracker: prevents duplicate 📎 chunks on re-edit
         self._cont_msgs: dict[int, list[int]] = defaultdict(list)  # chat_id → [msg_id, ...]
+        # Message counter: ensures each turn's main msg_id is stored uniquely
+        # so _clear_chat_messages can find ALL messages, not just the last one.
+        self._msg_counter: dict[int, int] = defaultdict(int)  # chat_id → count
 
     async def render_stream(
         self,
@@ -155,8 +158,11 @@ class TelegramRenderer:
         msg_id = await self._send_with_retry(chat_id, html_text, "HTML")
         if msg_id is not None:
             self._main_msg[chat_id] = msg_id
-            # Persist so _clear_chat_messages can find it
-            await self._mm.store_msg_id(chat_id, "main", msg_id)
+            # Persist with unique key so _clear_chat_messages can find ALL
+            # messages, not just the last one (keys: "main:0", "main:1", ...)
+            cnt = self._msg_counter[chat_id]
+            self._msg_counter[chat_id] = cnt + 1
+            await self._mm.store_msg_id(chat_id, f"main:{cnt}", msg_id)
             return msg_id, True
         return None, False
 
