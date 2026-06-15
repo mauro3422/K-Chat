@@ -381,9 +381,37 @@ function loadSession(sid, deps) {
     })
     .catch(function(err) { console.error('Failed to load messages:', err); });
 
-  // Periodic sidebar refresh (picks up Telegram messages in real time)
+  // Periodic refresh — picks up Telegram messages in real time
   if (!window._sidebarPollInterval) {
     window._sidebarPollInterval = setInterval(refreshSidebar, 5000);
+  }
+  // Also reload messages for the active session so new Telegram messages
+  // appear without needing to click the session
+  if (!window._msgPollInterval) {
+    window._msgPollInterval = setInterval(function() {
+      var active = document.querySelector('.session-item.active');
+      var sid = active ? active.getAttribute('data-sid') : null;
+      var input = document.getElementById('chat-input');
+      var isTyping = input && document.activeElement === input;
+      if (sid && !isTyping) {
+        ApiClient.loadMessages(sid)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var messagesDiv = document.getElementById('messages');
+            if (!messagesDiv) return;
+            // Only update if messages changed (compare last message ID)
+            var lastMsg = messagesDiv.lastElementChild;
+            var newLastId = data.messages && data.messages.length > 0
+              ? data.messages[data.messages.length - 1].ts : null;
+            if (newLastId && (!lastMsg || lastMsg.getAttribute('data-ts') !== String(newLastId))) {
+              import('./message-renderer.js').then(function(m) {
+                m.renderMessageList(data.messages || [], messagesDiv);
+              });
+            }
+          })
+          .catch(function() {});
+      }
+    }, 7000);
   }
 }
 
