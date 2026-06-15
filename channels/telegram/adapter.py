@@ -136,7 +136,8 @@ async def process_message(
                     "data": {
                         "session_id": session_id,
                         "role": "user",
-                        "preview": text[:80],
+                        "content": text,
+                        "ts": int(time.time()),
                     },
                 },
                 timeout=3,
@@ -452,7 +453,10 @@ async def _persist_conversation(
                     "data": {
                         "session_id": session_id,
                         "role": "assistant",
-                        "preview": assistant_text[:80],
+                        "content": assistant_text,
+                        "reasoning": reasoning,
+                        "phases": phases,
+                        "ts": int(time.time()),
                     },
                 },
                 timeout=3,

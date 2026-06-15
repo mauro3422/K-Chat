@@ -119,6 +119,37 @@ def test_adapter_flush_intervals_are_small():
                     pass  # dynamic value, skip
 
 
+def test_sse_new_message_has_full_content():
+    """The SSE new_message event for assistant must include
+    full content, reasoning, and phases (not just a preview)."""
+    source = _read_source("channels/telegram/adapter.py")
+    # Find the new_message JSON in _persist_conversation
+    assert '"content": assistant_text' in source, (
+        "new_message SSE event missing full content"
+    )
+    assert '"reasoning": reasoning' in source, (
+        "new_message SSE event missing reasoning"
+    )
+    assert '"phases": phases' in source, (
+        "new_message SSE event missing phases"
+    )
+
+
+def test_append_message_uses_render_message():
+    """The appendMessage function must use renderMessage directly
+    (not renderMessageList) to avoid replacing the entire DOM."""
+    source = _read_source("web/static/modules/sse-client.js")
+    assert 'appendMessage' in source, (
+        "sse-client.js missing appendMessage function"
+    )
+    assert 'insertAdjacentHTML' in source, (
+        "appendMessage must use insertAdjacentHTML to avoid DOM replacement"
+    )
+    assert 'renderMessage' in source, (
+        "appendMessage must call renderMessage, not renderMessageList"
+    )
+
+
 def test_polling_skips_during_streaming():
     """The polling fallback must check for active NDJSON streaming
     before replacing messages."""

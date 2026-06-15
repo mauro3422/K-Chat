@@ -60,22 +60,27 @@ export function connect() {
         return;
       }
 
-      // ── Full message reload ──────────────────────────────────────
+      // ── Full message (new or final) ─────────────────────────────
       if (event.type === 'new_message') {
         if (sid) {
-          // Clear live message — we're about to reload with real data
-          clearLiveMessage();
-          // If the message is NOT for the current session, mark sidebar
-          if (sid !== _currentSessionId) {
-            markSessionUnread(sid);
-          }
-          // Always refresh sidebar (sorts, updates metadata)
-          refreshSidebar().then(function() {
-            restoreUnreadMarks();
-          });
-          // Only reload messages if this session is active AND not currently loading
-          if (sid === _currentSessionId && !_loadingSession) {
-            reloadMessages(sid);
+          // If message has full content data and this is the active session,
+          // append it directly instead of replacing the entire DOM
+          var msgData = event.data;
+          var hasFullData = msgData.content || msgData.role === 'user';
+          if (sid === _currentSessionId && hasFullData && !_loadingSession) {
+            clearLiveMessage();
+            appendMessage(msgData);
+            refreshSidebar().then(function() { restoreUnreadMarks(); });
+          } else {
+            // Fallback: full reload (for non-active sessions, or partial data)
+            clearLiveMessage();
+            if (sid !== _currentSessionId) {
+              markSessionUnread(sid);
+            }
+            refreshSidebar().then(function() { restoreUnreadMarks(); });
+            if (sid === _currentSessionId && !_loadingSession) {
+              reloadMessages(sid);
+            }
           }
         }
       }
@@ -243,6 +248,34 @@ function streamError(data) {
   }
   el.textContent = '❌ Error: ' + (data.error || 'unknown');
   el.style.color = 'var(--accent-red, #ff4444)';
+}
+
+function appendMessage(msgData) {
+  var messagesDiv = document.getElementById('messages');
+  if (!messagesDiv) return;
+  import('./message-renderer.js').then(function(mr) {
+    var html = mr.renderMessage({
+      role: msgData.role,
+      content: msgData.content || '',
+      reasoning: msgData.reasoning || '',
+      ts: msgData.ts,
+      phases: msgData.phases ? (typeof msgData.phases === 'string' ? JSON.parse(msgData.phases) : msgData.phases) : null,
+      matched_tools: msgData.matched_tools || [],
+    });
+    // Append to existing messages (use insertAdjacentHTML to avoid
+    // replacing the entire DOM and causing visual jumps)
+    messagesDiv.insertAdjacentHTML('beforeend', html);
+    // Re-run markdown renderer on the new message only
+    import('./markdown-renderer.js').then(function(md) {
+      if (typeof md.MarkdownRenderer?.renderAll === 'function') {
+        md.MarkdownRenderer.renderAll();
+      }
+    });
+    import('./stream-lifecycle.js').then(function(sl) {
+      if (typeof sl.scrollToBottomIfNear === 'function') sl.scrollToBottomIfNear();
+      else if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
+    });
+  });
 }
 
 function clearLiveMessage() {
