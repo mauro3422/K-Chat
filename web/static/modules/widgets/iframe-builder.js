@@ -135,42 +135,7 @@ export function createIframe(container, id, code) {
             mountIframe(code);
         }
     });
-
-    if (!code && key) {
-        // Check session cache first (widget code persisted from previous render)
-        var cachedCode = stateManager.getCodeCache(key);
-        if (cachedCode) {
-            log(id, 'cache-hit', 'key=' + key + ' code=' + cachedCode.length + 'b');
-            WidgetManager._registry[id] = cachedCode;
-            mountIframe(cachedCode);
-        } else {
-            log(id, 'fetch-init', 'key=' + key);
-            ApiClient.loadWidgetCode(SessionContext.getSessionId(), key)
-                .then(function(r) {
-                    if (!r.ok) throw new Error("No encontrado");
-                    return r.json();
-                })
-                .then(function(data) {
-                    log(id, 'fetch-ok', 'version=' + data.version + ' code=' + data.code.length + 'b');
-                    WidgetManager._registry[id] = data.code;
-                    stateManager.setCodeCache(key, data.code);
-                    ApiClient.saveWidgetState(SessionContext.getSessionId(), widgetCodeEntryKey(key), data.code)
-                        .catch(function() {});
-                    mountIframe(data.code);
-                })
-                .catch(function(err) {
-                    log(id, 'fetch-error', err.message);
-                    cbLog.error('fetch_failed', { id: id, key: key, err: err.message });
-                    if (placeholder.firstChild) {
-                        placeholder.removeChild(placeholder.firstChild);
-                    }
-                    placeholder.appendChild(createErrorNode(key));
-                });
-        }
-    } else {
-        mountIframe(code);
-    }
-
+    
     var parentScroll = container.parentElement
         ? (container.parentElement.scrollHeight > container.parentElement.clientHeight ? 'SCROLL' : 'no-scroll')
         : '?';

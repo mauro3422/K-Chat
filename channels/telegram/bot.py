@@ -187,6 +187,11 @@ async def _process_single_update(
     if text in ("/new", "/reset", "/clear"):
         await _clear_chat_messages(api_client, renderer, chat_id)
 
+    # ── /clear is visual-only: don't send to the LLM ──────────────────
+    if text == "/clear":
+        await api_client.send_message(chat_id, "🧹 Chat limpiado.")
+        return
+
     await api_client.send_action(chat_id, "typing")
 
     from channels.telegram.adapter import process_message
@@ -212,20 +217,31 @@ async def _clear_chat_messages(
 
     Gets all stored message IDs from the renderer's MessageManager
     and deletes them via the Telegram API. Also clears the manager state.
+
+    Note: only messages whose IDs were persisted to SQLite can be deleted.
+    Messages sent before the ``telegram_msg_ids`` migration was deployed
+    (2026-06-15) won't have their IDs tracked and can't be recovered.
     """
     count = 0
     mm = renderer._mm  # MessageManager instance
     all_ids = await mm.get_all_msg_ids(chat_id)
+    logger.info(
+        "TG clear: found %d tracked message IDs for chat %d",
+        len(all_ids), chat_id,
+    )
     for msg_id in all_ids:
         try:
-            await api_client.delete_message(chat_id, msg_id)
-            count += 1
-        except Exception:
-            pass  # Message may already be deleted, ignore
+            ok = await api_client.delete_message(chat_id, msg_id)
+            if ok:
+                count += 1
+            else:
+                logger.debug("TG delete_message returned False for msg %d", msg_id)
+        except Exception as e:
+            logger.debug("TG delete_message error for msg %d: %s", msg_id, e)
 
     await mm.cleanup(chat_id)
     if count > 0:
-        logger.info("Cleared %d messages for chat %d", count, chat_id)
+        logger.info("TG clear: deleted %d messages for chat %d", count, chat_id)
 
 
 # ─── Shutdown ──────────────────────────────────────────────────────────
