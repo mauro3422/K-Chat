@@ -1,4 +1,4 @@
-# web/ - Architecture
+# web/ — Architecture
 
 > Concise overview of the web layer (FastAPI + Jinja2 + HTMX + NDJSON streaming).
 
@@ -6,30 +6,56 @@
 
 ## 1. Files at a glance
 
+### Entry points
+
 | File | Responsibility |
 |------|----------------|
-| `server.py` | Exposes the FastAPI app object for ASGI import |
-| `app_factory.py` | FastAPI app factory, lifespan, middlewares, exception handlers, auto-discovery of routers |
-| `dev_server.py` | Development launcher and optional port-freeing helper |
-| `logging.py` | In-memory ring buffer (`BackendLogHandler`) for backend logs exposed via `/debug/backend-logs` |
+| `server.py` | Exposes the FastAPI app via `create_app()` for ASGI import |
+| `app_factory.py` | FastAPI app factory, lifespan (SearXNG, DB init, model discovery), middlewares, exception handlers, auto-discovery of routers |
+| `dev_server.py` | Development launcher with port-freeing helper |
+| `logging_handler.py` | In-memory ring buffer (`BackendLogHandler`) for backend logs exposed via `/debug/backend-logs` |
 | `ui_utils.py` | Pure HTML rendering helpers for chat messages (phases, reasoning, tool calls, timestamps) |
-| `routers/pages.py` | Serves HTML pages: `/`, `/sessions/{id}`, `/sidebar`, `/sessions/{id}/messages` |
-| `routers/chat.py` | `POST /chat/{session_id}` — accepts message, returns NDJSON stream |
-| `routers/sessions.py` | `POST .../rename`, `POST .../delete` — session management |
-| `routers/widgets.py` | CRUD for HTML widgets: state, code, versions, save |
-| `routers/debug.py` | `GET .../debug`, `GET /debug/backend-logs` — local-only debug endpoints |
-| `routers/health.py` | `GET /health` — DB + LLM provider connectivity check |
-| `services/chat_stream.py` | Builds the NDJSON generator that wraps `chat_stream()` and persists on completion/error |
-| `services/chat_stream_contract.py` | Dependency bundle for stream hooks and retry/save wiring |
-| `services/stream_state.py` | Accumulates partial content/reasoning and persistence timing |
-| `services/stream_contract.py` | Shared NDJSON event contract for server-side stream serialization |
-| `services/message_persister.py` | Serializes phases + debug info and writes assistant message + debug to DB via `save_message_record()` |
-| `services/message_renderer.py` | Renders full session HTML: fetches messages, matches tools, extracts widget code, builds form |
-| `services/message_renderer_contract.py` | Optional dependency bundle for server-side HTML rendering |
-| `services/message_persister.py` | Persists assistant output, phases, and debug info with optional dependency bundle |
-| `services/message_persister_contract.py` | Optional dependency bundle for assistant persistence |
-| `services/stream_error_classifier.py` | Pattern-matches error strings into categories (`rate_limit`, `timeout`, `network`, `model`, `unknown`) |
-| `static/app.js` | Bundled frontend entry. Assembles the runtime. |
+
+### Routers (9)
+
+| File | Routes | Responsibility |
+|------|--------|----------------|
+| `routers/health.py` | `GET /health` | DB + LLM provider connectivity check |
+| `routers/chat.py` | `POST /chat/{session_id}` | Accepts message + files, returns NDJSON stream, background tasks |
+| `routers/sessions.py` | `POST .../rename`, `POST .../delete` | Session management |
+| `routers/widgets.py` | `GET/POST .../widgets/*` | CRUD for HTML widgets: state, code, versions, save |
+| `routers/skills.py` | `GET /api/skills` | Lists skills from the catalog |
+| `routers/asr.py` | `POST /api/asr/transcribe`, `WS /api/asr/stream` | ASR transcription + streaming |
+| `routers/logs.py` | `GET/POST /api/logs/` | Client log ingestion + server log retrieval |
+| `routers/pages.py` | `GET /`, `/sessions/{id}`, `/models/availability` | HTML pages (Jinja2 templates) |
+| `routers/debug.py` | `GET /rate-limits`, `/debug/*` | Local-only debug info |
+
+### Services (16)
+
+| File | Responsibility |
+|------|----------------|
+| `services/chat_stream.py` | `build_stream_generator` — orchestrates LLM + tools + persistence + loop detection + retry |
+| `services/chat_stream_contract.py` | `StreamGeneratorDeps` dataclass |
+| `services/stream_contract.py` | `build_stream_event` / `serialize_stream_event` — NDJSON schema |
+| `services/stream_state.py` | `StreamState` — accumulates text/reasoning, periodic persistence |
+| `services/stream_retry_handler.py` | `StreamRetryHandler` — recovery with continuation |
+| `services/stream_error_classifier.py` | Classifies errors (rate_limit, timeout, network, tool_error, model, unknown) |
+| `services/message_persister.py` | `save_assistant_message` + dedup of phases |
+| `services/message_persister_contract.py` | `MessagePersisterDeps` dataclass |
+| `services/message_renderer.py` | `render_session_messages` + widget states |
+| `services/message_renderer_contract.py` | `MessageRenderDeps` dataclass |
+| `services/widget_contract.py` | `normalize_inline_widget_code` / `extract_inline_widget_states` |
+| `services/loop_detector.py` | `LoopDetector` — detects token/phrase loops |
+| `services/model_catalog.py` | `format_model_label` / `get_model_metadata` |
+| `services/asr_service.py` | `transcribe_audio` — Google Speech API + ffmpeg |
+| `services/file_logger.py` | `JsonlHandler` — structured logging to rotating JSONL |
+| `services/protocols.py` | `StreamGeneratorProtocol`, `MessagePersisterProtocol`, `MessageRendererProtocol` |
+
+### Static
+
+| File | Responsibility |
+|------|----------------|
+| `static/app.js` | Bundled frontend entry point |
 
 ---
 
@@ -53,14 +79,18 @@ Three HTTP middlewares, applied in stack order (outermost first):
 
 | # | Name | What it does |
 |---|------|-------------|
-| 1 | `rate_limit_middleware` | Per-IP sliding window (default 60 req/min, configurable via `HTTP_RATE_LIMIT`). Skips `/static`. Returns 429 on exceeded. |
-| 2 | `csp_middleware` | Adds `Content-Security-Policy` header to every response. |
-| 3 | `add_no_cache_headers` | Sets `Cache-Control: no-cache` on `/static` responses. |
+| 1 | `rate_limit_middleware` | Per-IP sliding window (default 60 req/min, configurable). Only applies to POST/PUT/DELETE/PATCH. Skips GET/HEAD/OPTIONS. Returns 429 on exceeded. |
+| 2 | `csp_middleware` | Adds `Content-Security-Policy` header to every response (`default-src 'self'`, `script-src 'self'`, `style-src 'self' 'unsafe-inline'`). |
+| 3 | `add_no_cache_headers` | Sets `Cache-Control: no-cache, no-store, must-revalidate` on `/static` responses. |
 
 **Exception handlers** (not middlewares, but in the same layer):
-- `404` → JSON `{"detail": "Not found"}`
-- `RequestValidationError` → JSON 422
-- `Exception` (catch-all) → JSON 500 + logs error
+
+| Handler | Status | Behavior |
+|---------|--------|----------|
+| `ServiceException` | dynamic | Returns `exc.detail` with `exc.status_code` |
+| `404` | 404 | JSON `{"detail": "Not found"}` |
+| `RequestValidationError` | 422 | JSON with str representation |
+| `Exception` (catch-all) | 500 | Logs error detail, returns `{"detail": "Internal server error"}` |
 
 ---
 
@@ -72,24 +102,24 @@ Client POST /chat/{session_id}
   ▼
 chat.py:chat()
   ├─ Validates session_id and message
-  ├─ ensure_session(session_id)          # DB
-  ├─ rebuild_history(session_id, model, messages_repo=...)  # fetches history with explicit repo injection
-  ├─ db_save_message(MessageRecord(...)) # persists user msg
+  ├─ ensure_session(session_id)              # DB
+  ├─ rebuild_history(session_id, model, messages_repo=...)
+  ├─ db_save_message(MessageRecord(...))     # persists user msg
   │
   ▼
-chat_stream.py:build_stream_generator()
-  ├─ Returns a closure `generate()`
+build_stream_generator(deps)
+  ├─ Returns a closure generate()
   │
   ▼
 StreamingResponse(generate(), media_type="application/x-ndjson")
   │
   ├─ For each (tipo, token) from chat_stream():
-  │     ├─ serialized through `web/services/stream_contract.py`
-  │     └─ frontend parses the same event set through `web/static/modules/stream-contract.js`
+  │     ├─ serialized via stream_contract.py
+  │     └─ frontend parses the same event set through stream-contract.js
   │
   ├─ On completion:
-  │     ├─ message_persister.save_assistant_message()  # writes content + phases + debug to DB via save_message_record()
-  │     └─ background_tasks.add_task(auto_rename_session)  # async rename
+  │     ├─ message_persister.save_assistant_message()
+  │     └─ background_tasks.add_task(auto_rename_session)
   │
   ├─ On error:
   │     ├─ stream_error_classifier.classify_error() → user-friendly message
@@ -109,24 +139,25 @@ StreamingResponse(generate(), media_type="application/x-ndjson")
 | FastAPI | `server.py`, all routers |
 | Jinja2 | `pages.py`, `message_renderer.py` |
 | Pydantic | `chat.py`, `widgets.py` (payload models) |
-| Uvicorn | `server.py` (`__main__`) |
-| `src.api` | Domain modules for sessions, messages, widgets, debug, tools, history |
+| Uvicorn | `dev_server.py` |
+| `src.api` | Domain modules for sessions, messages, widgets, debug, tools, history, skills, ASR |
 | `src.memory.connection_pool` | `health.py` (DB ping) |
-| `dependencies.manage` | `server.py` (SearXNG lifecycle) |
+| `dependencies.manage` | `app_factory.py` (SearXNG lifecycle) |
 
 ### Internal (`web/`)
 
 ```
-server.py          ← importlib.imports all routers
-logging.py         ← debug.py
-ui_utils.py        ← message_renderer.py (via render_msg_with_phases)
-chat.py            ← chat_stream.py
-chat_stream.py     ← message_persister.py, stream_error_classifier.py, stream_contract.py, chat_stream_contract.py, stream_state.py
-message_renderer.py← ui_utils.py
-message_renderer.py← message_renderer_contract.py
+server.py              ← importlib.imports all routers
+app_factory.py         ← server.py
+logging_handler.py     ← debug.py
+ui_utils.py            ← message_renderer.py (via render_msg_with_phases)
+chat.py                ← chat_stream.py
+chat_stream.py         ← message_persister.py, stream_error_classifier.py,
+                          stream_contract.py, chat_stream_contract.py,
+                          stream_state.py, stream_retry_handler.py,
+                          loop_detector.py, model_catalog.py
+message_renderer.py    ← message_renderer_contract.py, widget_contract.py
 ```
-
-`pages.py` and `message_renderer.py` both call `src.api` functions directly, but `message_renderer.py` now accepts an explicit dependency bundle to keep its wiring testable.
 
 ---
 
@@ -135,9 +166,11 @@ message_renderer.py← message_renderer_contract.py
 - **Auto-discovery**: zero-config router registration; drop a file and it works.
 - **Error resilience**: middlewares catch and format all exceptions; stream errors are classified and user-friendly.
 - **Partial save on interrupt**: `finally` block ensures incomplete streams still persist.
-- **Separation of concerns**: streaming logic isolated in `services/`; routers are thin.
+- **Contracts desacoplados**: dependencies are explicit dataclasses (`StreamGeneratorDeps`, `MessagePersisterDeps`, `MessageRenderDeps`), not implicit imports.
 - **Debug layer**: local-only guard on debug endpoints; in-memory log buffer avoids disk I/O.
 - **CSP + rate limiting**: security basics covered at the middleware layer.
+- **Streaming with heartbeat**: 20s heartbeat + loop detector prevent silent failures.
+- **Protocol isolation**: `protocols.py` defines abstract interfaces for stream, persistence, and rendering — swapable by design.
 
 ---
 
@@ -154,3 +187,5 @@ message_renderer.py← message_renderer_contract.py
 | **`health.py` imports at call time** | `from src.memory.connection_pool import get_conn` inside the function — inconsistent with other modules. |
 | **No tests in `web/`** | No test files found; the architecture would benefit from integration tests for the streaming flow. |
 | **CSP `unsafe-inline`** | Required for inline scripts/styles but weakens XSS protection; consider nonces or hashes. |
+
+(End of file)
