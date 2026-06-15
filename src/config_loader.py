@@ -8,7 +8,7 @@ load_dotenv()
 
 # ── Model name constants ────────────────────────────────────────────────
 DEFAULT_MODEL: str = "deepseek-v4-flash"
-SECONDARY_MODEL: str = "big-pickle"
+SECONDARY_MODEL: str = ""  # Not used; failover uses verified models from discovery
 
 
 @dataclass
@@ -18,6 +18,7 @@ class Config:
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
     llm_provider: str = "openai"
     llm_mode: str = "go"
+    sessions_db_path: str = ""
     memory_db_path: str = ""
     searxng_url: str = "http://127.0.0.1:8080"
     host: str = "127.0.0.1"
@@ -39,6 +40,7 @@ class Config:
     watchdog_interval: int = 5
     watchdog_url: str = "http://127.0.0.1:8000/health"
 
+
 def _resolve_project_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
@@ -51,7 +53,8 @@ def load_config(overrides: dict | None = None) -> Config:
         opencode_go_base_url=os.getenv("OPENCODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1"),
         llm_provider=os.getenv("LLM_PROVIDER", "openai"),
         llm_mode=os.getenv("LLM_MODE", "go"),
-        memory_db_path=os.getenv("MEMORY_DB_PATH", str(root / "memory" / "kairos_memory.db")),
+        sessions_db_path=os.getenv("SESSIONS_DB_PATH", str(root / "memory" / "kairos_memory.db")),
+        memory_db_path=os.getenv("KAIROS_MEMORY_DB_PATH", str(root / "data" / "kairos_memory.db")),
         searxng_url=os.getenv("SEARXNG_URL", "http://127.0.0.1:8080"),
         host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "8000")),
@@ -79,6 +82,3 @@ def load_config(overrides: dict | None = None) -> Config:
                 setattr(cfg, k, v)
 
     return cfg
-
-
-

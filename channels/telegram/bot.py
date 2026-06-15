@@ -46,6 +46,16 @@ async def run_bot(config: TelegramConfig) -> None:
     print(f"[Telegram] ✅ Bot started. Polling every {config.poll_interval}s")
     print("[Telegram]   Commands: /start /help /new /reset")
 
+    # ── Warmup: preheat httpx connection pool ──────────────────────────
+    try:
+        from src.llm.providers import _get_provider, _reset_provider
+        _reset_provider()
+        provider = _get_provider()
+        models = await provider.list_models()
+        logger.info("Warmup OK: %d models available", len(models))
+    except Exception as we:
+        logger.warning("Warmup failed (non-fatal): %s", we)
+
     # ── Build Lego components ──────────────────────────────────────────
     async with httpx.AsyncClient() as client:
         api_client = TelegramAPIClient(client, config)

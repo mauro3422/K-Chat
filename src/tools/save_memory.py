@@ -2,6 +2,7 @@ import os
 import logging
 import threading
 from typing import Any
+
 from src.paths import CONTEXT_DIR
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -40,7 +41,6 @@ _HEADER_TEMPLATE: list[str] = [
 
 
 def _ensure_header(header_lines: list[str]) -> list[str]:
-    """Ensure header_lines contains # MEMORY.md, User:, System:."""
     has_title = any(line.strip().startswith("# MEMORY.md") for line in header_lines)
     has_user = any(line.strip().startswith("User:") for line in header_lines)
     has_system = any(line.strip().startswith("System:") for line in header_lines)
@@ -96,11 +96,13 @@ def _write_memory_file(filepath: str, header_lines: list[str], memories: dict[st
     return None
 
 
-def run(**kwargs) -> str:
+async def run(**kwargs) -> str:
     key = kwargs.get("key") or kwargs.get("name", "")
     value = kwargs.get("value") or kwargs.get("content") or kwargs.get("text", "")
     _session_id = kwargs.get("_session_id")
     _invalidate_cache_fn = kwargs.get("_invalidate_cache_fn")
+    _repos = kwargs.get("_repos")
+
     filepath = os.path.join(CONTEXT_DIR, "MEMORY.md")
 
     with _save_lock:
@@ -141,5 +143,21 @@ def run(**kwargs) -> str:
 
         if _invalidate_cache_fn is not None:
             _invalidate_cache_fn()
+
+    # ── Async write to memory.db (global, synced) ─────────────────────
+    if _repos is not None and _repos.memory is not None:
+        key_clean = key.strip()
+        value_clean = value.strip()
+        try:
+            if value_clean:
+                await _repos.memory.memory_index.upsert(key_clean, value_clean)
+                logger.debug("save_memory also wrote to memory.db: %s", key_clean)
+            elif key_clean:
+                old = await _repos.memory.memory_index.get(key_clean)
+                if old is not None:
+                    await _repos.memory.memory_index.delete(key_clean)
+                    logger.debug("save_memory also deleted from memory.db: %s", key_clean)
+        except Exception:
+            logger.exception("Failed to sync to memory.db (non-fatal)")
 
     return f"[OK] {action_msg} in MEMORY.md."

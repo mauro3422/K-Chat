@@ -243,21 +243,28 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 | 2 | **memory_search + list_memories** | Tools para consultar `MEMORY.md` de forma semántica (ahora con cache fresco) | 🔥 |
 | 3 | **Auto-exploration + Docs sync** | Kairos analiza la arquitectura actual y sincroniza docs/ con el código real | 🔥 |
 | 4 | **Inyección inteligente de memoria** | Sistema que inyecta recuerdos relevantes contextualmente antes de cada respuesta, basado en el tópico de la conversación | 📋 |
-| 5 | **Telegram voice → ASR** | Conectar mensajes de voz de Telegram con el bridge ASR de DuckSugar | 📋 |
-| 6 | **Widget Events → AI** | Widgets enviando acciones del usuario de vuelta al AI como contexto inyectado | 📋 |
-| 7 | **Cross-Session Topic Tracer** | Rastreo de temas a través de múltiples sesiones (ahora con MEMORY.md confiable) | 📋 |
-| 8 | **Temas visuales** | Matrix rain sidebar, fondos anime, burbujas custom, iconos temáticos, switcher de temas en UI | 📋 |
-| 9 | **Session Export** | Exportar sesiones a Markdown o JSON | 📋 |
-| 10 | **Scheduled Tasks** | Tareas programadas (cron-like) para automatizaciones | 📋 |
-| 11 | **Nocturnal Agent** | Síntesis diaria de sesiones en `MEMORY.md` con contexto fresco | 📋 |
-| 12 | **Proactive Insights** | Insights proactivos basados en patrones de uso | 📋 |
-| 13 | **Discord Bot** | Segundo channel adapter siguiendo el patrón `channels/` | 📋 |
-| 14 | **Widget versioning UI** | Mostrar versión actual del widget en toolbar sin fetch separado | 📋 |
+| 5 | **Split DB: sessions.db vs memory.db** | Separar base actual en 2 archivos: sessions.db (local) + memory.db (sync). MEMORY.md como source of truth | 🔥 |
+| 6 | **Syncthing para sync multi-dispositivo** | MEMORY.md + memory.db sincronizados entre PC y laptop. Sessions.db local a cada máquina | 🔥 |
+| 7 | **Telegram voice → ASR** | Conectar mensajes de voz de Telegram con el bridge ASR de DuckSugar | 📋 |
+| 8 | **Widget Events → AI** | Widgets enviando acciones del usuario de vuelta al AI como contexto inyectado | 📋 |
+| 9 | **Cross-Session Topic Tracer** | Rastreo de temas a través de múltiples sesiones (ahora con MEMORY.md confiable) | 📋 |
+| 10 | **Temas visuales** | Matrix rain sidebar, fondos anime, burbujas custom, iconos temáticos, switcher de temas en UI | 📋 |
+| 11 | **Session Export** | Exportar sesiones a Markdown o JSON | 📋 |
+| 12 | **Scheduled Tasks** | Tareas programadas (cron-like) para automatizaciones | 📋 |
+| 13 | **Notturnal Agent + Memory Cells** | Sistema de células background que curan memoria cuando el sistema está idle: Entity Extractor, Embedding Generator, Session Miner, Cross-Session Tracer | 📋 |
+| 14 | **Proactive Insights** | Insights proactivos basados en patrones de uso | 📋 |
+| 15 | **Resolución de primario en LAN** | Detectar otro server activo en LAN y negociar modo primario/lectura para evitar duplicación de writes | 📋 |
+| 16 | **Discord Bot** | Segundo channel adapter siguiendo el patrón `channels/` | 📋 |
+| 17 | **Widget versioning UI** | Mostrar versión actual del widget en toolbar sin fetch separado | 📋 |
+| 18 | **Registro de dispositivos del usuario** | Guardar specs y config de cada dispositivo donde corre K-Chat para contexto del agente | 📋 |
 
+> **Hecho**: Stream heartbeat (20s backend + 10s tools), cache de contexto invalidado (v0.0.53), watchdog auto-recuperación (v0.0.56), Telegram channel (v0.0.56)
 > **Hecho**: Stream heartbeat (20s backend + 10s tools), cache de contexto invalidado (v0.0.53), watchdog auto-recuperación (v0.0.56), Telegram channel (v0.0.56)
 
 ## Architecture Decisions
-
+| Memory | 3 capas: MEMORY.md + memory.db (SQLite+sqlite-vec) + sessions.db (SQLite local) | PostgreSQL / sqlite-vec solo / todo en una DB |
+| Sync multi-dispositivo | Syncthing (MEMORY.md + memory.db). Sessions.db local. MEMORY.md como source of truth, memory.db reconstruible | Nube centralizada / PostgreSQL remoto / Litestream |
+| Agent duplicación | Primario/lectura por broadcast LAN + prioridad configuraable | Lock externo / solo un server permitido |
 | Decision | Chosen | Alternative |
 |----------|--------|-------------|
 | Runtime | Pure Python | TypeScript |

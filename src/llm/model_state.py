@@ -52,25 +52,35 @@ class ModelState:
         with self._lock:
             self._cached_models = value
 
+    def _candidates(self) -> list[str]:
+        """Return candidate models in priority order for failover.
+
+        If verified models are available (from discovery), use those first.
+        Otherwise fall back to the hardcoded priority list.
+        """
+        verified = self._verified_models
+        if verified:
+            return verified
+        return self._priority
+
     def switch_model(self, model: str) -> str:
         """Switch to an alternative model. NEVER returns a failed model.
 
-        If model == fallback: scan priority for any non-failed model.
-        If model != fallback: try fallback first, then scan priority.
-        If all models failed: raise RuntimeError.
+        Uses verified models from discovery if available (so the bot uses
+        the same auto-discovery as the web UI). Falls back to priority list.
+
+        If all models failed: raises RuntimeError.
         """
+        candidates = self._candidates()
         with self._lock:
-            if model == self._fallback_model or model not in self._priority:
-                for m in self._priority:
-                    if m not in self._failed_models:
-                        return m
-            else:
-                if self._fallback_model not in self._failed_models:
-                    return self._fallback_model
-                for m in self._priority:
-                    if m not in self._failed_models:
-                        return m
-        raise RuntimeError(f"All models have failed: {self._priority}")
+            # First try candidates that aren't failed
+            for m in candidates:
+                if m not in self._failed_models:
+                    return m
+            # Last resort: even failed models (may get a different error)
+            if candidates:
+                return candidates[0]
+        raise RuntimeError(f"All models have failed: {candidates}")
 
 
 # ── Lazy module-level state (not created at import time) ───────────────
@@ -87,7 +97,7 @@ def _get_state(state: ModelState | None = None) -> ModelState:
 
 
 # Static constants (no dependency on ModelState instance)
-PRIORITY = [DEFAULT_MODEL, SECONDARY_MODEL]
+PRIORITY = [m for m in [DEFAULT_MODEL, SECONDARY_MODEL] if m]
 FALLBACK_MODEL = DEFAULT_MODEL
 
 

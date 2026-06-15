@@ -21,6 +21,7 @@ from dependencies import manage as deps
 from src.api.exceptions import ServiceException
 from src.config_loader import load_config
 from src.api import init_db
+from src.memory.memory_schema import init_memory_db
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         else:
             searxng_started = True
     await init_db()
+    await init_memory_db()
     try:
         from src.api import SkillRegistry
         SkillRegistry().generate_index_md()
@@ -70,7 +72,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
     if searxng_started:
         deps.searxng_stop()
-
 
 def register_middlewares(app: FastAPI) -> None:
     @app.middleware("http")

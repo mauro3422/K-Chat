@@ -13,7 +13,7 @@ Environment=WATCHDOG_URL=http://127.0.0.1:8000/health
 Environment=PYTHONUNBUFFERED=1
 
 # ── Execute ────────────────────────────────────────────────────────
-ExecStart=%h/dev/K-Chat/.venv/bin/python .kairos/watchdog.py
+ExecStart=%h/dev/K-Chat/venv/bin/python .kairos/watchdog.py
 
 # ── Lifecycle ──────────────────────────────────────────────────────
 Restart=on-failure

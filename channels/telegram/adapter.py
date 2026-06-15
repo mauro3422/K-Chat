@@ -30,11 +30,9 @@ logger = logging.getLogger(__name__)
 CHANNEL_SYSTEM_MESSAGE = {
     "role": "system",
     "content": (
-        "---\n"
-        "Current channel: Telegram\n"
-        "You have FULL access to all tools. No limitations.\n"
-        "Be concise and direct. Markdown works in Telegram.\n"
-        "---"
+        "Mensajes del usuario llegan desde Telegram. Respondé sin mencionar "
+        "el canal ni usar emojis de Telegram. Markdown funciona. "
+        "No digas 'estás en Telegram' ni 'conectado desde'."
     ),
 }
 
@@ -69,9 +67,10 @@ async def process_message(
     )
     model = _late_imports.get_default_model()
 
-    # ── Commands ────────────────────────────────────────────────────────
+    # ── Commands (tagged as __content__ so the renderer sends them) ──────
     if text == "/start":
         yield (
+            "__content__:"
             "¡Hola! Soy **Kairos**, tu asistente personal.\n\n"
             "Comandos:\n"
             "/new — Nueva sesión\n"
@@ -83,6 +82,7 @@ async def process_message(
 
     if text == "/help":
         yield (
+            "__content__:"
             "**Comandos:**\n"
             "/new — Nueva sesión\n"
             "/reset — Reiniciar\n"
@@ -92,18 +92,18 @@ async def process_message(
         return
 
     if text in ("/new", "/reset"):
-        _reset_session(chat_id, _late_imports)
-        yield "✅ Sesión reiniciada."
+        await _reset_session(chat_id, _late_imports)
+        yield "__content__:✅ Sesión reiniciada."
         return
 
     if text.startswith("__voice__:"):
-        yield "🎤 Mensaje de voz recibido. Transcripción próximamente."
+        yield "__content__:🎤 Mensaje de voz recibido. Transcripción próximamente."
         return
 
     # ── Save user message ───────────────────────────────────────────────
     try:
         repos = _late_imports.get_repos()
-        repos.messages.save_record(_late_imports.MessageRecord(
+        await repos.messages.save_record(_late_imports.MessageRecord(
             session_id=session_id,
             role="user",
             content=text,
@@ -125,7 +125,7 @@ async def process_message(
         start_time = time.time()
 
         async for event_type, token in _late_imports.chat_stream(
-            message_user=f"📱 {text}",
+            message_user=text,
             history=history,
             model=model,
             session_id=session_id,
@@ -201,7 +201,7 @@ async def process_message(
             final_content = "".join(content_buf).strip()
             if final_content:
                 yield f"__content__:{final_content}"
-                _persist_conversation(
+                await _persist_conversation(
                     session_id, text, final_content, _late_imports,
                 )
                 return
@@ -210,7 +210,7 @@ async def process_message(
 
     except Exception as e:
         logger.exception("TG[%d] processing error", chat_id)
-        yield f"❌ Error: {e}"
+        yield f"__error__:{e}"
 
 
 # ─── Session management ────────────────────────────────────────────────
@@ -228,10 +228,12 @@ async def _get_or_create_session(
     # We use a consistent naming scheme: "telegram_{chat_id}"
     session_id = None
 
-    # Search for existing Telegram session for this chat by scanning
-    # sessions that have the Telegram rename marker
+    # Find existing Telegram session for this chat_id
+    # Sessions are named "Telegram ({chat_id})" for reliable lookup
+    session_id = None
+    session_name = f"Telegram ({chat_id})"
     try:
-        all_sessions = repos.sessions.list()
+        all_sessions = await repos.sessions.get_all()
         for s in all_sessions:
             name = ""
             if isinstance(s, dict):
@@ -241,7 +243,7 @@ async def _get_or_create_session(
                 name = getattr(s, "name", "") or getattr(s, "session_name", "")
                 sid = getattr(s, "session_id", "") or getattr(s, "id", "")
 
-            if "📱 Telegram" in name and sid:
+            if name == session_name and sid:
                 session_id = sid
                 break
     except Exception:
@@ -251,11 +253,10 @@ async def _get_or_create_session(
 
     if session_id:
         logger.info("Restored session %s for chat %d", session_id, chat_id)
-        repos.sessions.ensure(session_id)
-        repos.sessions.rename(session_id, "📱 Telegram")
+        await repos.sessions.ensure(session_id)
         # Load history
         try:
-            raw = repos.messages.get_session_messages(session_id)
+            raw = await repos.messages.get_session_messages(session_id)
             for row in raw:
                 role = row.get("role") if isinstance(row, dict) else getattr(row, "role", "")
                 content = row.get("content") if isinstance(row, dict) else getattr(row, "content", "")
@@ -266,8 +267,8 @@ async def _get_or_create_session(
     else:
         session_id = f"tele_{uuid.uuid4().hex[:20]}"
         logger.info("New Telegram session %s for chat %d", session_id, chat_id)
-        repos.sessions.ensure(session_id)
-        repos.sessions.rename(session_id, "📱 Telegram")
+        await repos.sessions.ensure(session_id)
+        await repos.sessions.rename(session_id, session_name)
 
     # Always prepend system prompt + channel context
     model = li.get_default_model()
@@ -276,19 +277,20 @@ async def _get_or_create_session(
     return session_id, history
 
 
-def _reset_session(chat_id: int, li: _LazyImports) -> str:
+async def _reset_session(chat_id: int, li: _LazyImports) -> str:
     """Reset the session for a given chat, returning the new session ID."""
     session_id = f"tele_{uuid.uuid4().hex[:20]}"
+    session_name = f"Telegram ({chat_id})"
     repos = li.get_repos()
-    repos.sessions.ensure(session_id)
-    repos.sessions.rename(session_id, "📱 Telegram")
+    await repos.sessions.ensure(session_id)
+    await repos.sessions.rename(session_id, session_name)
     logger.info("Reset Telegram session for chat %d -> %s", chat_id, session_id)
     return session_id
 
 
 # ─── Persistence ───────────────────────────────────────────────────────
 
-def _persist_conversation(
+async def _persist_conversation(
     session_id: str,
     user_text: str,
     assistant_text: str,
@@ -301,7 +303,7 @@ def _persist_conversation(
     try:
         repos = li.get_repos()
         model = li.get_default_model()
-        repos.messages.save_record(li.MessageRecord(
+        await repos.messages.save_record(li.MessageRecord(
             session_id=session_id,
             role="assistant",
             content=assistant_text,

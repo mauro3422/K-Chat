@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass
 
 from src.memory.repos.base import _BaseRepository
@@ -21,6 +22,7 @@ from src.memory.repos.protocols import (
 
 @dataclass
 class Repositories:
+    """All database repositories — sessions (local) + memory (shared)."""
     messages: MessageRepositoryProtocol
     sessions: SessionRepositoryProtocol
     tool_calls: ToolCallRepositoryProtocol
@@ -28,9 +30,16 @@ class Repositories:
     debug: DebugRepositoryProtocol
     saved_widgets: SavedWidgetRepositoryProtocol
     memory_index: MemoryIndexRepositoryProtocol
+    memory: object = None  # MemoryRepositories instance (lazy-imported in __post_init__)
+
+    def __post_init__(self) -> None:
+        if self.memory is None:
+            from src.memory.repos_memory import MemoryRepositories
+            self.memory = MemoryRepositories()
 
 
 def get_repos(conn=None) -> Repositories:
+    from src.memory.repos_memory import get_memory_repos
     repos = Repositories(
         messages=MessageRepository(conn=conn),
         sessions=SessionRepository(conn=conn),
@@ -39,6 +48,7 @@ def get_repos(conn=None) -> Repositories:
         debug=DebugRepository(conn=conn),
         saved_widgets=SavedWidgetRepository(conn=conn),
         memory_index=MemoryIndexRepository(conn=conn),
+        memory=get_memory_repos(),
     )
     return repos
 

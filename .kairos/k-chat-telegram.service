@@ -15,7 +15,7 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=%h/dev/K-Chat/venv/bin/python -m channels.telegram
 
 # ── Lifecycle ──────────────────────────────────────────────────────
-Restart=on-failure
+Restart=always
 RestartSec=5
 RestartSteps=3
 RestartMaxDelaySec=20
@@ -23,8 +23,8 @@ RestartMaxDelaySec=20
 # ── Security ───────────────────────────────────────────────────────
 User=%u
 NoNewPrivileges=yes
-PrivateTmp=yes
-ReadWritePaths=%h/dev/K-Chat/memory %h/dev/K-Chat/logs
+PrivateTmp=no
+ReadWritePaths=%h/dev/K-Chat
 
 [Install]
 WantedBy=default.target

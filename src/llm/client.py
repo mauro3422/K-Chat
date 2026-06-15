@@ -70,6 +70,10 @@ async def _try_stream(
         return s
     except Exception as e:
         logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)
+        # Log full error chain for debugging (PYTHON-314 compatibility)
+        cause = getattr(e, '__cause__', None) or getattr(e, '__context__', None)
+        if cause:
+            logger.warning("Caused by: %s: %s", type(cause).__name__, cause)
         model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e), error=e)
         _update_system_prompt(messages, model, build_prompt_fn)
         logger.info("Switching stream to: %s", model)

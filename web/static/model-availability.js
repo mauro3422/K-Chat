@@ -14,8 +14,8 @@
       var info = data.models[opt.value];
       if (!info) continue;
 
-      // Remove old status prefix
-      var clean = opt.textContent.replace(/^[🔴🟢⚪]?\s*/, '');
+      // Remove old status prefix (availability + tier emojis, with spaces between)
+      var clean = opt.textContent.replace(/^[🔴🟢⚪🚀⚡💰⚠️❌\s]+\s*/g, '');
       // Remove cooldown badge if any
       clean = clean.replace(/\s+🔒\s*\d+s$/, '');
 
@@ -40,14 +40,10 @@
       var mic = document.getElementById('asr-mic-btn');
       if (mic && !document.getElementById('rl-badge')) {
         var badge = document.createElement('span');
-        var badge = document.createElement('span');
         badge.id = 'rl-badge';
         badge.textContent = '⚠️ ' + limitedCount;
         badge.title = limitedCount + ' modelo(s) rate-limited';
-        badge.style.cssText = 'position:absolute;top:-6px;right:-6px;font-size:9px;background:var(--accent-red);color:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;';
-        badge.onclick = function() {
-          if (d) d.style.display = d.style.display === 'none' ? 'flex' : 'none';
-        };
+        badge.style.cssText = 'position:absolute;top:-6px;right:-6px;font-size:9px;background:var(--accent-red);color:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;line-height:1;';
         select.parentNode.appendChild(badge);
       }
     }
