@@ -148,19 +148,44 @@ class TelegramRenderer:
         existing = self._main_msg.get(chat_id)
         if existing is not None:
             return existing, False
-        msg_id = await self._send_with_retry(chat_id, initial_text, "")
+        html_text = self._build_html(chat_id) if self._display_text.get(chat_id) else initial_text
+        msg_id = await self._send_with_retry(chat_id, html_text, "HTML")
         if msg_id is not None:
             self._main_msg[chat_id] = msg_id
             return msg_id, True
         return None, False
+
+    @staticmethod
+    def _html_escape(text: str) -> str:
+        """Escape HTML special chars for Telegram's HTML parse_mode."""
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def _build_html(self, chat_id: int) -> str:
+        """Build display text with basic HTML formatting for Telegram.
+
+        Converts ``**bold**`` and ``*italic*`` to HTML tags so Telegram
+        renders them with ``parse_mode="HTML"``. Falls back to plain text
+        if conversion fails.
+        """
+        import re
+        text = self._build_display(chat_id)
+        # Escape HTML first, then apply formatting
+        text = self._html_escape(text)
+        # Convert **bold** → <b>bold</b>
+        text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+        # Convert *italic* → <i>italic</i> (but not inside <b> tags)
+        text = re.sub(r'(?<!<[bi]>)\*(.+?)\*(?!</[bi]>)', r'<i>\1</i>', text)
+        # Convert `code` → <code>code</code>
+        text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+        return text
 
     async def _update_main_msg(self, chat_id: int) -> bool:
         """Edit the main message with the current display text."""
         msg_id = self._main_msg.get(chat_id)
         if msg_id is None:
             return False
-        text = self._build_display(chat_id)
-        return await self._edit_with_retry(chat_id, msg_id, text, "")
+        text = self._build_html(chat_id)
+        return await self._edit_with_retry(chat_id, msg_id, text, "HTML")
 
     # ── Individual event renderers (all use the same main message) ──────
 

@@ -746,3 +746,34 @@ def test_tool_status_updates_inline():
     assert 'self._tool_pills[chat_id][tool_id]' in tc_block, (
         "Tool renderer must track pills by tool_id"
     )
+
+
+# ─── HTML formatting tests ───────────────────────────────────────────
+
+def test_renderer_uses_html_parse_mode():
+    """The renderer must use HTML parse_mode for Telegram messages
+    to render bold, italic, code formatting."""
+    source = _read_source("channels/telegram/renderer.py")
+    assert '_build_html' in source, (
+        "Missing _build_html method for HTML formatting"
+    )
+    assert 'parse_mode="HTML"' in source, (
+        "Must use HTML parse_mode for Telegram API calls"
+    )
+    assert 're.sub' in source, (
+        "Must use regex to convert markdown to HTML tags"
+    )
+
+
+def test_html_escapes_special_chars():
+    """HTML builder must escape &, <, > to avoid broken entities."""
+    source = _read_source("channels/telegram/renderer.py")
+    assert 'html_escape' in source, (
+        "Missing _html_escape static method"
+    )
+    assert '&amp;' in source, (
+        "Must escape & to &amp;"
+    )
+    assert '&lt;' in source, (
+        "Must escape < to &lt;"
+    )
