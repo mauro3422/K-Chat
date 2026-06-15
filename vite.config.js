@@ -18,8 +18,16 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/sidebar': 'http://localhost:8000',
+      '/api': {
+        target: 'http://localhost:8000',
+        ws: true,
+        // Prevent buffering for SSE streaming
+        proxyReqWs: undefined,
+      },
+      '/sidebar': {
+        target: 'http://localhost:8000',
+        ws: true,
+      },
       '/sessions': 'http://localhost:8000',
       '/chat': 'http://localhost:8000',
       '/debug': 'http://localhost:8000',

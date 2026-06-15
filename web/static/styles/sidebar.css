@@ -94,6 +94,27 @@
   transform: translateX(2px);
 }
 
+/* Unread indicator for sessions with new messages (SSE) */
+.session-item.has-new {
+  position: relative;
+  box-shadow: inset 3px 0 0 var(--accent-blue, #0088cc);
+}
+.session-item.has-new .session-label::after {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent-blue, #0088cc);
+  vertical-align: middle;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
 .session-main {
   display: flex;
   align-items: center;

@@ -68,7 +68,7 @@ export function renderMessage(msg) {
   const label = role === "user" ? "Tu" : "Kairos";
   const parts = [];
 
-  parts.push('<div class="msg ' + role + '">');
+  parts.push('<div class="msg ' + role + '" data-ts="' + (ts || '') + '">');
   parts.push('<div class="msg-label">' + label + '</div>');
 
   if (role === "assistant" && phases && phases.length > 0) {

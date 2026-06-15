@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import uuid
 from typing import Any, AsyncGenerator
@@ -25,6 +26,18 @@ from typing import Any, AsyncGenerator
 from channels.telegram.config import TelegramConfig
 
 logger = logging.getLogger(__name__)
+
+# ─── SSE notify URL ───────────────────────────────────────────────────
+_SSE_NOTIFY_URL: str | None = None
+
+def _get_sse_notify_url() -> str:
+    """Get the SSE notify URL, configurable via env KAIROS_WEB_URL."""
+    global _SSE_NOTIFY_URL
+    if _SSE_NOTIFY_URL is None:
+        base = os.environ.get("KAIROS_WEB_URL", "http://127.0.0.1:8000")
+        _SSE_NOTIFY_URL = base.rstrip("/") + "/api/events/notify"
+    return _SSE_NOTIFY_URL
+
 
 # ─── Channel marker ────────────────────────────────────────────────────
 CHANNEL_SYSTEM_MESSAGE = {
@@ -111,6 +124,24 @@ async def process_message(
             reasoning="",
             phases="[]",
         ))
+        # Notify web UI via SSE so user message appears in real-time
+        try:
+            import httpx
+            async with httpx.AsyncClient() as sse_client:
+                await sse_client.post(
+                    _get_sse_notify_url(),
+                    json={
+                        "type": "new_message",
+                        "data": {
+                            "session_id": session_id,
+                            "role": "user",
+                            "preview": text[:80],
+                        },
+                    },
+                    timeout=3,
+                )
+        except Exception:
+            logger.warning("SSE notify failed (user msg): %s", _get_sse_notify_url())
     except Exception as e:
         logger.warning("Failed to persist user message: %s", e)
 
@@ -362,7 +393,7 @@ async def _persist_conversation(
             import httpx
             async with httpx.AsyncClient() as sse_client:
                 await sse_client.post(
-                    "http://127.0.0.1:8000/api/events/notify",
+                    _get_sse_notify_url(),
                     json={
                         "type": "new_message",
                         "data": {
@@ -374,7 +405,7 @@ async def _persist_conversation(
                     timeout=3,
                 )
         except Exception:
-            logger.debug("SSE notify skipped (web server may be down)")
+            logger.warning("SSE notify failed (assistant msg): %s", _get_sse_notify_url())
     except Exception as e:
         logger.warning("Failed to persist TG conversation: %s", e)
 

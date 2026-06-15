@@ -59,17 +59,21 @@ class EventBus:
                 self._queues.pop(cid, None)
 
     async def stream(self, client_id: str) -> AsyncGenerator[str, None]:
-        """Async generator that yields SSE-formatted strings.
+        """Async generator that yields SSE-formatted strings with event IDs.
 
+        The ``id:`` field lets the browser send ``Last-Event-ID`` on reconnect,
+        enabling the server to resume from where it left off.
         Use this in the FastAPI StreamingResponse.
         """
         import json as _json
         q = await self.subscribe(client_id)
+        seq = 0
         try:
             while True:
                 try:
                     event = await asyncio.wait_for(q.get(), timeout=30)
-                    yield f"data: {_json.dumps(event, default=str)}\n\n"
+                    seq += 1
+                    yield f"id: {seq}\ndata: {_json.dumps(event, default=str)}\n\n"
                 except asyncio.TimeoutError:
                     yield f"data: {_json.dumps({'type': 'ping'})}\n\n"
         except asyncio.CancelledError:

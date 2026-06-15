@@ -346,8 +346,13 @@ function initSessionPage(deps) {
 function loadSession(sid, deps) {
   var nav = getNav(deps);
   SessionContext.setSessionId(sid);
-  // Notify SSE client of current session
-  import('./sse-client.js').then(function(sse) { sse.setCurrentSessionId(sid); }).catch(function() {});
+  // Notify SSE client of current session and clear unread
+  import('./sse-client.js').then(function(sse) {
+    sse.setCurrentSessionId(sid);
+    sse.clearUnreadMark(sid);
+  }).catch(function() {});
+  // Flag: loading in progress, prevent SSE race
+  import('./sse-client.js').then(function(sse) { sse.setLoadingSession(true); }).catch(function() {});
   nav.history.replaceState({sid: sid}, '', '/sessions/' + sid);
   if (typeof WidgetManager.reset === 'function') {
     WidgetManager.reset();
@@ -380,8 +385,13 @@ function loadSession(sid, deps) {
         MarkdownRenderer.renderAll();
         Utils.scrollToBottom();
       }
+      // Clear loading flag so SSE can take over
+      import('./sse-client.js').then(function(sse) { sse.setLoadingSession(false); }).catch(function() {});
     })
-    .catch(function(err) { console.error('Failed to load messages:', err); });
+    .catch(function(err) {
+      console.error('Failed to load messages:', err);
+      import('./sse-client.js').then(function(sse) { sse.setLoadingSession(false); }).catch(function() {});
+    });
 
   // Periodic refresh — picks up Telegram messages in real time
   if (!window._sidebarPollInterval) {
@@ -411,16 +421,20 @@ function loadSession(sid, deps) {
               import('./message-renderer.js').then(function(m) {
                 var html = m.renderMessageList(msgs, data.widget_states || {});
                 messagesDiv.innerHTML = html;
-              });
-              import('./markdown-renderer.js').then(function(md) {
-                md.renderAll();
-              });
-              import('./stream-lifecycle.js').then(function(sl) {
-                sl.scrollToBottom();
+                return Promise.all([
+                  import('./markdown-renderer.js'),
+                  import('./stream-lifecycle.js'),
+                ]);
+              }).then(function(modules) {
+                if (!modules) return;
+                if (typeof modules[0].renderAll === 'function') modules[0].renderAll();
+                if (typeof modules[1].scrollToBottom === 'function') modules[1].scrollToBottom();
               });
             }
           })
-          .catch(function() {});
+          .catch(function(err) {
+            console.error('Polling reloadMessages failed:', err);
+          });
       }
     }, 7000);
   }
