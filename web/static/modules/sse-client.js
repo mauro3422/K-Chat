@@ -61,6 +61,16 @@ export function connect() {
         return;
       }
 
+      // ── Session deleted (via Telegram /delete) ─────────────────
+      if (event.type === 'session_deleted') {
+        refreshSidebar();
+        if (sid === _currentSessionId) {
+          // If the user was viewing the deleted session, redirect home
+          window.location.href = '/';
+        }
+        return;
+      }
+
       // ── Full message (new or final) ─────────────────────────────
       if (event.type === 'new_message') {
         if (sid) {

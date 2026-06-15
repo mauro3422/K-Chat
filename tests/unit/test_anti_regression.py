@@ -8,6 +8,12 @@ These tests exist to PREVENT the bugs we fixed today from coming back:
 5. Missing initialization calls in app.js (initSessionPage, ChatForm.init, etc.)
 6. Missing imports in app.js
 
+Widget-specific regressions covered:
+7. CSP missing unsafe-inline in script-src → iframe srcdoc scripts blocked
+8. buildIframeSrc escaping </script> → widget own scripts break
+9. mountIframe called outside .then() scope → ReferenceError
+10. Missing sandbox, resize script, or error handler → widget runtime broken
+
 These read the source files directly — no DB, no fixtures, no asyncio.
 
 NOTE: All test functions are `async def` to work around the root conftest's
@@ -320,3 +326,155 @@ async def test_api_facade_exports_complete() -> None:
     missing = [e for e in required_exports if e not in exports]
     assert not missing, \
         f"Missing exports in src/api/__init__.__all__: {missing}"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 15. CSP must include 'unsafe-inline' in script-src (widget iframe scripts)
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_csp_includes_unsafe_inline_for_script_src() -> None:
+    content = _read("web/app_factory.py")
+    assert "script-src 'self' 'unsafe-inline'" in content, \
+        "CSP missing 'unsafe-inline' in script-src — widget iframe inline scripts blocked!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 16. buildIframeSrc must NOT escape </script> in widget code
+#     Widget code goes in the HTML body; its own <script> tags must close
+#     naturally. Escaping </script> → <\/script> breaks the widget's JS.
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_build_iframe_src_does_not_escape_closing_script() -> None:
+    content = _read("web/static/modules/widgets/iframe-builder.js")
+    assert "code.replace" not in content or "/script" not in content[content.find("code.replace"):content.find("code.replace") + 100], \
+        "buildIframeSrc escapes </script> in widget code — widget script blocks won't close!"
+    # The widget code must be assigned directly, not transformed
+    assert "var safeCode = code;" in content or "var safeCode=code;" in content, \
+        "buildIframeSrc must use widget code as-is (no </script> escaping)!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 17. createIframe: mountIframe must only be called INSIDE the .then()
+#     callback. Calling it outside (duplicate code) causes ReferenceError.
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_create_iframe_mount_iframe_only_in_then_scope() -> None:
+    content = _read("web/static/modules/widgets/iframe-builder.js")
+    # Find the .then() callback opening
+    then_start = content.find(".then(function(m)")
+    assert then_start >= 0, "Missing .then() callback in createIframe!"
+    
+    # mountIframe must be defined INSIDE the .then() callback
+    mount_def = content.find("function mountIframe(widgetCode)", then_start)
+    assert mount_def >= 0, "mountIframe function not defined in .then() callback!"
+    
+    # Count mountIframe calls BEFORE the .then() opening — should be 0
+    calls_before_then = content[:then_start].count("mountIframe(")
+    # Count mountIframe calls AFTER the .then() opening — should be all of them
+    calls_after_then = content[then_start:].count("mountIframe(")
+    calls_total = content.count("mountIframe(")
+    
+    assert calls_before_then == 0, \
+        f"mountIframe called {calls_before_then} time(s) BEFORE .then() scope — would be ReferenceError!"
+    assert calls_after_then == calls_total, \
+        f"mountIframe calls outside .then(): total={calls_total}, inside={calls_after_then}"
+    assert calls_total >= 1, \
+        "mountIframe never called — widget mounting broken!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 18. Iframe sandbox must include 'allow-scripts' (security baseline)
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_iframe_sandbox_has_allow_scripts() -> None:
+    content = _read("web/static/modules/widgets/iframe-builder.js")
+    assert "iframe.sandbox = 'allow-scripts'" in content or 'iframe.sandbox="allow-scripts"' in content, \
+        "Iframe missing sandbox='allow-scripts' — widget scripts won't execute!"
+    assert "allow-same-origin" not in content, \
+        "Iframe has allow-same-origin — sandbox bypass defeats widget isolation!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 19. buildIframeSrc must include auto-resize script (sendHeight, ResizeObserver)
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_build_iframe_src_has_resize_script() -> None:
+    content = _read("web/static/modules/widgets/iframe-builder.js")
+    assert "sendHeight" in content, \
+        "Missing sendHeight in iframe builder — widgets won't auto-resize!"
+    assert "getDocHeight" in content, \
+        "Missing getDocHeight in iframe builder — height measurement missing!"
+    assert "ResizeObserver" in content, \
+        "Missing ResizeObserver in iframe builder — dynamic resize won't work!"
+    assert "resize-iframe" in content, \
+        "Missing 'resize-iframe' postMessage — parent won't receive height updates!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 20. buildIframeSrc must handle null origin for postMessage (srcdoc iframes)
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_postmessage_handles_null_origin() -> None:
+    content = _read("web/static/modules/widgets/iframe-builder.js")
+    assert 'window.location.origin==="null"?"*":' in content or 'window.location.origin==="null"?"*":' in content.replace(' ', ''), \
+        "Missing null origin fallback in postMessage — messages from srcdoc iframes blocked!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 21. buildIframeSrc must include window.onerror for error reporting
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_iframe_has_error_handler() -> None:
+    content = _read("web/static/modules/widgets/iframe-builder.js")
+    assert "window.onerror" in content, \
+        "Missing window.onerror in iframe — widget errors silent!"
+    assert "widget-error" in content, \
+        "Missing 'widget-error' postMessage — errors not reported to parent!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 22. buildIframeSrc must expose saveState for widget state persistence
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_iframe_has_save_state() -> None:
+    content = _read("web/static/modules/widgets/iframe-builder.js")
+    assert "window.saveState" in content, \
+        "Missing window.saveState in iframe — widget state can't be persisted!"
+    assert "save-widget-state" in content, \
+        "Missing 'save-widget-state' postMessage — widget state lost on reload!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 23. messaging.js must handle resize-iframe messages
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_messaging_handles_resize() -> None:
+    content = _read("web/static/modules/widgets/messaging.js")
+    assert 'event.data.type === "resize-iframe"' in content, \
+        "Missing resize-iframe handler in messaging.js — iframe height won't update!"
+    assert "iframe.style.height" in content, \
+        "Missing iframe.style.height assignment — resize messages ignored!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 24. messaging.js must handle widget-error messages for debugging
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_messaging_handles_widget_error() -> None:
+    content = _read("web/static/modules/widgets/messaging.js")
+    assert 'event.data.type === "widget-error"' in content, \
+        "Missing widget-error handler in messaging.js — widget errors invisible!"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 25. core.js extract() must use the correct WIDGET_CONTAINER class
+# ═══════════════════════════════════════════════════════════════════════
+
+async def test_widget_extract_uses_correct_container_class() -> None:
+    content = _read("web/static/modules/widgets/core.js")
+    assert "C.WIDGET_CONTAINER" in content, \
+        "Widget extraction must use dom-contracts C.WIDGET_CONTAINER — class mismatch!"
+    assert "INLINE_WIDGET_BLOCK_RE" in content, \
+        "Missing INLINE_WIDGET_BLOCK_RE regex — widget code blocks not detected!"
+    assert "INLINE_WIDGET_TAG_RE" in content, \
+        "Missing INLINE_WIDGET_TAG_RE regex — [Widget: key] tags not detected!"

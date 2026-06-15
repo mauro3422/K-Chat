@@ -568,3 +568,24 @@ def test_check_should_rename_tg_default_name():
     assert 'startswith("Telegram (")' in source, (
         "Must check name.startswith('Telegram (')"
     )
+
+
+def test_delete_sends_sse_notify():
+    """Telegram /delete must send an SSE session_deleted event so
+    the web UI sidebar refreshes and redirects if viewing the session."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert 'session_deleted' in source, (
+        "/delete must send 'session_deleted' SSE event"
+    )
+
+
+def test_sse_client_handles_session_deleted():
+    """sse-client.js must handle session_deleted by refreshing the
+    sidebar and redirecting to / if viewing the deleted session."""
+    source = _read_source("web/static/modules/sse-client.js")
+    assert 'session_deleted' in source, (
+        "Missing session_deleted handler in sse-client.js"
+    )
+    assert "window.location.href = '/'" in source, (
+        "Must redirect to / if viewing deleted session"
+    )

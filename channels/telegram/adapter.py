@@ -130,6 +130,17 @@ async def process_message(
             await repo.delete_chat(chat_id)
         except Exception:
             pass
+        # Notify web UI so sidebar refreshes
+        try:
+            import httpx
+            async with httpx.AsyncClient() as sse_client:
+                await sse_client.post(
+                    _get_sse_notify_url(),
+                    json={"type": "session_deleted", "data": {"session_id": session_id}},
+                    timeout=3,
+                )
+        except Exception:
+            logger.debug("SSE notify failed (delete session): %s", _get_sse_notify_url())
         yield "__content__:🗑 Sesión eliminada."
         return
 
