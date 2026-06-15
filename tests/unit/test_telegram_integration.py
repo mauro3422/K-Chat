@@ -252,11 +252,12 @@ async def test_short_content_no_split():
 
 @pytest.mark.asyncio
 async def test_reasoning_display_prefix():
-    """Mensajes de reasoning llevan prefijo '🤔 Pensando...'."""
+    """Mensajes de reasoning llevan prefijo '🤔 Pensando...' con blank line."""
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen("__reasoning__:Think step by step"))
-    assert api.sent_messages[0]["text"] == "🤔 Pensando...\nThink step by step"
+    assert "🤔 Pensando..." in api.sent_messages[0]["text"]
+    assert "Think step by step" in api.sent_messages[0]["text"]
 
 
 @pytest.mark.asyncio

@@ -75,6 +75,8 @@ class TelegramRenderer:
         self._tool_pills: dict[int, dict[str, str]] = defaultdict(dict)  # chat_id → {tool_id: "🔧 name"}
         self._has_reasoning: dict[int, bool] = defaultdict(bool)
         self._has_content: dict[int, bool] = defaultdict(bool)
+        # Continuation tracker: prevents duplicate 📎 chunks on re-edit
+        self._cont_msgs: dict[int, list[int]] = defaultdict(list)  # chat_id → [msg_id, ...]
 
     async def render_stream(
         self,
@@ -96,6 +98,7 @@ class TelegramRenderer:
         self._tool_pills.pop(chat_id, None)
         self._has_reasoning.pop(chat_id, None)
         self._has_content.pop(chat_id, None)
+        self._cont_msgs.pop(chat_id, None)
 
         tool_call_id_counter = 0
 
@@ -185,7 +188,21 @@ class TelegramRenderer:
         if msg_id is None:
             return False
         text = self._build_html(chat_id)
-        return await self._edit_with_retry(chat_id, msg_id, text, "HTML")
+        ok = await self._edit_with_retry(chat_id, msg_id, text, "HTML")
+        # Also send/update continuation chunks for overflow text
+        chunks = self._cs.split(text)
+        if len(chunks) > 1:
+            conts = self._cont_msgs[chat_id]
+            for ci, extra in enumerate(chunks[1:]):
+                cont_text = f"📎 {extra}"
+                if ci < len(conts) and conts[ci]:
+                    # Reuse existing continuation (edit, no duplicate)
+                    await self._do_edit(chat_id, conts[ci], cont_text, "")
+                else:
+                    new_id = await self._do_send(chat_id, cont_text, "")
+                    if new_id:
+                        conts.append(new_id)
+        return ok
 
     # ── Individual event renderers (all use the same main message) ──────
 
@@ -199,12 +216,12 @@ class TelegramRenderer:
         if not self._has_reasoning[chat_id]:
             # First reasoning — add header + text
             self._has_reasoning[chat_id] = True
-            parts.append(f"🤔 Pensando...\n{text}")
+            parts.append(f"🤔 Pensando...\n\n{text}")
         else:
             # Update reasoning — find and replace the reasoning part
             for i, p in enumerate(parts):
                 if p.startswith("🤔 Pensando..."):
-                    parts[i] = f"🤔 Pensando...\n{text}"
+                    parts[i] = f"🤔 Pensando...\n\n{text}"
                     break
 
         msg_id, created = await self._ensure_main_msg(chat_id, self._build_display(chat_id))

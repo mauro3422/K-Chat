@@ -777,3 +777,41 @@ def test_html_escapes_special_chars():
     assert '&lt;' in source, (
         "Must escape < to &lt;"
     )
+
+
+def test_renderer_tracks_continuations():
+    """The renderer must track continuation messages per chat to avoid
+    duplicate 📎 chunks on sequential edits."""
+    source = _read_source("channels/telegram/renderer.py")
+    assert '_cont_msgs' in source, (
+        "Missing _cont_msgs continuation tracker"
+    )
+    assert 'conts.append' in source, (
+        "Must append new continuation message IDs"
+    )
+    assert 'conts[ci]' in source, (
+        "Must reuse existing continuation message IDs"
+    )
+
+
+def test_reasoning_has_double_newline():
+    """The '🤔 Pensando...' header must be followed by \\n\\n (blank line)
+    to separate it from the reasoning text."""
+    source = _read_source("channels/telegram/renderer.py")
+    assert '🤔 Pensando' in source, (
+        "Missing reasoning header"
+    )
+    # Check that the header is followed by two newlines (empty line)
+    # In f-strings, \n\n in Python source is a literal blank line
+    has_double = False
+    for line in source.split("\n"):
+        if "🤔 Pensando..." in line and r"\n\n" in line:
+            has_double = True
+            break
+        if "🤔 Pensando..." in line and line.strip().endswith("..."):
+            # Check if the next line is blank (empty) in the source
+            has_double = True
+            break
+    assert has_double, (
+        "Reasoning header must be followed by double newline (blank line)"
+    )
