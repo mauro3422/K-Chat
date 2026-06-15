@@ -187,11 +187,9 @@ async def _process_single_update(
     if text in ("/new", "/reset", "/clear", "/delete"):
         await _clear_chat_messages(api_client, renderer, chat_id)
 
-    # ── Commands that skip the LLM ────────────────────────────────────
-    if text in ("/clear", "/delete"):
-        if text == "/clear":
-            await api_client.send_message(chat_id, "🧹 Chat limpiado.")
-        # /delete is handled in the adapter (session deletion)
+    # ── /clear skips the LLM (visual only, nothing to process) ────────
+    if text == "/clear":
+        await api_client.send_message(chat_id, "🧹 Chat limpiado.")
         return
 
     await api_client.send_action(chat_id, "typing")

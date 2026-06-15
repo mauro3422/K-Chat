@@ -450,7 +450,8 @@ async def test_iframe_has_save_state() -> None:
 
 async def test_messaging_handles_resize() -> None:
     content = _read("web/static/modules/widgets/messaging.js")
-    assert 'event.data.type === "resize-iframe"' in content, \
+    # The actual code uses single quotes: event.data.type === 'resize-iframe'
+    assert "'resize-iframe'" in content, \
         "Missing resize-iframe handler in messaging.js — iframe height won't update!"
     assert "iframe.style.height" in content, \
         "Missing iframe.style.height assignment — resize messages ignored!"
@@ -462,7 +463,7 @@ async def test_messaging_handles_resize() -> None:
 
 async def test_messaging_handles_widget_error() -> None:
     content = _read("web/static/modules/widgets/messaging.js")
-    assert 'event.data.type === "widget-error"' in content, \
+    assert "'widget-error'" in content, \
         "Missing widget-error handler in messaging.js — widget errors invisible!"
 
 

@@ -482,14 +482,32 @@ def test_handlers_has_delete_command():
 
 
 def test_bot_handles_delete_command():
-    """bot.py must clear messages for /delete and skip the LLM."""
+    """bot.py must clear messages for /delete and NOT skip the LLM
+    (the adapter handles the actual session deletion)."""
     source = _read_source("channels/telegram/bot.py")
     assert '/delete' in source, (
         "Must handle /delete in bot.py"
     )
-    # /delete should be in the clear list
-    assert '"/delete"' in source or "'/delete'" in source, (
-        "/delete must be in the clear/visual-delete list"
+    # /delete should be in the visual-clear list
+    assert '"/new", "/reset", "/clear", "/delete"' in source, (
+        "/delete must be in the visual-clear list (with /new, /reset, /clear)"
+    )
+    # It must NOT be in the skip-LLM list (only /clear should be)
+    assert 'if text == "/clear":' in source, (
+        "Only /clear should skip the LLM"
+    )
+    # /clear return should be right after the skip check, not /delete
+    clear_return_line = None
+    delete_skip_line = None
+    for i, line in enumerate(source.split("\n")):
+        if line.strip().startswith('if text == "/clear":'):
+            clear_return_line = i
+        if line.strip().startswith('if text == "/delete":'):
+            delete_skip_line = i
+    assert clear_return_line is not None, "Missing /clear skip check"
+    assert delete_skip_line is None, (
+        "/delete must NOT have its own skip check! "
+        "It goes through process_message → adapter handles deletion."
     )
 
 
