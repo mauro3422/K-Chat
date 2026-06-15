@@ -3,7 +3,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   root: 'web/static',
-  base: '/static/',
+  base: '/static/dist/',
   build: {
     outDir: 'dist',
     emptyOutDir: true,
