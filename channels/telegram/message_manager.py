@@ -81,6 +81,19 @@ class MessageManager:
         for k in keys_to_remove:
             del state[k]
 
+    def get_all_msg_ids(self, chat_id: int) -> list[int]:
+        """Get all message IDs tracked for a chat (for clearing)."""
+        ids: list[int] = []
+        state = self._state.get(chat_id, {})
+        tool_state = self._tool_msgs.get(chat_id, {})
+        for v in state.values():
+            if v is not None:
+                ids.append(v)
+        for v in tool_state.values():
+            if v is not None:
+                ids.append(v)
+        return ids
+
     def cleanup(self, chat_id: int) -> None:
         """Remove all state for a chat."""
         self._state.pop(chat_id, None)
