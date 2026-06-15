@@ -24,6 +24,7 @@ import uuid
 from typing import Any, AsyncGenerator
 
 from channels.telegram.config import TelegramConfig
+from channels.telegram.ws_client import get_ws_client
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +176,16 @@ async def process_message(
                     yield "__error__:Operación agotada. Mandame el mensaje de nuevo."
                 return
 
+            # ── Live WS notify (first token only, avoid HTTP overhead) ──
+            _ws_sent = locals().get("_ws_sent", set())
+
             # ── Reasoning ──────────────────────────────────────────────
             if event_type == "reasoning":
+                if "reasoning" not in _ws_sent:
+                    _ws_sent.add("reasoning")
+                    get_ws_client().send_event("token:reasoning", {
+                        "session_id": session_id,
+                    })
                 reasoning_buf.append(token)
                 full_reasoning.append(token)  # keep for DB persistence
                 if len(reasoning_buf) == 1:
@@ -187,6 +196,11 @@ async def process_message(
 
             # ── Content ────────────────────────────────────────────────
             elif event_type == "content":
+                if "content" not in _ws_sent:
+                    _ws_sent.add("content")
+                    get_ws_client().send_event("token:content", {
+                        "session_id": session_id,
+                    })
                 # Flush any pending reasoning first
                 if reasoning_buf:
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
@@ -210,6 +224,14 @@ async def process_message(
                     name = str(token)[:30]
                     tool_id = ""
                     status = "calling"
+
+                # Notify web UI about tool call in real-time
+                get_ws_client().send_event("tool_call", {
+                    "session_id": session_id,
+                    "tool_name": name,
+                    "tool_id": tool_id,
+                    "status": status,
+                })
 
                 # Flush reasoning (shows why the tool was called),
                 # discard content (it's always incomplete before a tool)

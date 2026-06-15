@@ -260,3 +260,27 @@
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.12);
 }
+
+/* ── Live Streaming Indicator ────────────────────────────────────────── */
+
+.live-indicator {
+  opacity: 0.8;
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+.live-indicator .live-status {
+  font-style: italic;
+  color: var(--text-muted);
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.live-indicator .live-status .tc-item {
+  font-style: normal;
+  font-size: 11px;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}

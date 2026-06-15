@@ -34,16 +34,33 @@ export function connect() {
       var event = JSON.parse(e.data);
       if (event.type === 'ping') return;
 
+      var sid = event.data && event.data.session_id;
+
+      // ── Token-level events (live streaming) ──────────────────────
+      if (event.type === 'token:reasoning' && sid === _currentSessionId) {
+        showLiveIndicator('reasoning');
+        return;
+      }
+      if (event.type === 'token:content' && sid === _currentSessionId) {
+        showLiveIndicator('content');
+        return;
+      }
+      if (event.type === 'tool_call' && sid === _currentSessionId) {
+        addLiveTool(event.data);
+        return;
+      }
+
+      // ── Full message reload ──────────────────────────────────────
       if (event.type === 'new_message') {
-        var sid = event.data && event.data.session_id;
         if (sid) {
+          // Clear live indicator — we're about to reload with real data
+          clearLiveIndicator();
           // If the message is NOT for the current session, mark sidebar
           if (sid !== _currentSessionId) {
             markSessionUnread(sid);
           }
           // Always refresh sidebar (sorts, updates metadata)
           refreshSidebar().then(function() {
-            // After sidebar refresh, re-apply unread marks
             restoreUnreadMarks();
           });
           // Only reload messages if this session is active AND not currently loading
@@ -87,6 +104,60 @@ function reloadMessages(sid) {
       console.error('SSE reloadMessages failed:', err);
     });
 }
+
+// ─── Live streaming indicators ─────────────────────────────────────
+var _liveIndicator = null;
+
+function showLiveIndicator(phase) {
+  var msgArea = document.getElementById('messages');
+  if (!msgArea) return;
+
+  if (!_liveIndicator) {
+    _liveIndicator = document.createElement('div');
+    _liveIndicator.className = 'msg assistant live-indicator';
+    _liveIndicator.innerHTML = '<div class="msg-label">Kairos</div><div class="live-status"></div>';
+    msgArea.appendChild(_liveIndicator);
+  }
+
+  var statusEl = _liveIndicator.querySelector('.live-status');
+  if (!statusEl) return;
+
+  if (phase === 'reasoning') {
+    statusEl.textContent = '🤔 Pensando...';
+  } else if (phase === 'content') {
+    statusEl.textContent = '✍️ Escribiendo...';
+  }
+}
+
+function addLiveTool(toolData) {
+  var msgArea = document.getElementById('messages');
+  if (!msgArea) return;
+
+  // Ensure indicator exists
+  if (!_liveIndicator) {
+    showLiveIndicator('reasoning');
+  }
+
+  var statusEl = _liveIndicator.querySelector('.live-status');
+  if (!statusEl) return;
+
+  var icon = toolData.status === 'ok' ? '✓' : '✗';
+  var pill = document.createElement('span');
+  pill.className = 'tc-item ' + (toolData.status || 'calling');
+  pill.innerHTML = icon + ' ' + (toolData.tool_name || 'tool');
+  // Update status text and append pill
+  statusEl.textContent = '🔧 Usando herramientas...';
+  statusEl.appendChild(document.createTextNode(' '));
+  statusEl.appendChild(pill);
+}
+
+function clearLiveIndicator() {
+  if (_liveIndicator && _liveIndicator.parentNode) {
+    _liveIndicator.parentNode.removeChild(_liveIndicator);
+  }
+  _liveIndicator = null;
+}
+
 
 // ─── Unread session indicators ─────────────────────────────────────
 var _unreadSessions = {};

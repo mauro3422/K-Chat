@@ -436,7 +436,7 @@ function loadSession(sid, deps) {
             console.error('Polling reloadMessages failed:', err);
           });
       }
-    }, 7000);
+    }, 3000);
   }
   // SSE client handles real-time updates
   import('./sse-client.js').then(function(sse) {

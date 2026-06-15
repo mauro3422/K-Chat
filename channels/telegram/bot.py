@@ -28,6 +28,7 @@ from channels.telegram.handlers import dispatch
 from channels.telegram.message_manager import MessageManager
 from channels.telegram.rate_limiter import RateLimiter
 from channels.telegram.renderer import TelegramRenderer
+from channels.telegram.ws_client import get_ws_client
 from web.services.file_logger import install_jsonl_handler
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,10 @@ async def run_bot(config: TelegramConfig) -> None:
     logger.info("Telegram bot starting (polling interval: %.1fs)", config.poll_interval)
     print(f"[Telegram] ✅ Bot started. Polling every {config.poll_interval}s")
     print("[Telegram]   Commands: /start /help /new /reset")
+
+    # ── WebSocket connection for live token streaming ─────────────────
+    ws_client = get_ws_client()
+    await ws_client.connect()
 
     # ── Warmup: preheat httpx connection pool ──────────────────────────
     try:
