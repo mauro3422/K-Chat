@@ -206,6 +206,20 @@ async def _run_tool_loop(
                 _append_phase(ctx.phases_output, phase_reasoning, [], curr_content)
             break
 
+        # Detect same-tool repetition: if the same tool was called 5+
+        # times consecutively (no content in between), break the loop
+        _tool_names_seen = []
+        for tc in tool_calls_out or []:
+            _name = tc.get("function", {}).get("name", "") if isinstance(tc, dict) else ""
+            if _name:
+                _tool_names_seen.append(_name)
+        if not curr_content and len(_tool_names_seen) >= 5:
+            _all_same = all(n == _tool_names_seen[0] for n in _tool_names_seen)
+            if _all_same:
+                logger.warning("Same tool %s called %dx in a row (no content), breaking tool loop",
+                               _tool_names_seen[0], len(_tool_names_seen))
+                break
+
         prev_content = curr_content
 
         if tool_calls_out:

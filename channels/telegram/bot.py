@@ -110,6 +110,7 @@ async def run_bot(config: TelegramConfig) -> None:
 
                 consecutive_errors = 0
 
+                tasks = []
                 for update in updates:
                     if _stop_event.is_set():
                         break
@@ -119,9 +120,14 @@ async def run_bot(config: TelegramConfig) -> None:
                         last_update_id = update_id + 1
                         TelegramAPIClient._save_offset(last_update_id)
 
-                    await _process_single_update(
-                        api_client, renderer, config, update,
+                    # Process updates concurrently — multiple Telegram
+                    # sessions can run in parallel
+                    tasks.append(
+                        _process_single_update(api_client, renderer, config, update),
                     )
+
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
 
                 await asyncio.sleep(0.1)
 

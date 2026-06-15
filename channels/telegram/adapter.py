@@ -116,7 +116,6 @@ async def process_message(
         return
 
     # ── Save user message ───────────────────────────────────────────────
-    try:
         repos = _late_imports.get_repos()
         await repos.messages.save_record(_late_imports.MessageRecord(
             session_id=session_id,
@@ -144,8 +143,6 @@ async def process_message(
                 )
         except Exception:
             logger.warning("SSE notify failed (user msg): %s", _get_sse_notify_url())
-    except Exception as e:
-        logger.warning("Failed to persist user message: %s", e)
 
     # ── Stream processing ───────────────────────────────────────────────
     logger.info("TG[%d] processing: %.60s", chat_id, text)
@@ -421,39 +418,38 @@ async def _persist_conversation(
     """Save the assistant message to SQLite (with reasoning + phases for web UI).
 
     The user message was saved before streaming started.
+    Raises on DB failure (error propagates to caller instead of
+    being silently swallowed).
     """
+    repos = li.get_repos()
+    model = li.get_default_model()
+    await repos.messages.save_record(li.MessageRecord(
+        session_id=session_id,
+        role="assistant",
+        content=assistant_text,
+        model=model,
+        reasoning=reasoning,
+        phases=phases,
+    ))
+    logger.info("Persisted TG conversation to session %s", session_id)
+    # Notify web UI via SSE (non-critical — failure is just a warning)
     try:
-        repos = li.get_repos()
-        model = li.get_default_model()
-        await repos.messages.save_record(li.MessageRecord(
-            session_id=session_id,
-            role="assistant",
-            content=assistant_text,
-            model=model,
-            reasoning=reasoning,
-            phases=phases,
-        ))
-        logger.info("Persisted TG conversation to session %s", session_id)
-        # Notify web UI via SSE
-        try:
-            import httpx
-            async with httpx.AsyncClient() as sse_client:
-                await sse_client.post(
-                    _get_sse_notify_url(),
-                    json={
-                        "type": "new_message",
-                        "data": {
-                            "session_id": session_id,
-                            "role": "assistant",
-                            "preview": assistant_text[:80],
-                        },
+        import httpx
+        async with httpx.AsyncClient() as sse_client:
+            await sse_client.post(
+                _get_sse_notify_url(),
+                json={
+                    "type": "new_message",
+                    "data": {
+                        "session_id": session_id,
+                        "role": "assistant",
+                        "preview": assistant_text[:80],
                     },
-                    timeout=3,
-                )
-        except Exception:
-            logger.warning("SSE notify failed (assistant msg): %s", _get_sse_notify_url())
-    except Exception as e:
-        logger.warning("Failed to persist TG conversation: %s", e)
+                },
+                timeout=3,
+            )
+    except Exception:
+        logger.warning("SSE notify failed (assistant msg): %s", _get_sse_notify_url())
 
 
 # ─── Lazy imports helper ───────────────────────────────────────────────

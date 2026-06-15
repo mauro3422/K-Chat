@@ -38,6 +38,7 @@ class BotWSClient:
 
     def __init__(self) -> None:
         self._ws = None
+        self._ws_lock = asyncio.Lock()
         self._reconnect_task: asyncio.Task | None = None
         self._connected = asyncio.Event()
 
@@ -58,21 +59,24 @@ class BotWSClient:
     async def send_event(self, event_type: str, data: dict) -> None:
         """Send an event through the WebSocket connection.
 
-        If the connection is down, tries to reconnect, then falls back to HTTP.
+        Thread-safe via asyncio.Lock — multiple concurrent sessions can
+        call send_event simultaneously without corrupting the WS stream.
+        Falls back to HTTP POST if WS is down.
         """
-        if self._ws:
-            try:
-                payload = json.dumps({"type": event_type, "data": data})
-                await self._ws.send(payload)
-                return
-            except Exception:
-                logger.warning("WS send failed, reconnecting: %s", event_type)
-                self._ws = None
-                # Try to reconnect once
+        async with self._ws_lock:
+            if self._ws:
                 try:
-                    await self.connect()
+                    payload = json.dumps({"type": event_type, "data": data})
+                    await self._ws.send(payload)
+                    return
                 except Exception:
-                    pass
+                    logger.warning("WS send failed, reconnecting: %s", event_type)
+                    self._ws = None
+                    # Try to reconnect once
+                    try:
+                        await self.connect()
+                    except Exception:
+                        pass
 
         # Fallback: HTTP notify (same as new_message path)
         try:
