@@ -9,6 +9,7 @@ import { renderMessageList } from './message-renderer.js';
 
 
 import { refreshSidebar } from './sidebar-refresh.js';
+import { setCurrentSessionId as setSseSessionId } from './sse-client.js';
 
 var deletedItemSnapshots = new WeakMap();
 
@@ -346,6 +347,7 @@ function initSessionPage(deps) {
 function loadSession(sid, deps) {
   var nav = getNav(deps);
   SessionContext.setSessionId(sid);
+  setSseSessionId(sid);
   nav.history.replaceState({sid: sid}, '', '/sessions/' + sid);
   if (typeof WidgetManager.reset === 'function') {
     WidgetManager.reset();
@@ -422,6 +424,10 @@ function loadSession(sid, deps) {
       }
     }, 7000);
   }
+  // SSE client handles real-time updates
+  import('./sse-client.js').then(function(sse) {
+    sse.setCurrentSessionId(SessionContext.getSessionId());
+  });
 }
 
 export const SessionPage = {

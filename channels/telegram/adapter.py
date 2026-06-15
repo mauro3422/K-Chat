@@ -357,6 +357,24 @@ async def _persist_conversation(
             phases=phases,
         ))
         logger.info("Persisted TG conversation to session %s", session_id)
+        # Notify web UI via SSE
+        try:
+            import httpx
+            async with httpx.AsyncClient() as sse_client:
+                await sse_client.post(
+                    "http://127.0.0.1:8000/api/events/notify",
+                    json={
+                        "type": "new_message",
+                        "data": {
+                            "session_id": session_id,
+                            "role": "assistant",
+                            "preview": assistant_text[:80],
+                        },
+                    },
+                    timeout=3,
+                )
+        except Exception:
+            logger.debug("SSE notify skipped (web server may be down)")
     except Exception as e:
         logger.warning("Failed to persist TG conversation: %s", e)
 

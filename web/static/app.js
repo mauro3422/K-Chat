@@ -9,6 +9,7 @@ import { DebugPanel } from './modules/debug-panel.js';
 import { setAsrTransportConfig } from './modules/asr/contract.js';
 import { startMessageHandler } from './modules/widgets/index.js';
 import { setCurrentSessionId } from './modules/message-renderer.js';
+import { setCurrentSessionId as setSseSessionId } from './modules/sse-client.js';
 const nav = {
   location: window.location,
   history: window.history,
@@ -24,6 +25,7 @@ const appRoot = document.getElementById('app');
 const sessionId = appRoot ? appRoot.dataset.sessionId : '';
 SessionContext.init(sessionId);
 setCurrentSessionId(sessionId);
+setSseSessionId(sessionId);
 setAsrTransportConfig({ transport: 'websocket' });
 startMessageHandler({ eventTarget: window, locationOrigin: window.location.origin, Observer: window.IntersectionObserver });
 initSessionPage({ nav });

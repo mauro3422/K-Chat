@@ -185,7 +185,7 @@ async def test_reasoning_tool_content_three_messages():
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
         "__reasoning__:I need to search",
-        "__tool__:web_search",
+        "__tool__:call_1:web_search:calling",
         "__content__:Found results",
     ))
     assert [m["message_id"] for m in api.sent_messages] == [1001, 1002, 1003]
@@ -198,7 +198,7 @@ async def test_tool_resets_phases():
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
         "__reasoning__:Before tool",
-        "__tool__:search",
+        "__tool__:call_1:search:calling",
         "__content__:After tool content",
     ))
     assert api.sent_messages[2]["message_id"] == 1003
@@ -254,7 +254,7 @@ async def test_tool_display_format():
     """Tool call se muestra con 🔧 y el nombre."""
     api = MockTelegramAPI()
     r = _make_renderer(api)
-    await r.render_stream(12345, _gen("__tool__:web_search"))
+    await r.render_stream(12345, _gen("__tool__:call_1:web_search:calling"))
     assert "🔧" in api.sent_messages[0]["text"]
     assert "web_search" in api.sent_messages[0]["text"]
 
@@ -265,8 +265,8 @@ async def test_multiple_tools_separate_messages():
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
-        "__tool__:search",
-        "__tool__:calculator",
+        "__tool__:call_1:search:calling",
+        "__tool__:call_2:calculator:calling",
     ))
     assert len(api.sent_messages) == 2
 
@@ -312,12 +312,12 @@ async def test_tool_resets_phase_in_message_manager():
     r = _make_renderer(api, message_manager=mm)
     await r.render_stream(12345, _gen(
         "__reasoning__:R0",
-        "__tool__:search",
+        "__tool__:call_x:search:calling",
         "__reasoning__:R1",
     ))
     assert mm.get_msg_id(12345, "reasoning", 0) is None
     assert mm.get_msg_id(12345, "reasoning", 1) == 1003
-    assert mm.get_tool_msg_id(12345, "call_1") == 1002
+    assert mm.get_tool_msg_id(12345, "call_x") == 1002
 
 
 # ══════════════════════════════════════════════════════════════════════════════
