@@ -263,12 +263,11 @@ async def _get_or_create_session(
         try:
             raw = await repos.messages.get_session_messages(session_id)
             for row in raw:
-                role = row[0]      # role
-                content = row[1]   # content
-                tool_calls_raw = row[6] if len(row) > 6 else None  # tool_calls JSON
-                tool_call_id = row[7] if len(row) > 7 else None     # tool_call_id
+                role = row[0]
+                content = row[1]
+                tool_calls_raw = row[6] if len(row) > 6 else None
+                tool_call_id = row[7] if len(row) > 7 else None
                 msg: dict = {"role": role}
-                # Always include content (even empty) to satisfy strict APIs
                 msg["content"] = content or ""
                 if role == "tool" and tool_call_id:
                     msg["tool_call_id"] = tool_call_id
@@ -280,8 +279,32 @@ async def _get_or_create_session(
                             msg["tool_calls"] = tc_list
                     except (json.JSONDecodeError, TypeError):
                         pass
-                if msg.get("content") is not None or msg.get("tool_calls") or msg.get("tool_call_id"):
-                    history.append(msg)
+                history.append(msg)
+
+            # Strip incomplete tool chains: an assistant with tool_calls MUST be
+            # followed by tool messages for EACH tool_call_id, otherwise drop it
+            # (DeepSeek rejects incomplete chains with 400).
+            cleaned: list[dict[str, Any]] = []
+            skip_until_user = 0  # how many tool msgs to skip
+            for i, msg in enumerate(history):
+                if skip_until_user > 0:
+                    skip_until_user -= 1
+                    continue
+                if msg["role"] == "assistant" and msg.get("tool_calls"):
+                    needed = len(msg["tool_calls"])
+                    # Check that the next N messages are tool responses
+                    following = history[i + 1:i + 1 + needed]
+                    tool_ids_avail = [
+                        m.get("tool_call_id", "") for m in following
+                        if m["role"] == "tool"
+                    ]
+                    if len(tool_ids_avail) < needed:
+                        # Incomplete chain — drop this assistant message
+                        logger.debug("Drop incomplete tool chain at msg %d (%d/%d tools)",
+                                     i, len(tool_ids_avail), needed)
+                        continue
+                cleaned.append(msg)
+            history = cleaned
         except Exception:
             history = []
     else:
