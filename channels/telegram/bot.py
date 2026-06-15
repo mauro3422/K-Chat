@@ -29,6 +29,7 @@ from channels.telegram.message_manager import MessageManager
 from channels.telegram.rate_limiter import RateLimiter
 from channels.telegram.renderer import TelegramRenderer
 from channels.telegram.ws_client import get_ws_client
+from src.memory.repos.telegram_msg_id_repository import TelegramMsgIdRepo
 from web.services.file_logger import install_jsonl_handler
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ async def run_bot(config: TelegramConfig) -> None:
     # ── Build Lego components ──────────────────────────────────────────
     async with httpx.AsyncClient() as client:
         api_client = TelegramAPIClient(client, config)
-        message_manager = MessageManager()
+        message_manager = MessageManager(repo=TelegramMsgIdRepo())
         rate_limiter = RateLimiter()
         char_splitter = CharSplitter()
         error_handler = TelegramErrorHandler()
@@ -214,7 +215,7 @@ async def _clear_chat_messages(
     """
     count = 0
     mm = renderer._mm  # MessageManager instance
-    all_ids = mm.get_all_msg_ids(chat_id)
+    all_ids = await mm.get_all_msg_ids(chat_id)
     for msg_id in all_ids:
         try:
             await api_client.delete_message(chat_id, msg_id)
@@ -222,7 +223,7 @@ async def _clear_chat_messages(
         except Exception:
             pass  # Message may already be deleted, ignore
 
-    mm.cleanup(chat_id)
+    await mm.cleanup(chat_id)
     if count > 0:
         logger.info("Cleared %d messages for chat %d", count, chat_id)
 

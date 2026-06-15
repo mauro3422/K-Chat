@@ -15,6 +15,7 @@ import tempfile
 from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
 
 from src.memory.schema import init_db
 
@@ -44,7 +45,7 @@ def make_choice():
     return _make
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def setup_test_db(monkeypatch):
     temp_dir = tempfile.mkdtemp()
     db_path = os.path.join(temp_dir, "test.db")

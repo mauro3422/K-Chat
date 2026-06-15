@@ -12,6 +12,16 @@ from pathlib import Path
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
+from src.tools._analyzers import (
+    detect_language,
+    icon,
+    build_summary,
+    analyze_python,
+    analyze_javascript,
+    analyze_markdown,
+    analyze_html,
+    analyze_css,
+)
 
 logger = logging.getLogger(__name__)
 DEFINITION = {
@@ -244,7 +254,7 @@ async def run(**kwargs: Any) -> str:
     if err:
         return err
 
-    import os
+
 
     if not await asyncio.to_thread(os.path.exists, resolved_path):
         return f"[ERROR] El path '{path}' no existe."

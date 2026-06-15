@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sqlite3
 import os
@@ -316,7 +317,7 @@ def _execute_query(table: str, session_id: str | None, params: dict[str, Any]) -
             pass
 
 
-def run(
+async def run(
     table: str,
     session_id: str | None = None,
     search: str | None = None,
@@ -335,4 +336,5 @@ def run(
     )
     if error:
         return error
-    return _execute_query(table, session_id, params)
+    # Ejecutar la consulta SQLite en un thread para no bloquear el event loop
+    return await asyncio.to_thread(_execute_query, table, session_id, params)

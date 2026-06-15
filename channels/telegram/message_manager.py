@@ -15,13 +15,19 @@ Each chat has a state dict that maps phase keys to message IDs:
 Phases are *immutable* once created — a phase key always points to the
 same message ID. When a phase transitions (reasoning→content→reasoning),
 new phases are created with incremented indices.
+
+Message IDs are also persisted to SQLite so they survive bot restarts.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from channels.telegram.protocols import TelegramAPIClientProtocol
+
+if TYPE_CHECKING:
+    from src.memory.repos.telegram_msg_id_repository import TelegramMsgIdRepo
 
 
 class MessageManager:
@@ -32,7 +38,8 @@ class MessageManager:
     and tells the manager to store the resulting IDs.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, repo: TelegramMsgIdRepo | None = None) -> None:
+        self._repo = repo
         # {chat_id: {"reasoning:0": msg_id, "content:2": msg_id, ...}}
         self._state: dict[int, dict[str, int]] = defaultdict(dict)
         # {chat_id: {"tool:call_X": msg_id}}
@@ -48,12 +55,17 @@ class MessageManager:
         key = self._phase_key(phase_type, phase_index)
         return self._state.get(chat_id, {}).get(key)
 
-    def set_msg_id(
+    async def set_msg_id(
         self, chat_id: int, phase_type: str, phase_index: int, msg_id: int,
     ) -> None:
-        """Store the message ID for a phase (idempotent on re-set)."""
+        """Store the message ID for a phase (idempotent on re-set).
+
+        Persists to both in-memory state and SQLite.
+        """
         key = self._phase_key(phase_type, phase_index)
         self._state[chat_id][key] = msg_id
+        if self._repo is not None:
+            await self._repo.save(chat_id, key, msg_id)
 
     def has_phase(self, chat_id: int, phase_type: str, phase_index: int) -> bool:
         """Check if a phase has a message (was already created)."""
@@ -65,12 +77,16 @@ class MessageManager:
     def get_tool_msg_id(self, chat_id: int, tool_id: str) -> int | None:
         return self._tool_msgs.get(chat_id, {}).get(tool_id)
 
-    def set_tool_msg_id(self, chat_id: int, tool_id: str, msg_id: int) -> None:
+    async def set_tool_msg_id(self, chat_id: int, tool_id: str, msg_id: int) -> None:
+        """Store a tool message ID, persisting to both memory and SQLite."""
         self._tool_msgs[chat_id][tool_id] = msg_id
+        if self._repo is not None:
+            phase_key = f"tool:{tool_id}"
+            await self._repo.save(chat_id, phase_key, msg_id)
 
     # ── Phase management ────────────────────────────────────────────────
 
-    def reset_phases(self, chat_id: int) -> None:
+    async def reset_phases(self, chat_id: int) -> None:
         """Reset reasoning and content phase tracking for this chat.
 
         Called after a tool call. Keeps tool messages but clears all
@@ -81,20 +97,40 @@ class MessageManager:
         for k in keys_to_remove:
             del state[k]
 
-    def get_all_msg_ids(self, chat_id: int) -> list[int]:
-        """Get all message IDs tracked for a chat (for clearing)."""
+    async def get_all_msg_ids(self, chat_id: int) -> list[int]:
+        """Get all message IDs tracked for a chat (for clearing).
+
+        Merges in-memory state with persisted DB rows so that IDs
+        survive bot restarts.
+        """
+        seen: set[int] = set()
         ids: list[int] = []
+
+        # Load from in-memory state
         state = self._state.get(chat_id, {})
         tool_state = self._tool_msgs.get(chat_id, {})
         for v in state.values():
-            if v is not None:
+            if v is not None and v not in seen:
+                seen.add(v)
                 ids.append(v)
         for v in tool_state.values():
-            if v is not None:
+            if v is not None and v not in seen:
+                seen.add(v)
                 ids.append(v)
+
+        # Load from DB (covers IDs persisted before restart)
+        if self._repo is not None:
+            rows = await self._repo.get_all(chat_id)
+            for _, msg_id in rows:
+                if msg_id not in seen:
+                    seen.add(msg_id)
+                    ids.append(msg_id)
+
         return ids
 
-    def cleanup(self, chat_id: int) -> None:
-        """Remove all state for a chat."""
+    async def cleanup(self, chat_id: int) -> None:
+        """Remove all state for a chat (memory + DB)."""
         self._state.pop(chat_id, None)
         self._tool_msgs.pop(chat_id, None)
+        if self._repo is not None:
+            await self._repo.delete_chat(chat_id)

@@ -121,7 +121,7 @@ class TelegramRenderer:
                 chat_id, display, parse_mode="",
             )
             if msg_id is not None:
-                self._mm.set_msg_id(chat_id, "reasoning", phase, msg_id)
+                await self._mm.set_msg_id(chat_id, "reasoning", phase, msg_id)
                 logger.info(
                     "TG[%d] NEW reasoning msg #%s (phase %d)",
                     chat_id, msg_id, phase,
@@ -145,7 +145,7 @@ class TelegramRenderer:
                 chat_id, event.text, parse_mode="",
             )
             if msg_id is not None:
-                self._mm.set_msg_id(chat_id, "content", phase, msg_id)
+                await self._mm.set_msg_id(chat_id, "content", phase, msg_id)
                 logger.info(
                     "TG[%d] NEW content msg #%s (phase %d, %d chars)",
                     chat_id, msg_id, phase, len(event.text),
@@ -163,7 +163,7 @@ class TelegramRenderer:
     ) -> None:
         """Render a tool call notification."""
         # Reset message phases so next reasoning/content create NEW messages
-        self._mm.reset_phases(chat_id)
+        await self._mm.reset_phases(chat_id)
 
         # Check if this tool already has a message (status update)
         existing = self._mm.get_tool_msg_id(chat_id, tool_id)
@@ -181,7 +181,7 @@ class TelegramRenderer:
             chat_id, display, parse_mode="Markdown",
         )
         if msg_id is not None:
-            self._mm.set_tool_msg_id(chat_id, tool_id, msg_id)
+            await self._mm.set_tool_msg_id(chat_id, tool_id, msg_id)
             logger.info("TG[%d] tool msg #%s: %s", chat_id, msg_id, event.name)
 
     async def _render_error(

@@ -282,6 +282,23 @@ async def _migration_015_chat_journal(conn: Any, engine: Any) -> None:
     await engine.execute(conn, "CREATE INDEX IF NOT EXISTS idx_chat_journal_ts ON chat_journal (ts DESC)")
 
 
+async def _migration_016_telegram_msg_ids(conn: Any, engine: Any) -> None:
+    """Persist Telegram message IDs so they survive bot restarts."""
+    await engine.execute(conn, """
+        CREATE TABLE IF NOT EXISTS telegram_msg_ids (
+            chat_id INTEGER NOT NULL,
+            phase_key TEXT NOT NULL,
+            msg_id INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (chat_id, phase_key)
+        )
+    """)
+    await engine.execute(conn, """
+        CREATE INDEX IF NOT EXISTS idx_telegram_msg_ids_chat
+        ON telegram_msg_ids (chat_id)
+    """)
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -298,4 +315,5 @@ MIGRATIONS = (
     _migration_013_composite_tool_index,
     _migration_014_gateway_log,
     _migration_015_chat_journal,
+    _migration_016_telegram_msg_ids,
 )
