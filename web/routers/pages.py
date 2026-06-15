@@ -151,7 +151,7 @@ async def sidebar(request: Request) -> HTMLResponse:
     current = request.query_params.get("current", "")
     sessions = []
     for s in raw:
-        sid, first, last, count, user_count, name = s
+        sid, first, last, count, user_count, name = s[0], s[1], s[2], s[3], s[4], s[5]
         sessions.append({
             "sid": sid,
             "first_str": str(first),

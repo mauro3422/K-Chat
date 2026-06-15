@@ -22,6 +22,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import datetime
 from typing import Any, AsyncGenerator
 
 from channels.telegram.config import TelegramConfig
@@ -406,37 +407,16 @@ async def _get_or_create_session(
 ) -> tuple[str, list[dict[str, Any]]]:
     """Get or create a persistent Telegram session.
 
-    Sessions survive bot restarts via the K-Chat memory DB.
+    Sessions are identified by ``telegram_chat_id`` column, NOT by name.
+    This allows auto-rename (LLM-generated title) without breaking lookup.
     """
     repos = li.get_repos()
-
-    # Try to restore previous session from the sessions table
-    # We use a consistent naming scheme: "telegram_{chat_id}"
-    session_id = None
-
-    # Find existing Telegram session for this chat_id.
-    # get_all() returns tuples: (session_id, first, last, count, user_count, name)
-    # sorted by MAX(created_at) DESC, so first match = most recent.
-    session_id = None
-    session_name = f"Telegram ({chat_id})"
-    try:
-        all_sessions = await repos.sessions.get_all()
-        for s in all_sessions:
-            sid = s[0]      # session_id
-            name = s[5] if len(s) > 5 else ""  # session name (COALESCE(s.name, ''))
-            if name == session_name and sid:
-                session_id = sid
-                break
-    except Exception:
-        pass
-
+    session_id = await repos.sessions.find_by_telegram_chat_id(chat_id)
     history: list[dict[str, Any]] = []
 
     if session_id:
         logger.info("Restored session %s for chat %d", session_id, chat_id)
         await repos.sessions.ensure(session_id)
-        # Load history — get_session_messages returns tuples:
-        # (role, content, model, created_at, reasoning, phases, tool_calls, tool_call_id)
         try:
             raw = await repos.messages.get_session_messages(session_id)
             for row in raw:
@@ -458,27 +438,18 @@ async def _get_or_create_session(
                         pass
                 history.append(msg)
 
-            # Strip incomplete tool chains: an assistant with tool_calls MUST be
-            # followed by tool messages for EACH tool_call_id, otherwise drop it
-            # (DeepSeek rejects incomplete chains with 400).
+            # Strip incomplete tool chains
             cleaned: list[dict[str, Any]] = []
-            skip_until_user = 0  # how many tool msgs to skip
             for i, msg in enumerate(history):
-                if skip_until_user > 0:
-                    skip_until_user -= 1
-                    continue
                 if msg["role"] == "assistant" and msg.get("tool_calls"):
                     needed = len(msg["tool_calls"])
-                    # Check that the next N messages are tool responses
                     following = history[i + 1:i + 1 + needed]
                     tool_ids_avail = [
                         m.get("tool_call_id", "") for m in following
                         if m["role"] == "tool"
                     ]
                     if len(tool_ids_avail) < needed:
-                        # Incomplete chain — drop this assistant message
-                        logger.debug("Drop incomplete tool chain at msg %d (%d/%d tools)",
-                                     i, len(tool_ids_avail), needed)
+                        logger.debug("Drop incomplete tool chain at msg %d", i)
                         continue
                 cleaned.append(msg)
             history = cleaned
@@ -488,9 +459,8 @@ async def _get_or_create_session(
         session_id = f"tele_{uuid.uuid4().hex[:20]}"
         logger.info("New Telegram session %s for chat %d", session_id, chat_id)
         await repos.sessions.ensure(session_id)
-        await repos.sessions.rename(session_id, session_name)
+        await repos.sessions.update_telegram_chat_id(session_id, chat_id)
 
-    # Always prepend system prompt + channel context
     model = li.get_default_model()
     system_prompt = li.build_system_prompt(model)
     history = [system_prompt, CHANNEL_SYSTEM_MESSAGE] + history
@@ -498,31 +468,16 @@ async def _get_or_create_session(
 
 
 async def _reset_session(chat_id: int, li: _LazyImports) -> str:
-    """Reset the session for a given chat, returning the new session ID.
+    """Create a brand new session for a Telegram chat.
 
-    Renames the old session (so it won't be found by name lookup)
-    and creates a fresh one.
+    The old session stays in the DB (with its ``telegram_chat_id``)
+    so ``/sessions`` can still list it.
     """
-    session_name = f"Telegram ({chat_id})"
     repos = li.get_repos()
-
-    # Rename existing session(s) so they don't collide with the new one
-    try:
-        all_sessions = await repos.sessions.get_all()
-        for s in all_sessions:
-            sid = s[0]
-            name = s[5] if len(s) > 5 else ""
-            if name == session_name and sid:
-                archived = f"{session_name}_archived_{int(time.time())}"
-                await repos.sessions.rename(sid, archived)
-                logger.info("Archived old session %s -> %s", sid, archived)
-    except Exception:
-        pass
-
     session_id = f"tele_{uuid.uuid4().hex[:20]}"
     await repos.sessions.ensure(session_id)
-    await repos.sessions.rename(session_id, session_name)
-    logger.info("Reset Telegram session for chat %d -> %s", chat_id, session_id)
+    await repos.sessions.update_telegram_chat_id(session_id, chat_id)
+    logger.info("New Telegram session %s for chat %d", session_id, chat_id)
     return session_id
 
 
@@ -533,23 +488,11 @@ async def _handle_sessions_command(
 ) -> list[str]:
     """Handle ``/sessions`` (list) and ``/sessions <n>`` (switch).
 
+    Sessions are identified by ``telegram_chat_id`` column, newest first.
     Returns a list of content lines to yield as ``__content__:``.
     """
     repos = li.get_repos()
-    all_sessions = await repos.sessions.get_all(limit=100)
-    session_name = f"Telegram ({chat_id})"
-    archived_name_prefix = f"{session_name}_archived"
-
-    # Collect sessions for this chat: active (exact name) + archived
-    tg_sessions: list[tuple[str, str, str]] = []  # (session_id, display_name, last_date)
-    for s in all_sessions:
-        sid = s[0]
-        last_date = str(s[2] or "")[:10] if s[2] else ""
-        name = s[5] if len(s) > 5 else ""
-        if name == session_name:
-            tg_sessions.insert(0, (sid, "📌 Activa", last_date))
-        elif name.startswith(archived_name_prefix):
-            tg_sessions.append((sid, name, last_date))
+    tg_sessions = await repos.sessions.find_all_by_telegram_chat_id(chat_id)
 
     if not tg_sessions:
         return ["No hay sesiones de Telegram."]
@@ -558,15 +501,12 @@ async def _handle_sessions_command(
     parts = text.strip().split(None, 1)
     if len(parts) == 1:
         lines = ["📋 **Tus sesiones de Telegram:**"]
-        for i, (sid, display, last) in enumerate(tg_sessions, 1):
-            label = display if display.startswith("📌") else display.split("_archived")[1].lstrip("_") if "_archived" in display else display
-            msg_count = ""
-            for s in all_sessions:
-                if s[0] == sid:
-                    msg_count = f" ({s[3]} msgs)" if s[3] else ""
-                    break
-            lines.append(f"  `{i}`. {label}{msg_count} — {last or '?'}")
-            if display.startswith("📌"):
+        for i, (sid, name, created_at) in enumerate(tg_sessions, 1):
+            label = name if name else sid[:12]
+            last_date = created_at[:10] if created_at else "?"
+            active = "📌 " if i == 1 else ""
+            lines.append(f"  `{i}`. {active}{label} — {last_date}")
+            if active:
                 lines.append(f"     🆔 `{sid[:12]}...`")
         lines.append("")
         lines.append("Usá `/sessions <n>` para cambiar a una sesión.")
@@ -578,27 +518,24 @@ async def _handle_sessions_command(
         if idx < 0 or idx >= len(tg_sessions):
             return [f"❌ Número inválido. Tenés {len(tg_sessions)} sesiones (1–{len(tg_sessions)})."]
     except ValueError:
-        # Try switching by session_id prefix
         return [f"❌ Usá `/sessions <número>` (1–{len(tg_sessions)})."]
 
-    target_sid, target_display, _ = tg_sessions[idx]
+    target_sid, target_name, _ = tg_sessions[idx]
 
-    # If already active, do nothing
-    if target_display.startswith("📌"):
+    # If already active (index 0), do nothing
+    if idx == 0:
         return ["⚠️ Ya estás en la sesión activa."]
 
-    # Archive current active session
-    for s in all_sessions:
-        sid = s[0]
-        name = s[5] if len(s) > 5 else ""
-        if name == session_name and sid:
-            archived = f"{session_name}_archived_{int(time.time())}"
-            await repos.sessions.rename(sid, archived)
-            logger.info("Archived current session %s -> %s", sid, archived)
-            break
-
-    # Rename target to active
-    await repos.sessions.rename(target_sid, session_name)
+    # Switching: update telegram_chat_id on target to make it the active one
+    # by setting it to the same chat_id and updating its created_at to now
+    # (so it becomes the most recent / first in list).
+    import time
+    current_ts = datetime.now().isoformat()
+    async with repos.sessions._transaction() as conn:
+        await conn.execute(
+            "UPDATE sessions SET created_at = ? WHERE session_id = ?",
+            (current_ts, target_sid),
+        )
     logger.info("Switched to session %s for chat %d", target_sid, chat_id)
     return [f"✅ Cambiaste a la sesión `{target_sid[:12]}...`"]
 

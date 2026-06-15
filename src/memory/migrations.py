@@ -299,6 +299,23 @@ async def _migration_016_telegram_msg_ids(conn: Any, engine: Any) -> None:
     """)
 
 
+async def _migration_017_telegram_chat_id(conn: Any, engine: Any) -> None:
+    """Add telegram_chat_id column to sessions for reliable lookup."""
+    try:
+        await engine.execute(conn, """
+            ALTER TABLE sessions ADD COLUMN telegram_chat_id INTEGER
+        """)
+    except sqlite3.OperationalError:
+        pass  # Already exists
+    try:
+        await engine.execute(conn, """
+            CREATE INDEX IF NOT EXISTS idx_sessions_telegram_chat_id
+            ON sessions (telegram_chat_id)
+        """)
+    except Exception:
+        pass
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -316,4 +333,5 @@ MIGRATIONS = (
     _migration_014_gateway_log,
     _migration_015_chat_journal,
     _migration_016_telegram_msg_ids,
+    _migration_017_telegram_chat_id,
 )

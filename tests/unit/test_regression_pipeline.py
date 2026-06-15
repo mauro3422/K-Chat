@@ -397,12 +397,12 @@ def test_clear_chat_messages_logs_count():
     )
 
 
-def test_check_should_rename_allows_telegram_default():
+def test_check_should_rename_allows_telegram():
     """check_should_rename should return True for Telegram sessions
-    that still have the default 'Telegram (...)' name after 1 user msg."""
+    (identified by telegram_chat_id) with no name and 1 user msg."""
     source = _read_source("src/memory/repos/session_repository.py")
-    assert 'startswith("Telegram (")' in source, (
-        "Must check for Telegram default name pattern"
+    assert 'telegram_chat_id is not None' in source or '"telegram_chat_id"' in source, (
+        "Must check for telegram_chat_id column"
     )
 
 
@@ -552,16 +552,16 @@ def test_adapter_sessions_switch_by_number():
     assert 'int(parts[1])' in source, (
         "Must parse /sessions argument as integer index"
     )
-    assert 'await repos.sessions.rename(target_sid' in source, (
-        "Must rename target session to active when switching"
+    assert 'UPDATE sessions SET created_at' in source, (
+        "Must update created_at to make target session active"
     )
 
 
-def test_adapter_session_listing_includes_archived():
-    """Session listing must include both active and archived sessions."""
+def test_adapter_session_listing():
+    """Session listing must use find_all_by_telegram_chat_id."""
     source = _read_source("channels/telegram/adapter.py")
-    assert '_archived' in source, (
-        "Must detect archived sessions by name prefix"
+    assert 'find_all_by_telegram_chat_id' in source, (
+        "Must use find_all_by_telegram_chat_id for session listing"
     )
     assert 'tg_sessions' in source, (
         "Must collect TG sessions into a list"
@@ -579,12 +579,15 @@ def test_adapter_imports_auto_rename():
     )
 
 
-def test_check_should_rename_tg_default_name():
-    """check_should_rename must match sessions whose name starts
-    with 'Telegram (' — the default Telegram session name."""
+def test_session_repo_has_telegram_lookup():
+    """SessionRepository must have find_by_telegram_chat_id and
+    find_all_by_telegram_chat_id methods."""
     source = _read_source("src/memory/repos/session_repository.py")
-    assert 'startswith("Telegram (")' in source, (
-        "Must check name.startswith('Telegram (')"
+    assert 'find_by_telegram_chat_id' in source, (
+        "Missing find_by_telegram_chat_id method"
+    )
+    assert 'find_all_by_telegram_chat_id' in source, (
+        "Missing find_all_by_telegram_chat_id method"
     )
 
 

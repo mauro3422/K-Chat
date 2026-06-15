@@ -58,7 +58,7 @@ class SessionRepository(_BaseRepository):
             await self.delete(session_id, cursor=conn)
 
     async def get_all(self, limit: int = 50) -> list[tuple[Any, ...]]:
-        """Return all sessions with summary data."""
+        """Return all sessions with summary data (now includes telegram_chat_id)."""
         try:
             conn = await self._get_conn()
             cursor = await conn.execute('''
@@ -67,7 +67,8 @@ class SessionRepository(_BaseRepository):
                        MAX(m.created_at),
                        COUNT(*),
                        SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END),
-                       COALESCE(s.name, '')
+                       COALESCE(s.name, ''),
+                       s.telegram_chat_id
                 FROM messages m
                 LEFT JOIN sessions s ON m.session_id = s.session_id
                 GROUP BY m.session_id
@@ -86,23 +87,70 @@ class SessionRepository(_BaseRepository):
         if not await self.exists(session_id):
             raise ValueError("Session not found")
 
-    async def check_should_rename(self, session_id: str) -> bool:
-        """Check if the session should be auto-renamed (single user message, no name set).
+    # ── Telegram-specific lookup ─────────────────────────────────────
 
-        Also triggers for Telegram sessions that still have the default
-        ``"Telegram (...)"`` name (they get a proper LLM-generated title).
+    async def find_by_telegram_chat_id(self, chat_id: int) -> str | None:
+        """Get the most recent session_id for a Telegram chat, or None."""
+        try:
+            conn = await self._get_conn()
+            cursor = await conn.execute('''
+                SELECT session_id FROM sessions
+                WHERE telegram_chat_id = ?
+                ORDER BY created_at DESC LIMIT 1
+            ''', (chat_id,))
+            row = await cursor.fetchone()
+            return row["session_id"] if row else None
+        except Exception:
+            logger.exception("Failed to find session by telegram_chat_id")
+            return None
+
+    async def find_all_by_telegram_chat_id(self, chat_id: int) -> list[tuple[str, str, str]]:
+        """Get all session_ids + names for a Telegram chat, newest first."""
+        try:
+            conn = await self._get_conn()
+            cursor = await conn.execute('''
+                SELECT session_id, COALESCE(name, ''), created_at
+                FROM sessions
+                WHERE telegram_chat_id = ?
+                ORDER BY created_at DESC
+            ''', (chat_id,))
+            rows = await cursor.fetchall()
+            return [(r["session_id"], r["name"], r["created_at"]) for r in rows]
+        except Exception:
+            logger.exception("Failed to find all sessions by telegram_chat_id")
+            return []
+
+    async def update_telegram_chat_id(self, session_id: str, chat_id: int) -> None:
+        """Set the telegram_chat_id for a session."""
+        async with self._transaction() as conn:
+            await conn.execute(
+                "UPDATE sessions SET telegram_chat_id = ? WHERE session_id = ?",
+                (chat_id, session_id),
+            )
+
+    async def check_should_rename(self, session_id: str) -> bool:
+        """Check if the session should be auto-renamed.
+
+        Triggers for sessions with no name set OR Telegram sessions
+        (identified by telegram_chat_id) with only 1 user message.
         """
         try:
             conn = await self._get_conn()
-            cursor = await conn.execute("SELECT name FROM sessions WHERE session_id = ?", (session_id,))
+            cursor = await conn.execute(
+                "SELECT name, telegram_chat_id FROM sessions WHERE session_id = ?",
+                (session_id,),
+            )
             row = await cursor.fetchone()
             if row:
-                name = row["name"]
-                is_default_tg = name.startswith("Telegram (") if name else False
-                if name == "" or name is None or is_default_tg:
-                    cursor = await conn.execute("SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user'", (session_id,))
-                    row = await cursor.fetchone()
-                    count = row[0] if row else 0
+                name = row["name"] or ""
+                is_tg = row["telegram_chat_id"] is not None
+                if name == "" or (is_tg and not name):
+                    cursor = await conn.execute(
+                        "SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user'",
+                        (session_id,),
+                    )
+                    count_row = await cursor.fetchone()
+                    count = count_row[0] if count_row else 0
                     return count == 1
             return False
         except Exception:
