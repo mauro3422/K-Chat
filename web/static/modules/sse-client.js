@@ -6,6 +6,7 @@ and the current session's message list automatically.
 
 import { ApiClient } from './api-client.js';
 import { refreshSidebar } from './sidebar-refresh.js';
+import { WidgetManager, initAll } from './widgets/index.js';
 
 var _eventSource = null;
 var _currentSessionId = null;
@@ -222,11 +223,15 @@ function streamContent(data) {
   if (!el) return;
   var text = data.text || '';
   if (text && typeof marked !== 'undefined') {
-    var html = marked.parse(text);
+    // Extract widget blocks before markdown parsing (live streaming)
+    var extracted = WidgetManager && WidgetManager.extract ? WidgetManager.extract(text) : text;
+    var html = marked.parse(extracted);
     if (typeof DOMPurify !== 'undefined') {
       html = DOMPurify.sanitize(html);
     }
     el.innerHTML = html;
+    // Mount widget iframes immediately during live streaming
+    if (typeof initAll === 'function') initAll(el, true);
   } else {
     el.textContent = text;
   }

@@ -313,3 +313,109 @@ def _get_call_name(call_node):
     if isinstance(call_node.func, ast.Name):
         return call_node.func.id
     return None
+
+
+# ─── Telegram bot regression tests ─────────────────────────────────────
+
+def test_telegram_api_client_has_delete_message():
+    """TelegramAPIClient must have a delete_message method that uses
+    the Telegram deleteMessage API endpoint."""
+    source = _read_source("channels/telegram/api_client.py")
+    assert 'async def delete_message(' in source, (
+        "Missing delete_message method in TelegramAPIClient"
+    )
+    assert '"deleteMessage"' in source or "'deleteMessage'" in source, (
+        "delete_message must call the deleteMessage Telegram API"
+    )
+
+
+def test_telegram_bot_clear_returns_early():
+    """When text == '/clear', bot.py must return before calling
+    process_message, so the command never reaches the LLM."""
+    source = _read_source("channels/telegram/bot.py")
+    assert '''if text == "/clear":''' in source or """if text == '/clear':""" in source
+    # After the /clear check, there should be a send_message + return
+    # before the process_message call
+    lines = source.split("\n")
+    clear_found = False
+    for i, line in enumerate(lines):
+        if 'text == "/clear"' in line or "text == '/clear'" in line:
+            clear_found = True
+        if clear_found:
+            if 'return' in line:
+                break
+            if 'process_message' in line:
+                assert False, (
+                    "/clear handled AFTER process_message call at line "
+                    f"{i+1}! Must return before process_message."
+                )
+    assert clear_found, "Missing /clear guard in bot.py"
+
+
+def test_adapter_differentiates_new_vs_reset():
+    """The adapter should handle '/reset' (same session, clear messages)
+    differently from '/new' (archive + new session)."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert 'if text == "/reset":' in source, (
+        "Missing /reset handler in adapter"
+    )
+    assert 'if text == "/new":' in source, (
+        "Missing /new handler in adapter"
+    )
+    assert 'delete_session_messages' in source, (
+        "/reset must call delete_session_messages to clear the session"
+    )
+    assert '_reset_session' in source, (
+        "/new must call _reset_session to create a new session"
+    )
+
+
+def test_message_repository_has_delete_session_messages():
+    """MessageRepository must have a method to delete all messages
+    for a session (used by /reset)."""
+    source = _read_source("src/memory/repos/message_repository.py")
+    assert 'async def delete_session_messages(' in source, (
+        "Missing delete_session_messages in MessageRepository"
+    )
+    assert 'DELETE FROM messages WHERE session_id = ?' in source, (
+        "Must use DELETE FROM messages to clear session messages"
+    )
+
+
+def test_clear_chat_messages_logs_count():
+    """_clear_chat_messages should log how many messages it found
+    and deleted, so we can debug when clear doesn't work."""
+    source = _read_source("channels/telegram/bot.py")
+    assert '"TG clear:' in source or "'TG clear:" in source or "'TG clear:'" in source, (
+        "_clear_chat_messages must log its progress"
+    )
+    assert 'len(all_ids)' in source, (
+        "Must log the number of tracked IDs found"
+    )
+    assert 'count' in source, (
+        "Must track and log the number of deleted messages"
+    )
+
+
+def test_delete_message_persisted_to_telegram_msg_ids():
+    """MessageManager.set_msg_id must persist to telegram_msg_ids
+    table via TelegramMsgIdRepo (survives bot restarts)."""
+    source = _read_source("channels/telegram/message_manager.py")
+    assert 'self._repo.save(' in source, (
+        "set_msg_id must call repo.save() to persist to SQLite"
+    )
+    assert 'self._repo is not None' in source, (
+        "Must check for repo before persisting"
+    )
+
+
+def test_get_all_msg_ids_merges_memory_and_db():
+    """get_all_msg_ids should read from both in-memory state and
+    the DB, so IDs survive bot restarts."""
+    source = _read_source("channels/telegram/message_manager.py")
+    assert 'self._repo.get_all(' in source, (
+        "get_all_msg_ids must read from DB repo"
+    )
+    assert 'seen' in source or 'set()' in source, (
+        "Must deduplicate IDs to avoid double-deletes"
+    )
