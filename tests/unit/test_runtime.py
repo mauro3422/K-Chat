@@ -25,7 +25,7 @@ async def test_build_context_snapshot_reads_files():
             with patch("src.context.runtime._build_rules_files"):
                 with patch("src.context.runtime._build_tools_md", return_value="# Tools md content"):
                     with patch("builtins.open", mock_open()) as mock_file:
-                        result = build_context_snapshot()
+                        result = build_context_snapshot(tool_definitions={"dummy": {}})
 
                         assert result.text == "# Soul content\n\n# Memory content\n\n# Agents content"
                         assert result.tools_md == "# Tools md content"
@@ -43,12 +43,12 @@ async def test_build_context_snapshot_uses_cache():
             with patch("src.context.runtime._build_rules_files"):
                 with patch("src.context.runtime._build_tools_md", return_value="# Tools md"):
                     with patch("builtins.open", mock_open()) as mock_file:
-                        result1 = build_context_snapshot()
+                        result1 = build_context_snapshot(tool_definitions={"dummy": {}})
                         assert result1.text == "# content\n\n# content\n\n# content"
 
                         mock_file().write.reset_mock()
 
-                        result2 = build_context_snapshot()
+                        result2 = build_context_snapshot(tool_definitions={"dummy": {}})
                         assert result2.text == result1.text
                         assert result2.tools_md == result1.tools_md
                         mock_file().write.assert_not_called()
@@ -65,12 +65,12 @@ async def test_build_context_snapshot_force_bypasses_cache():
             with patch("src.context.runtime._build_rules_files"):
                 with patch("src.context.runtime._build_tools_md", return_value="# Tools md"):
                     with patch("builtins.open", mock_open()) as mock_file:
-                        result1 = build_context_snapshot()
+                        result1 = build_context_snapshot(tool_definitions={"dummy": {}})
                         mock_file().write.assert_called_once()
 
                         mock_file().write.reset_mock()
 
-                        result2 = build_context_snapshot(force=True)
+                        result2 = build_context_snapshot(force=True, tool_definitions={"dummy": {}})
                         assert result2.text == result1.text
                         assert result2.tools_md == result1.tools_md
                         mock_file().write.assert_called_once()
@@ -87,13 +87,13 @@ async def test_invalidate_context_cache():
             with patch("src.context.runtime._build_rules_files"):
                 with patch("src.context.runtime._build_tools_md", return_value="# Tools md"):
                     with patch("builtins.open", mock_open()) as mock_file:
-                        result1 = build_context_snapshot()
+                        result1 = build_context_snapshot(tool_definitions={"dummy": {}})
                         mock_file().write.assert_called_once()
 
                         invalidate_context_cache()
 
                         mock_file().write.reset_mock()
-                        result2 = build_context_snapshot()
+                        result2 = build_context_snapshot(tool_definitions={"dummy": {}})
                         mock_file().write.assert_called_once()
 
 

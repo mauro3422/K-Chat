@@ -28,7 +28,7 @@ class TestExecuteToolBatch:
         async for _ in gen:
             pass
 
-        tool_fn.assert_called_once_with(query="test", _session_id="ses", _repos=repos, _skill_registry=None)
+        tool_fn.assert_called_once_with(query="test", _session_id="ses", _repos=repos, _skill_registry=None, _invalidate_cache_fn=None)
         assert results["call_1"] == ("some result", "ok")
 
     @pytest.mark.anyio
@@ -44,7 +44,7 @@ class TestExecuteToolBatch:
         gen = _execute_tool_batch(tcs_info, tool_map, "ses", False, results, repos)
         async for _ in gen:
             pass
-        tool_fn.assert_called_once_with(query="test", _session_id="ses", _repos=repos, _skill_registry=None)
+        tool_fn.assert_called_once_with(query="test", _session_id="ses", _repos=repos, _skill_registry=None, _invalidate_cache_fn=None)
 
 
     @pytest.mark.anyio

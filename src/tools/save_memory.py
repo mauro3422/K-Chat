@@ -139,10 +139,7 @@ def run(**kwargs) -> str:
         if err:
             return err
 
-        invalidate_cache = _invalidate_cache_fn
-        if invalidate_cache is None:
-            from src.context.runtime import invalidate_context_cache
-            invalidate_cache = invalidate_context_cache
-        invalidate_cache()
+        if _invalidate_cache_fn is not None:
+            _invalidate_cache_fn()
 
     return f"[OK] {action_msg} in MEMORY.md."

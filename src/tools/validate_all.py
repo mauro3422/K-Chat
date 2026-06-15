@@ -21,7 +21,8 @@ DEFINITION: dict[str, Any] = {
         "description": (
             "Valida la sintaxis de MULTIPLES archivos Python, JS, JSON, HTML, CSS en UNA sola llamada. "
             "Usa los validadores internos segun la extension de cada archivo. "
-            "Devuelve un resumen con cuantos pasaron, fallaron o fueron omitidos."
+            "Devuelve un resumen con cuantos pasaron, fallaron o fueron omitidos. "
+            "Opcionalmente verifica reglas arquitectónicas (modo architecture)."
         ),
         "parameters": {
             "type": "object",
@@ -39,6 +40,11 @@ DEFINITION: dict[str, Any] = {
                     "type": "string",
                     "description": "Filtro glob para archivos (ej: '*.py', '*.{py,js}'). Solo si usas 'path'.",
                     "default": ""
+                },
+                "architecture": {
+                    "type": "boolean",
+                    "description": "Si True, también verifica reglas arquitectónicas Legos (upward coupling, framework imports, etc.). Default: False.",
+                    "default": False
                 }
             }
         }
@@ -66,7 +72,7 @@ def run(**kwargs: Any) -> str:
     files: list = kwargs.get("files", [])
     directory: str | None = kwargs.get("path")
     pattern: str = kwargs.get("pattern", "")
-
+    arch_check: bool = kwargs.get("architecture", False)
     # Si no hay lista de archivos, escanear directorio
     if not files and directory:
         resolved_dir, err = resolve_and_validate_path(directory)
@@ -81,10 +87,39 @@ def run(**kwargs: Any) -> str:
     if not files or not isinstance(files, (list, tuple)):
         return "[ERROR] Debes proporcionar 'files' (lista) o 'path' (directorio a escanear)."
 
-    if len(files) > MAX_FILES:
-        return f"[ERROR] Maximo {MAX_FILES} archivos por llamada (pediste {len(files)})."
+    # Run architecture check first (independent of file limit)
+    arch_output = ""
+    if arch_check:
+        try:
+            from src.tools._arch_checker import check_directory, check_file
+            if directory:
+                resolved_dir, _ = resolve_and_validate_path(directory)
+                if resolved_dir and os.path.isdir(resolved_dir):
+                    report = check_directory(resolved_dir, recursive=False)
+                    arch_output = f"\n{report.summary()}"
+            elif files:
+                all_violations = []
+                for fpath in files[:MAX_FILES]:
+                    resolved, _ = resolve_and_validate_path(str(fpath))
+                    if resolved and os.path.isfile(resolved):
+                        violations = check_file(resolved)
+                        all_violations.extend(violations)
+                if all_violations:
+                    arch_output = f"\n🏛️ ARCHITECTURE CHECK — {len(all_violations)} violación(es):\n"
+                    for v in all_violations:
+                        arch_output += f"   {v}\n"
+                else:
+                    arch_output = f"\n🏛️ ARCHITECTURE CHECK — ✅ Sin violaciones arquitectónicas\n"
+        except Exception:
+            pass
 
+    if len(files) > MAX_FILES:
+        files = files[:MAX_FILES]
+        truncated = True
+    else:
+        truncated = False
     results: list[dict[str, Any]] = []
+    passed = failed = skipped = 0
     passed = failed = skipped = 0
 
     for fpath in files:
@@ -137,10 +172,38 @@ def run(**kwargs: Any) -> str:
             summary += f"  - {r['file']}{line_info}: {r['message']}\n"
 
     # Detalle de omitidos
+    # Detalle de omitidos
     skips = [r for r in results if r["status"] == "skipped"]
     if skips:
         summary += f"\n⏭️  OMITIDOS ({len(skips)}):\n"
         for r in skips[:10]:
             summary += f"  - {r['file']}: {r['message']}\n"
+
+    # ── ARCHITECTURE CHECK (optional) ─────────────────────────────
+    if arch_check:
+        try:
+            from src.tools._arch_checker import check_directory, check_file
+            # If we have a directory, check it; otherwise check individual files
+            if directory:
+                resolved_dir, _ = resolve_and_validate_path(directory)
+                if resolved_dir and os.path.isdir(resolved_dir):
+                    report = check_directory(resolved_dir, recursive=False)
+                    summary += f"\n{report.summary()}"
+            elif files:
+                # Check each file individually
+                all_violations = []
+                for fpath in files[:MAX_FILES]:
+                    resolved, _ = resolve_and_validate_path(str(fpath))
+                    if resolved and os.path.isfile(resolved):
+                        violations = check_file(resolved)
+                        all_violations.extend(violations)
+                if all_violations:
+                    summary += f"\n🏛️ ARCHITECTURE CHECK — {len(all_violations)} violación(es):\n"
+                    for v in all_violations:
+                        summary += f"   {v}\n"
+                else:
+                    summary += f"\n🏛️ ARCHITECTURE CHECK — ✅ Sin violaciones arquitectónicas\n"
+        except Exception:
+            pass  # arch check is non-blocking
 
     return summary

@@ -144,7 +144,9 @@ async def chat_stream(
         _deps.debug.system_prompt = ""
 
     if not history:
-        sp = _deps.history_service.get_system_prompt(model)
+        tool_defs = (_deps.tool_service.tool_registry.definitions
+                     if _deps.tool_service and _deps.tool_service.tool_registry else None)
+        sp = _deps.history_service.get_system_prompt(model, tool_definitions=tool_defs)
         history.append(HistoryMessage(
             role=sp["role"],
             content=sp["content"],

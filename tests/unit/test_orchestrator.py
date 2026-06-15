@@ -196,7 +196,10 @@ async def test_chat_stream_empty_history(
         pass
     assert history[0].role == "system"
     assert history[0].content == "sys prompt"
-    mock_get_sp.assert_called_once_with("m")
+    mock_get_sp.assert_called_once()
+    args, kwargs = mock_get_sp.call_args
+    assert args[0] == "m"
+    assert "tool_definitions" in kwargs
 
 
 @pytest.mark.anyio

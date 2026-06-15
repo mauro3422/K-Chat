@@ -21,7 +21,8 @@ DEFINITION = {
         "description": (
             "Analisis profundo de codigo Python con AST. "
             "Muestra funciones con lineas, parametros, llamadas internas, "
-            "call graph, imports usados por cada funcion, y metricas. "
+            "call graph, imports usados por cada funcion, metricas, "
+            "y complejidad ciclomática de cada funcion. "
             "Usa analyze_code con function='nombre' para analizar una funcion especifica. "
             "Opcionalmente detecta duplicados estructurales y referencias cruzadas cross-file. "
             "Sirve para entender rapidamente la estructura y flujo del codigo."
@@ -47,6 +48,11 @@ DEFINITION = {
                     "type": "boolean",
                     "description": "Si True, muestra que otros archivos llaman a las funciones definidas aca (opcional)",
                     "default": False
+                },
+                "complexity": {
+                    "type": "boolean",
+                    "description": "Si True, calcula complejidad ciclomatica de cada funcion y flagge las que exceden umbrales (opcional)",
+                    "default": True
                 }
             },
             "required": ["path"]
@@ -130,10 +136,60 @@ def _get_function_body(content_lines: list[str], node: ast.FunctionDef) -> list[
                 body.append({"kind": kind, "line": line, "snippet": snippet[:80]})
     return body
 
+def _iter_func_nodes(tree: ast.Module) -> list[tuple[ast.FunctionDef, bool]]:
+    """Itera sobre funciones y async functions en el AST."""
+    funcs = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            funcs.append((node, False))
+        elif isinstance(node, ast.AsyncFunctionDef):
+            funcs.append((node, True))
+    return funcs
 
-def _count_lines(node: ast.FunctionDef) -> int:
-    """Cuenta lineas de una funcion."""
-    return (getattr(node, 'end_lineno', node.lineno) or node.lineno) - node.lineno + 1
+
+def _cyclomatic_complexity(node: ast.AST) -> int:
+    """Calcula la complejidad ciclomática de un nodo AST.
+
+    Basado en el estándar McCabe: cada punto de decisión incrementa la complejidad.
+    Complejidad base = 1 (el camino lineal).
+    +1 por: if, elif, for, while, except, and, or, comprehensions, ternaries.
+    """
+    complexity = 1
+    for child in ast.walk(node):
+        if isinstance(child, (ast.If, ast.While)):
+            complexity += 1
+        elif isinstance(child, ast.For):
+            complexity += 1
+        elif isinstance(child, ast.ExceptHandler):
+            complexity += 1
+        elif isinstance(child, ast.BoolOp):
+            # Each 'and'/'or' adds a decision point
+            complexity += len(child.values) - 1
+        elif isinstance(child, ast.ListComp):
+            # Each comprehension has an implicit iteration
+            complexity += len(child.generators)
+        elif isinstance(child, ast.SetComp):
+            complexity += len(child.generators)
+        elif isinstance(child, ast.DictComp):
+            complexity += len(child.generators)
+        elif isinstance(child, ast.GeneratorExp):
+            complexity += len(child.generators)
+        elif isinstance(child, ast.IfExp):
+            # Ternary expression: x if cond else y
+            complexity += 1
+    return complexity
+
+
+def _complexity_label(cc: int) -> str:
+    """Devuelve un label con emoji según la complejidad ciclomática."""
+    if cc <= 5:
+        return f"🟢 {cc} (baja)"
+    elif cc <= 10:
+        return f"🟡 {cc} (moderada)"
+    elif cc <= 15:
+        return f"🟠 {cc} (alta — considerar refactor)"
+    else:
+        return f"🔴 {cc} (muy alta — refactorizar)"
 
 
 def _iter_func_nodes(tree: ast.Module) -> list[tuple[ast.FunctionDef, bool]]:
@@ -145,7 +201,6 @@ def _iter_func_nodes(tree: ast.Module) -> list[tuple[ast.FunctionDef, bool]]:
         elif isinstance(node, ast.AsyncFunctionDef):
             funcs.append((node, True))
     return funcs
-
 
 def _iter_class_nodes(tree: ast.Module) -> list[ast.ClassDef]:
     return [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
@@ -169,6 +224,10 @@ def _format_function_deep(
     # Cabecera
     lines_out.append(f"\n{'━' * 50}")
     lines_out.append(f"🎯 {prefix}fn {name}  (L:{start}-{end}, {line_count} lines)")
+
+    # Complejidad ciclomática
+    cc = _cyclomatic_complexity(node)
+    lines_out.append(f"   ├── Ciclomática: {_complexity_label(cc)}")
 
     # Decoradores
     decs = _get_decorators(node)
@@ -244,6 +303,7 @@ def _format_summary(
     # Funciones listado
     if funcs:
         lines_out.append(f"\n📦 FUNCIONES")
+        complexity_warnings = []
         for f_node, is_async in sorted(funcs, key=lambda x: x[0].lineno):
             name = f_node.name
             start = f_node.lineno
@@ -257,9 +317,13 @@ def _format_summary(
             calls = call_graph.get(name, [])
             n_calls = len(calls)
 
+            # Complejidad ciclomática
+            cc = _cyclomatic_complexity(f_node)
+            cc_label = _complexity_label(cc)
+
             # Linea compacta
             line = f"   ├── {prefix}{name}:L{start}-L{end}"
-            line += f"  ({lc} lines, {n_calls} calls)"
+            line += f"  ({lc} lines, {n_calls} calls, cc={cc})"
             if args:
                 line += f"  params: {', '.join(args[:4])}"
                 if len(args) > 4:
@@ -268,6 +332,17 @@ def _format_summary(
                 line += f"  @{decs[0]}"
             lines_out.append(line)
 
+            # Collect complexity warnings (cc > 10)
+            if cc > 10:
+                complexity_warnings.append((name, cc, lc))
+
+        # Complexity warnings section
+        if complexity_warnings:
+            lines_out.append(f"\n⚠️  COMPLEJIDAD ALTA (cc > 10)")
+            for wname, wcc, wlc in sorted(complexity_warnings, key=lambda x: -x[1]):
+                lines_out.append(f"   {_complexity_label(wcc)}  {wname} ({wlc} lines)")
+
+    # Clases
     # Clases
     if classes:
         lines_out.append(f"\n📦 CLASES")

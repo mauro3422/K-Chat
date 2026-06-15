@@ -40,6 +40,16 @@ DEFINITION = {
                     "type": "string",
                     "description": "El nuevo contenido a poner en lugar de las lineas. Si esta vacio y hay start/end_line, se borran esas lineas.",
                     "default": ""
+                },
+                "arch_check": {
+                    "type": "boolean",
+                    "description": "Si False, desactiva el post-hook de arch check + impact analysis (default: True)",
+                    "default": True
+                },
+                "verbose": {
+                    "type": "boolean",
+                    "description": "Si True, muestra todos los post-hooks. Si False, solo muestra si hay problemas (default: True)",
+                    "default": True
                 }
             },
             "required": ["path", "start_line"]
@@ -62,7 +72,8 @@ def run(**kwargs: Any) -> str:
     if end_line is not None:
         end_line = int(end_line)
     new_content = kwargs.get("new_content", "")
-
+    arch_check = kwargs.get("arch_check", True)
+    verbose = kwargs.get("verbose", True)
     if not path:
         return "[ERROR] Proporciona una ruta de archivo."
 
@@ -90,7 +101,6 @@ def run(**kwargs: Any) -> str:
     preflight_warnings = preflight.get("warnings", [])
 
     total_lines = len(original_lines)
-    total_lines = len(original_lines)
     start = _lineno_safety(original_lines, start_line)
 
     # Determinar modo de operacion
@@ -109,6 +119,27 @@ def run(**kwargs: Any) -> str:
         else:
             modo = "eliminar"
             result_lines = original_lines[:start-1] + original_lines[end:]
+
+            # ── DETECT DELETED DEFINITIONS ──────────────────────
+            deleted_defs: list[str] = []
+            try:
+                import ast
+                removed_text = ''.join(original_lines[start-1:end])
+                # Quick AST parse to find def/class names
+                for line in removed_text.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith('def ') or stripped.startswith('async def '):
+                        # Extract function name
+                        name_part = stripped.split('(')[0] if '(' in stripped else stripped.split(':')[0]
+                        name = name_part.replace('def ', '').replace('async ', '').strip()
+                        if name and not name.startswith('__'):
+                            deleted_defs.append(name)
+                    elif stripped.startswith('class '):
+                        name = stripped.split('(')[0].split(':')[0].replace('class ', '').strip()
+                        if name and not name.startswith('__'):
+                            deleted_defs.append(name)
+            except Exception:
+                pass
     elif new_content:
         # Solo start_line + content = insertar ANTES de la linea indicada
         modo = "insertar"
@@ -157,5 +188,26 @@ def run(**kwargs: Any) -> str:
     if preflight_warnings:
         for w in preflight_warnings[:3]:
             summary += f"\n   ⚠️ Pre-flight: {w}"
+
+    # ── ARCH CHECK (post-hook) ──────────────────────────────────────
+    if arch_check:
+        try:
+            from src.tools._arch_checker import quick_check
+            arch_result = quick_check(path)
+            if verbose or "🔴" in arch_result or "VIOLACIÓN" in arch_result:
+                summary += f"\n   {arch_result}"
+        except Exception:
+            pass
+
+    # ── IMPACT ANALYSIS (auto-trigger on def/class deletion) ───────
+    if arch_check and modo == "eliminar" and deleted_defs:
+        try:
+            from src.tools.impact_analysis import run as impact_run
+            for def_name in deleted_defs:
+                impact_result = impact_run(name=def_name, path=path)
+                if "Sin dependencias" not in impact_result:
+                    summary += f"\n{impact_result}"
+        except Exception:
+            pass
 
     return summary

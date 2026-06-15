@@ -19,8 +19,8 @@ class HistoryService(HistoryServiceProtocol):
              self.repos = get_repos()
         return await rebuild_history(session_id, model, self.repos.messages)
 
-    def get_system_prompt(self, model: str) -> dict[str, Any]:
-        return build_system_prompt(model)
+    def get_system_prompt(self, model: str, tool_definitions: dict[str, Any] | None = None) -> dict[str, Any]:
+        return build_system_prompt(model, tool_definitions=tool_definitions)
 
     async def compress_if_needed(
         self,

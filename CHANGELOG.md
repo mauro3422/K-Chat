@@ -4,6 +4,13 @@
 > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
 > Las entradas describen el estado del proyecto en el momento de cada release.
 
+## [v0.0.57] — 2026-06-14 — [Detalle](changelogs/v0.0.57.md)
+- **Arquitectura Lego**: Ciclo `tools ↔ context` eliminado — Core inyecta dependencias entre capas hermanas vía DI.
+- **Nuevas tools**: `dependency_graph`, `find_dead_code`, `impact_analysis` con validación arquitectónica.
+- **Complejidad ciclomática**: Métrica McCabe en `analyze_code` con labels visuales.
+- **Post-hooks**: `edit_file` y `write_file` con validación arquitectónica post-edición.
+- **Model availability**: Script externo para dots de estado de modelos en vivo.
+
 ## [v0.0.56] — 2026-06-14 — [Detalle](changelogs/v0.0.56.md)
 - **Modular Skills & Lego refactor**: Agrupación de skills y sus especificaciones/herramientas en subcarpetas lógicas individuales bajo `skills/`.
 - **Decoupled Autoregistry**: Implementación del cargador modular `SkillRegistry.discover_tools()` para desacoplar el descubrimiento físico de dependencias.

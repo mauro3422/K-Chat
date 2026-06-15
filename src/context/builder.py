@@ -60,8 +60,8 @@ def load_context() -> str:
     return "\n\n".join(segments)
 
 
-def build_system_prompt(model: str) -> dict[str, Any]:
-    snap = build_context_snapshot()
+def build_system_prompt(model: str, tool_definitions: dict[str, Any] | None = None) -> dict[str, Any]:
+    snap = build_context_snapshot(tool_definitions=tool_definitions)
     context = snap.text if snap.text else load_context()
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
 

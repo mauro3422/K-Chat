@@ -18,11 +18,11 @@ if TYPE_CHECKING:
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: 'Repositories', skill_registry: Any | None = None) -> AsyncGenerator[Any, None]:
+async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: 'Repositories', skill_registry: Any | None = None, invalidate_cache_fn: Any | None = None) -> AsyncGenerator[Any, None]:
     async def wrap_tool(tc, name, args):
         try:
             import inspect
-            res = tool_map[name](**args, _session_id=session_id, _repos=repos, _skill_registry=skill_registry)
+            res = tool_map[name](**args, _session_id=session_id, _repos=repos, _skill_registry=skill_registry, _invalidate_cache_fn=invalidate_cache_fn)
             if inspect.iscoroutine(res):
                 tool_result = await res
             else:
@@ -94,10 +94,11 @@ async def _execute_and_persist_tools(
     history: list[dict[str, Any]],
     tool_detail: list[dict[str, Any]],
     skill_registry: Any | None = None,
+    invalidate_cache_fn: Any | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Execute tools in batch and persist results."""
     results: dict[str, tuple[str, str]] = {}
-    async for event in _execute_tool_batch(tcs_info, tool_map, session_id, tagged, results, repos=repos, skill_registry=skill_registry):
+    async for event in _execute_tool_batch(tcs_info, tool_map, session_id, tagged, results, repos=repos, skill_registry=skill_registry, invalidate_cache_fn=invalidate_cache_fn):
         yield event
     await _persist_tool_results(tcs_info, results, session_id, turn, history, tool_detail, repos)
 
@@ -114,6 +115,7 @@ async def run_parallel_tools(
     tagged: bool = False,
     tool_map: dict[str, Any] | None = None,
     skill_registry: Any | None = None,
+    invalidate_cache_fn: Any | None = None,
 ) -> AsyncGenerator[Any, None]:
     import src.tools
     if tool_map is None:
@@ -145,6 +147,7 @@ async def run_parallel_tools(
         return
 
     async for event in _execute_and_persist_tools(
-        tcs_info, tool_map, session_id, turn, tagged, repos, history, tool_detail, skill_registry=skill_registry
+        tcs_info, tool_map, session_id, turn, tagged, repos, history, tool_detail,
+        skill_registry=skill_registry, invalidate_cache_fn=invalidate_cache_fn,
     ):
         yield event

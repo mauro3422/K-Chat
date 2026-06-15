@@ -17,6 +17,16 @@ DEFINITION: dict[str, Any] = {
                 "content": {
                     "type": "string",
                     "description": "The full text content to write into the file."
+                },
+                "arch_check": {
+                    "type": "boolean",
+                    "description": "Si False, desactiva el post-hook de arch check (default: True)",
+                    "default": True
+                },
+                "verbose": {
+                    "type": "boolean",
+                    "description": "Si True, muestra post-hooks. Si False, solo si hay problemas (default: True)",
+                    "default": True
                 }
             },
             "required": ["path", "content"]
@@ -29,6 +39,8 @@ async def run(**kwargs) -> str:
     path = kwargs.get("path") or kwargs.get("file_path") or kwargs.get("filepath", "")
     content = kwargs.get("content") or kwargs.get("data") or kwargs.get("text", "")
     _session_id = kwargs.get("_session_id")
+    arch_check_flag = kwargs.get("arch_check", True)
+    verbose = kwargs.get("verbose", True)
     resolved, err = resolve_and_validate_path(path)
     if err:
         return err
@@ -64,6 +76,17 @@ async def run(**kwargs) -> str:
         msg = f"[OK] File written correctly to '{path}'."
         if pf["warnings"]:
             msg += " " + "; ".join(pf["warnings"][:2])
+
+        # ── ARCH CHECK (post-hook) ──────────────────────────────
+        if arch_check_flag:
+            try:
+                from src.tools._arch_checker import quick_check
+                arch_result = quick_check(resolved)
+                if verbose or "🔴" in arch_result or "VIOLACIÓN" in arch_result:
+                    msg += f"\n   {arch_result}"
+            except Exception:
+                pass
+
         return msg
     except Exception:
         return f"[ERROR] Could not write the file to '{path}'."
