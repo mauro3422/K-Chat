@@ -37,12 +37,14 @@ class EventBus:
         async with self._lock:
             if client_id not in self._queues:
                 self._queues[client_id] = asyncio.Queue(maxsize=100)
+                logger.info("SSE client connected: %s (total: %d)", client_id, len(self._queues))
             return self._queues[client_id]
 
     async def unsubscribe(self, client_id: str) -> None:
         """Remove a client."""
         async with self._lock:
             self._queues.pop(client_id, None)
+            logger.info("SSE client disconnected: %s (total: %d)", client_id, len(self._queues))
 
     async def publish(self, event_type: str, data: Any = None) -> None:
         """Send an event to ALL connected clients."""
