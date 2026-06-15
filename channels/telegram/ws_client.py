@@ -58,16 +58,25 @@ class BotWSClient:
     async def send_event(self, event_type: str, data: dict) -> None:
         """Send an event through the WebSocket connection.
 
-        If the connection is down, silently falls back to no-op
-        (the frontend will catch up on the next full SSE reload).
+        If the connection is down, falls back to HTTP POST /api/events/notify.
         """
-        if not self._ws:
-            return
+        if self._ws:
+            try:
+                payload = json.dumps({"type": event_type, "data": data})
+                await self._ws.send(payload)
+                return
+            except Exception:
+                logger.warning("WS send failed, falling back to HTTP: %s", event_type)
+                self._ws = None
+
+        # Fallback: HTTP notify (same as new_message path)
         try:
-            payload = json.dumps({"type": event_type, "data": data})
-            await self._ws.send(payload)
+            import httpx
+            url = _get_ws_url().replace("/api/ws/events", "/api/events/notify")
+            async with httpx.AsyncClient() as client:
+                await client.post(url, json={"type": event_type, "data": data}, timeout=3)
         except Exception:
-            logger.debug("WS send failed (connection may be down)")
+            logger.warning("HTTP notify fallback also failed: %s", event_type)
 
     async def disconnect(self) -> None:
         """Close the WebSocket connection."""

@@ -157,6 +157,7 @@ async def process_message(
         reasoning_flush_interval = 20
         content_flush_interval = 15
         start_time = time.time()
+        _ws_sent: set[str] = set()       # dedup WS events (fire once per phase)
 
         async for event_type, token in _late_imports.chat_stream(
             message_user=text,
@@ -176,14 +177,11 @@ async def process_message(
                     yield "__error__:Operación agotada. Mandame el mensaje de nuevo."
                 return
 
-            # ── Live WS notify (first token only, avoid HTTP overhead) ──
-            _ws_sent = locals().get("_ws_sent", set())
-
             # ── Reasoning ──────────────────────────────────────────────
             if event_type == "reasoning":
                 if "reasoning" not in _ws_sent:
                     _ws_sent.add("reasoning")
-                    get_ws_client().send_event("token:reasoning", {
+                    await get_ws_client().send_event("token:reasoning", {
                         "session_id": session_id,
                     })
                 reasoning_buf.append(token)
@@ -198,7 +196,7 @@ async def process_message(
             elif event_type == "content":
                 if "content" not in _ws_sent:
                     _ws_sent.add("content")
-                    get_ws_client().send_event("token:content", {
+                    await get_ws_client().send_event("token:content", {
                         "session_id": session_id,
                     })
                 # Flush any pending reasoning first
@@ -226,7 +224,7 @@ async def process_message(
                     status = "calling"
 
                 # Notify web UI about tool call in real-time
-                get_ws_client().send_event("tool_call", {
+                await get_ws_client().send_event("tool_call", {
                     "session_id": session_id,
                     "tool_name": name,
                     "tool_id": tool_id,
