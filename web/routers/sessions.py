@@ -19,4 +19,11 @@ async def delete(session_id: str) -> JSONResponse:
     repos = get_repos()
     await repos.sessions.require_session(session_id)
     await repos.sessions.delete_cascade(session_id, repos=repos)
+    # Notify other web UI tabs via SSE
+    try:
+        from web.services.event_bus import get_event_bus
+        bus = get_event_bus()
+        await bus.publish("session_deleted", {"session_id": session_id})
+    except Exception:
+        pass
     return JSONResponse({"status": "ok"})

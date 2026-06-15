@@ -328,10 +328,11 @@ function initSessionPage(deps) {
       return;
     }
     if (e.target.classList.contains('act-confirm') && item.querySelector('.act-del')) {
-      ApiClient.deleteSession(sid).then(function() {
-        if (SessionContext.getSessionId() === sid) { nav.location.href = '/'; }
-        else { item.remove(); }
-      }).catch(function(err) { console.error('Delete failed:', err); });
+      // Optimistic: remove from DOM immediately, don't wait for the server
+      if (SessionContext.getSessionId() === sid) { nav.location.href = '/'; }
+      else { item.remove(); }
+      import('./sidebar-refresh.js').then(function(sr) { sr.refreshSidebar(); });
+      ApiClient.deleteSession(sid).catch(function(err) { console.error('Delete failed:', err); });
       return;
     }
     if (e.target.classList.contains('act-confirm') && item.querySelector('.act-ok')) {
