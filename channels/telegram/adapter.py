@@ -215,6 +215,17 @@ async def process_message(
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
                 else:
                     yield "__error__:Operación agotada. Mandame el mensaje de nuevo."
+                # Save partial data before exiting
+                partial = "".join(content_buf or reasoning_buf or full_reasoning).strip()
+                if partial:
+                    pr = "".join(full_reasoning).strip()
+                    pc = "".join(content_buf).strip()
+                    try:
+                        await _persist_partial_conversation(
+                            session_id, text, pc or partial, pr, _late_imports,
+                        )
+                    except Exception:
+                        pass
                 return
 
             # ── Reasoning ──────────────────────────────────────────────
@@ -354,10 +365,25 @@ async def process_message(
         if partial:
             partial_reasoning = "".join(full_reasoning).strip()
             partial_content = "".join(content_buf).strip()
-            asyncio.create_task(_persist_partial_conversation(
+            await _persist_partial_conversation(
                 session_id, text, partial_content or partial,
                 partial_reasoning, _late_imports,
-            ))
+            )
+
+    except GeneratorExit:
+        logger.info("TG[%d] stream interrupted (GeneratorExit)", chat_id)
+        # Save partial data before the generator is closed
+        try:
+            partial = "".join(content_buf or reasoning_buf or full_reasoning).strip() if 'content_buf' in dir() else ""
+            if partial:
+                pr = "".join(full_reasoning).strip() if 'full_reasoning' in dir() else ""
+                pc = "".join(content_buf).strip() if 'content_buf' in dir() else ""
+                await _persist_partial_conversation(
+                    session_id, text, pc or partial, pr, _late_imports,
+                )
+        except Exception:
+            pass
+        return
 
     except Exception as e:
         logger.exception("TG[%d] processing error", chat_id)
@@ -366,10 +392,10 @@ async def process_message(
         if partial:
             partial_reasoning = "".join(full_reasoning).strip() if 'full_reasoning' in dir() else ""
             partial_content = "".join(content_buf).strip() if 'content_buf' in dir() else ""
-            asyncio.create_task(_persist_partial_conversation(
+            await _persist_partial_conversation(
                 session_id, text, partial_content or partial,
                 partial_reasoning, _late_imports,
-            ))
+            )
         yield f"__error__:{e}"
 
 

@@ -131,7 +131,10 @@ class TelegramRenderer:
             msg_id = self._mm.get_msg_id(chat_id, "reasoning", phase)
             if msg_id is not None:
                 display = f"🤔 Pensando...\n\n{text}"
-                await self._edit_with_retry(chat_id, msg_id, display, "")
+                await self._edit_with_retry(
+                    chat_id, msg_id, display, "",
+                    phase_key=self._mm._phase_key("reasoning", phase),
+                )
 
     async def _render_content(
         self, chat_id: int, event: ContentEvent,
@@ -156,6 +159,7 @@ class TelegramRenderer:
             if msg_id is not None:
                 await self._edit_with_retry(
                     chat_id, msg_id, event.text, "",
+                    phase_key=self._mm._phase_key("content", phase),
                 )
 
     async def _render_tool_call(
@@ -260,18 +264,43 @@ class TelegramRenderer:
 
     async def _edit_with_retry(
         self, chat_id: int, msg_id: int, text: str, parse_mode: str = "",
+        phase_key: str | None = None,
     ) -> bool:
-        """Edit a message with rate limiting and error handling."""
+        """Edit a message with rate limiting and error handling.
+
+        If ``phase_key`` is given (e.g. ``"reasoning:0"``), continuation
+        chunks (overflow beyond 4000 chars) are tracked via MessageManager
+        and REUSED/EDITED on subsequent flushes instead of being re-sent.
+        """
         # Wait for rate limit
         await self._rl.wait_if_needed(chat_id, msg_id)
 
         # Split if too long
         chunks = self._cs.split(text)
         if len(chunks) > 1:
-            # Only the first chunk can be edited; subsequent ones are sent
             ok = await self._do_edit(chat_id, msg_id, chunks[0], parse_mode)
-            for extra in chunks[1:]:
-                await self._do_send(chat_id, f"📎 {extra}", parse_mode)
+
+            if phase_key and phase_key in (self._mm._state.get(chat_id) or {}):
+                # Parse phase_type and phase_index from key (e.g. "reasoning:0")
+                parts = phase_key.split(":", 1)
+                ptype = parts[0]
+                pidx = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+                existing = self._mm.get_continuations(chat_id, ptype, pidx)
+
+                for ci, extra in enumerate(chunks[1:]):
+                    cont_text = f"📎 {extra}"
+                    if ci < len(existing) and existing[ci]:
+                        # Edit existing continuation (reuse — no duplicate)
+                        await self._do_edit(chat_id, existing[ci], cont_text, parse_mode)
+                    else:
+                        # Send new continuation and track its ID
+                        new_id = await self._do_send(chat_id, cont_text, parse_mode)
+                        if new_id:
+                            await self._mm.set_continuation(chat_id, ptype, pidx, new_id, ci)
+            else:
+                # Fallback: no phase tracking — send as before
+                for extra in chunks[1:]:
+                    await self._do_send(chat_id, f"📎 {extra}", parse_mode)
             return ok
 
         return await self._do_edit(chat_id, msg_id, text, parse_mode)
@@ -306,6 +335,10 @@ class TelegramRenderer:
                     continue
                 elif action.abort:
                     logger.error("TG[%d] abort on edit msg #%s: %s", chat_id, msg_id, e)
+                    return False
+                elif action.fallback_text:
+                    # Send fallback text so the user knows something went wrong
+                    await self._api.send_message(chat_id, action.fallback_text, "")
                     return False
                 else:
                     # Benign (e.g. "message not modified")

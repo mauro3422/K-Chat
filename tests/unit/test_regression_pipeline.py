@@ -610,3 +610,90 @@ def test_sse_client_handles_session_deleted():
     assert "window.location.href = '/'" in source, (
         "Must fallback to / if no sessions left"
     )
+
+
+# ─── Long message / continuation tests ────────────────────────────────
+
+def test_renderer_edit_with_retry_accepts_phase_key():
+    """_edit_with_retry must accept an optional phase_key parameter
+    for tracking continuation messages."""
+    source = _read_source("channels/telegram/renderer.py")
+    assert 'phase_key: str | None = None' in source, (
+        "Missing phase_key parameter in _edit_with_retry"
+    )
+    assert 'self._mm.get_continuations(' in source, (
+        "Must check for existing continuations via MessageManager"
+    )
+    assert 'self._mm.set_continuation(' in source, (
+        "Must track new continuation messages via MessageManager"
+    )
+
+
+def test_renderer_continuations_tracked_in_mm():
+    """MessageManager must have get_continuations and set_continuation
+    methods to track overflow chunks."""
+    source = _read_source("channels/telegram/message_manager.py")
+    assert 'get_continuations' in source, (
+        "Missing get_continuations method in MessageManager"
+    )
+    assert 'set_continuation' in source, (
+        "Missing set_continuation method in MessageManager"
+    )
+    assert '_continuations' in source, (
+        "Missing _continuations dict in MessageManager"
+    )
+
+
+def test_continuations_included_in_get_all_msg_ids():
+    """get_all_msg_ids must include continuation message IDs so they
+    get cleaned up on /clear or /delete."""
+    source = _read_source("channels/telegram/message_manager.py")
+    assert 'self._continuations.get(chat_id' in source, (
+        "Must include continuations in get_all_msg_ids"
+    )
+
+
+def test_adapter_generatorexit_handled():
+    """adapter.py must handle GeneratorExit to avoid losing partial
+    data when the renderer stops iterating."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert 'except GeneratorExit:' in source, (
+        "Missing GeneratorExit handler in adapter.py"
+    )
+    assert '_persist_partial_conversation' in source, (
+        "GeneratorExit handler must persist partial data"
+    )
+
+
+def test_adapter_timeout_persists_partial():
+    """The timeout path in adapter.py must persist partial data before
+    returning, not just yield and exit."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert '_STREAM_TIMEOUT' in source, (
+        "Missing timeout constant"
+    )
+    # Verify partial persist is in the timeout block
+    lines = source.split("\n")
+    timeout_block = False
+    has_persist = False
+    for line in lines:
+        if '_STREAM_TIMEOUT' in line:
+            timeout_block = True
+        if timeout_block and '_persist_partial_conversation' in line:
+            has_persist = True
+            break
+        # The timeout block should end at 'return'
+        if timeout_block and 'return' in line and has_persist:
+            break
+    assert has_persist, (
+        "Timeout block must call _persist_partial_conversation"
+    )
+
+
+def test_do_edit_handles_fallback_text():
+    """_do_edit must handle fallback_text from error handler, like
+    _do_send already does."""
+    source = _read_source("channels/telegram/renderer.py")
+    assert 'action.fallback_text' in source and 'send_message' in source, (
+        "_do_edit must send fallback text on error"
+    )

@@ -44,6 +44,10 @@ class MessageManager:
         self._state: dict[int, dict[str, int]] = defaultdict(dict)
         # {chat_id: {"tool:call_X": msg_id}}
         self._tool_msgs: dict[int, dict[str, int]] = defaultdict(dict)
+        # Continuation messages (overflow chunks beyond 4000 chars).
+        # {chat_id: {"reasoning:0": [msg_id, ...], "content:2": [msg_id, ...]}}
+        # Each element is a 📎 continuation message for that phase.
+        self._continuations: dict[int, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
 
     # ── Phase tracking ──────────────────────────────────────────────────
 
@@ -96,6 +100,25 @@ class MessageManager:
         keys_to_remove = [k for k in state if not k.startswith("tool:")]
         for k in keys_to_remove:
             del state[k]
+        # Also clear continuations for this chat
+        self._continuations.pop(chat_id, None)
+
+    # ── Continuation messages (overflow beyond 4000 chars) ───────────
+
+    def get_continuations(self, chat_id: int, phase_type: str, phase_index: int) -> list[int]:
+        """Get continuation message IDs for a phase."""
+        key = self._phase_key(phase_type, phase_index)
+        return list(self._continuations.get(chat_id, {}).get(key, []))
+
+    async def set_continuation(self, chat_id: int, phase_type: str, phase_index: int, msg_id: int, index: int) -> None:
+        """Store a continuation message ID at a given overflow index."""
+        key = self._phase_key(phase_type, phase_index)
+        conts = self._continuations[chat_id][key]
+        while len(conts) <= index:
+            conts.append(0)
+        conts[index] = msg_id
+        if self._repo is not None:
+            await self._repo.save(chat_id, f"{key}:cont{index}", msg_id)
 
     async def get_all_msg_ids(self, chat_id: int) -> list[int]:
         """Get all message IDs tracked for a chat (for clearing).
@@ -117,6 +140,12 @@ class MessageManager:
             if v is not None and v not in seen:
                 seen.add(v)
                 ids.append(v)
+        # Also include continuation messages
+        for cont_list in self._continuations.get(chat_id, {}).values():
+            for v in cont_list:
+                if v and v not in seen:
+                    seen.add(v)
+                    ids.append(v)
 
         # Load from DB (covers IDs persisted before restart)
         if self._repo is not None:
@@ -132,5 +161,6 @@ class MessageManager:
         """Remove all state for a chat (memory + DB)."""
         self._state.pop(chat_id, None)
         self._tool_msgs.pop(chat_id, None)
+        self._continuations.pop(chat_id, None)
         if self._repo is not None:
             await self._repo.delete_chat(chat_id)
