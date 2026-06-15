@@ -36,25 +36,29 @@ export function connect() {
 
       var sid = event.data && event.data.session_id;
 
-      // ── Token-level events (live streaming) ──────────────────────
-      if (event.type === 'token:reasoning' && sid === _currentSessionId) {
-        showLiveIndicator('reasoning');
+      // ── Live streaming: reasoning tokens ─────────────────────────
+      if (event.type === 'stream:reasoning' && sid === _currentSessionId) {
+        streamReasoning(event.data);
         return;
       }
-      if (event.type === 'token:content' && sid === _currentSessionId) {
-        showLiveIndicator('content');
+
+      // ── Live streaming: content tokens ───────────────────────────
+      if (event.type === 'stream:content' && sid === _currentSessionId) {
+        streamContent(event.data);
         return;
       }
-      if (event.type === 'tool_call' && sid === _currentSessionId) {
-        addLiveTool(event.data);
+
+      // ── Live streaming: tool call ────────────────────────────────
+      if (event.type === 'stream:tool' && sid === _currentSessionId) {
+        streamTool(event.data);
         return;
       }
 
       // ── Full message reload ──────────────────────────────────────
       if (event.type === 'new_message') {
         if (sid) {
-          // Clear live indicator — we're about to reload with real data
-          clearLiveIndicator();
+          // Clear live message — we're about to reload with real data
+          clearLiveMessage();
           // If the message is NOT for the current session, mark sidebar
           if (sid !== _currentSessionId) {
             markSessionUnread(sid);
@@ -105,57 +109,95 @@ function reloadMessages(sid) {
     });
 }
 
-// ─── Live streaming indicators ─────────────────────────────────────
-var _liveIndicator = null;
+// ─── Live streaming: build message token by token ─────────────────
+var _liveMsg = null;       // the live message DOM element
+var _liveReasoningEl = null;  // reasoning text element inside live msg
+var _liveContentEl = null;    // content text element inside live msg
+var _liveToolsEl = null;      // tool container inside live msg
 
-function showLiveIndicator(phase) {
+function _ensureLiveMsg() {
+  if (_liveMsg) return;
   var msgArea = document.getElementById('messages');
   if (!msgArea) return;
 
-  if (!_liveIndicator) {
-    _liveIndicator = document.createElement('div');
-    _liveIndicator.className = 'msg assistant live-indicator';
-    _liveIndicator.innerHTML = '<div class="msg-label">Kairos</div><div class="live-status"></div>';
-    msgArea.appendChild(_liveIndicator);
-  }
+  _liveMsg = document.createElement('div');
+  _liveMsg.className = 'msg assistant live-msg';
 
-  var statusEl = _liveIndicator.querySelector('.live-status');
-  if (!statusEl) return;
+  // Label
+  var label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = 'Kairos';
+  _liveMsg.appendChild(label);
 
-  if (phase === 'reasoning') {
-    statusEl.textContent = '🤔 Pensando...';
-  } else if (phase === 'content') {
-    statusEl.textContent = '✍️ Escribiendo...';
-  }
+  // Reasoning (collapsible)
+  var details = document.createElement('details');
+  details.className = 'reasoning';
+  details.open = true;
+  var summary = document.createElement('summary');
+  summary.textContent = 'Razonamiento';
+  details.appendChild(summary);
+  _liveReasoningEl = document.createElement('div');
+  _liveReasoningEl.className = 'rt';
+  details.appendChild(_liveReasoningEl);
+  _liveMsg.appendChild(details);
+
+  // Content area
+  _liveContentEl = document.createElement('div');
+  _liveContentEl.className = 'msg-body';
+  _liveMsg.appendChild(_liveContentEl);
+
+  // Tool calls area
+  _liveToolsEl = document.createElement('div');
+  _liveToolsEl.className = 'tool-calls';
+  _liveMsg.appendChild(_liveToolsEl);
+
+  msgArea.appendChild(_liveMsg);
+  // Scroll to bottom to show live content
+  import('./stream-lifecycle.js').then(function(sl) {
+    if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
+  }).catch(function() {});
 }
 
-function addLiveTool(toolData) {
-  var msgArea = document.getElementById('messages');
-  if (!msgArea) return;
+function streamReasoning(data) {
+  _ensureLiveMsg();
+  if (!_liveReasoningEl) return;
+  // Replace text with the full accumulated reasoning (server sends accumulated text)
+  _liveReasoningEl.textContent = data.text || '';
+}
 
-  // Ensure indicator exists
-  if (!_liveIndicator) {
-    showLiveIndicator('reasoning');
-  }
+function streamContent(data) {
+  _ensureLiveMsg();
+  if (!_liveContentEl) return;
+  // Replace text with the full accumulated content
+  _liveContentEl.textContent = data.text || '';
+  // Scroll to bottom as content streams
+  import('./stream-lifecycle.js').then(function(sl) {
+    if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
+  }).catch(function() {});
+}
 
-  var statusEl = _liveIndicator.querySelector('.live-status');
-  if (!statusEl) return;
-
-  var icon = toolData.status === 'ok' ? '✓' : '✗';
+function streamTool(data) {
+  _ensureLiveMsg();
+  if (!_liveToolsEl) return;
+  var icon = data.status === 'ok' ? '&#10003;' : '&#10007;';
   var pill = document.createElement('span');
-  pill.className = 'tc-item ' + (toolData.status || 'calling');
-  pill.innerHTML = icon + ' ' + (toolData.tool_name || 'tool');
-  // Update status text and append pill
-  statusEl.textContent = '🔧 Usando herramientas...';
-  statusEl.appendChild(document.createTextNode(' '));
-  statusEl.appendChild(pill);
+  pill.className = 'tc-item ' + (data.status || 'calling');
+  pill.innerHTML = icon + ' ' + (data.tool_name || 'tool');
+  _liveToolsEl.appendChild(pill);
+  // Scroll to show tool pill
+  import('./stream-lifecycle.js').then(function(sl) {
+    if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
+  }).catch(function() {});
 }
 
-function clearLiveIndicator() {
-  if (_liveIndicator && _liveIndicator.parentNode) {
-    _liveIndicator.parentNode.removeChild(_liveIndicator);
+function clearLiveMessage() {
+  if (_liveMsg && _liveMsg.parentNode) {
+    _liveMsg.parentNode.removeChild(_liveMsg);
   }
-  _liveIndicator = null;
+  _liveMsg = null;
+  _liveReasoningEl = null;
+  _liveContentEl = null;
+  _liveToolsEl = null;
 }
 
 

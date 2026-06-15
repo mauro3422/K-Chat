@@ -157,7 +157,6 @@ async def process_message(
         reasoning_flush_interval = 20
         content_flush_interval = 15
         start_time = time.time()
-        _ws_sent: set[str] = set()       # dedup WS events (fire once per phase)
 
         async for event_type, token in _late_imports.chat_stream(
             message_user=text,
@@ -179,26 +178,26 @@ async def process_message(
 
             # ── Reasoning ──────────────────────────────────────────────
             if event_type == "reasoning":
-                if "reasoning" not in _ws_sent:
-                    _ws_sent.add("reasoning")
-                    await get_ws_client().send_event("token:reasoning", {
-                        "session_id": session_id,
-                    })
                 reasoning_buf.append(token)
                 full_reasoning.append(token)  # keep for DB persistence
                 if len(reasoning_buf) == 1:
                     # First token → flush immediately (show user something)
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
+                    # Stream to web UI via WS
+                    await get_ws_client().send_event("stream:reasoning", {
+                        "session_id": session_id,
+                        "text": "".join(reasoning_buf),
+                    })
                 elif len(reasoning_buf) % reasoning_flush_interval == 0:
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
+                    # Stream accumulated reasoning to web UI
+                    await get_ws_client().send_event("stream:reasoning", {
+                        "session_id": session_id,
+                        "text": "".join(reasoning_buf),
+                    })
 
             # ── Content ────────────────────────────────────────────────
             elif event_type == "content":
-                if "content" not in _ws_sent:
-                    _ws_sent.add("content")
-                    await get_ws_client().send_event("token:content", {
-                        "session_id": session_id,
-                    })
                 # Flush any pending reasoning first
                 if reasoning_buf:
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
@@ -206,8 +205,18 @@ async def process_message(
                 content_buf.append(token)
                 if len(content_buf) == 1:
                     yield f"__content__:{"".join(content_buf)}"
+                    # Stream accumulated content to web UI
+                    await get_ws_client().send_event("stream:content", {
+                        "session_id": session_id,
+                        "text": "".join(content_buf),
+                    })
                 elif len(content_buf) % content_flush_interval == 0:
                     yield f"__content__:{"".join(content_buf)}"
+                    # Stream accumulated content to web UI
+                    await get_ws_client().send_event("stream:content", {
+                        "session_id": session_id,
+                        "text": "".join(content_buf),
+                    })
 
             # ── Tool call ──────────────────────────────────────────────
             elif event_type == "tool_call":
@@ -224,7 +233,7 @@ async def process_message(
                     status = "calling"
 
                 # Notify web UI about tool call in real-time
-                await get_ws_client().send_event("tool_call", {
+                await get_ws_client().send_event("stream:tool", {
                     "session_id": session_id,
                     "tool_name": name,
                     "tool_id": tool_id,
@@ -245,6 +254,11 @@ async def process_message(
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
                 if content_buf:
                     yield f"__content__:{"".join(content_buf)}"
+                # Notify web UI about error
+                await get_ws_client().send_event("stream:error", {
+                    "session_id": session_id,
+                    "error": str(token),
+                })
                 yield f"__error__:{token}"
                 return
 
@@ -261,6 +275,17 @@ async def process_message(
             final_reasoning = "".join(full_reasoning).strip()
             if final_content:
                 yield f"__content__:{final_content}"
+                # Final stream flush so web UI has all content before new_message
+                if final_reasoning:
+                    await get_ws_client().send_event("stream:reasoning", {
+                        "session_id": session_id,
+                        "text": final_reasoning,
+                    })
+                if final_content:
+                    await get_ws_client().send_event("stream:content", {
+                        "session_id": session_id,
+                        "text": final_content,
+                    })
                 phases_json = json.dumps(phases_output) if phases_output else "[]"
                 await _persist_conversation(
                     session_id, text, final_content, final_reasoning, phases_json, _late_imports,

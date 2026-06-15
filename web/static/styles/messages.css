@@ -261,26 +261,43 @@
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-/* ── Live Streaming Indicator ────────────────────────────────────────── */
+/* ── Live Streaming Message ──────────────────────────────────────────── */
 
-.live-indicator {
-  opacity: 0.8;
-  animation: live-pulse 1.5s ease-in-out infinite;
+.live-msg {
+  opacity: 0.85;
+  border-left: 2px solid var(--accent-blue, #0088cc);
+  padding-left: 10px;
+  animation: live-fade-in 0.3s ease;
 }
-.live-indicator .live-status {
+.live-msg .rt {
+  min-height: 20px;
+}
+.live-msg .msg-body {
+  min-height: 20px;
+}
+.live-msg .msg-body:empty::before {
+  content: '✍️ Escribiendo...';
   font-style: italic;
   color: var(--text-muted);
-  padding: 4px 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  opacity: 0.7;
 }
-.live-indicator .live-status .tc-item {
-  font-style: normal;
-  font-size: 11px;
+.live-msg .reasoning .rt:empty::before {
+  content: '🤔 Pensando...';
+  font-style: italic;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.live-msg .tool-calls:empty {
+  display: none;
+}
+.live-msg .tc-item.calling {
+  animation: live-pulse 1.5s ease-in-out infinite;
 }
 @keyframes live-pulse {
-  0%, 100% { opacity: 0.8; }
+  0%, 100% { opacity: 0.7; }
   50% { opacity: 1; }
+}
+@keyframes live-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 0.85; transform: translateY(0); }
 }
