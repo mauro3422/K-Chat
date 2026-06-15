@@ -136,8 +136,8 @@ def _make_renderer(mock_api: MockTelegramAPI, **overrides: object) -> TelegramRe
 
 
 @pytest.mark.asyncio
-async def test_reasoning_content_reasoning_three_messages():
-    """reasoning → content → reasoning crea 3 mensajes distintos."""
+async def test_reasoning_content_reasoning_all_in_one():
+    """reasoning → content → reasoning va todo en UN solo mensaje."""
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
@@ -145,8 +145,10 @@ async def test_reasoning_content_reasoning_three_messages():
         "__content__:Here is the answer",
         "__reasoning__:Wait, reconsidering",
     ))
-    assert [m["message_id"] for m in api.sent_messages] == [1001, 1002, 1003]
-    assert len(api.edited_messages) == 0
+    # All events go to one single message (sent once, edited twice)
+    assert len(api.sent_messages) == 1
+    assert len(api.edited_messages) == 2
+    assert api.sent_messages[0]["message_id"] == 1001
 
 
 @pytest.mark.asyncio
@@ -179,8 +181,8 @@ async def test_content_edit_in_same_phase():
 
 
 @pytest.mark.asyncio
-async def test_reasoning_tool_content_three_messages():
-    """reasoning → tool → content crea 3 mensajes separados."""
+async def test_reasoning_tool_content_all_in_one():
+    """reasoning → tool → content va todo en UN solo mensaje (tool inline)."""
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
@@ -188,12 +190,16 @@ async def test_reasoning_tool_content_three_messages():
         "__tool__:call_1:web_search:calling",
         "__content__:Found results",
     ))
-    assert [m["message_id"] for m in api.sent_messages] == [1001, 1002, 1003]
+    # Single message with reasoning, inline tool pill, and content
+    assert len(api.sent_messages) == 1
+    # Tool pill is in the edited version (edit after tool event)
+    assert "🔧" in api.edited_messages[-1]["text"]
+    assert "web_search" in api.edited_messages[-1]["text"]
 
 
 @pytest.mark.asyncio
-async def test_tool_resets_phases():
-    """tool resetea las fases: reasoning post-tool es mensaje nuevo."""
+async def test_tool_does_not_reset_phases():
+    """tool NO resetea fases: todo va en el mismo mensaje principal."""
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
@@ -201,7 +207,9 @@ async def test_tool_resets_phases():
         "__tool__:call_1:search:calling",
         "__content__:After tool content",
     ))
-    assert api.sent_messages[2]["message_id"] == 1003
+    # Everything in one message — message_id 1001
+    assert len(api.sent_messages) == 1
+    assert api.sent_messages[0]["message_id"] == 1001
 
 
 @pytest.mark.asyncio
@@ -214,10 +222,12 @@ async def test_error_ends_stream():
         "__error__:Something went wrong",
         "__content__:should not appear",
     ))
-    assert len(api.sent_messages) == 2
-    assert "Error" in api.sent_messages[1]["text"]
-    texts = [m["text"] for m in api.sent_messages]
-    assert not any("should not appear" in t for t in texts)
+    # Single message with reasoning + error appended (edits)
+    assert len(api.sent_messages) == 1
+    assert len(api.edited_messages) >= 1
+    assert "Error" in api.edited_messages[-1]["text"]
+    assert "Let me process" in api.edited_messages[-1]["text"]
+    assert "should not appear" not in api.edited_messages[-1]["text"]
 
 
 @pytest.mark.asyncio
@@ -246,7 +256,7 @@ async def test_reasoning_display_prefix():
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen("__reasoning__:Think step by step"))
-    assert api.sent_messages[0]["text"] == "🤔 Pensando...\n\nThink step by step"
+    assert api.sent_messages[0]["text"] == "🤔 Pensando...\nThink step by step"
 
 
 @pytest.mark.asyncio
@@ -260,15 +270,19 @@ async def test_tool_display_format():
 
 
 @pytest.mark.asyncio
-async def test_multiple_tools_separate_messages():
-    """Múltiples tools crean mensajes separados."""
+async def test_multiple_tools_inline():
+    """Múltiples tools van inline en un solo mensaje."""
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
         "__tool__:call_1:search:calling",
         "__tool__:call_2:calculator:calling",
     ))
-    assert len(api.sent_messages) == 2
+    assert len(api.sent_messages) == 1
+    last_edit = api.edited_messages[-1]["text"] if api.edited_messages else api.sent_messages[0]["text"]
+    assert "🔧" in last_edit
+    assert "search" in last_edit
+    assert "calculator" in last_edit
 
 
 @pytest.mark.asyncio
@@ -285,12 +299,12 @@ async def test_none_chunk_skipped():
     await r.render_stream(12345, gen_with_none())
     assert len(api.sent_messages) == 1
     assert len(api.edited_messages) == 1
-    assert "also visible" in api.edited_messages[0]["text"]
+    assert "also visible" in api.edited_messages[-1]["text"]
 
 
 @pytest.mark.asyncio
-async def test_phase_tracking_in_message_manager():
-    """Fases reasoning-content-reasoning usan índices distintos en el MM."""
+async def test_main_message_tracking():
+    """Todo va a un solo mensaje principal (no phases separadas)."""
     api = MockTelegramAPI()
     mm = MessageManager()
     r = _make_renderer(api, message_manager=mm)
@@ -299,14 +313,21 @@ async def test_phase_tracking_in_message_manager():
         "__content__:C0",
         "__reasoning__:R1",
     ))
-    assert mm.get_msg_id(12345, "reasoning", 0) == 1001
-    assert mm.get_msg_id(12345, "content", 1) == 1002
-    assert mm.get_msg_id(12345, "reasoning", 1) == 1003
+    # The renderer's _main_msg tracks the single message
+    assert r._main_msg.get(12345) == 1001
+    assert len(api.sent_messages) == 1
+    # 2 edits: content(C0), reasoning(R1 replaces R0)
+    # (R0 creates the message, no redundant edit)
+    assert len(api.edited_messages) == 2
+    # Final text has R1 (replaced R0) and C0
+    final_text = api.edited_messages[-1]["text"]
+    assert "R1" in final_text
+    assert "C0" in final_text
 
 
 @pytest.mark.asyncio
-async def test_tool_resets_phase_in_message_manager():
-    """Tool resetea fases anteriores en MessageManager."""
+async def test_tool_inline_in_main_message():
+    """Tool pills van inline en el main message, no como mensaje separado."""
     api = MockTelegramAPI()
     mm = MessageManager()
     r = _make_renderer(api, message_manager=mm)
@@ -315,9 +336,12 @@ async def test_tool_resets_phase_in_message_manager():
         "__tool__:call_x:search:calling",
         "__reasoning__:R1",
     ))
-    assert mm.get_msg_id(12345, "reasoning", 0) is None
-    assert mm.get_msg_id(12345, "reasoning", 1) == 1003
-    assert mm.get_tool_msg_id(12345, "call_x") == 1002
+    # One single message with all content + inline pill
+    assert len(api.sent_messages) == 1
+    # Tool pill is in the last edit
+    final_text = api.edited_messages[-1]["text"]
+    assert "search" in final_text
+    assert "🔧" in final_text
 
 
 # ══════════════════════════════════════════════════════════════════════════════

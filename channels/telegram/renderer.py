@@ -14,6 +14,7 @@ This is the central piece that ties together all Lego components:
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 
 from channels.telegram.protocols import (
     CharSplitterProtocol,
@@ -32,7 +33,21 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramRenderer:
-    """Renders stream events to Telegram messages.
+    """Renders stream events to a single Telegram message per turn.
+
+    Instead of creating separate messages for reasoning, tools, and
+    content, this renderer accumulates everything into ONE message:
+
+        🤔 Pensando...
+        [reasoning text]
+
+        🔧 search_web
+        ✅ search_web
+
+        [content text]
+
+    Tool pills appear inline with status updates (🔧 → ✅ → ❌).
+    The web UI receives the separate phases via WS events unaffected.
 
     Usage::
 
@@ -54,13 +69,19 @@ class TelegramRenderer:
         self._cs = char_splitter
         self._eh = error_handler
         self._parser = StreamParser()
+        # Per-chat state for the single-message-per-turn model
+        self._main_msg: dict[int, int] = {}         # chat_id → message_id
+        self._display_text: dict[int, list[str]] = defaultdict(list)  # chat_id → [parts...]
+        self._tool_pills: dict[int, dict[str, str]] = defaultdict(dict)  # chat_id → {tool_id: "🔧 name"}
+        self._has_reasoning: dict[int, bool] = defaultdict(bool)
+        self._has_content: dict[int, bool] = defaultdict(bool)
 
     async def render_stream(
         self,
         chat_id: int,
         process_fn,  # async generator yielding tagged strings
     ) -> None:
-        """Render an entire message stream to Telegram messages.
+        """Render an entire message stream to a single Telegram message.
 
         Args:
             chat_id: Telegram chat ID.
@@ -69,6 +90,13 @@ class TelegramRenderer:
                         ``__tool__:...``, ``__error__:...``).
         """
         self._parser = StreamParser()  # fresh parser per stream
+        # Reset per-chat state for this stream
+        self._main_msg.pop(chat_id, None)
+        self._display_text.pop(chat_id, None)
+        self._tool_pills.pop(chat_id, None)
+        self._has_reasoning.pop(chat_id, None)
+        self._has_content.pop(chat_id, None)
+
         tool_call_id_counter = 0
 
         async for chunk in process_fn:
@@ -105,107 +133,129 @@ class TelegramRenderer:
 
         logger.info("TG[%d] stream render complete", chat_id)
 
-    # ── Individual event renderers ──────────────────────────────────────
+    # ── Single main message management ──────────────────────────────────
+
+    def _build_display(self, chat_id: int) -> str:
+        """Build the full display text from accumulated parts."""
+        return "\n".join(self._display_text.get(chat_id, []))
+
+    async def _ensure_main_msg(self, chat_id: int, initial_text: str) -> tuple[int | None, bool]:
+        """Create or return the main message ID for this chat.
+        
+        Returns ``(msg_id, was_created)`` where ``was_created`` is True
+        if a new message was sent (caller can skip redundant edit).
+        """
+        existing = self._main_msg.get(chat_id)
+        if existing is not None:
+            return existing, False
+        msg_id = await self._send_with_retry(chat_id, initial_text, "")
+        if msg_id is not None:
+            self._main_msg[chat_id] = msg_id
+            return msg_id, True
+        return None, False
+
+    async def _update_main_msg(self, chat_id: int) -> bool:
+        """Edit the main message with the current display text."""
+        msg_id = self._main_msg.get(chat_id)
+        if msg_id is None:
+            return False
+        text = self._build_display(chat_id)
+        return await self._edit_with_retry(chat_id, msg_id, text, "")
+
+    # ── Individual event renderers (all use the same main message) ──────
 
     async def _render_reasoning(
         self, chat_id: int, event: ReasoningEvent,
     ) -> None:
-        """Render a reasoning event."""
-        phase = self._parser.reasoning_phase
+        """Append/replace reasoning text in the main message."""
         text = event.text
+        parts = self._display_text[chat_id]
 
-        if event.is_new_phase:
-            # Create new message
-            display = f"🤔 Pensando...\n\n{text}"
-            msg_id = await self._send_with_retry(
-                chat_id, display, parse_mode="",
-            )
-            if msg_id is not None:
-                await self._mm.set_msg_id(chat_id, "reasoning", phase, msg_id)
-                logger.info(
-                    "TG[%d] NEW reasoning msg #%s (phase %d)",
-                    chat_id, msg_id, phase,
-                )
+        if not self._has_reasoning[chat_id]:
+            # First reasoning — add header + text
+            self._has_reasoning[chat_id] = True
+            parts.append(f"🤔 Pensando...\n{text}")
         else:
-            # Edit existing message
-            msg_id = self._mm.get_msg_id(chat_id, "reasoning", phase)
-            if msg_id is not None:
-                display = f"🤔 Pensando...\n\n{text}"
-                await self._edit_with_retry(
-                    chat_id, msg_id, display, "",
-                    phase_key=self._mm._phase_key("reasoning", phase),
-                )
+            # Update reasoning — find and replace the reasoning part
+            for i, p in enumerate(parts):
+                if p.startswith("🤔 Pensando..."):
+                    parts[i] = f"🤔 Pensando...\n{text}"
+                    break
+
+        msg_id, created = await self._ensure_main_msg(chat_id, self._build_display(chat_id))
+        if msg_id and not created:
+            await self._update_main_msg(chat_id)
 
     async def _render_content(
         self, chat_id: int, event: ContentEvent,
     ) -> None:
-        """Render a content event."""
-        phase = self._parser.content_phase
+        """Append/replace content text in the main message."""
+        text = event.text
+        parts = self._display_text[chat_id]
 
-        if event.is_new_phase:
-            # Create new message
-            msg_id = await self._send_with_retry(
-                chat_id, event.text, parse_mode="",
-            )
-            if msg_id is not None:
-                await self._mm.set_msg_id(chat_id, "content", phase, msg_id)
-                logger.info(
-                    "TG[%d] NEW content msg #%s (phase %d, %d chars)",
-                    chat_id, msg_id, phase, len(event.text),
-                )
+        if not self._has_content[chat_id]:
+            self._has_content[chat_id] = True
+            parts.append(text)
         else:
-            # Edit existing message
-            msg_id = self._mm.get_msg_id(chat_id, "content", phase)
-            if msg_id is not None:
-                await self._edit_with_retry(
-                    chat_id, msg_id, event.text, "",
-                    phase_key=self._mm._phase_key("content", phase),
-                )
+            # Find and update the content part
+            # Content is always the last non-tool part
+            content_idx = -1
+            for i in range(len(parts) - 1, -1, -1):
+                if not parts[i].startswith("🔧") and not parts[i].startswith("✅") and not parts[i].startswith("❌"):
+                    content_idx = i
+                    break
+            if content_idx >= 0:
+                parts[content_idx] = text
+            else:
+                parts.append(text)
+
+        msg_id, created = await self._ensure_main_msg(chat_id, self._build_display(chat_id))
+        if msg_id and not created:
+            await self._update_main_msg(chat_id)
 
     async def _render_tool_call(
         self, chat_id: int, event: ToolCallEvent, tool_id: str,
     ) -> None:
-        """Render a tool call notification."""
-        # Reset message phases so next reasoning/content create NEW messages
-        await self._mm.reset_phases(chat_id)
+        """Append inline tool pill to the main message (🔧 → ✅ → ❌)."""
+        # Build the pill text
+        if event.status == "calling":
+            pill = f"🔧 {event.name}"
+        elif event.status == "ok":
+            pill = f"✅ {event.name}"
+        elif event.status == "error":
+            pill = f"❌ {event.name} (error)"
+        else:
+            pill = f"🔧 {event.name}"
 
-        # Check if this tool already has a message (status update)
-        existing = self._mm.get_tool_msg_id(chat_id, tool_id)
-        if existing is not None:
-            # Update existing tool message
-            display = self._format_tool_status(event.name, event.status)
-            await self._edit_with_retry(
-                chat_id, existing, display, "Markdown",
-            )
-            return
+        parts = self._display_text[chat_id]
 
-        # New tool call — send message
-        display = self._format_tool_status(event.name, event.status)
-        msg_id = await self._send_with_retry(
-            chat_id, display, parse_mode="Markdown",
-        )
-        if msg_id is not None:
-            await self._mm.set_tool_msg_id(chat_id, tool_id, msg_id)
-            logger.info("TG[%d] tool msg #%s: %s", chat_id, msg_id, event.name)
+        # Check if this tool already has a pill in the display
+        old_pill = self._tool_pills[chat_id].get(tool_id)
+        if old_pill is not None:
+            # Status update — replace old pill text in parts
+            for i, p in enumerate(parts):
+                if p.strip() == old_pill.strip():
+                    parts[i] = pill
+                    break
+        else:
+            # New tool — append pill
+            self._tool_pills[chat_id][tool_id] = pill
+            parts.append(pill)
+
+        msg_id, created = await self._ensure_main_msg(chat_id, self._build_display(chat_id))
+        if msg_id and not created:
+            await self._update_main_msg(chat_id)
 
     async def _render_error(
         self, chat_id: int, event: ErrorEvent,
     ) -> None:
-        """Render an error message."""
-        display = f"❌ Error: {event.message}"
-        await self._send_with_retry(chat_id, display, parse_mode="")
+        """Append error to the main message."""
+        parts = self._display_text[chat_id]
+        parts.append(f"❌ Error: {event.message}")
 
-    # ── Helper: format tool status ──────────────────────────────────────
-
-    @staticmethod
-    def _format_tool_status(name: str, status: str) -> str:
-        if status == "calling":
-            return f"🔧 *{name}*"
-        if status == "ok":
-            return f"✅ *{name}*"
-        if status == "error":
-            return f"❌ *{name}* (error)"
-        return f"🔧 *{name}*"
+        msg_id, created = await self._ensure_main_msg(chat_id, self._build_display(chat_id))
+        if msg_id and not created:
+            await self._update_main_msg(chat_id)
 
     # ── Helper: send with retry + error classification ───────────────────
 

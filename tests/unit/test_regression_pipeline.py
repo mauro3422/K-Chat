@@ -697,3 +697,52 @@ def test_do_edit_handles_fallback_text():
     assert 'action.fallback_text' in source and 'send_message' in source, (
         "_do_edit must send fallback text on error"
     )
+
+
+# ─── Inline tool pills tests ─────────────────────────────────────────
+
+def test_renderer_uses_single_main_message():
+    """The renderer must use ONE main message per chat (not separate
+    messages per phase)."""
+    source = _read_source("channels/telegram/renderer.py")
+    assert '_main_msg' in source, (
+        "Missing _main_msg dict (single message per turn)"
+    )
+    assert '_display_text' in source, (
+        "Missing _display_text accumulator"
+    )
+    assert '_ensure_main_msg' in source, (
+        "Missing _ensure_main_msg method"
+    )
+
+
+def test_tool_pills_inline():
+    """Tool calls must appear as INLINE pills in the main message,
+    not as separate messages."""
+    source = _read_source("channels/telegram/renderer.py")
+    assert '_render_tool_call' in source, (
+        "Missing _render_tool_call method"
+    )
+    assert '_tool_pills' in source, (
+        "Missing _tool_pills tracker"
+    )
+    # Verify no separate tool message creation
+    assert 'set_tool_msg_id' not in source.split("async def _render_tool_call")[1].split("async def")[0], (
+        "Tool renderer must NOT call set_tool_msg_id (no separate messages)"
+    )
+    assert 'reset_phases' not in source.split("async def _render_tool_call")[1].split("async def")[0], (
+        "Tool renderer must NOT call reset_phases"
+    )
+
+
+def test_tool_status_updates_inline():
+    """Tool status updates (calling→ok→error) must replace inline pill
+    text in the main message, not create new messages."""
+    source = _read_source("channels/telegram/renderer.py")
+    tc_block = source.split("async def _render_tool_call")[1].split("async def")[0]
+    assert 'old_pill' in tc_block, (
+        "Tool renderer must check for existing pill to replace"
+    )
+    assert 'self._tool_pills[chat_id][tool_id]' in tc_block, (
+        "Tool renderer must track pills by tool_id"
+    )
