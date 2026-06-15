@@ -152,8 +152,10 @@ async def process_message(
         full_reasoning: list[str] = []   # accumulates ALL reasoning for DB
         content_buf: list[str] = []
         phases_output: list[dict] = []   # accumulates phases for web UI
-        reasoning_flush_interval = 5
-        content_flush_interval = 5
+        reasoning_ws_interval = 5        # WS/SSE flush (smooth web UI)
+        reasoning_tg_interval = 20       # Telegram API flush (fewer edits = less lag)
+        content_ws_interval = 5
+        content_tg_interval = 15
         start_time = time.time()
 
         async for event_type, token in _late_imports.chat_stream(
@@ -178,21 +180,24 @@ async def process_message(
             if event_type == "reasoning":
                 reasoning_buf.append(token)
                 full_reasoning.append(token)  # keep for DB persistence
-                if len(reasoning_buf) == 1:
-                    # First token → flush immediately (show user something)
+                rlen = len(reasoning_buf)
+                if rlen == 1:
+                    # First token → flush to both
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
-                    # Stream to web UI via WS
                     asyncio.create_task(get_ws_client().send_event("stream:reasoning", {
                         "session_id": session_id,
                         "text": "".join(reasoning_buf),
                     }))
-                elif len(reasoning_buf) % reasoning_flush_interval == 0:
-                    yield f"__reasoning__:{"".join(reasoning_buf)}"
-                    # Stream accumulated reasoning to web UI
-                    asyncio.create_task(get_ws_client().send_event("stream:reasoning", {
-                        "session_id": session_id,
-                        "text": "".join(reasoning_buf),
-                    }))
+                else:
+                    # WS flush every reasoning_ws_interval (smooth web UI)
+                    if rlen % reasoning_ws_interval == 0:
+                        asyncio.create_task(get_ws_client().send_event("stream:reasoning", {
+                            "session_id": session_id,
+                            "text": "".join(reasoning_buf),
+                        }))
+                    # Telegram flush every reasoning_tg_interval (fewer edits)
+                    if rlen % reasoning_tg_interval == 0:
+                        yield f"__reasoning__:{"".join(reasoning_buf)}"
 
             # ── Content ────────────────────────────────────────────────
             elif event_type == "content":
@@ -201,20 +206,24 @@ async def process_message(
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
                     reasoning_buf = []
                 content_buf.append(token)
-                if len(content_buf) == 1:
+                clen = len(content_buf)
+                if clen == 1:
+                    # First token → flush to both
                     yield f"__content__:{"".join(content_buf)}"
-                    # Stream accumulated content to web UI
                     asyncio.create_task(get_ws_client().send_event("stream:content", {
                         "session_id": session_id,
                         "text": "".join(content_buf),
                     }))
-                elif len(content_buf) % content_flush_interval == 0:
-                    yield f"__content__:{"".join(content_buf)}"
-                    # Stream accumulated content to web UI
-                    asyncio.create_task(get_ws_client().send_event("stream:content", {
-                        "session_id": session_id,
-                        "text": "".join(content_buf),
-                    }))
+                else:
+                    # WS flush every content_ws_interval (smooth web UI)
+                    if clen % content_ws_interval == 0:
+                        asyncio.create_task(get_ws_client().send_event("stream:content", {
+                            "session_id": session_id,
+                            "text": "".join(content_buf),
+                        }))
+                    # Telegram flush every content_tg_interval (fewer edits)
+                    if clen % content_tg_interval == 0:
+                        yield f"__content__:{"".join(content_buf)}"
 
             # ── Tool call ──────────────────────────────────────────────
             elif event_type == "tool_call":
