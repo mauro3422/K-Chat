@@ -155,8 +155,8 @@ async def process_message(
         full_reasoning: list[str] = []   # accumulates ALL reasoning for DB
         content_buf: list[str] = []
         phases_output: list[dict] = []   # accumulates phases for web UI
-        reasoning_flush_interval = 20
-        content_flush_interval = 15
+        reasoning_flush_interval = 5
+        content_flush_interval = 5
         start_time = time.time()
 
         async for event_type, token in _late_imports.chat_stream(

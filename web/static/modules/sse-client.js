@@ -115,11 +115,12 @@ function reloadMessages(sid) {
     });
 }
 
-// ─── Live streaming: build message token by token ─────────────────
-var _liveMsg = null;       // the live message DOM element
-var _liveReasoningEl = null;  // reasoning text element inside live msg
-var _liveContentEl = null;    // content text element inside live msg
-var _liveToolsEl = null;      // tool container inside live msg
+// ─── Live streaming: build message phase by phase ────────────────
+var _liveMsg = null;
+var _livePhase = null;          // 'reasoning' | 'tool' | 'content' | null
+var _liveReasoningEls = [];     // .rt elements, one per reasoning phase
+var _liveContentEls = [];       // .msg-body elements, one per content phase
+var _liveCurrentTools = null;   // current .tool-calls container (null = no tool phase)
 
 function _ensureLiveMsg() {
   if (_liveMsg) return;
@@ -129,68 +130,99 @@ function _ensureLiveMsg() {
   _liveMsg = document.createElement('div');
   _liveMsg.className = 'msg assistant live-msg';
 
-  // Label
   var label = document.createElement('div');
   label.className = 'msg-label';
   label.textContent = 'Kairos';
   _liveMsg.appendChild(label);
 
-  // Reasoning (collapsible)
-  var details = document.createElement('details');
-  details.className = 'reasoning';
-  details.open = true;
-  var summary = document.createElement('summary');
-  summary.textContent = 'Razonamiento';
-  details.appendChild(summary);
-  _liveReasoningEl = document.createElement('div');
-  _liveReasoningEl.className = 'rt';
-  details.appendChild(_liveReasoningEl);
-  _liveMsg.appendChild(details);
-
-  // Content area
-  _liveContentEl = document.createElement('div');
-  _liveContentEl.className = 'msg-body';
-  _liveMsg.appendChild(_liveContentEl);
-
-  // Tool calls area
-  _liveToolsEl = document.createElement('div');
-  _liveToolsEl.className = 'tool-calls';
-  _liveMsg.appendChild(_liveToolsEl);
-
   msgArea.appendChild(_liveMsg);
-  // Scroll to bottom to show live content
   import('./stream-lifecycle.js').then(function(sl) {
     if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
   }).catch(function() {});
+}
+
+function _closeReasoning() {
+  if (_liveReasoningEls.length > 0) {
+    var lastRt = _liveReasoningEls[_liveReasoningEls.length - 1];
+    var details = lastRt && lastRt.parentNode;
+    if (details) {
+      var s = details.querySelector('summary');
+      if (s) s.textContent = 'Razonamiento';
+      details.open = false;
+    }
+  }
 }
 
 function streamReasoning(data) {
   _ensureLiveMsg();
-  if (!_liveReasoningEl) return;
-  // Replace text with the full accumulated reasoning (server sends accumulated text)
-  _liveReasoningEl.textContent = data.text || '';
-}
+  if (_livePhase !== 'reasoning') {
+    // Transition INTO reasoning — close any previous tool container
+    _liveCurrentTools = null;
+    _closeReasoning();
 
-function streamContent(data) {
-  _ensureLiveMsg();
-  if (!_liveContentEl) return;
-  // Replace text with the full accumulated content
-  _liveContentEl.textContent = data.text || '';
-  // Scroll to bottom as content streams
-  import('./stream-lifecycle.js').then(function(sl) {
-    if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
-  }).catch(function() {});
+    var details = document.createElement('details');
+    details.className = 'reasoning';
+    details.open = true;
+    var summary = document.createElement('summary');
+    summary.textContent = 'Razonando...';
+    details.appendChild(summary);
+    var rt = document.createElement('div');
+    rt.className = 'rt';
+    details.appendChild(rt);
+    _liveMsg.appendChild(details);
+    _liveReasoningEls.push(rt);
+    _livePhase = 'reasoning';
+  }
+  // Update last reasoning element (server sends full accumulated text)
+  var rt = _liveReasoningEls[_liveReasoningEls.length - 1];
+  if (rt) rt.textContent = data.text || '';
 }
 
 function streamTool(data) {
   _ensureLiveMsg();
-  if (!_liveToolsEl) return;
+  if (_livePhase !== 'tool') {
+    // Transition INTO tool phase — create a fresh tool-calls container
+    _liveCurrentTools = document.createElement('div');
+    _liveCurrentTools.className = 'tool-calls';
+    _liveMsg.appendChild(_liveCurrentTools);
+    _livePhase = 'tool';
+    // Scroll to show tools
+    import('./stream-lifecycle.js').then(function(sl) {
+      if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
+    }).catch(function() {});
+  }
   var icon = data.status === 'ok' ? '&#10003;' : '&#10007;';
   var pill = document.createElement('span');
   pill.className = 'tc-item ' + (data.status || 'calling');
   pill.innerHTML = icon + ' ' + (data.tool_name || 'tool');
-  _liveToolsEl.appendChild(pill);
-  // Scroll to show tool pill
+  _liveCurrentTools.appendChild(pill);
+}
+
+function streamContent(data) {
+  _ensureLiveMsg();
+  if (_livePhase !== 'content') {
+    // Transition INTO content — close tools, close reasoning
+    _liveCurrentTools = null;
+    _closeReasoning();
+
+    var el = document.createElement('div');
+    el.className = 'msg-body';
+    _liveMsg.appendChild(el);
+    _liveContentEls.push(el);
+    _livePhase = 'content';
+  }
+  var el = _liveContentEls[_liveContentEls.length - 1];
+  if (!el) return;
+  var text = data.text || '';
+  if (text && typeof marked !== 'undefined') {
+    var html = marked.parse(text);
+    if (typeof DOMPurify !== 'undefined') {
+      html = DOMPurify.sanitize(html);
+    }
+    el.innerHTML = html;
+  } else {
+    el.textContent = text;
+  }
   import('./stream-lifecycle.js').then(function(sl) {
     if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
   }).catch(function() {});
@@ -198,9 +230,16 @@ function streamTool(data) {
 
 function streamError(data) {
   _ensureLiveMsg();
-  if (!_liveContentEl) return;
-  _liveContentEl.textContent = '❌ Error: ' + (data.error || 'unknown');
-  _liveContentEl.style.color = 'var(--accent-red, #ff4444)';
+  _liveCurrentTools = null;
+  var el = _liveContentEls.length > 0 ? _liveContentEls[_liveContentEls.length - 1] : null;
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'msg-body';
+    _liveMsg.appendChild(el);
+    _liveContentEls.push(el);
+  }
+  el.textContent = '❌ Error: ' + (data.error || 'unknown');
+  el.style.color = 'var(--accent-red, #ff4444)';
 }
 
 function clearLiveMessage() {
@@ -208,9 +247,10 @@ function clearLiveMessage() {
     _liveMsg.parentNode.removeChild(_liveMsg);
   }
   _liveMsg = null;
-  _liveReasoningEl = null;
-  _liveContentEl = null;
-  _liveToolsEl = null;
+  _livePhase = null;
+  _liveReasoningEls = [];
+  _liveContentEls = [];
+  _liveCurrentTools = null;
 }
 
 
