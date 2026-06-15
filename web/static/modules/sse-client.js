@@ -65,8 +65,14 @@ export function connect() {
       if (event.type === 'session_deleted') {
         refreshSidebar();
         if (sid === _currentSessionId) {
-          // If the user was viewing the deleted session, redirect home
-          window.location.href = '/';
+          // If the user was viewing the deleted session, find the most
+          // recent session from the sidebar and redirect there
+          var first = document.querySelector('.session-item[data-sid]');
+          if (first) {
+            window.location.href = '/sessions/' + first.getAttribute('data-sid');
+          } else {
+            window.location.href = '/';
+          }
         }
         return;
       }
