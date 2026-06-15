@@ -106,9 +106,17 @@ async def process_message(
         )
         return
 
-    if text in ("/new", "/reset"):
+    if text == "/reset":
+        # Keep same session, delete all messages in it (conversation reset)
+        repos = _late_imports.get_repos()
+        await repos.messages.delete_session_messages(session_id)
+        yield "__content__:✅ Chat reiniciado."
+        return
+
+    if text == "/new":
+        # Archive old session, create brand new one
         await _reset_session(chat_id, _late_imports)
-        yield "__content__:✅ Sesión reiniciada."
+        yield "__content__:✅ Nueva sesión creada."
         return
 
     if text.startswith("__voice__:"):

@@ -77,6 +77,22 @@ class MessageRepository(_BaseRepository):
             logger.exception("Failed to get session messages for %s", session_id)
             return []
 
+    async def delete_session_messages(self, session_id: str) -> int:
+        """Delete ALL messages for a session. Keeps the session itself."""
+        try:
+            async with self._transaction() as conn:
+                cursor = await conn.execute(
+                    "DELETE FROM messages WHERE session_id = ?",
+                    (session_id,)
+                )
+                deleted = cursor.rowcount
+                if deleted:
+                    logger.info("Deleted %d messages for session %s", deleted, session_id)
+                return deleted
+        except Exception as e:
+            logger.warning("Failed to delete messages for session %s: %s", session_id, e)
+            return 0
+
     async def delete_empty_assistant(self, session_id: str) -> None:
         """Delete assistant messages with empty content (left by tool loop resets)."""
         try:
