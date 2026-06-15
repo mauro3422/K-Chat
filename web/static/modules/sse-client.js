@@ -63,18 +63,29 @@ export function connect() {
 
       // ── Session deleted (via Telegram /delete) ─────────────────
       if (event.type === 'session_deleted') {
+        console.log('SSE session_deleted:', sid, 'current:', _currentSessionId);
         if (sid === _currentSessionId) {
-          // Refresh sidebar first, THEN redirect to the most recent session
+          // The current page session was deleted — redirect to the first
+          // remaining session (or / if none left), after refreshing sidebar
           refreshSidebar().then(function() {
             var first = document.querySelector('.session-item[data-sid]');
             if (first) {
-              window.location.href = '/sessions/' + first.getAttribute('data-sid');
+              var target = '/sessions/' + first.getAttribute('data-sid');
+              console.log('Redirecting to:', target);
+              window.location.href = target;
             } else {
+              console.log('No sessions left, redirecting to /');
               window.location.href = '/';
             }
+          }).catch(function(err) {
+            console.error('refreshSidebar failed:', err);
+            window.location.href = '/';
           });
         } else {
-          refreshSidebar();
+          // Deleted session is not the current one, just refresh sidebar
+          refreshSidebar().catch(function(err) {
+            console.error('refreshSidebar failed:', err);
+          });
         }
         return;
       }
