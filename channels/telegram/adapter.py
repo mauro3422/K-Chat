@@ -268,8 +268,8 @@ async def _get_or_create_session(
                 tool_calls_raw = row[6] if len(row) > 6 else None  # tool_calls JSON
                 tool_call_id = row[7] if len(row) > 7 else None     # tool_call_id
                 msg: dict = {"role": role}
-                if content:
-                    msg["content"] = content
+                # Always include content (even empty) to satisfy strict APIs
+                msg["content"] = content or ""
                 if role == "tool" and tool_call_id:
                     msg["tool_call_id"] = tool_call_id
                 if role == "assistant" and tool_calls_raw:
@@ -280,7 +280,7 @@ async def _get_or_create_session(
                             msg["tool_calls"] = tc_list
                     except (json.JSONDecodeError, TypeError):
                         pass
-                if msg.get("content") or msg.get("tool_calls") or msg.get("tool_call_id"):
+                if msg.get("content") is not None or msg.get("tool_calls") or msg.get("tool_call_id"):
                     history.append(msg)
         except Exception:
             history = []
