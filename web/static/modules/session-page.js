@@ -399,13 +399,22 @@ function loadSession(sid, deps) {
           .then(function(data) {
             var messagesDiv = document.getElementById('messages');
             if (!messagesDiv) return;
-            // Only update if messages changed (compare last message ID)
-            var lastMsg = messagesDiv.lastElementChild;
-            var newLastId = data.messages && data.messages.length > 0
-              ? data.messages[data.messages.length - 1].ts : null;
-            if (newLastId && (!lastMsg || lastMsg.getAttribute('data-ts') !== String(newLastId))) {
+            var msgs = data.messages || [];
+            if (msgs.length === 0) return;
+            // Check if the last message timestamp changed
+            var lastChild = messagesDiv.lastElementChild;
+            var lastTs = lastChild ? lastChild.getAttribute('data-ts') : null;
+            var newLastTs = String(msgs[msgs.length - 1].ts || '');
+            if (newLastTs && newLastTs !== lastTs) {
               import('./message-renderer.js').then(function(m) {
-                m.renderMessageList(data.messages || [], messagesDiv);
+                var html = m.renderMessageList(msgs, data.widget_states || {});
+                messagesDiv.innerHTML = html;
+              });
+              import('./markdown-renderer.js').then(function(md) {
+                md.renderAll();
+              });
+              import('./stream-lifecycle.js').then(function(sl) {
+                sl.scrollToBottom();
               });
             }
           })
