@@ -199,6 +199,7 @@ System: ebo
 - **stress-test:widgets-creados-2026-06-11**: 2026-06-11 07:36 | Widgets creados durante stress test: stress-dashboard-v2 (dashboard de estrés con stats), cosmic-watch-v1 (reloj cósmico con edad de Kairos), pipeline-explorer-v1 (visualizador del pipeline K-Chat). 3 widgets guardados oficialmente.
 - **stress-test:widgets-dashboard-pipeline-2026-06-10**: 2026-06-10 23:19 | Dos widgets guardados oficialmente durante stress test: (1) stress-dashboard — dashboard de métricas con stats, badges y timeline visual de tools. (2) pipeline-viz — visualizador del pipeline completo K-Chat con 7 etapas.
 - **test**: val
+- **test:prueba-mauro**: 2026-06-14 23:56 | Prueba de tools exitosa desde Telegram
 - **test:ronda1-stress-tool-failure-2026-06-10**: 2026-06-10 21:25 | RONDA 1: 12 tools en paralelo. Stream NO se cortó. 3 web_search (1 val OK, 2 error SearXNG caído), 3 fetch_url (httpbin OK, ftp rechazado OK, dominio inválido OK), 2 read_file (existe OK, no existe OK), 3 get_widget_code, 1 get_tool_history. Solo punto débil: SearXNG caído.
 - **test:ronda2-widgets-memoria-edge-2026-06-10**: 2026-06-10 21:25 | RONDA 2: 9 tools en paralelo. Stream NO se cortó. 3 save_memory (key normal OK, sin namespace OK, value vacío no crea entrada), 5 reads del pipeline (content-handler, tool-call-renderer, stream-fetcher, tool_loop, orchestrator) todas OK, 1 get_tool_history con historial completo.
 - **test:widgets-15-2026-06-08**: 15 widgets generados y visualizados correctamente. UI estable.

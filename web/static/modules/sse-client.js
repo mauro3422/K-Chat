@@ -68,5 +68,5 @@ function reloadMessages(sid) {
     .catch(function() {});
 }
 
-// Auto-connect on module load
-connect();
+// Don't auto-connect at module load — called explicitly from app.js
+// to avoid breaking the page if EventSource fails.
