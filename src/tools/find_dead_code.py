@@ -1,18 +1,19 @@
-"""find_dead_code: detecta código no referenciado en el proyecto.
+"""find_dead_code: detecta codigo no referenciado en el proyecto.
 
-Busca funciones, clases, y exports que están definidos pero nadie importa
-fuera de su propio archivo (y tests).
-
-Usage:
-    find_dead_code(path="src/tools/loader.py")
-    find_dead_code(path="src/compressor.py")
+Sigue el patron Lego: DEFINITION + run().
 """
-
 import ast
+import logging
 import os
+import re
+import asyncio
+from collections import defaultdict
 from typing import Any
 from pathlib import Path
-from collections import defaultdict
+
+from src.tools._path_helpers import resolve_and_validate_path
+
+logger = logging.getLogger(__name__)
 
 from src.tools._path_helpers import resolve_and_validate_path
 
@@ -281,20 +282,10 @@ def _quick_search(project_root: str, name: str, exclude_file: str) -> bool:
     return False
 
 
-def run(**kwargs: Any) -> str:
-    path = kwargs.get("path", "").strip()
-    dead_imports = kwargs.get("dead_imports", True)
-    exclude_tests = kwargs.get("exclude_tests", True)
-    quick = kwargs.get("quick", False)
-
-    if not path:
-        return "[ERROR] Proporciona una ruta (archivo o directorio)."
-
+def _sync_find_dead_code(path: str, dead_imports: bool, exclude_tests: bool, quick: bool) -> str:
     resolved, err = resolve_and_validate_path(path)
     if err:
         return err
-
-    # Detect project root
     project_root = None
     p = Path(resolved).resolve()
     for parent in [p] + list(p.parents):
@@ -303,12 +294,8 @@ def run(**kwargs: Any) -> str:
             break
     if project_root is None:
         project_root = str(Path(resolved).parent.parent)
-
-    # Collect files
     if os.path.isfile(resolved):
         files = [resolved]
-        # Build index only if single file still needs context
-        # For single files, we still build index but it's faster
     elif os.path.isdir(resolved):
         files = []
         for root, dirs, fnames in os.walk(resolved):
@@ -322,26 +309,19 @@ def run(**kwargs: Any) -> str:
                 files.append(fpath)
     else:
         return f"[ERROR] '{path}' no es un archivo ni directorio válido."
-
     if not files:
         return f"[INFO] No se encontraron archivos .py en {path}"
-
-    # Build reverse index or use quick search
-    name_index: dict[str, set[str]] | None = None
+    name_index = None
     if not quick:
         name_index = _build_name_index(project_root)
-
-    # Analyze
-    results: list[dict[str, Any]] = []
+    results = []
     total_dead = 0
     total_unused_imports = 0
-
     for fp in files:
         if quick:
-            # Quick mode: extract definitions, check with text search
             definitions = _extract_top_level_definitions(fp)
-            dead: list[dict[str, Any]] = []
-            unused_imports: list[dict[str, Any]] = []
+            dead = []
+            unused_imports = []
             for def_name, def_info in definitions.items():
                 if def_name.startswith("__") and def_name.endswith("__"):
                     continue
@@ -354,39 +334,37 @@ def run(**kwargs: Any) -> str:
             results.append(result)
         total_dead += len(results[-1]["dead_code"])
         total_unused_imports += len(results[-1]["unused_imports"])
-
-    # Build output
     lines = [f"\n🔍 DEAD CODE ANALYSIS — {path} ({len(results)} archivos)\n"]
-
     has_issues = False
     for result in results:
         dead = result["dead_code"]
         unused = result["unused_imports"]
-
         if not dead and not unused:
             continue
-
         has_issues = True
         lines.append(f"📄 {result['file']}")
-
         for d in dead:
-            refs_info = f" (0 referencias en el proyecto)"
-            lines.append(f"   ❌ {d['type']} {d['name']}:L{d['line']}{refs_info}")
-
+            lines.append(f"   ❌ {d['type']} {d['name']}:L{d['line']} (0 referencias en el proyecto)")
         for u in unused:
             lines.append(f"   ⚠️  unused import '{u['name']}' (L:{u['line']}) — {u['context']}")
-
         lines.append("")
-
     if not has_issues:
         lines.append("✅ No se encontró código muerto ni imports no utilizados.")
-
     lines.append(f"\n📈 RESUMEN:")
     lines.append(f"   📁 Archivos analizados: {len(results)}")
     lines.append(f"   💀 Funciones/clases sin referencias: {total_dead}")
     lines.append(f"   ⚠️  Imports no utilizados: {total_unused_imports}")
-
     result_str = "\n".join(lines)
     if len(result_str) > 30000:
         result_str = result_str[:30000] + "\n...[truncado]"
     return result_str
+
+
+async def run(**kwargs: Any) -> str:
+    path = kwargs.get("path", "").strip()
+    dead_imports = kwargs.get("dead_imports", True)
+    exclude_tests = kwargs.get("exclude_tests", True)
+    quick = kwargs.get("quick", False)
+    if not path:
+        return "[ERROR] Proporciona una ruta (archivo o directorio)."
+    return await asyncio.to_thread(_sync_find_dead_code, path, dead_imports, exclude_tests, quick)

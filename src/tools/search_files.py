@@ -290,7 +290,6 @@ async def run(**kwargs: Any) -> str:
     if err:
         return err
 
-    import asyncio
     import os
 
     if not await asyncio.to_thread(os.path.isdir, path):

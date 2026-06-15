@@ -54,6 +54,12 @@ export function connect() {
         return;
       }
 
+      // ── Live streaming: error ────────────────────────────────────
+      if (event.type === 'stream:error' && sid === _currentSessionId) {
+        streamError(event.data);
+        return;
+      }
+
       // ── Full message reload ──────────────────────────────────────
       if (event.type === 'new_message') {
         if (sid) {
@@ -101,7 +107,7 @@ function reloadMessages(sid) {
     })
     .then(function(modules) {
       if (!modules) return;
-      if (typeof modules[0].renderAll === 'function') modules[0].renderAll();
+      if (typeof modules[0].MarkdownRenderer?.renderAll === 'function') modules[0].MarkdownRenderer.renderAll();
       if (typeof modules[1].scrollToBottom === 'function') modules[1].scrollToBottom();
     })
     .catch(function(err) {
@@ -188,6 +194,13 @@ function streamTool(data) {
   import('./stream-lifecycle.js').then(function(sl) {
     if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
   }).catch(function() {});
+}
+
+function streamError(data) {
+  _ensureLiveMsg();
+  if (!_liveContentEl) return;
+  _liveContentEl.textContent = '❌ Error: ' + (data.error || 'unknown');
+  _liveContentEl.style.color = 'var(--accent-red, #ff4444)';
 }
 
 function clearLiveMessage() {

@@ -1,6 +1,7 @@
 import logging
 import os
 import subprocess
+import asyncio
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -93,8 +94,7 @@ def _build_command(operation: str, path: str | None, message: str | None, count:
     else:
         raise ValueError(f"Unknown operation: {operation}")
 
-
-def run(**kwargs: Any) -> str:
+async def run(**kwargs: Any) -> str:
     operation = kwargs.get("operation", "")
     path = kwargs.get("path")
     message = kwargs.get("message")
@@ -125,12 +125,10 @@ def run(**kwargs: Any) -> str:
     logger.info("Git operation: %s (cwd=%s)", cmd_str, resolved_cwd)
 
     try:
-        result = subprocess.run(
-            cmd_parts,
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT,
-            cwd=resolved_cwd,
+        result = await asyncio.to_thread(
+            subprocess.run, cmd_parts,
+            capture_output=True, text=True,
+            timeout=TIMEOUT, cwd=resolved_cwd,
         )
 
         output = ""

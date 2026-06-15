@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import asyncio
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -186,7 +187,7 @@ def _extract_single_file(path: str) -> dict[str, Any]:
 # ── Punto de entrada público ──────────────────────────────────────────────
 
 
-def run(files: list[str], **kwargs: Any) -> str:
+def _sync_extract_text(files: list[str]) -> str:
     """Extrae texto de archivos PDF/Imagen.
 
     Args:
@@ -231,4 +232,13 @@ def run(files: list[str], **kwargs: Any) -> str:
     if errors:
         final.append(f"\n### Errores\n" + "\n".join(errors))
 
+
+async def run(**kwargs: Any) -> str:
+    """Extrae texto de archivos PDF/Imagen (entrypoint async)."""
+    files: list[str] = kwargs.get("files", [])
+    if not files:
+        return "No se especificaron archivos para extraer."
+    if len(files) > 10:
+        files = files[:10]
+    return await asyncio.to_thread(_sync_extract_text, files)
     return "\n\n".join(final) if final else "No se pudo extraer texto de ningún archivo."

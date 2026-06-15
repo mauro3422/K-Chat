@@ -1,19 +1,19 @@
-"""analyze_code: análisis profundo de código con AST, call graph y métricas.
+"""analyze_code: analisis profundo de codigo Python con AST.
 
-Combina detección de funciones (vía AST), seguimiento de llamadas,
-análisis de dependencias y métricas de código en una sola herramienta.
-Soporta análisis cross-file de duplicados y referencias.
+Sigue el patron Lego: DEFINITION + run().
 """
 import ast
-import logging
 import os
+import re
+import asyncio
+from collections import Counter, defaultdict
 from typing import Any
+
 from src.tools._path_helpers import resolve_and_validate_path
-from src.tools._analyzers import detect_language, icon
-from src.tools._cross_analyzer import context_report
-
-logger = logging.getLogger(__name__)
-
+from src.tools._ast_helpers import (
+    _read_and_parse, detect_language, _get_call_graph,
+    _format_imports, _calculate_metrics, _calculate_complexity, _build_analysis_output,
+)
 DEFINITION = {
     "type": "function",
     "function": {
@@ -448,33 +448,30 @@ def _build_analysis_output(
     return result
 
 
-def run(**kwargs: Any) -> str:
+def _sync_analyze(path: str, func_name: str, find_dups: bool, cross_ref: bool) -> str:
+    if not os.path.isfile(path):
+        return f"[ERROR] El archivo '{path}' no existe."
+    size = os.path.getsize(path)
+    if size > MAX_FILE_SIZE:
+        return f"[ERROR] Archivo demasiado grande ({size / 1024:.0f}KB)."
+    lang_name, lang_type = detect_language(path)
+    if lang_type != 'snake':
+        return f"[INFO] analyze_code solo soporta Python por ahora ({lang_name} detectado). Usa list_files o search_files."
+    content_lines, tree, error = _read_and_parse(path)
+    if error:
+        return error
+    return _build_analysis_output(path, content_lines, tree, func_name, find_dups, cross_ref)
+
+
+async def run(**kwargs: Any) -> str:
     """Punto de entrada principal para analyze_code."""
     path = kwargs.get("path", "").strip()
     func_name = kwargs.get("function", "").strip()
     find_dups = kwargs.get("find_duplicates", False)
     cross_ref = kwargs.get("cross_reference", False)
-
     if not path:
         return "[ERROR] Proporciona una ruta de archivo."
-
     path, err = resolve_and_validate_path(path)
     if err:
         return err
-
-    if not os.path.isfile(path):
-        return f"[ERROR] El archivo '{path}' no existe."
-
-    size = os.path.getsize(path)
-    if size > MAX_FILE_SIZE:
-        return f"[ERROR] Archivo demasiado grande ({size / 1024:.0f}KB)."
-
-    lang_name, lang_type = detect_language(path)
-    if lang_type != 'snake':
-        return f"[INFO] analyze_code solo soporta Python por ahora ({lang_name} detectado). Usa list_files o search_files."
-
-    content_lines, tree, error = _read_and_parse(path)
-    if error:
-        return error
-
-    return _build_analysis_output(path, content_lines, tree, func_name, find_dups, cross_ref)
+    return await asyncio.to_thread(_sync_analyze, path, func_name, find_dups, cross_ref)

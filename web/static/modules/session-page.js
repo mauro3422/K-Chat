@@ -405,7 +405,11 @@ function loadSession(sid, deps) {
       var sid = active ? active.getAttribute('data-sid') : null;
       var input = document.getElementById('chat-input');
       var isTyping = input && document.activeElement === input;
-      if (sid && !isTyping) {
+      // Don't poll if NDJSON streaming is active (live assistant msg without data-ts)
+      var msgsEl = document.getElementById('messages');
+      var lastMsg = msgsEl ? msgsEl.lastElementChild : null;
+      var isStreaming = lastMsg && lastMsg.classList.contains('assistant') && !lastMsg.hasAttribute('data-ts');
+      if (sid && !isTyping && !isStreaming) {
         ApiClient.loadMessages(sid)
           .then(function(r) { return r.json(); })
           .then(function(data) {
@@ -427,7 +431,7 @@ function loadSession(sid, deps) {
                 ]);
               }).then(function(modules) {
                 if (!modules) return;
-                if (typeof modules[0].renderAll === 'function') modules[0].renderAll();
+                if (typeof modules[0].MarkdownRenderer?.renderAll === 'function') modules[0].MarkdownRenderer.renderAll();
                 if (typeof modules[1].scrollToBottom === 'function') modules[1].scrollToBottom();
               });
             }

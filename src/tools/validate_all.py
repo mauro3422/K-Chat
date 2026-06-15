@@ -5,9 +5,11 @@ Sigue el patrón Lego: DEFINITION + run().
 """
 import os
 import logging
+import asyncio
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
+from src.tools._validators import validate_file
 from src.tools._validators import validate_file
 
 logger = logging.getLogger(__name__)
@@ -68,13 +70,9 @@ def _find_files(directory: str, pattern: str = "") -> list[str]:
     return results
 
 
-def run(**kwargs: Any) -> str:
-    files: list = kwargs.get("files", [])
-    directory: str | None = kwargs.get("path")
-    pattern: str = kwargs.get("pattern", "")
-    arch_check: bool = kwargs.get("architecture", False)
-    # Si no hay lista de archivos, escanear directorio
-    if not files and directory:
+def _sync_validate(files: list[str], directory: str | None, pattern: str, arch_check: bool) -> str:
+    """Sync: escanea, lee, valida y arma resumen. Corre en to_thread."""
+    if directory and not files:
         resolved_dir, err = resolve_and_validate_path(directory)
         if err:
             return f"[ERROR] {err}"
@@ -87,32 +85,6 @@ def run(**kwargs: Any) -> str:
     if not files or not isinstance(files, (list, tuple)):
         return "[ERROR] Debes proporcionar 'files' (lista) o 'path' (directorio a escanear)."
 
-    # Run architecture check first (independent of file limit)
-    arch_output = ""
-    if arch_check:
-        try:
-            from src.tools._arch_checker import check_directory, check_file
-            if directory:
-                resolved_dir, _ = resolve_and_validate_path(directory)
-                if resolved_dir and os.path.isdir(resolved_dir):
-                    report = check_directory(resolved_dir, recursive=False)
-                    arch_output = f"\n{report.summary()}"
-            elif files:
-                all_violations = []
-                for fpath in files[:MAX_FILES]:
-                    resolved, _ = resolve_and_validate_path(str(fpath))
-                    if resolved and os.path.isfile(resolved):
-                        violations = check_file(resolved)
-                        all_violations.extend(violations)
-                if all_violations:
-                    arch_output = f"\n🏛️ ARCHITECTURE CHECK — {len(all_violations)} violación(es):\n"
-                    for v in all_violations:
-                        arch_output += f"   {v}\n"
-                else:
-                    arch_output = f"\n🏛️ ARCHITECTURE CHECK — ✅ Sin violaciones arquitectónicas\n"
-        except Exception:
-            pass
-
     if len(files) > MAX_FILES:
         files = files[:MAX_FILES]
         truncated = True
@@ -120,10 +92,8 @@ def run(**kwargs: Any) -> str:
         truncated = False
     results: list[dict[str, Any]] = []
     passed = failed = skipped = 0
-    passed = failed = skipped = 0
 
     for fpath in files:
-        # Resolver ruta si es un path directo
         resolved, err = resolve_and_validate_path(str(fpath))
         if err or not os.path.isfile(resolved):
             results.append({"file": fpath, "status": "error", "message": "Archivo no encontrado"})
@@ -140,14 +110,12 @@ def run(**kwargs: Any) -> str:
 
         validation = validate_file(resolved, content)
         status = validation.get("status", "skipped")
-
         if status == "ok":
             passed += 1
         elif status == "skipped":
             skipped += 1
         else:
             failed += 1
-
         results.append({
             "file": fpath,
             "status": status,
@@ -155,7 +123,6 @@ def run(**kwargs: Any) -> str:
             "line": validation.get("line"),
         })
 
-    # Armar resumen
     summary = (
         f"📊 VALIDACION COMPLETA ({len(files)} archivos)\n"
         f"   ✅ Pasaron: {passed}\n"
@@ -163,7 +130,6 @@ def run(**kwargs: Any) -> str:
         f"   ⏭️  Omitidos: {skipped}\n\n"
     )
 
-    # Detalle de fallos
     failures = [r for r in results if r["status"] == "error"]
     if failures:
         summary += "❌ ERRORES:\n"
@@ -171,26 +137,21 @@ def run(**kwargs: Any) -> str:
             line_info = f" (linea {r['line']})" if r.get("line") else ""
             summary += f"  - {r['file']}{line_info}: {r['message']}\n"
 
-    # Detalle de omitidos
-    # Detalle de omitidos
     skips = [r for r in results if r["status"] == "skipped"]
     if skips:
         summary += f"\n⏭️  OMITIDOS ({len(skips)}):\n"
         for r in skips[:10]:
             summary += f"  - {r['file']}: {r['message']}\n"
 
-    # ── ARCHITECTURE CHECK (optional) ─────────────────────────────
     if arch_check:
         try:
             from src.tools._arch_checker import check_directory, check_file
-            # If we have a directory, check it; otherwise check individual files
             if directory:
                 resolved_dir, _ = resolve_and_validate_path(directory)
                 if resolved_dir and os.path.isdir(resolved_dir):
                     report = check_directory(resolved_dir, recursive=False)
                     summary += f"\n{report.summary()}"
             elif files:
-                # Check each file individually
                 all_violations = []
                 for fpath in files[:MAX_FILES]:
                     resolved, _ = resolve_and_validate_path(str(fpath))
@@ -204,6 +165,15 @@ def run(**kwargs: Any) -> str:
                 else:
                     summary += f"\n🏛️ ARCHITECTURE CHECK — ✅ Sin violaciones arquitectónicas\n"
         except Exception:
-            pass  # arch check is non-blocking
+            pass
 
     return summary
+
+
+async def run(**kwargs: Any) -> str:
+    files: list = kwargs.get("files", [])
+    directory: str | None = kwargs.get("path")
+    pattern: str = kwargs.get("pattern", "")
+    arch_check: bool = kwargs.get("architecture", False)
+
+    return await asyncio.to_thread(_sync_validate, files, directory, pattern, arch_check)

@@ -1,13 +1,13 @@
 import os
 import logging
-import threading
+import asyncio
 from typing import Any
 
 from src.paths import CONTEXT_DIR
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-_save_lock: threading.Lock = threading.Lock()
+_save_lock: asyncio.Lock = asyncio.Lock()
 
 DEFINITION: dict[str, Any] = {
     "type": "function",
@@ -94,6 +94,41 @@ def _write_memory_file(filepath: str, header_lines: list[str], memories: dict[st
         logger.exception("Failed to write to MEMORY.md")
         return "[ERROR] Could not write to MEMORY.md."
     return None
+def _sync_read_and_write(filepath: str, key: str, value: str) -> tuple[str | None, str]:
+    """Sync function: lee MEMORY.md, aplica operación, escribe. Corre en to_thread."""
+    header_lines = []
+    memories = {}
+
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except Exception:
+            return "[ERROR] Could not read MEMORY.md.", ""
+    else:
+        lines = list(_HEADER_TEMPLATE)
+
+    in_memories_section = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("- **") and "**:" in stripped:
+            idx = stripped.find("**:")
+            k = stripped[4:idx].strip()
+            v = stripped[idx + 3 :].strip()
+            memories[k] = v
+        elif stripped.startswith("## Memories") or stripped.startswith("## Memoria"):
+            in_memories_section = True
+        elif not in_memories_section:
+            header_lines.append(line)
+
+    header_lines = _ensure_header(header_lines)
+
+    action_msg = _apply_memory_operation(key, value, memories)
+    if action_msg.startswith("[ERROR]"):
+        return action_msg, ""
+
+    err = _write_memory_file(filepath, header_lines, memories)
+    return err, action_msg
 
 
 async def run(**kwargs) -> str:
@@ -105,42 +140,10 @@ async def run(**kwargs) -> str:
 
     filepath = os.path.join(CONTEXT_DIR, "MEMORY.md")
 
-    with _save_lock:
-        header_lines = []
-        memories = {}
-
-        if os.path.exists(filepath):
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-            except Exception:
-                return "[ERROR] Could not read MEMORY.md."
-        else:
-            lines = list(_HEADER_TEMPLATE)
-
-        in_memories_section = False
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith("- **") and "**:" in stripped:
-                idx = stripped.find("**:")
-                k = stripped[4:idx].strip()
-                v = stripped[idx + 3 :].strip()
-                memories[k] = v
-            elif stripped.startswith("## Memories") or stripped.startswith("## Memoria"):
-                in_memories_section = True
-            elif not in_memories_section:
-                header_lines.append(line)
-
-        header_lines = _ensure_header(header_lines)
-
-        action_msg = _apply_memory_operation(key, value, memories)
-        if action_msg.startswith("[ERROR]"):
-            return action_msg
-
-        err = _write_memory_file(filepath, header_lines, memories)
+    async with _save_lock:
+        err, action_msg = await asyncio.to_thread(_sync_read_and_write, filepath, key, value)
         if err:
             return err
-
         if _invalidate_cache_fn is not None:
             _invalidate_cache_fn()
 

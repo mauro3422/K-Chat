@@ -4,6 +4,7 @@ Soporta rangos de líneas por archivo (ej: 'file.py:10-30').
 Sigue el patrón Lego: DEFINITION + run().
 """
 import os
+import asyncio
 import re
 from typing import Any
 
@@ -95,7 +96,7 @@ def _read_single(path: str, start_line: int, end_line: int | None, max_lines: in
     return "".join(out)
 
 
-def run(**kwargs: Any) -> str:
+async def run(**kwargs: Any) -> str:
     files: list = kwargs.get("files", [])
     max_lines = min(int(kwargs.get("max_lines", 250)), 500)
     if not files or not isinstance(files, list):
@@ -103,10 +104,9 @@ def run(**kwargs: Any) -> str:
 
     if len(files) > MAX_FILES:
         return f"[ERROR] Maximo {MAX_FILES} archivos por llamada (pediste {len(files)})."
-
-    results: list[str] = []
-    for spec in files:
-        path, start, end = _parse_file_spec(str(spec))
-        results.append(_read_single(path, start, end, max_lines))
+    # Ejecutar lecturas en paralelo con to_thread
+    tasks = [asyncio.to_thread(_read_single, *(_parse_file_spec(str(spec))), max_lines)
+             for spec in files]
+    results = await asyncio.gather(*tasks)
 
     return "\n\n".join(results)

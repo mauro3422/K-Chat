@@ -1,22 +1,18 @@
-"""dependency_graph: mapa completo de dependencias entre módulos Python.
+"""dependency_graph: analiza dependencias entre modulos Python.
 
-Recorre un directorio, extrae imports de cada archivo, y genera un grafo
-de dependencias clasificado (downward/same/upward/banned).
-
-Usa _arch_checker para las violaciones arquitectónicas.
-
-Usage:
-    dependency_graph(path="src/")
-    dependency_graph(path="src/", file="orchestrator.py")
+Sigue el patron Lego: DEFINITION + run().
 """
-
 import ast
+import logging
 import os
+import re
+import asyncio
+from collections import defaultdict
 from typing import Any
 from pathlib import Path
-from collections import defaultdict
 
 from src.tools._path_helpers import resolve_and_validate_path
+
 from src.tools._arch_checker import check_file, Violation, Rule, DEFAULT_RULES
 
 
@@ -239,136 +235,100 @@ def _analyze_file(
     }
 
 
-def run(**kwargs: Any) -> str:
-    path = kwargs.get("path", "").strip()
-    target_file = kwargs.get("file", "").strip()
-    verbose = kwargs.get("verbose", False)
-
-    if not path:
-        return "[ERROR] Proporciona un path (ej: 'src/')"
-
+def _sync_dependency_graph(path: str, target_file: str, verbose: bool) -> str:
     resolved, err = resolve_and_validate_path(path)
     if err:
         return err
-
     if not os.path.isdir(resolved):
         return f"[ERROR] '{path}' no es un directorio."
-
     project_root = _find_project_root(resolved)
-
-    # Collect all Python files
-    all_files: list[str] = []
+    all_files = []
     for root, dirs, files in os.walk(resolved):
         dirs[:] = [d for d in dirs if d not in ("__pycache__", "node_modules", ".git", "venv", ".venv")]
         for fname in sorted(files):
             if fname.endswith(".py"):
                 all_files.append(os.path.join(root, fname))
-
     if not all_files:
         return f"[INFO] No se encontraron archivos .py en {path}"
-
-    # If target_file specified, filter to just that file
     if target_file:
         matched = [f for f in all_files if target_file in f]
         if not matched:
             return f"[ERROR] No se encontró '{target_file}' en {path}"
         all_files = matched
-
-    # Analyze each file
-    results: list[dict[str, Any]] = []
-    all_violations: list[Violation] = []
-    direction_counts: dict[str, int] = defaultdict(int)
-
+    results = []
+    all_violations = []
+    direction_counts = defaultdict(int)
     for fp in all_files:
         result = _analyze_file(fp, project_root, verbose=verbose)
         results.append(result)
         all_violations.extend(result["violations"])
         for dep in result["dependencies"]:
             direction_counts[dep["direction"]] += 1
-
-    # Build output
     total_deps = sum(direction_counts.values())
     lines = [f"\n📊 DEPENDENCY GRAPH — {path} ({len(results)} archivos, {total_deps} dependencias)\n"]
-
     for result in results:
         deps = result["dependencies"]
         violations = result["violations"]
         fname = result["file"]
-
         if not deps and not violations:
             continue
-
         lines.append(f"📄 {fname}")
-
         for dep in deps:
-            icon = {
-                "downward": "✅",
-                "same": "🔹",
-                "upward": "⚠️",
-                "banned": "🚫",
-                "external": "📦",
-            }.get(dep["direction"], "❓")
-
+            icon = {"downward": "✅", "same": "🔹", "upward": "⚠️", "banned": "🚫", "external": "📦"}.get(dep["direction"], "❓")
             tc_note = " (TYPE_CHECKING)" if dep["type_checking"] else ""
             target = dep.get("target_file") or dep["module"]
             names_str = ", ".join(dep["names"][:3])
             if len(dep["names"]) > 3:
                 names_str += f" (+{len(dep['names'])-3})"
-
             lines.append(f"   {icon} → {target}  ({names_str}){tc_note}")
-
         if violations:
             for v in violations:
                 lines.append(f"   🚫 {v}")
-
         lines.append("")
-
-    # Summary
     lines.append("📈 RESUMEN DE DIRECCIONES:")
     for direction, count in sorted(direction_counts.items(), key=lambda x: -x[1]):
         icon = {"downward": "✅", "same": "🔹", "upward": "⚠️", "banned": "🚫", "external": "📦"}.get(direction, "❓")
         lines.append(f"   {icon} {direction}: {count}")
-
     if all_violations:
         lines.append(f"\n🔴 VIOLACIONES: {len(all_violations)}")
         for v in all_violations:
             lines.append(f"   {v}")
     else:
         lines.append(f"\n🟢 Sin violaciones arquitectónicas")
-
-    # Cycle detection (simple: check if A→B and B→A)
-    # Filter out same-package bidirectional imports (not real cycles)
-    dep_pairs: set[tuple[str, str]] = set()
+    dep_pairs = set()
     for result in results:
         src = result["file"]
         for dep in result["dependencies"]:
             tgt = dep.get("target_file", "")
             if tgt:
                 dep_pairs.add((src, tgt))
-
-    cycles: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    cycles = []
+    seen = set()
     for src, tgt in dep_pairs:
         if (tgt, src) in dep_pairs and src != tgt:
             pair = tuple(sorted([src, tgt]))
             if pair in seen:
                 continue
             seen.add(pair)
-
-            # Skip same-package bidirectional (tools/__init__.py ↔ tools/runner.py)
             src_dir = os.path.dirname(src)
             tgt_dir = os.path.dirname(tgt)
             if src_dir == tgt_dir:
                 continue
-
             cycles.append((src, tgt))
-
     if cycles:
         lines.append(f"\n🔄 CICLOS DETECTADOS: {len(cycles)}")
         for src, tgt in cycles[:5]:
             lines.append(f"   {src} ↔ {tgt}")
-
     result_str = "\n".join(lines)
     if len(result_str) > 30000:
         result_str = result_str[:30000] + "\n...[truncado]"
     return result_str
+
+
+async def run(**kwargs: Any) -> str:
+    path = kwargs.get("path", "").strip()
+    target_file = kwargs.get("file", "").strip()
+    verbose = kwargs.get("verbose", False)
+    if not path:
+        return "[ERROR] Proporciona un path (ej: 'src/')"
+    return await asyncio.to_thread(_sync_dependency_graph, path, target_file, verbose)

@@ -45,7 +45,7 @@ async def run(**kwargs) -> str:
     if err:
         return err
 
-    import asyncio
+    import os
     import os
 
     try:

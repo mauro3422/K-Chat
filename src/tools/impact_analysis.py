@@ -1,21 +1,19 @@
-"""impact_analysis: analiza el impacto de cambiar una función o clase.
+"""impact_analysis: analiza el impacto de cambiar una funcion o clase.
 
-Dado un nombre de función y su archivo, encuentra todos los llamadores
-directos e indirectos, y muestra qué archivos se romperían si se cambia
-la firma.
-
-Usage:
-    impact_analysis(name="chat_stream", path="src/core/orchestrator.py")
-    impact_analysis(name="run", path="src/tools/edit_file.py")
+Sigue el patron Lego: DEFINITION + run().
 """
-
 import ast
+import logging
 import os
+import re
+import asyncio
+from collections import defaultdict
 from typing import Any
 from pathlib import Path
-from collections import defaultdict
 
 from src.tools._path_helpers import resolve_and_validate_path
+
+logger = logging.getLogger(__name__)
 
 
 DEFINITION: dict[str, Any] = {
@@ -199,17 +197,70 @@ def _get_function_signature(file_path: str, name: str) -> str | None:
     return None
 
 
-def run(**kwargs: Any) -> str:
+def _sync_impact(name: str, path: str, include_internal: bool) -> str:
+    resolved, err = resolve_and_validate_path(path)
+    if err:
+        return err
+    if not os.path.isfile(resolved):
+        return f"[ERROR] '{path}' no es un archivo."
+    project_root = _find_project_root(resolved)
+    rel_path = os.path.relpath(resolved, project_root)
+    signature = _get_function_signature(resolved, name)
+    callers = _find_callers(name, project_root, resolved, include_internal=include_internal)
+    lines = [f"\n🎯 IMPACT ANALYSIS — {name} @ {rel_path}\n"]
+    if signature:
+        lines.append(f"📌 Firma actual:")
+        lines.append(f"   {signature}")
+        lines.append("")
+    if not callers:
+        lines.append("✅ Sin dependencias externas — cambio seguro.")
+    else:
+        total_refs = sum(len(c["references"]) for c in callers)
+        lines.append(f"📊 {len(callers)} archivo(s) dependen de '{name}' ({total_refs} referencias):\n")
+        for caller in callers:
+            fname = caller["file"]
+            refs = caller["references"]
+            imports = [r for r in refs if r["type"] == "import"]
+            calls = [r for r in refs if r["type"] in ("call", "method_call")]
+            attrs = [r for r in refs if r["type"] == "attribute"]
+            usages = [r for r in refs if r["type"] == "usage"]
+            lines.append(f"📄 {fname}")
+            if imports:
+                for r in imports:
+                    lines.append(f"   📦 L:{r['line']}  {r['detail']}")
+            if calls:
+                for r in calls:
+                    lines.append(f"   🔴 L:{r['line']}  {r['detail']}")
+            if attrs:
+                for r in attrs:
+                    lines.append(f"   ⚠️  L:{r['line']}  {r['detail']}")
+            if usages:
+                for r in usages:
+                    lines.append(f"   🔹 L:{r['line']}  {r['detail']}")
+            lines.append("")
+        if calls:
+            lines.append("🔴 RIESGO: Cambios en la firma romperían:")
+            for caller in callers:
+                call_refs = [r for r in caller["references"] if r["type"] in ("call", "method_call")]
+                if call_refs:
+                    lines.append(f"   → {caller['file']} ({len(call_refs)} llamadas)")
+        elif imports:
+            lines.append("🟡 RIESGO BAJO: Solo se importa, no se llama directamente.")
+    result_str = "\n".join(lines)
+    if len(result_str) > 30000:
+        result_str = result_str[:30000] + "\n...[truncado]"
+    return result_str
+
+
+async def run(**kwargs: Any) -> str:
     name = kwargs.get("name", "").strip()
     path = kwargs.get("path", "").strip()
     include_internal = kwargs.get("include_internal", False)
-
     if not name:
         return "[ERROR] Proporciona el nombre de la función o clase a analizar."
     if not path:
         return "[ERROR] Proporciona el path del archivo donde está definida."
-
-    resolved, err = resolve_and_validate_path(path)
+    return await asyncio.to_thread(_sync_impact, name, path, include_internal)
     if err:
         return err
 

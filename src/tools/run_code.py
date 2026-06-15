@@ -5,6 +5,7 @@ Usa _validators.py para validación de sintaxis.
 Ejecuta en subprocess aislado con restricciones de seguridad.
 Auto-detecta y corrige errores comunes de sintaxis.
 """
+import asyncio
 import json
 import logging
 import os
@@ -281,7 +282,7 @@ def _execute_code(code: str, timeout: int) -> dict[str, Any]:
 
 # ─── RUN (entry point) ─────────────────────────────────────────────────
 
-def run(**kwargs: Any) -> str:
+async def run(**kwargs: Any) -> str:
     """Ejecuta código Python validado y sanitizado.
 
     Args:
@@ -332,7 +333,7 @@ def run(**kwargs: Any) -> str:
 
     # 4. Ejecutar en sandbox
     logger.info("Ejecutando código Python (timeout=%ds, chars=%d)", timeout, len(code))
-    result = _execute_code(code, timeout)
+    result = await asyncio.to_thread(_execute_code, code, timeout)
 
     # 5. Armar respuesta estructurada
     is_error = result["exit_code"] != 0

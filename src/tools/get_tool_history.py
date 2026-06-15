@@ -17,7 +17,7 @@ DEFINITION = {
 }
 
 
-def run(**kwargs) -> str:
+async def run(**kwargs) -> str:
     limit = int(kwargs.get("limit", kwargs.get("max_results", kwargs.get("count", kwargs.get("n", 5)))))
     _session_id = kwargs.get("_session_id")
     _repos = kwargs.get("_repos")
@@ -26,7 +26,7 @@ def run(**kwargs) -> str:
     if _repos is None:
         return "[ERROR] Missing repositories."
     try:
-        rows = _repos.tool_calls.get_history(_session_id, limit=min(limit, 20))
+        rows = await _repos.tool_calls.get_history(_session_id, limit=min(limit, 20))
     except Exception:
         return "[ERROR] Could not retrieve the tool history."
     if not rows:

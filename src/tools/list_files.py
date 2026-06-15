@@ -1,18 +1,19 @@
-"""list_files: vista panorámica de archivos con análisis inteligente.
+"""list_files: lista archivos con informacion detallada.
 
-Analiza archivos Python con AST y otros lenguajes con regex.
-Detecta funciones, clases, imports/exports, headers, estructura HTML.
+Sigue el patron Lego: DEFINITION + run().
 """
+import ast
 import fnmatch
 import logging
 import os
+import sys
+import asyncio
+from pathlib import Path
 from typing import Any
 
-from src.tools._analyzers import detect_language, icon, analyze_python, analyze_javascript, analyze_markdown, analyze_html, analyze_css, build_summary
 from src.tools._path_helpers import resolve_and_validate_path
 
 logger = logging.getLogger(__name__)
-
 DEFINITION = {
     "type": "function",
     "function": {
@@ -243,7 +244,6 @@ async def run(**kwargs: Any) -> str:
     if err:
         return err
 
-    import asyncio
     import os
 
     if not await asyncio.to_thread(os.path.exists, resolved_path):

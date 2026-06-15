@@ -1,4 +1,5 @@
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ DEFINITION = {
 }
 
 
-def run(name=None, **kwargs) -> str:
+async def run(name=None, **kwargs) -> str:
     if name is None:
         name = kwargs.get("name", kwargs.get("skill", kwargs.get("skill_name", "")))
     _session_id = kwargs.get("_session_id")
