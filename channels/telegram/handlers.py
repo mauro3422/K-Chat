@@ -88,6 +88,16 @@ def handle_command_reset(update: dict[str, Any]) -> str | None:
 
 
 @register
+def handle_command_delete(update: dict[str, Any]) -> str | None:
+    """Handle /delete — delete current session (messages + session)."""
+    msg = update.get("message")
+    if not msg:
+        return None
+    text = (msg.get("text", "") or "").strip().lower()
+    return text if text == "/delete" else None
+
+
+@register
 def handle_command_sessions(update: dict[str, Any]) -> str | None:
     """Handle /sessions and /sessions <n> — list / switch sessions."""
     msg = update.get("message")

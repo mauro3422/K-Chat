@@ -92,10 +92,10 @@ def register_middlewares(app: FastAPI) -> None:
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
-            "frame-src 'self'; "
+            "frame-src 'self' 'unsafe-inline'; "
             "connect-src 'self'"
         )
         return response

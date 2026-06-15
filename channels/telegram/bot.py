@@ -184,12 +184,14 @@ async def _process_single_update(
     logger.info("TG[%d] message: %.60s", chat_id, text)
 
     # ── Clear command: delete all messages in chat visually ───────────
-    if text in ("/new", "/reset", "/clear"):
+    if text in ("/new", "/reset", "/clear", "/delete"):
         await _clear_chat_messages(api_client, renderer, chat_id)
 
-    # ── /clear is visual-only: don't send to the LLM ──────────────────
-    if text == "/clear":
-        await api_client.send_message(chat_id, "🧹 Chat limpiado.")
+    # ── Commands that skip the LLM ────────────────────────────────────
+    if text in ("/clear", "/delete"):
+        if text == "/clear":
+            await api_client.send_message(chat_id, "🧹 Chat limpiado.")
+        # /delete is handled in the adapter (session deletion)
         return
 
     await api_client.send_action(chat_id, "typing")

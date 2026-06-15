@@ -143,7 +143,9 @@ export function createIframe(container, id, code) {
 }
 
 export function buildIframeSrc(id, code, stateStr) {
-    var safeCode = code.replace(/<\/script>/gi, '<\\/script>');
+    // Widget code goes directly in the HTML body (not inside a <script> tag).
+    // Its own <script> tags must close naturally — do NOT escape </script>.
+    var safeCode = code;
     return '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n' +
         '<style>\n' +
         'body { margin:0; padding:12px; font-family:system-ui,-apple-system,sans-serif; color:#c9d1d9; background:#161b22; }\n' +

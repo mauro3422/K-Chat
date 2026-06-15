@@ -466,3 +466,105 @@ def test_get_all_msg_ids_merges_memory_and_db():
     assert 'seen' in source or 'set()' in source, (
         "Must deduplicate IDs to avoid double-deletes"
     )
+
+
+# ─── /delete command tests ─────────────────────────────────────────────
+
+def test_handlers_has_delete_command():
+    """handlers.py must have a handler for /delete."""
+    source = _read_source("channels/telegram/handlers.py")
+    assert 'handle_command_delete' in source, (
+        "Missing /delete command handler"
+    )
+    assert '/delete' in source, (
+        "Handler must check for /delete text"
+    )
+
+
+def test_bot_handles_delete_command():
+    """bot.py must clear messages for /delete and skip the LLM."""
+    source = _read_source("channels/telegram/bot.py")
+    assert '/delete' in source, (
+        "Must handle /delete in bot.py"
+    )
+    # /delete should be in the clear list
+    assert '"/delete"' in source or "'/delete'" in source, (
+        "/delete must be in the clear/visual-delete list"
+    )
+
+
+def test_adapter_delete_calls_delete_cascade():
+    """adapter.py /delete must call delete_cascade to remove the
+    session and all its messages from DB."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert 'if text == "/delete":' in source, (
+        "Missing /delete handler in adapter"
+    )
+    assert 'delete_cascade' in source, (
+        "/delete must call delete_cascade on the session"
+    )
+    assert 'TelegramMsgIdRepo' in source or 'delete_chat' in source, (
+        "/delete must clear telegram_msg_ids for the chat"
+    )
+
+
+# ─── Service config tests ──────────────────────────────────────────────
+
+def test_service_file_has_killmode_mixed():
+    """The systemd service must have KillMode=mixed to prevent
+    stale processes from holding the port."""
+    import os
+    svc = os.path.expanduser("~/.config/systemd/user/k-chat.service")
+    with open(svc) as f:
+        content = f.read()
+    assert 'KillMode=mixed' in content, (
+        "Missing KillMode=mixed in k-chat.service"
+    )
+    assert 'TimeoutStopSec=30' in content, (
+        "Missing TimeoutStopSec=30 in k-chat.service"
+    )
+
+
+# ─── Sessions command tests ────────────────────────────────────────────
+
+def test_adapter_sessions_switch_by_number():
+    """_handle_sessions_command must support switching by index
+    with '/sessions <n>'."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert 'int(parts[1])' in source, (
+        "Must parse /sessions argument as integer index"
+    )
+    assert 'await repos.sessions.rename(target_sid' in source, (
+        "Must rename target session to active when switching"
+    )
+
+
+def test_adapter_session_listing_includes_archived():
+    """Session listing must include both active and archived sessions."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert '_archived' in source, (
+        "Must detect archived sessions by name prefix"
+    )
+    assert 'tg_sessions' in source, (
+        "Must collect TG sessions into a list"
+    )
+
+
+# ─── Auto-rename flow tests ────────────────────────────────────────────
+
+def test_adapter_imports_auto_rename():
+    """adapter.py must import auto_rename_session to rename
+    Telegram sessions after first message."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert 'from src.background_tasks import auto_rename_session' in source, (
+        "Must import auto_rename_session"
+    )
+
+
+def test_check_should_rename_tg_default_name():
+    """check_should_rename must match sessions whose name starts
+    with 'Telegram (' — the default Telegram session name."""
+    source = _read_source("src/memory/repos/session_repository.py")
+    assert 'startswith("Telegram (")' in source, (
+        "Must check name.startswith('Telegram (')"
+    )

@@ -119,6 +119,20 @@ async def process_message(
         yield "__content__:✅ Nueva sesión creada."
         return
 
+    if text == "/delete":
+        # Delete current session (cascade: messages + session)
+        repos = _late_imports.get_repos()
+        await repos.sessions.delete_cascade(session_id, repos)
+        # Also clear persisted telegram msg IDs for this chat
+        try:
+            from src.memory.repos.telegram_msg_id_repository import TelegramMsgIdRepo
+            repo = TelegramMsgIdRepo()
+            await repo.delete_chat(chat_id)
+        except Exception:
+            pass
+        yield "__content__:🗑 Sesión eliminada."
+        return
+
     # ── /sessions — list or switch ────────────────────────────────────
     if text.lower().startswith("/sessions"):
         result = await _handle_sessions_command(text, chat_id, _late_imports)
