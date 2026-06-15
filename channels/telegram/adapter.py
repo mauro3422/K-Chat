@@ -121,6 +121,7 @@ async def process_message(
         reasoning_buf: list[str] = []    # flush buffer (20-token chunks)
         full_reasoning: list[str] = []   # accumulates ALL reasoning for DB
         content_buf: list[str] = []
+        phases_output: list[dict] = []   # accumulates phases for web UI
         reasoning_flush_interval = 20
         content_flush_interval = 15
         start_time = time.time()
@@ -131,6 +132,7 @@ async def process_message(
             model=model,
             session_id=session_id,
             tagged=True,
+            phases_output=phases_output,
         ):
             # ── Timeout check ─────────────────────────────────────────
             if time.time() - start_time > _STREAM_TIMEOUT:
@@ -208,8 +210,9 @@ async def process_message(
             final_reasoning = "".join(full_reasoning).strip()
             if final_content:
                 yield f"__content__:{final_content}"
+                phases_json = json.dumps(phases_output) if phases_output else "[]"
                 await _persist_conversation(
-                    session_id, text, final_content, final_reasoning, _late_imports,
+                    session_id, text, final_content, final_reasoning, phases_json, _late_imports,
                 )
                 return
 
@@ -312,9 +315,10 @@ async def _persist_conversation(
     user_text: str,
     assistant_text: str,
     reasoning: str,
+    phases: str,
     li: _LazyImports,
 ) -> None:
-    """Save the assistant message to SQLite (with reasoning for web UI display).
+    """Save the assistant message to SQLite (with reasoning + phases for web UI).
 
     The user message was saved before streaming started.
     """
@@ -327,7 +331,7 @@ async def _persist_conversation(
             content=assistant_text,
             model=model,
             reasoning=reasoning,
-            phases="[]",
+            phases=phases,
         ))
         logger.info("Persisted TG conversation to session %s", session_id)
     except Exception as e:
