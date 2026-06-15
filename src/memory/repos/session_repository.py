@@ -87,16 +87,23 @@ class SessionRepository(_BaseRepository):
             raise ValueError("Session not found")
 
     async def check_should_rename(self, session_id: str) -> bool:
-        """Check if the session should be auto-renamed (single user message, no name set)."""
+        """Check if the session should be auto-renamed (single user message, no name set).
+
+        Also triggers for Telegram sessions that still have the default
+        ``"Telegram (...)"`` name (they get a proper LLM-generated title).
+        """
         try:
             conn = await self._get_conn()
             cursor = await conn.execute("SELECT name FROM sessions WHERE session_id = ?", (session_id,))
             row = await cursor.fetchone()
-            if row and (row['name'] == '' or row['name'] is None):
-                cursor = await conn.execute("SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user'", (session_id,))
-                row = await cursor.fetchone()
-                count = row[0] if row else 0
-                return count == 1
+            if row:
+                name = row["name"]
+                is_default_tg = name.startswith("Telegram (") if name else False
+                if name == "" or name is None or is_default_tg:
+                    cursor = await conn.execute("SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user'", (session_id,))
+                    row = await cursor.fetchone()
+                    count = row[0] if row else 0
+                    return count == 1
             return False
         except Exception:
             logger.exception("Failed to check should_rename for %s", session_id)

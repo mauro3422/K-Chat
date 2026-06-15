@@ -88,6 +88,19 @@ def handle_command_reset(update: dict[str, Any]) -> str | None:
 
 
 @register
+def handle_command_sessions(update: dict[str, Any]) -> str | None:
+    """Handle /sessions and /sessions <n> — list / switch sessions."""
+    msg = update.get("message")
+    if not msg:
+        return None
+    text = (msg.get("text", "") or "").strip()
+    lowered = text.lower()
+    if lowered == "/sessions" or lowered.startswith("/sessions "):
+        return text  # Return as-is (preserve arg like "/sessions 3")
+    return None
+
+
+@register
 def handle_voice_message(update: dict[str, Any]) -> str | None:
     """Handle voice messages — placeholder for ASR."""
     msg = update.get("message")

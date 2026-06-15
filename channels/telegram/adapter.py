@@ -119,6 +119,13 @@ async def process_message(
         yield "__content__:✅ Nueva sesión creada."
         return
 
+    # ── /sessions — list or switch ────────────────────────────────────
+    if text.lower().startswith("/sessions"):
+        result = await _handle_sessions_command(text, chat_id, _late_imports)
+        for line in result:
+            yield f"__content__:{line}"
+        return
+
     if text.startswith("__voice__:"):
         yield "__content__:🎤 Mensaje de voz recibido. Transcripción próximamente."
         return
@@ -306,6 +313,14 @@ async def process_message(
                 await _persist_conversation(
                     session_id, text, final_content, final_reasoning, phases_json, _late_imports,
                 )
+                # Auto-rename Telegram session (non-blocking background task)
+                try:
+                    from src.background_tasks import auto_rename_session
+                    asyncio.create_task(auto_rename_session(
+                        session_id, text, _late_imports.get_default_model(),
+                    ))
+                except Exception:
+                    pass
                 return
 
         logger.info("TG[%d] no text content generated", chat_id)
@@ -458,6 +473,83 @@ async def _reset_session(chat_id: int, li: _LazyImports) -> str:
     await repos.sessions.rename(session_id, session_name)
     logger.info("Reset Telegram session for chat %d -> %s", chat_id, session_id)
     return session_id
+
+
+# ─── /sessions command ──────────────────────────────────────────────────
+
+async def _handle_sessions_command(
+    text: str, chat_id: int, li: _LazyImports,
+) -> list[str]:
+    """Handle ``/sessions`` (list) and ``/sessions <n>`` (switch).
+
+    Returns a list of content lines to yield as ``__content__:``.
+    """
+    repos = li.get_repos()
+    all_sessions = await repos.sessions.get_all(limit=100)
+    session_name = f"Telegram ({chat_id})"
+    archived_name_prefix = f"{session_name}_archived"
+
+    # Collect sessions for this chat: active (exact name) + archived
+    tg_sessions: list[tuple[str, str, str]] = []  # (session_id, display_name, last_date)
+    for s in all_sessions:
+        sid = s[0]
+        last_date = str(s[2] or "")[:10] if s[2] else ""
+        name = s[5] if len(s) > 5 else ""
+        if name == session_name:
+            tg_sessions.insert(0, (sid, "📌 Activa", last_date))
+        elif name.startswith(archived_name_prefix):
+            tg_sessions.append((sid, name, last_date))
+
+    if not tg_sessions:
+        return ["No hay sesiones de Telegram."]
+
+    # If no number argument, list sessions
+    parts = text.strip().split(None, 1)
+    if len(parts) == 1:
+        lines = ["📋 **Tus sesiones de Telegram:**"]
+        for i, (sid, display, last) in enumerate(tg_sessions, 1):
+            label = display if display.startswith("📌") else display.split("_archived")[1].lstrip("_") if "_archived" in display else display
+            msg_count = ""
+            for s in all_sessions:
+                if s[0] == sid:
+                    msg_count = f" ({s[3]} msgs)" if s[3] else ""
+                    break
+            lines.append(f"  `{i}`. {label}{msg_count} — {last or '?'}")
+            if display.startswith("📌"):
+                lines.append(f"     🆔 `{sid[:12]}...`")
+        lines.append("")
+        lines.append("Usá `/sessions <n>` para cambiar a una sesión.")
+        return lines
+
+    # /sessions <n> — switch to session by index (1-based)
+    try:
+        idx = int(parts[1]) - 1
+        if idx < 0 or idx >= len(tg_sessions):
+            return [f"❌ Número inválido. Tenés {len(tg_sessions)} sesiones (1–{len(tg_sessions)})."]
+    except ValueError:
+        # Try switching by session_id prefix
+        return [f"❌ Usá `/sessions <número>` (1–{len(tg_sessions)})."]
+
+    target_sid, target_display, _ = tg_sessions[idx]
+
+    # If already active, do nothing
+    if target_display.startswith("📌"):
+        return ["⚠️ Ya estás en la sesión activa."]
+
+    # Archive current active session
+    for s in all_sessions:
+        sid = s[0]
+        name = s[5] if len(s) > 5 else ""
+        if name == session_name and sid:
+            archived = f"{session_name}_archived_{int(time.time())}"
+            await repos.sessions.rename(sid, archived)
+            logger.info("Archived current session %s -> %s", sid, archived)
+            break
+
+    # Rename target to active
+    await repos.sessions.rename(target_sid, session_name)
+    logger.info("Switched to session %s for chat %d", target_sid, chat_id)
+    return [f"✅ Cambiaste a la sesión `{target_sid[:12]}...`"]
 
 
 # ─── Persistence ───────────────────────────────────────────────────────

@@ -397,6 +397,53 @@ def test_clear_chat_messages_logs_count():
     )
 
 
+def test_check_should_rename_allows_telegram_default():
+    """check_should_rename should return True for Telegram sessions
+    that still have the default 'Telegram (...)' name after 1 user msg."""
+    source = _read_source("src/memory/repos/session_repository.py")
+    assert 'startswith("Telegram (")' in source, (
+        "Must check for Telegram default name pattern"
+    )
+
+
+def test_adapter_auto_rename_after_persist():
+    """After _persist_conversation, the adapter must trigger
+    auto_rename_session as a background task."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert 'auto_rename_session' in source, (
+        "Missing auto_rename_session call in adapter"
+    )
+    assert 'asyncio.create_task(auto_rename_session(' in source, (
+        "auto_rename_session must be called as background task"
+    )
+
+
+def test_handlers_has_sessions_command():
+    """handlers.py must have a handler for /sessions that captures
+    both '/sessions' and '/sessions <arg>'."""
+    source = _read_source("channels/telegram/handlers.py")
+    assert 'handle_command_sessions' in source, (
+        "Missing sessions command handler"
+    )
+    assert '/sessions' in source, (
+        "Handler must check for /sessions text"
+    )
+
+
+def test_adapter_has_sessions_command():
+    """adapter.py must handle /sessions command (list/switch)."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert '_handle_sessions_command' in source, (
+        "Missing _handle_sessions_command function"
+    )
+    assert '/sessions' in source or '"/sessions"' in source, (
+        "Must route /sessions to handler"
+    )
+    assert 'tg_sessions' in source, (
+        "Must collect TG sessions from repo"
+    )
+
+
 def test_delete_message_persisted_to_telegram_msg_ids():
     """MessageManager.set_msg_id must persist to telegram_msg_ids
     table via TelegramMsgIdRepo (survives bot restarts)."""
