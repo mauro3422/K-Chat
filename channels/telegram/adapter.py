@@ -342,13 +342,14 @@ async def _get_or_create_session(
 
     # Find existing Telegram session for this chat_id.
     # get_all() returns tuples: (session_id, first, last, count, user_count, name)
+    # sorted by MAX(created_at) DESC, so first match = most recent.
     session_id = None
     session_name = f"Telegram ({chat_id})"
     try:
         all_sessions = await repos.sessions.get_all()
         for s in all_sessions:
             sid = s[0]      # session_id
-            name = s[5]     # session name (COALESCE(s.name, ''))
+            name = s[5] if len(s) > 5 else ""  # session name (COALESCE(s.name, ''))
             if name == session_name and sid:
                 session_id = sid
                 break
@@ -423,10 +424,28 @@ async def _get_or_create_session(
 
 
 async def _reset_session(chat_id: int, li: _LazyImports) -> str:
-    """Reset the session for a given chat, returning the new session ID."""
-    session_id = f"tele_{uuid.uuid4().hex[:20]}"
+    """Reset the session for a given chat, returning the new session ID.
+
+    Renames the old session (so it won't be found by name lookup)
+    and creates a fresh one.
+    """
     session_name = f"Telegram ({chat_id})"
     repos = li.get_repos()
+
+    # Rename existing session(s) so they don't collide with the new one
+    try:
+        all_sessions = await repos.sessions.get_all()
+        for s in all_sessions:
+            sid = s[0]
+            name = s[5] if len(s) > 5 else ""
+            if name == session_name and sid:
+                archived = f"{session_name}_archived_{int(time.time())}"
+                await repos.sessions.rename(sid, archived)
+                logger.info("Archived old session %s -> %s", sid, archived)
+    except Exception:
+        pass
+
+    session_id = f"tele_{uuid.uuid4().hex[:20]}"
     await repos.sessions.ensure(session_id)
     await repos.sessions.rename(session_id, session_name)
     logger.info("Reset Telegram session for chat %d -> %s", chat_id, session_id)

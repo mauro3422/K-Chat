@@ -79,6 +79,18 @@ class TelegramAPIClient:
 
         return False
 
+    async def delete_message(self, chat_id: int, message_id: int) -> bool:
+        """Delete a message via ``deleteMessage``. Returns ``True`` on success."""
+        try:
+            result = await self._api_result("deleteMessage", {
+                "chat_id": chat_id,
+                "message_id": message_id,
+            })
+            return result is not None
+        except Exception as e:
+            logger.debug("TG deleteMessage error (chat=%d, msg=%d): %s", chat_id, message_id, e)
+            return False
+
     async def send_action(self, chat_id: int, action: str = "typing") -> None:
         """Send a chat action (typing indicator). Errors are logged only."""
         try:
