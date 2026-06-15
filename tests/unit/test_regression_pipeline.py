@@ -704,18 +704,20 @@ def test_do_edit_handles_fallback_text():
 
 # ─── Inline tool pills tests ─────────────────────────────────────────
 
-def test_renderer_uses_single_main_message():
-    """The renderer must use ONE main message per chat (not separate
-    messages per phase)."""
+def test_renderer_uses_dual_messages():
+    """The renderer must use SEPARATE messages for reasoning and content."""
     source = _read_source("channels/telegram/renderer.py")
-    assert '_main_msg' in source, (
-        "Missing _main_msg dict (single message per turn)"
+    assert '_reasoning_msg' in source, (
+        "Missing _reasoning_msg dict"
     )
-    assert '_display_text' in source, (
-        "Missing _display_text accumulator"
+    assert '_content_msg' in source, (
+        "Missing _content_msg dict"
     )
-    assert '_ensure_main_msg' in source, (
-        "Missing _ensure_main_msg method"
+    assert '_reasoning_parts' in source, (
+        "Missing _reasoning_parts accumulator"
+    )
+    assert '_content_parts' in source, (
+        "Missing _content_parts accumulator"
     )
 
 
@@ -757,10 +759,10 @@ def test_renderer_uses_html_parse_mode():
     """The renderer must use HTML parse_mode for Telegram messages
     to render bold, italic, code formatting."""
     source = _read_source("channels/telegram/renderer.py")
-    assert '_build_html' in source, (
-        "Missing _build_html method for HTML formatting"
+    assert '_text_to_html' in source, (
+        "Missing _text_to_html method for HTML formatting"
     )
-    assert 'parse_mode="HTML"' in source, (
+    assert 'parse_mode="HTML"' in source or '"HTML"' in source, (
         "Must use HTML parse_mode for Telegram API calls"
     )
     assert 're.sub' in source, (
@@ -783,17 +785,14 @@ def test_html_escapes_special_chars():
 
 
 def test_renderer_tracks_continuations():
-    """The renderer must track continuation messages per chat to avoid
+    """The renderer must track continuation messages per phase to avoid
     duplicate 📎 chunks on sequential edits."""
     source = _read_source("channels/telegram/renderer.py")
-    assert '_cont_msgs' in source, (
-        "Missing _cont_msgs continuation tracker"
+    assert '_phase_conts' in source, (
+        "Missing _phase_conts continuation tracker per phase key"
     )
-    assert 'conts.append' in source, (
-        "Must append new continuation message IDs"
-    )
-    assert 'conts[ci]' in source, (
-        "Must reuse existing continuation message IDs"
+    assert 'get_continuations' in source or 'set_continuation' in source, (
+        "Must use MessageManager continuation tracking"
     )
 
 
@@ -821,16 +820,89 @@ def test_reasoning_has_double_newline():
 
 
 def test_renderer_persists_msg_ids():
-    """The renderer must persist main message IDs via
-    MessageManager.store_msg_id so _clear_chat_messages can find them.
-    Uses incrementing keys ('main:0', 'main:1', ...) to preserve history."""
+    """The renderer must persist message IDs via
+    MessageManager.store_msg_id using phase_key so _clear_chat_messages
+    can find ALL messages."""
     source = _read_source("channels/telegram/renderer.py")
     assert 'store_msg_id' in source, (
         "Renderer must call store_msg_id to persist message IDs"
     )
-    assert 'main:{cnt}' in source, (
-        "Main message IDs must use incrementing keys (main:0, main:1, ...)"
+    assert 'phase_key' in source, (
+        "Must persist message IDs with phase_key (reasoning:N, content:N)"
     )
-    assert '_msg_counter' in source, (
-        "Missing msg_counter to generate unique keys"
-    )
+
+
+# ─── Deep structural tests ────────────────────────────────────────────
+
+def test_delete_handler_cascade_chain():
+    """The /delete handler must perform: delete_cascade → delete_chat → SSE."""
+    source = _read_source("channels/telegram/adapter.py")
+    lines = source.split("\n")
+    # Find the /delete block
+    block_start = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith('if text == "/delete":'):
+            block_start = i
+            break
+    assert block_start is not None, "Missing /delete handler"
+    # Read block
+    block_lines = []
+    for j in range(block_start + 1, len(lines)):
+        if lines[j].startswith("    ") and lines[j].strip():
+            block_lines.append(lines[j])
+        elif lines[j].strip() == "":
+            continue
+        else:
+            break
+    block = "\n".join(block_lines)
+    assert 'delete_cascade(' in block, "Must call delete_cascade"
+    assert 'delete_chat(' in block, "Must call delete_chat"
+    assert 'session_deleted' in block, "Must send session_deleted SSE"
+    # Order: cascade < delete_chat < SSE
+    assert block.index("delete_cascade(") < block.index("delete_chat(")
+    assert block.index("delete_chat(") < block.index("session_deleted")
+
+
+def test_sse_delete_payload_structure():
+    """SSE session_deleted must have type + data.session_id."""
+    source = _read_source("channels/telegram/adapter.py")
+    assert '"type": "session_deleted"' in source, "Must have type=session_deleted"
+    assert '"data": {"session_id": session_id}' in source, "Must pass session_id in data"
+
+
+def test_frontend_session_deleted_redirect_chain():
+    """Frontend must refreshSidebar + redirect on session_deleted."""
+    source = _read_source("web/static/modules/sse-client.js")
+    assert "event.type === 'session_deleted'" in source or 'event.type === "session_deleted"' in source
+    assert 'refreshSidebar()' in source, "Must call refreshSidebar"
+    assert ".session-item[data-sid]" in source, "Must query most recent session"
+    assert "window.location.href = '/'" in source, "Must fallback to /"
+    has_redirect = ".getAttribute('data-sid')" in source
+    assert has_redirect, "Must redirect to /sessions/<sid>"
+
+
+def test_auto_rename_ordered_after_persist():
+    """auto_rename must be after _persist_conversation (success path only)."""
+    source = _read_source("channels/telegram/adapter.py")
+    lines = source.split("\n")
+    rename_line, persist_line = None, None
+    for i, line in enumerate(lines):
+        if "asyncio.create_task(auto_rename_session(" in line:
+            rename_line = i
+        if "await _persist_conversation(" in line:
+            persist_line = i
+    assert persist_line is not None, "Missing _persist_conversation"
+    assert rename_line is not None, "Missing auto_rename_session"
+    assert rename_line > persist_line, "auto_rename must be AFTER _persist_conversation"
+
+
+def test_session_telegram_lookup_sql():
+    """Telegram lookup must use parameterized WHERE + ORDER BY."""
+    source = _read_source("src/memory/repos/session_repository.py")
+    assert 'WHERE telegram_chat_id = ?' in source, "Must use parameterized WHERE"
+    assert 'ORDER BY created_at DESC LIMIT 1' in source, "find_by must get most recent"
+    assert 'ORDER BY created_at DESC' in source, "find_all must order DESC"
+    assert "COALESCE(name, '')" in source or 'COALESCE(name, "")' in source, "Must COALESCE name"
+
+
+

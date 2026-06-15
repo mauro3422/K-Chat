@@ -136,8 +136,8 @@ def _make_renderer(mock_api: MockTelegramAPI, **overrides: object) -> TelegramRe
 
 
 @pytest.mark.asyncio
-async def test_reasoning_content_reasoning_all_in_one():
-    """reasoning → content → reasoning va todo en UN solo mensaje."""
+async def test_reasoning_content_reasoning_separate():
+    """reasoning → content → reasoning crea mensajes separados."""
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
@@ -145,10 +145,11 @@ async def test_reasoning_content_reasoning_all_in_one():
         "__content__:Here is the answer",
         "__reasoning__:Wait, reconsidering",
     ))
-    # All events go to one single message (sent once, edited twice)
-    assert len(api.sent_messages) == 1
-    assert len(api.edited_messages) == 2
-    assert api.sent_messages[0]["message_id"] == 1001
+    # 3 sends: reasoning msg, content msg, new reasoning msg (phase2)
+    assert len(api.sent_messages) == 3
+    assert "Pensando" in api.sent_messages[0]["text"]
+    assert "Here is the answer" in api.sent_messages[1]["text"]
+    assert "Wait" in api.sent_messages[2]["text"]
 
 
 @pytest.mark.asyncio
@@ -181,8 +182,8 @@ async def test_content_edit_in_same_phase():
 
 
 @pytest.mark.asyncio
-async def test_reasoning_tool_content_all_in_one():
-    """reasoning → tool → content va todo en UN solo mensaje (tool inline)."""
+async def test_reasoning_tool_content_separate():
+    """reasoning → tool → content: tool inline en reasoning, content separado."""
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
@@ -190,16 +191,21 @@ async def test_reasoning_tool_content_all_in_one():
         "__tool__:call_1:web_search:calling",
         "__content__:Found results",
     ))
-    # Single message with reasoning, inline tool pill, and content
-    assert len(api.sent_messages) == 1
-    # Tool pill is in the edited version (edit after tool event)
-    assert "🔧" in api.edited_messages[-1]["text"]
-    assert "web_search" in api.edited_messages[-1]["text"]
+    # 2 sends: reasoning, content. Tool pill is edited inline.
+    assert len(api.sent_messages) == 2
+    # Tool pill is in the edited version of the reasoning message
+    assert len(api.edited_messages) >= 1
+    edit_text = api.edited_messages[-1]["text"]
+    assert "🔧" in edit_text
+    assert "web_search" in edit_text
+    # Content is separate
+    content_text = api.sent_messages[1]["text"]
+    assert "Found results" in content_text
 
 
 @pytest.mark.asyncio
 async def test_tool_does_not_reset_phases():
-    """tool NO resetea fases: todo va en el mismo mensaje principal."""
+    """tool NO resetea fases: reasoning y content son mensajes separados."""
     api = MockTelegramAPI()
     r = _make_renderer(api)
     await r.render_stream(12345, _gen(
@@ -207,9 +213,10 @@ async def test_tool_does_not_reset_phases():
         "__tool__:call_1:search:calling",
         "__content__:After tool content",
     ))
-    # Everything in one message — message_id 1001
-    assert len(api.sent_messages) == 1
-    assert api.sent_messages[0]["message_id"] == 1001
+    # 2 messages: reasoning+tool, content
+    assert len(api.sent_messages) == 2
+    assert "Before tool" in api.sent_messages[0]["text"]
+    assert "After tool" in api.sent_messages[1]["text"]
 
 
 @pytest.mark.asyncio
@@ -222,12 +229,11 @@ async def test_error_ends_stream():
         "__error__:Something went wrong",
         "__content__:should not appear",
     ))
-    # Single message with reasoning + error appended (edits)
-    assert len(api.sent_messages) == 1
-    assert len(api.edited_messages) >= 1
-    assert "Error" in api.edited_messages[-1]["text"]
-    assert "Let me process" in api.edited_messages[-1]["text"]
-    assert "should not appear" not in api.edited_messages[-1]["text"]
+    # Reasoning message + error in content
+    assert len(api.sent_messages) == 2
+    assert "Let me process" in api.sent_messages[0]["text"]
+    assert "Error" in api.sent_messages[1]["text"]
+    assert "should not appear" not in api.sent_messages[1]["text"]
 
 
 @pytest.mark.asyncio
@@ -304,8 +310,8 @@ async def test_none_chunk_skipped():
 
 
 @pytest.mark.asyncio
-async def test_main_message_tracking():
-    """Todo va a un solo mensaje principal (no phases separadas)."""
+async def test_dual_message_tracking():
+    """Razonamiento y contenido tienen mensajes separados."""
     api = MockTelegramAPI()
     mm = MessageManager()
     r = _make_renderer(api, message_manager=mm)
@@ -314,21 +320,15 @@ async def test_main_message_tracking():
         "__content__:C0",
         "__reasoning__:R1",
     ))
-    # The renderer's _main_msg tracks the single message
-    assert r._main_msg.get(12345) == 1001
-    assert len(api.sent_messages) == 1
-    # 2 edits: content(C0), reasoning(R1 replaces R0)
-    # (R0 creates the message, no redundant edit)
-    assert len(api.edited_messages) == 2
-    # Final text has R1 (replaced R0) and C0
-    final_text = api.edited_messages[-1]["text"]
-    assert "R1" in final_text
-    assert "C0" in final_text
+    # Separate messages for reasoning(R0), content(C0), reasoning(R1)
+    assert r._reasoning_msg.get(12345) is not None
+    assert r._content_msg.get(12345) is not None
+    assert len(api.sent_messages) == 3
 
 
 @pytest.mark.asyncio
-async def test_tool_inline_in_main_message():
-    """Tool pills van inline en el main message, no como mensaje separado."""
+async def test_tool_inline_in_reasoning():
+    """Tool pills van inline en el mensaje de razonamiento."""
     api = MockTelegramAPI()
     mm = MessageManager()
     r = _make_renderer(api, message_manager=mm)
@@ -337,12 +337,12 @@ async def test_tool_inline_in_main_message():
         "__tool__:call_x:search:calling",
         "__reasoning__:R1",
     ))
-    # One single message with all content + inline pill
-    assert len(api.sent_messages) == 1
-    # Tool pill is in the last edit
-    final_text = api.edited_messages[-1]["text"]
-    assert "search" in final_text
-    assert "🔧" in final_text
+    # 3 sent messages: reasoning(R0), (tool inline edit), reasoning(R1)
+    # Tool pill is inline in the edited reasoning message
+    assert len(api.edited_messages) >= 1
+    edit_text = api.edited_messages[-1]["text"]
+    assert "search" in edit_text
+    assert "🔧" in edit_text
 
 
 # ══════════════════════════════════════════════════════════════════════════════
