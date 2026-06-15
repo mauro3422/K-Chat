@@ -383,6 +383,7 @@ function loadSession(sid, deps) {
         }
 
         MarkdownRenderer.renderAll();
+        // On initial load, always scroll to bottom
         Utils.scrollToBottom();
       }
       // Clear loading flag so SSE can take over

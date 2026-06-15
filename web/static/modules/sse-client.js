@@ -108,7 +108,8 @@ function reloadMessages(sid) {
     .then(function(modules) {
       if (!modules) return;
       if (typeof modules[0].MarkdownRenderer?.renderAll === 'function') modules[0].MarkdownRenderer.renderAll();
-      if (typeof modules[1].scrollToBottom === 'function') modules[1].scrollToBottom();
+      // Only scroll if user was near bottom (avoids flash when reading history)
+      if (typeof modules[1].scrollToBottomIfNear === 'function') modules[1].scrollToBottomIfNear();
     })
     .catch(function(err) {
       console.error('SSE reloadMessages failed:', err);
@@ -137,7 +138,8 @@ function _ensureLiveMsg() {
 
   msgArea.appendChild(_liveMsg);
   import('./stream-lifecycle.js').then(function(sl) {
-    if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
+    if (typeof sl.scrollToBottomIfNear === 'function') sl.scrollToBottomIfNear();
+    else if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
   }).catch(function() {});
 }
 
@@ -186,9 +188,9 @@ function streamTool(data) {
     _liveCurrentTools.className = 'tool-calls';
     _liveMsg.appendChild(_liveCurrentTools);
     _livePhase = 'tool';
-    // Scroll to show tools
     import('./stream-lifecycle.js').then(function(sl) {
-      if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
+      if (typeof sl.scrollToBottomIfNear === 'function') sl.scrollToBottomIfNear();
+      else if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
     }).catch(function() {});
   }
   var icon = data.status === 'ok' ? '&#10003;' : '&#10007;';
@@ -224,7 +226,8 @@ function streamContent(data) {
     el.textContent = text;
   }
   import('./stream-lifecycle.js').then(function(sl) {
-    if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
+    if (typeof sl.scrollToBottomIfNear === 'function') sl.scrollToBottomIfNear();
+    else if (typeof sl.scrollToBottom === 'function') sl.scrollToBottom();
   }).catch(function() {});
 }
 

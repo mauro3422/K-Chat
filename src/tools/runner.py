@@ -21,12 +21,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: 'Repositories', skill_registry: Any | None = None, invalidate_cache_fn: Any | None = None) -> AsyncGenerator[Any, None]:
     async def wrap_tool(tc, name, args):
         try:
-            import inspect
-            res = tool_map[name](**args, _session_id=session_id, _repos=repos, _skill_registry=skill_registry, _invalidate_cache_fn=invalidate_cache_fn)
-            if inspect.iscoroutine(res):
-                tool_result = await res
-            else:
-                tool_result = res
+            tool_result = await tool_map[name](**args, _session_id=session_id, _repos=repos, _skill_registry=skill_registry, _invalidate_cache_fn=invalidate_cache_fn)
             status = "error" if tool_result and tool_result.startswith("[ERROR]") else "ok"
         except asyncio.TimeoutError:
             logger.warning("Tool execution timed out for '%s'", name)

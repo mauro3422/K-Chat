@@ -57,12 +57,65 @@ def get_templates(config=None):
             - **✅ Protocol/interface before concrete implementation** — swapability by design.
             - **✅ If you need to import upward, stop and redesign.** The abstraction is wrong.
 
-            --- 🔧 USO DE TOOLS ---
+            --- 🔧 GUIA DE USO DE TOOLS ---
 
             - **Call, Don't Narrate**: Never describe what you are going to do with tools. Execute directly. Call multiple tools in parallel when possible.
-            - **Tool Efficiency**: Sé estratégico con las tools. No abuses de read_file para archivos que ya tenés en contexto.
+            - **Tool Efficiency**: Usá la herramienta correcta para cada cosa. NO uses execute_command si existe una tool especifica.
             - **Timestamps**: All save_memory values must start with YYYY-MM-DD HH:MM | timestamp.
-            - **Available tools**: web_search, fetch_url, read_file, read_multiple, write_file, edit_file, search_files, analyze_code, list_files, execute_command, git_operation, run_code, validate_all, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, db_query
+
+            📋 GUIA RAPIDA: QUERES HACER X → USA Y
+
+            Leer archivos
+              read_file("path", start, end)     → leer archivo (con rango opcional)
+              read_multiple(files=[...])         → leer VARIOS archivos en una llamada
+
+            Buscar codigo
+              search_files(pattern, path)        → como grep, busca texto en archivos
+              list_files(path, depth, pattern)   → como find, lista estructura del proyecto
+              analyze_code(path)                 → analisis AST profundo: funciones, calls, complejidad, y ASYNC AUDIT
+              db_query(table, search)            → busca en SQLite (sesiones, mensajes, tools)
+
+            Analizar arquitectura
+              dependency_graph(path)             → grafo de dependencias entre modulos
+              find_dead_code(path)               → funciones/clases no referenciadas
+              impact_analysis(name, path)        → quien llama a una funcion
+              analyze_code(find_duplicates=True) → duplicados estructurales cross-file
+
+            Editar/escribir archivos
+              edit_file(path, start, end, new)   → edicion quirurgica (como sed)
+              write_file(path, content)          → crear/sobrescribir archivo completo
+              move_file(source, dest, op)        → mv / cp archivos (evita execute_command)
+
+            Ejecutar codigo
+              run_code(code)                     → Python en sandbox (SEGURO, preferido)
+              execute_command(cmd)               → shell real (SOLO si no hay tool especifica)
+
+            Web
+              web_search(query)                  → buscar en internet via SearXNG
+              fetch_url(url)                     → leer pagina web completa
+
+            Memoria
+              save_memory(key, value)            → guardar en MEMORY.md y memory.db
+              memory_search(query)               → buscar en memoria curada
+              list_memories(prefix)              → listar entradas de memoria agrupadas
+              search_conversations(query)        → buscar en todas las sesiones (grep de chats)
+
+            Widgets
+              save_widget(id, code, desc)        → guardar widget oficial
+              update_widget(id, code, desc)      → actualizar version
+              get_widget_code(id)                → recuperar codigo guardado
+
+            Git
+              git_operation(op, ...)             → git status, diff, log, add, commit, etc.
+
+            Skills y documentacion
+              read_skill(name)                   → leer skills/ instaladas
+              Las rules/*.md se leen con read_file si necesitas detalle de una tool
+
+            --- 🎯 REGLA DE ORO ---
+            Antes de ejecutar execute_command, preguntate:
+            "Existe una tool que haga esto?" Si la respuesta es si, USA ESA TOOL.
+            execute_command es para lo que NO tiene tool: compilar, systemctl, instalar paquetes, etc.
 
             --- 🐞 DEBUGGING CON DB_QUERY ---
 

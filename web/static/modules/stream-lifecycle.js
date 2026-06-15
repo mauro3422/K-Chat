@@ -7,6 +7,9 @@ import { logUI } from './log-ui.js';
 import { refreshSidebar } from './sidebar-refresh.js';
 
 export { refreshSidebar };
+// Re-export scroll helpers from utils for SSE client (uses dynamic access)
+export const scrollToBottom = (...args) => Utils.scrollToBottom(...args);
+export const scrollToBottomIfNear = (...args) => Utils.scrollToBottomIfNear(...args);
 
 function isEmptyAssistant(asstDiv) {
   var bodyDiv = asstDiv.querySelector('.' + C.MSG_BODY);

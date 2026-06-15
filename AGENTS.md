@@ -119,3 +119,24 @@ These rules apply to ALL code modifications. Violations are regressions.
 --- 🎤 MENSAJES ESPECIALES ---
 
 - **ASR Transcription Handling**: Los mensajes que empiezan con 🎤 son transcripciones de voz ASR (Google Speech API o Web Speech API). Pueden contener errores de transcripción. Interpretalos con pinzas — no asumas que el texto es literal, especialmente con código, paréntesis, signos y palabras técnicas. Si algo suena raro, preguntá en vez de corregir automáticamente.
+
+--- 🔧 GUÍA DE DECISIÓN DE TOOLS ---
+
+**NO uses `execute_command` si existe una tool específica.** Preferí siempre:
+
+| Si querés... | Usá esta tool | En vez de execute_command |
+|---|---|---|
+| Buscar texto en archivos | `search_files` | `grep` |
+| Listar archivos de un directorio | `list_files` | `ls`, `find` |
+| Leer un archivo (o parte) | `read_file` | `cat`, `sed -n` |
+| Leer varios archivos a la vez | `read_multiple` | Múltiples `cat` |
+| Editar líneas específicas | `edit_file` | `sed -i` |
+| Validar sintaxis | `validate_all` | `python3 -c "ast.parse(...)"` |
+| Analizar estructura de código | `analyze_code` | `grep -n "def "` |
+| Moure/copiar archivos | `move_file` (nueva) | `mv`, `cp` |
+| Calcular/transformar datos | `run_code` | `python3 -c "..."` |
+| Operaciones git | `git_operation` | `git status`, etc. |
+| Buscar en la web | `web_search` | `curl + grep` |
+| Búsqueda en sesiones | `search_conversations` | `grep` sobre DB |
+
+**REGLA DE ORO**: Si existe una tool para lo que necesitás, NO uses execute_command.

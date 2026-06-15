@@ -4,9 +4,22 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function isNearBottom(el, threshold) {
+  if (!el) return true;
+  threshold = threshold || 80;
+  return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+}
+
 function scrollToBottom() {
   var el = document.getElementById('messages');
   if (el) el.scrollTop = el.scrollHeight;
+}
+
+function scrollToBottomIfNear(threshold) {
+  var el = document.getElementById('messages');
+  if (el && isNearBottom(el, threshold)) {
+    el.scrollTop = el.scrollHeight;
+  }
 }
 
 function initGlobalErrorHandlers() {
@@ -58,4 +71,4 @@ function finalizeStream(input) {
   scrollToBottom();
 }
 
-export const Utils = { escHtml, scrollToBottom, initGlobalErrorHandlers, showToast, finalizeStream };
+export const Utils = { escHtml, scrollToBottom, scrollToBottomIfNear, isNearBottom, initGlobalErrorHandlers, showToast, finalizeStream };

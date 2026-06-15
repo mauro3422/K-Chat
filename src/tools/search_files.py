@@ -5,6 +5,7 @@ funciones/clases (vía AST para Python), y stats. Similar a grep pero
 formateado para lectura rápida.
 """
 import ast
+import asyncio
 import logging
 import os
 import re
@@ -290,7 +291,6 @@ async def run(**kwargs: Any) -> str:
     if err:
         return err
 
-    import os
 
     if not await asyncio.to_thread(os.path.isdir, path):
         return f"[ERROR] El directorio '{path}' no existe."

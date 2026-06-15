@@ -10,10 +10,7 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
-from src.tools._ast_helpers import (
-    _read_and_parse, detect_language, _get_call_graph,
-    _format_imports, _calculate_metrics, _calculate_complexity, _build_analysis_output,
-)
+from src.tools._analyzers import detect_language, icon
 DEFINITION = {
     "type": "function",
     "function": {
@@ -205,6 +202,11 @@ def _iter_func_nodes(tree: ast.Module) -> list[tuple[ast.FunctionDef, bool]]:
 def _iter_class_nodes(tree: ast.Module) -> list[ast.ClassDef]:
     return [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
 
+def _count_lines(node: ast.FunctionDef) -> int:
+    return (node.end_lineno or node.lineno) - node.lineno + 1
+
+
+# ─── Formateo ─────────────────────────────────────────────────────────
 
 # ─── Formateo ─────────────────────────────────────────────────────────
 
@@ -387,6 +389,66 @@ def _read_and_parse(path: str) -> tuple[list[str], ast.Module | None, str | None
         return content_lines, None, f"[ERROR] Error de sintaxis: {e}"
 
     return content_lines, tree, None
+def _async_audit_report(tree: ast.Module) -> str:
+    """Analiza el AST buscando problemas async/sync en el código.
+    Detecta: sync def con llamadas async, threading.Lock en async,
+    import asyncio en cuerpo, subprocess sin to_thread.
+    """
+    findings: list[str] = []
+
+    for node in ast.walk(tree):
+        # threading.Lock() dentro de async def
+        if isinstance(node, ast.AsyncFunctionDef):
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call):
+                    fn = child.func
+                    if isinstance(fn, ast.Attribute) and fn.attr == 'Lock':
+                        if isinstance(fn.value, ast.Name) and fn.value.id == 'threading':
+                            findings.append(f"   🚨 {node.name}: threading.Lock() en async → bloquea event loop")
+                    if isinstance(fn, ast.Attribute) and fn.attr in ('run', 'Popen'):
+                        if isinstance(fn.value, ast.Name) and fn.value.id == 'subprocess':
+                            findings.append(f"   ⚠️  {node.name}: subprocess.{fn.attr}() async sin to_thread")
+
+        # sync def run() o sync def que llama _repos.xxx.yyy()
+        if isinstance(node, ast.FunctionDef) and not isinstance(node, ast.AsyncFunctionDef):
+            has_repos_call = False
+            has_await_syntax = False
+            has_subprocess = False
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call):
+                    fn = child.func
+                    # _repos.algo.metodo() o repos.algo.metodo()
+                    if isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Attribute):
+                        val = fn.value.value if hasattr(fn.value, 'value') else None
+                        if hasattr(val, 'id') and val.id in ('_repos', 'repos'):
+                            has_repos_call = True
+                    # subprocess.run/Popen
+                    if isinstance(fn, ast.Attribute) and fn.attr in ('run', 'Popen'):
+                        if isinstance(fn.value, ast.Name) and fn.value.id == 'subprocess':
+                            has_subprocess = True
+                if isinstance(child, ast.Await):
+                    has_await_syntax = True
+            if has_repos_call and not has_await_syntax:
+                findings.append(f"   🚨 {node.name}: sync pero llama repos async → COROUTINE PERDIDA (bug)")
+            if has_subprocess:
+                findings.append(f"   🛑 {node.name}: subprocess bloqueante → bloquea event loop")
+
+        # import asyncio dentro del cuerpo de función
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, ast.Import):
+                    for alias in child.names:
+                        if alias.name == 'asyncio':
+                            findings.append(f"   ⚠️  {node.name}: import asyncio dentro del cuerpo (mover a top-level)")
+                if isinstance(child, ast.ImportFrom) and child.module == 'asyncio':
+                    findings.append(f"   ⚠️  {node.name}: from asyncio import ... dentro del cuerpo")
+
+    if not findings:
+        return ""
+
+    audit = ["", "⚡ ASYNC AUDIT — posibles problemas async/sync:"]
+    audit.extend(findings)
+    return "\n".join(audit)
 
 
 def _build_analysis_output(
@@ -441,6 +503,11 @@ def _build_analysis_output(
                        find_duplicates_flag=find_dups, cross_reference_flag=cross_ref)
             if ctx.strip():
                 output.append(ctx)
+
+    # ── ASYNC AUDIT (Python only) ────────────────────────────────────
+    audit = _async_audit_report(tree)
+    if audit:
+        output.append(audit)
 
     result = '\n'.join(output)
     if len(result) > 30000:
