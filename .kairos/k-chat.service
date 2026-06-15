@@ -30,7 +30,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=read-only
 ProtectSystem=full
-ReadWritePaths=%h/dev/K-Chat/memory %h/dev/K-Chat/logs
+ReadWritePaths=%h/dev/K-Chat
 AmbientCapabilities=
 
 [Install]

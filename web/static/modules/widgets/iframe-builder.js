@@ -90,12 +90,10 @@ export function createIframe(container, id, code) {
             if (placeholder && placeholder.parentNode) {
                 placeholder.parentNode.removeChild(placeholder);
             }
-            createToolbar(container, id, key, widgetCode, hashId);
-
             var iframe = document.createElement('iframe');
             iframe.className = 'widget-iframe';
             iframe.sandbox = 'allow-scripts';
-
+            iframe.scrolling = 'no';
             iframe.srcdoc = buildIframeSrc(id, widgetCode, safeStateStr);
             container.appendChild(iframe);
             container.dataset.initialized = '1';
@@ -194,8 +192,7 @@ export function buildIframeSrc(id, code, stateStr) {
         '</' + 'script>\n' +
         safeCode + '\n' +
         '<style>\n' +
-        'html,body{margin:0;padding:12px;overflow-x:hidden;scrollbar-width:none;}\n' +
-        '[style*="100vh"],[style*="100%"],[style*="100VH"],[style*="100Vh"]{height:auto!important;}\n' +
+        'html,body{margin:0;padding:12px;overflow:hidden;scrollbar-width:none;box-sizing:border-box;width:100%;}\n' +
         'html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}\n' +
         '</style>\n' +
         '<script>\n' +

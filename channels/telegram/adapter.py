@@ -257,10 +257,25 @@ async def _get_or_create_session(
         try:
             raw = await repos.messages.get_session_messages(session_id)
             for row in raw:
-                role = row[0]    # role
-                content = row[1]  # content
-                if role and content:
-                    history.append({"role": role, "content": content})
+                role = row[0]      # role
+                content = row[1]   # content
+                tool_calls_raw = row[6] if len(row) > 6 else None  # tool_calls JSON
+                tool_call_id = row[7] if len(row) > 7 else None     # tool_call_id
+                msg: dict = {"role": role}
+                if content:
+                    msg["content"] = content
+                if role == "tool" and tool_call_id:
+                    msg["tool_call_id"] = tool_call_id
+                if role == "assistant" and tool_calls_raw:
+                    import json
+                    try:
+                        tc_list = json.loads(tool_calls_raw) if isinstance(tool_calls_raw, str) else tool_calls_raw
+                        if tc_list:
+                            msg["tool_calls"] = tc_list
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                if msg.get("content") or msg.get("tool_calls") or msg.get("tool_call_id"):
+                    history.append(msg)
         except Exception:
             history = []
     else:
