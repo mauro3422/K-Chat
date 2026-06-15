@@ -66,7 +66,7 @@ These rules apply to ALL code modifications. Violations are regressions.
 - **db_query**: Consulta la base de datos SQLite del sistema en modo solo lectura. 
 - **Sintaxis**: `db_query(table="messages", session_id="id", limit=10)`
 - **Tablas**: sessions, messages, tool_calls, saved_widgets, widget_states, debug_info, memory_index, widget_versions
-- **Available tools**: web_search, fetch_url, read_file, read_multiple, write_file, edit_file, search_files, analyze_code, list_files, execute_command, git_operation, run_code, validate_all, save_memory, memory_search, list_memories, search_conversations, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, db_query, extract_text
+- **Available tools**: web_search, fetch_url, read_file, read_multiple, write_file, edit_file, search_files, analyze_code, list_files, execute_command, git_operation, run_code, validate_all, save_memory, memory_search, list_memories, search_conversations (grep para sessions), read_skill, save_widget, update_widget, get_widget_code, get_tool_history, db_query, extract_text
 
 --- 🐍 USO DE RUN_CODE ---
 

@@ -23,11 +23,20 @@ logger = logging.getLogger(__name__)
 
 class OpenAIAdapter(LLMProvider):
     def __init__(self, api_key: str, base_url: str):
+        # Custom httpx client with NO keep-alive to avoid Connection error
+        # with Cloudflare when reusing connections from the pool.
+        http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=15, read=300, write=15, pool=5),
+            limits=httpx.Limits(
+                max_keepalive_connections=0,
+                max_connections=10,
+            ),
+        )
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
-            timeout=httpx.Timeout(connect=10, read=300, write=10, pool=10),
-            max_retries=0,
+            http_client=http_client,
+            max_retries=2,
         )
 
     @property

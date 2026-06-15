@@ -6,6 +6,10 @@ messages is delegated to ``TelegramRenderer``.
 
 Offset (``update_id``) is persisted to ``.kairos/telegram_offset`` so
 the bot resumes cleanly after a restart.
+
+Logs are written to:
+  - stderr (console) via systemd journal
+  - ``logs/server/YYYY-MM-DD.jsonl`` via JsonlHandler (rotated daily)
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from channels.telegram.handlers import dispatch
 from channels.telegram.message_manager import MessageManager
 from channels.telegram.rate_limiter import RateLimiter
 from channels.telegram.renderer import TelegramRenderer
+from web.services.file_logger import install_jsonl_handler
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +46,12 @@ async def run_bot(config: TelegramConfig) -> None:
         logger.warning("Telegram bot not enabled: TELEGRAM_BOT_TOKEN not set")
         print("[Telegram] ❌ Not enabled. Set TELEGRAM_BOT_TOKEN to activate.")
         return
+
+    # ── File logging (rotated daily) ────────────────────────────────────
+    try:
+        install_jsonl_handler("channels.telegram")
+    except Exception:
+        pass
 
     logger.info("Telegram bot starting (polling interval: %.1fs)", config.poll_interval)
     print(f"[Telegram] ✅ Bot started. Polling every {config.poll_interval}s")
