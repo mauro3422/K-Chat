@@ -31,6 +31,7 @@ class ToolCallEvent:
     """Tool call notification."""
     name: str
     status: str = "calling"  # calling | ok | error
+    tool_id: str = ""
 
 
 @dataclass

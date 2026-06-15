@@ -81,7 +81,12 @@ class StreamParser:
 
         if tag == "tool":
             self._on_transition("tool")
-            return [ToolCallEvent(name=data)]
+            # data format: "tool_id:name:status"
+            parts = data.split(":", 2)
+            tool_id = parts[0] if len(parts) >= 1 else ""
+            name = parts[1] if len(parts) >= 2 else data
+            status = parts[2] if len(parts) >= 3 else "calling"
+            return [ToolCallEvent(name=name, status=status, tool_id=tool_id)]
 
         if tag == "reasoning":
             events: list[StreamEvent] = []

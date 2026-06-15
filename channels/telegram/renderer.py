@@ -85,10 +85,11 @@ class TelegramRenderer:
                     await self._render_content(chat_id, event)
 
                 elif isinstance(event, ToolCallEvent):
-                    tool_call_id_counter += 1
                     await self._render_tool_call(
-                        chat_id, event, f"call_{tool_call_id_counter}",
+                        chat_id, event, event.tool_id or f"call_{tool_call_id_counter}",
                     )
+                    if event.tool_id:
+                        tool_call_id_counter += 1
 
                 elif isinstance(event, ErrorEvent):
                     await self._render_error(chat_id, event)

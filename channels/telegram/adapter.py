@@ -169,8 +169,12 @@ async def process_message(
                     name = tc.get("name", tc.get("function", {}).get("name", ""))
                     if name == "_stream_args":
                         continue
+                    tool_id = tc.get("id", "")
+                    status = tc.get("status", "calling")
                 except Exception:
                     name = str(token)[:30]
+                    tool_id = ""
+                    status = "calling"
 
                 # Flush reasoning (shows why the tool was called),
                 # discard content (it's always incomplete before a tool)
@@ -178,7 +182,7 @@ async def process_message(
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
                     reasoning_buf = []
                 content_buf = []
-                yield f"__tool__:{name}"
+                yield f"__tool__:{tool_id}:{name}:{status}"
 
             # ── Error ──────────────────────────────────────────────────
             elif event_type == "error":
@@ -228,21 +232,15 @@ async def _get_or_create_session(
     # We use a consistent naming scheme: "telegram_{chat_id}"
     session_id = None
 
-    # Find existing Telegram session for this chat_id
-    # Sessions are named "Telegram ({chat_id})" for reliable lookup
+    # Find existing Telegram session for this chat_id.
+    # get_all() returns tuples: (session_id, first, last, count, user_count, name)
     session_id = None
     session_name = f"Telegram ({chat_id})"
     try:
         all_sessions = await repos.sessions.get_all()
         for s in all_sessions:
-            name = ""
-            if isinstance(s, dict):
-                name = s.get("name", "") or s.get("session_name", "")
-                sid = s.get("session_id", "") or s.get("id", "")
-            else:
-                name = getattr(s, "name", "") or getattr(s, "session_name", "")
-                sid = getattr(s, "session_id", "") or getattr(s, "id", "")
-
+            sid = s[0]      # session_id
+            name = s[5]     # session name (COALESCE(s.name, ''))
             if name == session_name and sid:
                 session_id = sid
                 break
@@ -254,12 +252,13 @@ async def _get_or_create_session(
     if session_id:
         logger.info("Restored session %s for chat %d", session_id, chat_id)
         await repos.sessions.ensure(session_id)
-        # Load history
+        # Load history — get_session_messages returns tuples:
+        # (role, content, model, created_at, reasoning, phases, tool_calls, tool_call_id)
         try:
             raw = await repos.messages.get_session_messages(session_id)
             for row in raw:
-                role = row.get("role") if isinstance(row, dict) else getattr(row, "role", "")
-                content = row.get("content") if isinstance(row, dict) else getattr(row, "content", "")
+                role = row[0]    # role
+                content = row[1]  # content
                 if role and content:
                     history.append({"role": role, "content": content})
         except Exception:
