@@ -815,3 +815,15 @@ def test_reasoning_has_double_newline():
     assert has_double, (
         "Reasoning header must be followed by double newline (blank line)"
     )
+
+
+def test_renderer_persists_msg_ids():
+    """The renderer must persist main message IDs via
+    MessageManager.store_msg_id so _clear_chat_messages can find them."""
+    source = _read_source("channels/telegram/renderer.py")
+    assert 'store_msg_id' in source, (
+        "Renderer must call store_msg_id to persist message IDs"
+    )
+    assert 'self._mm.store_msg_id(chat_id, "main"' in source, (
+        "Main message ID must be stored as 'main' key"
+    )

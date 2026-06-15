@@ -155,6 +155,8 @@ class TelegramRenderer:
         msg_id = await self._send_with_retry(chat_id, html_text, "HTML")
         if msg_id is not None:
             self._main_msg[chat_id] = msg_id
+            # Persist so _clear_chat_messages can find it
+            await self._mm.store_msg_id(chat_id, "main", msg_id)
             return msg_id, True
         return None, False
 
@@ -202,6 +204,7 @@ class TelegramRenderer:
                     new_id = await self._do_send(chat_id, cont_text, "")
                     if new_id:
                         conts.append(new_id)
+                        await self._mm.store_msg_id(chat_id, f"cont:{ci}", new_id)
         return ok
 
     # ── Individual event renderers (all use the same main message) ──────

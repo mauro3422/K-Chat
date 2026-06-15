@@ -103,6 +103,17 @@ class MessageManager:
         # Also clear continuations for this chat
         self._continuations.pop(chat_id, None)
 
+    # ── Generic message ID storage (for the inline renderer) ────────
+
+    async def store_msg_id(self, chat_id: int, key: str, msg_id: int) -> None:
+        """Store an arbitrary message ID for a chat (e.g. the main message).
+
+        Key examples: ``"main"``, ``"cont:0"``, ``"tool:call_xxx"``.
+        """
+        self._state[chat_id][key] = msg_id
+        if self._repo is not None:
+            await self._repo.save(chat_id, key, msg_id)
+
     # ── Continuation messages (overflow beyond 4000 chars) ───────────
 
     def get_continuations(self, chat_id: int, phase_type: str, phase_index: int) -> list[int]:
