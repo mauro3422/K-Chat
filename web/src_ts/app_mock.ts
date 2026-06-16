@@ -94,7 +94,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const streamOrchestrator = new StreamOrchestrator(
     messageView, streamSimulator, sessionStore, chatForm,
     iframeBuilder, containerRenderer, widgetRegistry,
-    rateLimitCooldown, debug, retryController, ndjsonClient,
+    rateLimitCooldown, debug, retryController,
+    // Para conectar la IA real: pasar ndjsonClient como 11º argumento
   );
 
   // ── 3. UI Refresh ────────────────────────────────────

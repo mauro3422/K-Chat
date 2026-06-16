@@ -52,7 +52,7 @@ describe('ToolCallRenderer DOM contract', () => {
 
     const pill = ctx.msgEl.querySelector('.' + C.TC_ITEM_CALLING.replace(' ', '.'));
     expect(pill).not.toBeNull();
-    expect(pill!.dataset.tool).toBe('search_web');
+    expect((pill as HTMLElement).dataset.tool).toBe('search_web');
     expect(pill!.querySelector('.tc-spinner')).not.toBeNull();
   });
 
