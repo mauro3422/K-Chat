@@ -72,6 +72,11 @@ export class CanvasWorkspace implements ICanvasWorkspace {
   reset(): void {
     this.currentSessionId = null;
     this.cardManager?.clear();
+    this.canvasEl = null;
+    this.gutterEl = null;
+    this.toggleBtn = null;
+    this.closeBtn = null;
+    this.cardsContainer = null;
     this.logger.info('reset');
   }
 

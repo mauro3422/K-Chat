@@ -15,6 +15,7 @@ import { IframeBuilder } from '../rendering/IframeBuilder';
 import { getLogger } from '../core/LoggerFactory';
 import { ILogger } from '../core/Logger';
 import { C } from '../core/DomContracts';
+import { IEventBus } from '../types/events';
 
 export { type StreamHandlerContext } from './ContentHandler';
 
@@ -55,6 +56,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     private debug?: IDebugManager,
     private retryController?: IRetryController,
     private ndjsonClient?: NDJSONStreamClient,
+    private eventBus?: IEventBus,
   ) {
     this.logger = getLogger('stream-orch');
   }
@@ -172,6 +174,12 @@ export class StreamOrchestrator implements IStreamOrchestrator {
           context: ctx,
           onFirstToken: () => {
             this.debug?.logUI('first_token', 'received');
+            if (this.lastAssistantMsgEl) {
+              const bodyEl = this.lastAssistantMsgEl.querySelector('.' + C.MSG_BODY);
+              if (bodyEl && bodyEl.textContent?.trim() === '✍️ Pensando...') {
+                bodyEl.textContent = '';
+              }
+            }
           },
         });
       } catch (err: unknown) {
@@ -263,6 +271,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       }
       this.lastAssistantMsgEl.classList.remove('streaming', 'live-msg');
     }
+    this.lastAssistantMsgEl = null;
 
     this.activeContext = null;
     this.contentHandler = null;
@@ -346,6 +355,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     if (error.type === 'auth' || error.type === 'rate_limit') {
       this.debug?.logUI('stream_error_terminal', `${error.type}: ${error.message}`);
       this.retryController?.resetRetryCount();
+      this._markCallingPillsError();
       this._finalizeStream();
       return;
     }
@@ -365,13 +375,25 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
     this.debug?.logUI('stream_error_final', `${error.type}: ${error.message} — retries exhausted`);
     this.retryController?.resetRetryCount();
+    this._markCallingPillsError();
     this._finalizeStream();
   }
 
   private _handleSuccessfulStream(): void {
     this.retryController?.resetRetryCount();
     this.debug?.logUI('stream_complete', 'content received, retries reset');
+    this.eventBus?.emit('sessions:updated', { sessions: this.sessionStore.sessions, activeId: this.sessionStore.activeSessionId });
+    this.debug?.refresh();
     this._finalizeStream();
+  }
+
+  private _markCallingPillsError(): void {
+    if (this.lastAssistantMsgEl) {
+      this.lastAssistantMsgEl.querySelectorAll('.tc-item.calling').forEach(pill => {
+        pill.className = pill.className.replace('calling', 'error');
+        pill.innerHTML = pill.innerHTML.replace('⚡', '✘');
+      });
+    }
   }
 
   private _finalizeStream(): void {
@@ -383,6 +405,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     if (this.lastAssistantMsgEl) {
       this.lastAssistantMsgEl.classList.remove('streaming', 'live-msg');
     }
+    this.lastAssistantMsgEl = null;
 
     this.chatForm.setStreamingState(false);
   }

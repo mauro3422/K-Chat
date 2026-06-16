@@ -397,6 +397,7 @@ ${safeCode}
 
   /** Reset state for new session */
   reset(): void {
+    this.widgetObserver?.disconnect();
     this.initializedWidgets = new WeakMap();
     this.widgetObserver = null;
   }

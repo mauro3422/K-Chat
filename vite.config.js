@@ -7,12 +7,22 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    sourcemap: process.env.NODE_ENV === 'development' ? true : false,
     rollupOptions: {
-      input: resolve(__dirname, 'web/static/app.js'),
+      input: {
+        app: resolve(__dirname, 'web/static/app.js'),
+        app_mock: resolve(__dirname, 'web/src_ts/app_mock.ts'),
+      },
       output: {
-        entryFileNames: 'assets/app.js',
+        entryFileNames: 'assets/[name].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name][extname]',
+        manualChunks(id) {
+          if (id.includes('src_ts/widgets/') || id.includes('CanvasWorkspace') || id.includes('SkillsUI')) return 'widgets';
+          if (id.includes('src_ts/streaming/')) return 'streaming';
+          if (id.includes('src_ts/rendering/')) return 'rendering';
+          if (id.includes('src_ts/core/debug') || id.includes('DebugManager')) return 'debug';
+        },
       },
     },
   },

@@ -95,7 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
     messageView, streamSimulator, sessionStore, chatForm,
     iframeBuilder, containerRenderer, widgetRegistry,
     rateLimitCooldown, debug, retryController,
-    // Para conectar la IA real: pasar ndjsonClient como 11º argumento
+    undefined, // ndjsonClient (null until real backend is ready)
+    eventBus,
   );
 
   // ── 3. UI Refresh ────────────────────────────────────
@@ -259,8 +260,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Periodic refresh
-  setInterval(() => {
+  // Periodic refresh — store ID for cleanup
+  const debugIntervalId = setInterval(() => {
     if (debugPanel && debugPanel.classList.contains('open')) {
       const activeCtx = streamOrchestrator.debugActiveContext;
       if (activeCtx) {
@@ -279,6 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
       debug.refresh();
     }
   }, 400);
+  window.addEventListener('beforeunload', () => clearInterval(debugIntervalId));
 
   logger.info('TS ready — click 🔍 Debug to open panel');
 });

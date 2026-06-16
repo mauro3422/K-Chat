@@ -13,6 +13,8 @@ export interface StreamParams {
   dispatcher: IStreamDispatcher<unknown>;
   context: unknown;
   onFirstToken?: () => void;
+  onChunk?: () => void;
+  files?: File[];
 }
 
 export interface INDJSONStreamClient {
@@ -96,12 +98,16 @@ export class NDJSONStreamClient implements INDJSONStreamClient {
   }
 
   private async executeStream(params: StreamParams): Promise<void> {
-    const { sessionId, message, model, dispatcher, context, onFirstToken } = params;
+    const { sessionId, message, model, dispatcher, context, onFirstToken, onChunk, files } = params;
     const controller = this.controller!;
 
     let resp: Response;
     try {
-      resp = await this.apiClient.chatStream(sessionId, message, model || 'default', controller);
+      if (files && files.length > 0) {
+        resp = await this.apiClient.chatStreamWithFiles(sessionId, message, model || 'default', controller, files);
+      } else {
+        resp = await this.apiClient.chatStream(sessionId, message, model || 'default', controller);
+      }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (err instanceof Error && err.message.toLowerCase().includes('aborted')) return;
@@ -159,7 +165,10 @@ export class NDJSONStreamClient implements INDJSONStreamClient {
 
           const ev = parseStreamEvent(line);
           if (!ev) continue;
-          if (ev.t === 'heartbeat') continue;
+          if (ev.t === 'heartbeat') {
+            if (onChunk) onChunk();
+            continue;
+          }
 
           if (firstToken && (ev.t === 'content' || ev.t === 'reasoning')) {
             firstToken = false;

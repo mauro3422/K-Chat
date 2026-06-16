@@ -174,8 +174,10 @@ export class CanvasCardManager {
         let t = startTop + dy;
         l = Math.max(0, Math.min(l, container.clientWidth - card.clientWidth));
         t = Math.max(0, Math.min(t, container.clientHeight - card.clientHeight));
-        card.style.left = l + 'px';
-        card.style.top = t + 'px';
+        requestAnimationFrame(() => {
+          card.style.left = l + 'px';
+          card.style.top = t + 'px';
+        });
       };
 
       const onMouseUp = () => {

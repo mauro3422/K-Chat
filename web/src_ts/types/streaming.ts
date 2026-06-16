@@ -18,9 +18,11 @@ export interface StreamEvent {
 
 /** Parsed tool_call payload */
 export interface ToolCallPayload {
-  status: 'calling' | 'ok' | 'error';
+  status: 'calling' | 'ok' | 'error' | 'partial';
   name: string;
   id?: string;
+  idx?: number;
+  args?: string;
 }
 
 /** A detected widget marker inside streamed content */

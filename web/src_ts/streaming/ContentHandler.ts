@@ -40,6 +40,7 @@ export class ContentHandler {
   private reasoningHandler: ReasoningHandler;
   private toolCallRenderer: ToolCallRenderer;
   private errorRenderer: ErrorRenderer;
+  private lastRenderedLength = 0;
 
   constructor(
     dispatcher: IStreamDispatcher<StreamHandlerContext>,
@@ -254,8 +255,10 @@ export class ContentHandler {
     const bodyEl = this.ensureBody(ctx);
     bodyEl.classList.add('msg-body', 'md-content');
 
-    if (!ctx.contentTexts[ctx.phaseIndex]) {
+    const isNewPhase = !ctx.contentTexts[ctx.phaseIndex];
+    if (isNewPhase) {
       bodyEl.innerHTML = '';
+      this.lastRenderedLength = 0;
     }
 
     if (!ctx.contentTexts[ctx.phaseIndex]) ctx.contentTexts[ctx.phaseIndex] = '';
@@ -267,24 +270,46 @@ export class ContentHandler {
     const result = this.containerRenderer.processWidgetContainers(fullText, bodyDiv, {}, ctx._renderedKeys);
     const { textToRender, incompleteTail, widgetMatches } = result;
 
-    // ── Step 1: Remove text segments (safe — no iframes) ──
+    // ── Incremental path: only update last text segment if no new widget boundaries ──
+    const delta = fullText.slice(this.lastRenderedLength);
+    const hasNewWidgetBoundary = delta ? /~~~widget-(?:start|end)/.test(delta) : false;
+
+    if (!isNewPhase && !hasNewWidgetBoundary) {
+      const textSegments = bodyDiv.querySelectorAll(':scope > .' + C.MSG_TEXT_SEGMENT);
+      if (textSegments.length > 0) {
+        const lastSeg = textSegments[textSegments.length - 1] as HTMLElement;
+        const lastSegIdx = textSegments.length - 1;
+        const start = lastSegIdx === 0 ? 0 : widgetMatches[lastSegIdx - 1].end;
+        const end = lastSegIdx === widgetMatches.length ? textToRender.length : widgetMatches[lastSegIdx].index;
+        const segText = textToRender.substring(start, end);
+        const html = renderMarkdown(segText);
+        ContentHandler.setSegmentContent(lastSeg, html, lastSegIdx === widgetMatches.length ? incompleteTail : '');
+      } else {
+        const seg = document.createElement('div');
+        seg.className = C.MSG_TEXT_SEGMENT;
+        bodyDiv.appendChild(seg);
+        const html = renderMarkdown(textToRender);
+        ContentHandler.setSegmentContent(seg, html, incompleteTail);
+      }
+      this.lastRenderedLength = fullText.length;
+      this.autoScroll(ctx.msgEl);
+      return;
+    }
+
+    // ── Full regeneration ──
     this.removeTextSegments(bodyDiv);
 
-    // ── Step 2-4: Build container lookup and add missing ones ──
-    const { containerByKey, containerById } = this.buildContainerLookup(bodyDiv);
+    const { containerByKey } = this.buildContainerLookup(bodyDiv);
     this.ensureWidgetContainers(bodyDiv, widgetMatches, containerByKey);
     this.removeExcessContainers(bodyDiv, widgetMatches.length);
 
-    // ── Step 5-6: Reorder containers and text segments ──
     this.insertTextSegments(bodyDiv);
 
-    // ── Step 7: Render markdown in text segments ──
     this.renderTextSegments(bodyDiv, textToRender, widgetMatches, incompleteTail);
 
-    // ── Step 8: Initialize any new widgets ──
     this.iframeBuilder.initAll(bodyDiv);
 
-    // ── Step 9: Auto-scroll ──
+    this.lastRenderedLength = fullText.length;
     this.autoScroll(ctx.msgEl);
   }
 
