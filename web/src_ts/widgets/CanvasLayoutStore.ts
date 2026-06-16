@@ -1,14 +1,6 @@
-export interface CardLayout {
-  key: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  minimized: boolean;
-  code: string;
-}
+import { CardLayout, ILayoutStore } from '../types/widgets';
 
-export class CanvasLayoutStore {
+export class CanvasLayoutStore implements ILayoutStore {
   private storagePrefix = 'canvas-layout-v2-';
 
   saveLayout(sessionId: string, cards: CardLayout[]): void {
@@ -26,8 +18,10 @@ export class CanvasLayoutStore {
       const parsed = JSON.parse(data);
       if (!Array.isArray(parsed)) return [];
       return parsed.filter(
-        (c: any): c is CardLayout =>
-          typeof c.key === 'string' && typeof c.code === 'string'
+        (c: unknown): c is CardLayout =>
+          typeof c === 'object' && c !== null &&
+          typeof (c as Record<string, unknown>).key === 'string' &&
+          typeof (c as Record<string, unknown>).code === 'string'
       );
     } catch {
       return [];

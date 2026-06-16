@@ -34,3 +34,30 @@ export interface IWidgetIframeBuilder {
   buildSrcDoc(id: string, code: string, initialState?: Record<string, unknown>): string;
   createIframeElement(id: string, key: string | undefined, code: string, initialState?: Record<string, unknown>): HTMLIFrameElement;
 }
+
+export interface CardLayout {
+  key: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  minimized: boolean;
+  code: string;
+}
+
+export interface ICanvasCardManager {
+  addCard(key: string, code: string, layout?: Partial<CardLayout>): HTMLElement | null;
+  removeCard(key: string): void;
+  getCardLayouts(): CardLayout[];
+  isPinned(key: string): boolean;
+  bringToFront(key: string): void;
+  clear(): void;
+  getCard(key: string): HTMLElement | null;
+  onLayoutChange?: () => void;
+}
+
+export interface ILayoutStore {
+  saveLayout(sessionId: string, cards: CardLayout[]): void;
+  loadLayout(sessionId: string): CardLayout[];
+  clear(sessionId: string): void;
+}

@@ -47,9 +47,12 @@ export class Logger implements ILogger {
     Logger._buffer.push(entry);
     if (Logger._buffer.length > 500) Logger._buffer.shift();
 
-    if (level === 'E') console.error(`[${this.name}]`, msg, data || '');
-    else if (level === 'W') console.warn(`[${this.name}]`, msg, data || '');
-    else console.log(`[${this.name}]`, msg, data || '');
+    const consoleEnabled = typeof window !== 'undefined' && (localStorage.getItem('debug_console') === '1' || (window as any).__DEBUG__ || window.location.hostname === 'localhost');
+    if (consoleEnabled) {
+      if (level === 'E') console.error(`[${this.name}]`, msg, data || '');
+      else if (level === 'W') console.warn(`[${this.name}]`, msg, data || '');
+      else console.log(`[${this.name}]`, msg, data || '');
+    }
 
     this.debugManager?.logUI(`[${level}][${this.name}]`, String(msg).substring(0, 120));
 

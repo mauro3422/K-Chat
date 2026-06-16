@@ -25,6 +25,8 @@ import { SSEClient } from './streaming/SSEClient';
 import { ApiClient } from './api/ApiClient';
 import { WidgetStateManager } from './core/WidgetStateManager';
 import { CanvasWorkspace } from './widgets/CanvasWorkspace';
+import { CanvasCardManager } from './widgets/CanvasCardManager';
+import { CanvasLayoutStore } from './widgets/CanvasLayoutStore';
 import { SkillsUI } from './widgets/SkillsUI';
 import { NotificationService } from './core/NotificationService';
 import { RateLimitCooldown } from './core/RateLimitCooldown';
@@ -42,6 +44,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const widgetStateManager = new WidgetStateManager(apiClient);
   const iframeBuilder = new IframeBuilder(widgetRegistry, debug, widgetStateManager);
   const containerRenderer = new WidgetContainerRenderer(debug);
+  const layoutStore = new CanvasLayoutStore();
+  const cardManager = new CanvasCardManager(
+    null as unknown as HTMLElement, // canvasEl — set in init
+    null as unknown as HTMLElement, // cardsContainer — set in init
+    iframeBuilder, widgetRegistry, eventBus, debug,
+  );
 
   const fileUploader = new FileUploader();
   const messageView = new MessageView(undefined, iframeBuilder);
@@ -78,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   chatForm.init();
   sessionList.init();
   sessionStore.init(eventBus);
-  const canvasWorkspace = new CanvasWorkspace(iframeBuilder, widgetRegistry, eventBus);
+  const canvasWorkspace = new CanvasWorkspace(iframeBuilder, widgetRegistry, eventBus, cardManager, layoutStore);
   canvasWorkspace.init(sessionStore.activeSessionId);
 
   const logger = getLogger('app', eventBus, apiClient, debug);

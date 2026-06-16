@@ -1,11 +1,9 @@
 import { IEventBus } from '../types/events';
-import { IWidgetRegistry } from '../types/widgets';
+import { IWidgetRegistry, ICanvasCardManager, ILayoutStore } from '../types/widgets';
 import { IIframeBuilder } from '../types/iframe';
 import { IDebugManager } from '../types/debug';
 import { getLogger } from '../core/LoggerFactory';
 import { ILogger } from '../core/Logger';
-import { CanvasCardManager } from './CanvasCardManager';
-import { CanvasLayoutStore } from './CanvasLayoutStore';
 
 export interface ICanvasWorkspace {
   init(sessionId: string): void;
@@ -15,8 +13,6 @@ export interface ICanvasWorkspace {
 }
 
 export class CanvasWorkspace implements ICanvasWorkspace {
-  private cardManager!: CanvasCardManager;
-  private layoutStore = new CanvasLayoutStore();
   private canvasEl: HTMLElement | null = null;
   private gutterEl: HTMLElement | null = null;
   private toggleBtn: HTMLElement | null = null;
@@ -25,10 +21,19 @@ export class CanvasWorkspace implements ICanvasWorkspace {
   private currentSessionId: string | null = null;
   private logger: ILogger;
 
+  // Stored listener references for cleanup
+  private boundToggle: (() => void) | null = null;
+  private boundClose: (() => void) | null = null;
+  private boundGutterDown: ((e: MouseEvent) => void) | null = null;
+  private boundGutterMove: ((e: MouseEvent) => void) | null = null;
+  private boundGutterUp: (() => void) | null = null;
+
   constructor(
     private iframeBuilder: IIframeBuilder,
     private registry: IWidgetRegistry,
     private eventBus: IEventBus,
+    private cardManager: ICanvasCardManager,
+    private layoutStore: ILayoutStore,
     private debug?: IDebugManager,
   ) {
     this.logger = getLogger('canvas');
@@ -46,17 +51,7 @@ export class CanvasWorkspace implements ICanvasWorkspace {
 
     if (!this.canvasEl) return;
 
-    if (!this.cardManager && this.cardsContainer) {
-      this.cardManager = new CanvasCardManager(
-        this.canvasEl,
-        this.cardsContainer,
-        this.iframeBuilder,
-        this.registry,
-        this.eventBus,
-        this.debug,
-      );
-      this.cardManager.onLayoutChange = () => this.saveLayout();
-    }
+    this.cardManager.onLayoutChange = () => this.saveLayout();
 
     this.restorePanelState();
     this.bindToggle();
@@ -72,6 +67,28 @@ export class CanvasWorkspace implements ICanvasWorkspace {
   reset(): void {
     this.currentSessionId = null;
     this.cardManager?.clear();
+
+    // Cleanup event listeners
+    if (this.toggleBtn && this.boundToggle) {
+      this.toggleBtn.onclick = null;
+    }
+    if (this.closeBtn && this.boundClose) {
+      this.closeBtn.onclick = null;
+    }
+    if (this.gutterEl && this.boundGutterDown) {
+      this.gutterEl.onmousedown = null;
+    }
+    if (this.boundGutterMove && this.boundGutterUp) {
+      document.removeEventListener('mousemove', this.boundGutterMove);
+      document.removeEventListener('mouseup', this.boundGutterUp);
+    }
+
+    this.boundToggle = null;
+    this.boundClose = null;
+    this.boundGutterDown = null;
+    this.boundGutterMove = null;
+    this.boundGutterUp = null;
+
     this.canvasEl = null;
     this.gutterEl = null;
     this.toggleBtn = null;
@@ -170,7 +187,7 @@ export class CanvasWorkspace implements ICanvasWorkspace {
 
   private bindToggle(): void {
     if (!this.toggleBtn || !this.canvasEl) return;
-    this.toggleBtn.onclick = () => {
+    this.boundToggle = () => {
       const collapsed = this.canvasEl!.classList.toggle('collapsed');
       this.gutterEl?.classList.toggle('collapsed', collapsed);
       this.toggleBtn!.classList.toggle('active', !collapsed);
@@ -182,11 +199,12 @@ export class CanvasWorkspace implements ICanvasWorkspace {
         this.canvasEl!.style.width = w + 'px';
       }
     };
+    this.toggleBtn.onclick = this.boundToggle;
   }
 
   private bindClose(): void {
     if (!this.closeBtn || !this.canvasEl) return;
-    this.closeBtn.onclick = () => {
+    this.boundClose = () => {
       this.canvasEl!.classList.add('collapsed');
       this.gutterEl?.classList.add('collapsed');
       document.getElementById('canvas-toggle')?.classList.remove('active');
@@ -194,15 +212,16 @@ export class CanvasWorkspace implements ICanvasWorkspace {
         localStorage.setItem(`canvas_collapsed_${this.currentSessionId}`, 'true');
       }
     };
+    this.closeBtn.onclick = this.boundClose;
   }
 
   private bindGutterResize(): void {
     if (!this.gutterEl || !this.canvasEl) return;
-    this.gutterEl.onmousedown = (e: MouseEvent) => {
+    this.boundGutterDown = (e: MouseEvent) => {
       e.preventDefault();
       this.gutterEl!.classList.add('dragging');
 
-      const onMouseMove = (ev: MouseEvent) => {
+      this.boundGutterMove = (ev: MouseEvent) => {
         const app = document.getElementById('app');
         if (!app) return;
         const appW = app.clientWidth;
@@ -215,15 +234,16 @@ export class CanvasWorkspace implements ICanvasWorkspace {
         }
       };
 
-      const onMouseUp = () => {
+      this.boundGutterUp = () => {
         this.gutterEl!.classList.remove('dragging');
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
+        document.removeEventListener('mousemove', this.boundGutterMove!);
+        document.removeEventListener('mouseup', this.boundGutterUp!);
       };
 
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
+      document.addEventListener('mousemove', this.boundGutterMove);
+      document.addEventListener('mouseup', this.boundGutterUp);
     };
+    this.gutterEl.onmousedown = this.boundGutterDown;
   }
 
   // ── Layout persistence ───────────────────────────────

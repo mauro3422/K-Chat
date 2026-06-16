@@ -1,12 +1,11 @@
 import { IIframeBuilder } from '../types/iframe';
-import { IWidgetRegistry } from '../types/widgets';
+import { IWidgetRegistry, ICanvasCardManager, CardLayout } from '../types/widgets';
 import { IEventBus } from '../types/events';
 import { IDebugManager } from '../types/debug';
 import { getLogger } from '../core/LoggerFactory';
 import { ILogger } from '../core/Logger';
-import { CardLayout } from './CanvasLayoutStore';
 
-export class CanvasCardManager {
+export class CanvasCardManager implements ICanvasCardManager {
   private cards = new Map<string, HTMLElement>();
   private codes = new Map<string, string>();
   private highestZIndex = 10;
