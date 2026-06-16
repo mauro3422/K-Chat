@@ -45,11 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const iframeBuilder = new IframeBuilder(widgetRegistry, debug, widgetStateManager);
   const containerRenderer = new WidgetContainerRenderer(debug);
   const layoutStore = new CanvasLayoutStore();
-  const cardManager = new CanvasCardManager(
-    null as unknown as HTMLElement, // canvasEl — set in init
-    null as unknown as HTMLElement, // cardsContainer — set in init
-    iframeBuilder, widgetRegistry, eventBus, debug,
-  );
+  const cardManager = new CanvasCardManager(iframeBuilder, widgetRegistry, eventBus, debug);
 
   const fileUploader = new FileUploader();
   const messageView = new MessageView(undefined, iframeBuilder);

@@ -10,18 +10,24 @@ export class CanvasCardManager implements ICanvasCardManager {
   private codes = new Map<string, string>();
   private highestZIndex = 10;
   private logger: ILogger;
+  private _canvasEl: HTMLElement | null = null;
+  private _cardsContainer: HTMLElement | null = null;
 
   onLayoutChange?: () => void;
 
   constructor(
-    private canvasEl: HTMLElement,
-    private cardsContainer: HTMLElement,
     private iframeBuilder: IIframeBuilder,
     private registry: IWidgetRegistry,
     private eventBus: IEventBus,
     private debug?: IDebugManager,
   ) {
     this.logger = getLogger('canvas-cards');
+  }
+
+  /** Set DOM containers (called after constructor, once DOM is ready) */
+  setContainer(canvasEl: HTMLElement, cardsContainer: HTMLElement): void {
+    this._canvasEl = canvasEl;
+    this._cardsContainer = cardsContainer;
   }
 
   addCard(key: string, code: string, layout?: Partial<CardLayout>): HTMLElement | null {
@@ -77,7 +83,7 @@ export class CanvasCardManager implements ICanvasCardManager {
     resizer.className = 'canvas-card-resizer';
     card.appendChild(resizer);
 
-    this.cardsContainer.appendChild(card);
+    this._cardsContainer!.appendChild(card);
     this.cards.set(key, card);
 
     this.bindZIndexOnClick(card);
@@ -159,7 +165,7 @@ export class CanvasCardManager implements ICanvasCardManager {
       e.preventDefault();
 
       card.classList.add('active-drag');
-      const container = this.cardsContainer;
+      const container = this._cardsContainer!;
 
       const startX = e.clientX;
       const startY = e.clientY;

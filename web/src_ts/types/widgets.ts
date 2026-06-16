@@ -53,6 +53,7 @@ export interface ICanvasCardManager {
   bringToFront(key: string): void;
   clear(): void;
   getCard(key: string): HTMLElement | null;
+  setContainer(canvasEl: HTMLElement, cardsContainer: HTMLElement): void;
   onLayoutChange?: () => void;
 }
 

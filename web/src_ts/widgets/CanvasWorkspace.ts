@@ -51,6 +51,9 @@ export class CanvasWorkspace implements ICanvasWorkspace {
 
     if (!this.canvasEl) return;
 
+    if (this.cardsContainer) {
+      this.cardManager.setContainer(this.canvasEl, this.cardsContainer);
+    }
     this.cardManager.onLayoutChange = () => this.saveLayout();
 
     this.restorePanelState();
