@@ -5,17 +5,32 @@
 <link rel="icon" type="image/png" href="/static/logo.png">
 <script src="/static/htmx.min.js"></script>
 <link rel="stylesheet" href="/static/style.css?v=11">
-<script src="/static/marked.min.js?v=7"></script>
-<script src="/static/purify.min.js?v=7"></script>
+<script>
+  (function() {
+    var savedTheme = localStorage.getItem('selected_theme') || 'dark';
+    if (savedTheme === 'light') {
+      document.documentElement.classList.add('light-theme');
+      document.addEventListener('DOMContentLoaded', function() {
+        document.body.classList.add('light-theme');
+      });
+    }
+    var savedWidth = localStorage.getItem('sidebar_width');
+    if (savedWidth) {
+      document.write('<style>#sidebar { width: ' + savedWidth + 'px !important; }</style>');
+    }
+  })();
+</script>
 </head><body>
 <div id="app" data-session-id="{{ session_id }}">
+<canvas id="fx-canvas" class="fx-canvas"></canvas>
+<div id="bg-effects" class="bg-effects"></div>
 <aside id="sidebar">
   <div class="sidebar-header">
     <div class="brand-container">
       <img src="/static/logo.png" alt="Kairos Logo" class="brand-logo">
       <h2>Kairos</h2>
     </div>
-    <a href="/?new=1" class="btn-new">+ Nueva</a>
+    <button id="btn-new-session" class="btn-new">+ Nueva</button>
   </div>
   <div id="session-list"
        hx-get="/sidebar?current={{ session_id }}"
@@ -42,7 +57,8 @@
   <div id="messages"><div class="empty-state">Envia un mensaje para empezar</div></div>
   <form id="chat-form">
     <div class="chat-input-container">
-      <textarea id="msg-input" placeholder="Escribe un mensaje..." autofocus rows="1"></textarea>
+      <textarea id="msg-input" placeholder="Escribe un mensaje..." autofocus rows="1" aria-label="Mensaje" aria-describedby="chat-form-instructions"></textarea>
+      <span id="chat-form-instructions" style="display:none">Escribe un mensaje y presiona Enter para enviar</span>
       <div id="attach-preview" class="attach-preview"></div>
       <div class="chat-input-toolbar">
         <div class="toolbar-left">
@@ -77,7 +93,7 @@
           <input type="file" id="file-input" multiple accept="image/*,application/pdf,audio/*,*/*" style="display:none">
         </div>
         <div class="toolbar-right">
-          <button type="submit" id="chat-submit-btn" title="Enviar mensaje">
+          <button type="button" id="chat-submit-btn" title="Enviar mensaje">
             <svg class="send-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <line x1="22" y1="2" x2="11" y2="13"></line>
               <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -108,6 +124,6 @@
   <div id="debug-content" class="debug-body">Envia un mensaje para ver el debug</div>
 </div>
 </div>
-<script type="module" src="/static/dist/assets/app.js"></script>
+<script type="module" src="/static/dist/assets/app.js?v=10"></script>
 <script src="/static/model-availability.js"></script>
 </body></html>

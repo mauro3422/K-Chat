@@ -32,6 +32,10 @@ import { NotificationService } from './core/NotificationService';
 import { RateLimitCooldown } from './core/RateLimitCooldown';
 import { ToastUI } from './core/ToastUI';
 import { NotificationBell } from './core/NotificationBell';
+import { CSSInjector } from './core/infra/CSSInjector';
+import { AudioBus } from './core/notification/AudioBus';
+import { GridController } from './core/ui/GridController';
+import { CanvasOverlay } from './widgets/CanvasOverlay';
 import { getLogger } from './core/LoggerFactory';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -43,12 +47,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const apiClient = new ApiClient();
   const widgetStateManager = new WidgetStateManager(apiClient);
   const iframeBuilder = new IframeBuilder(widgetRegistry, debug, widgetStateManager);
-  const containerRenderer = new WidgetContainerRenderer(debug);
+  const containerRenderer = new WidgetContainerRenderer(iframeBuilder, debug);
+  const cssInjector = new CSSInjector();
+  const audioBus = new AudioBus(eventBus);
+  const gridController = new GridController();
+  const canvasOverlay = new CanvasOverlay();
   const layoutStore = new CanvasLayoutStore();
   const cardManager = new CanvasCardManager(iframeBuilder, widgetRegistry, eventBus, debug);
 
   const fileUploader = new FileUploader();
-  const messageView = new MessageView(undefined, iframeBuilder);
+  const messageView = new MessageView(undefined, iframeBuilder, containerRenderer);
   const chatForm = new ChatForm(eventBus, fileUploader);
   const sessionList = new SessionList(eventBus);
   const streamSimulator = new StreamSimulator();
@@ -82,6 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
   chatForm.init();
   sessionList.init();
   sessionStore.init(eventBus);
+  gridController.init();
+  canvasOverlay.init();
+  audioBus.init();
   const canvasWorkspace = new CanvasWorkspace(iframeBuilder, widgetRegistry, eventBus, cardManager, layoutStore);
   canvasWorkspace.init(sessionStore.activeSessionId);
 
@@ -286,5 +297,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 400);
   window.addEventListener('beforeunload', () => clearInterval(debugIntervalId));
 
-  logger.info('TS ready — click 🔍 Debug to open panel');
+  // Expose Lego blocks for AI / widget access
+  (window as any).__k = {
+    cssInjector,
+    audioBus,
+    gridController,
+    canvasOverlay,
+    eventBus,
+  };
+
+  logger.info('TS ready — Lego layout blocks initialized');
+  logger.info('Try: __k.canvasOverlay.startEffect("rain")');
 });
