@@ -4,6 +4,7 @@ from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
 
 from src.api.repos import get_repos
+from src.memory.repos.protocols import MessageRecord
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,23 @@ async def rename(session_id: str, request: Request, name: str = Body(..., embed=
     await repos.sessions.require_session(session_id)
     await repos.sessions.rename(session_id, name.strip() or session_id[:8])
     return JSONResponse({"status": "ok"})
+
+
+@router.get("/sessions")
+async def list_sessions(request: Request) -> JSONResponse:
+    """JSON endpoint for sessions list (used by TS prototype)."""
+    repos = getattr(request.app.state, 'repos', None) or get_repos()
+    raw = await repos.sessions.get_all(50)
+    sessions = []
+    for s in raw:
+        sid, first, last, count, user_count, name = s[0], s[1], s[2], s[3], s[4], s[5]
+        sessions.append({
+            "id": sid,
+            "name": name or sid[:8],
+            "count": count,
+            "last_str": str(last)[:10] if last else "",
+        })
+    return JSONResponse(sessions)
 
 
 @router.post("/sessions/{session_id}/delete")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 
@@ -11,6 +12,9 @@ def hydrate_results(
     top_k: int,
 ) -> list[dict[str, Any]]:
     """Convert (rowid, score) tuples to full result dicts with metadata."""
+    # Ensure Row factory for dict-like access
+    if hasattr(conn, 'row_factory'):
+        conn.row_factory = sqlite3.Row
     hydrated = []
     for rowid, score in results[:top_k]:
         row = conn.execute(

@@ -38,6 +38,15 @@ class HybridResult:
     last_accessed: str = ""
     entities: list[str] = field(default_factory=list)
 
+    @property
+    def score(self) -> float:
+        """Alias for fusion_score for backward compatibility."""
+        return self.fusion_score
+
+    @score.setter
+    def score(self, value: float) -> None:
+        self.fusion_score = value
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "rowid": self.rowid,
@@ -100,21 +109,40 @@ class HybridRetriever:
         )
 
         vec_results, kw_results, ent_results = await asyncio.gather(
-            vec_task, kw_task, ent_task
+            vec_task, kw_task, ent_task,
+            return_exceptions=True,
         )
+
+        # Handle exceptions gracefully: if one search method fails (e.g. missing table),
+        # log it and treat as empty results so remaining methods still contribute.
+        _raw_vec = []
+        _raw_kw = []
+        _raw_ent = []
+        if isinstance(vec_results, BaseException):
+            logger.warning("Vector search failed (non-fatal): %s", vec_results)
+        else:
+            _raw_vec = vec_results
+        if isinstance(kw_results, BaseException):
+            logger.warning("Keyword search failed (non-fatal): %s", kw_results)
+        else:
+            _raw_kw = kw_results
+        if isinstance(ent_results, BaseException):
+            logger.warning("Entity search failed (non-fatal): %s", ent_results)
+        else:
+            _raw_ent = ent_results
 
         # Fuse: RRF on ranked lists
         ranked_lists = [
-            [r[0] for r in vec_results],   # rowids sorted by vector similarity
-            [r[0] for r in kw_results],     # rowids sorted by keyword score
-            [r[0] for r in ent_results],    # rowids sorted by entity score
+            [r[0] for r in _raw_vec],   # rowids sorted by vector similarity
+            [r[0] for r in _raw_kw],     # rowids sorted by keyword score
+            [r[0] for r in _raw_ent],    # rowids sorted by entity score
         ]
 
         # Also normalize scores for weighted_sum mode
         scored_lists = [
-            normalize_scores(vec_results) if vec_results else [],
-            normalize_scores(kw_results) if kw_results else [],
-            normalize_scores(ent_results) if ent_results else [],
+            normalize_scores(_raw_vec) if _raw_vec else [],
+            normalize_scores(_raw_kw) if _raw_kw else [],
+            normalize_scores(_raw_ent) if _raw_ent else [],
         ]
 
         fused = fuse(ranked_lists, scored_lists, self._fusion_config)
