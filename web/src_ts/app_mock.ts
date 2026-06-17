@@ -38,7 +38,7 @@ import { GridController } from './core/ui/GridController';
 import { CanvasOverlay } from './widgets/CanvasOverlay';
 import { getLogger } from './core/LoggerFactory';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
   // ── 1. Init Lego Blocks ──────────────────────────────
   const eventBus = new TypedEventBus();
@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const chatForm = new ChatForm(eventBus, fileUploader);
   const sessionList = new SessionList(eventBus);
   const streamSimulator = new StreamSimulator();
-  const sessionStore = new SessionStore();
+  const sessionStore = new SessionStore(apiClient);
   const ndjsonClient = new NDJSONStreamClient(apiClient, eventBus);
 
   const sseClient = new SSEClient(eventBus, messageView, iframeBuilder, containerRenderer, widgetRegistry, debug);
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
   messageView.init();
   chatForm.init();
   sessionList.init();
-  sessionStore.init(eventBus);
+  await sessionStore.init(eventBus);
   gridController.init();
   canvasOverlay.init();
   audioBus.init();

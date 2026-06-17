@@ -212,11 +212,17 @@ async def _migration_010_memory_index(conn, engine):
 
 
 async def _migration_011_cleanup_orphans(conn, engine):
-    # Clean orphaned records from sessions that were deleted
-    for table in ('widget_states', 'memory_index', 'messages', 'tool_calls', 'debug_info'):
-        await engine.execute(conn, f"""
-            DELETE FROM {table} WHERE session_id NOT IN (SELECT session_id FROM sessions)
-        """)
+    # Clean orphaned records from sessions that were deleted.
+    # Skip tables that have been migrated to global schema (no session_id column).
+    for table in ('widget_states', 'messages', 'tool_calls', 'debug_info', 'memory_index'):
+        try:
+            await engine.execute(conn, f"""
+                DELETE FROM {table} WHERE session_id NOT IN (SELECT session_id FROM sessions)
+            """)
+        except Exception:
+            # Table may have been converted to global schema (memory_index)
+            # or column doesn't exist — skip gracefully.
+            pass
     # Add cleanup triggers: when a session is deleted, cascade cleanups
     triggers = [
         ('trg_cleanup_widget_states', 'widget_states'),

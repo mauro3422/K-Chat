@@ -26,6 +26,9 @@ export interface IChatApi {
 }
 
 export interface ISessionApi {
+  getSessions(): Promise<Response>;
+  createSession(): Promise<Response>;
+  getSessionMessages(sessionId: string): Promise<Response>;
   renameSession(sessionId: string, name: string): Promise<Response>;
   deleteSession(sessionId: string): Promise<Response>;
   sidebar(currentSessionId?: string): Promise<Response>;

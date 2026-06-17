@@ -4,7 +4,6 @@ from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
 
 from src.api.repos import get_repos
-from src.memory.repos.protocols import MessageRecord
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +16,15 @@ async def rename(session_id: str, request: Request, name: str = Body(..., embed=
     await repos.sessions.require_session(session_id)
     await repos.sessions.rename(session_id, name.strip() or session_id[:8])
     return JSONResponse({"status": "ok"})
+
+
+@router.post("/sessions/create")
+async def create_session(request: Request) -> JSONResponse:
+    """Create a new session and return its id."""
+    repos = getattr(request.app.state, 'repos', None) or get_repos()
+    from src.api.session import ensure_session
+    sid = await ensure_session(session_repo=repos.sessions)
+    return JSONResponse({"id": sid})
 
 
 @router.get("/sessions")

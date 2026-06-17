@@ -30,6 +30,18 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     });
   }
 
+  getSessions(): Promise<Response> {
+    return fetch(`${this.baseUrl}/sessions`);
+  }
+
+  createSession(): Promise<Response> {
+    return fetch(`${this.baseUrl}/sessions/create`, { method: 'POST' });
+  }
+
+  getSessionMessages(sessionId: string): Promise<Response> {
+    return fetch(`${this.baseUrl}/sessions/${sessionId}/messages`);
+  }
+
   sidebar(currentSessionId?: string): Promise<Response> {
     let url = `${this.baseUrl}/sidebar`;
     if (currentSessionId) {

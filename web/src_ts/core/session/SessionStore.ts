@@ -1,76 +1,43 @@
 import { IEventBus, EventCallback } from '../../types/events';
 import { MessageData } from '../../rendering/MessageView';
-import { randomWidget } from '../../widgets/templates';
+import { ApiClient } from '../../api/ApiClient';
+import { getLogger } from '../infra/LoggerFactory';
+import { ILogger } from '../infra/Logger';
 
 export interface ISessionStore {
   readonly sessions: Array<{ id: string; name: string; count: number; last_str: string }>;
   readonly activeSessionId: string;
   readonly activeHistory: MessageData[];
 
-  init(eventBus: IEventBus): void;
-  createSession(name?: string): string;
-  deleteSession(id: string): void;
-  renameSession(id: string, name: string): void;
+  init(eventBus: IEventBus): Promise<void>;
+  createSession(name?: string): Promise<string>;
+  deleteSession(id: string): Promise<void>;
+  renameSession(id: string, name: string): Promise<void>;
   selectSession(id: string): void;
   addMessage(sessionId: string, msg: MessageData): void;
   getHistory(sessionId: string): MessageData[];
 }
 
 export class SessionStore implements ISessionStore {
-  private _sessions: Array<{ id: string; name: string; count: number; last_str: string }>;
-  private _histories: Record<string, MessageData[]>;
-  private _activeSessionId: string;
+  private _sessions: Array<{ id: string; name: string; count: number; last_str: string }> = [];
+  private _histories: Record<string, MessageData[]> = {};
+  private _activeSessionId = '';
   private _eventBus: IEventBus | null = null;
+  private _apiClient: ApiClient;
+  private _logger: ILogger;
   private _boundListeners: Array<{ event: string; cb: EventCallback<any> }> = [];
+  private _loaded = false;
 
-  constructor() {
-    this._sessions = [
-      { id: 'sess-1', name: 'Conversación de Prueba', count: 2, last_str: '2026-06-16' },
-      { id: 'sess-2', name: 'Ideas de Desarrollo', count: 1, last_str: '2026-06-15' },
-      { id: 'sess-3', name: 'Widgets & UI', count: 3, last_str: '2026-06-16' },
-      { id: 'tele_12345', name: 'Telegram Bridge', count: 1, last_str: '2026-06-14' },
-    ];
-
-    this._histories = {
-      'sess-1': [
-        { role: 'user', content: '¿Qué es este prototipo?', ts: '2026-06-16T12:00:00Z' },
-        {
-          role: 'assistant',
-          content: '¡Hola! Este es el prototipo TypeScript de K-Chat usando arquitectura de bloques Lego. Todo está desacoplado vía EventBus e inyección de dependencias.',
-          reasoning: 'El usuario pregunta por el sistema. Explicar la arquitectura Lego.',
-          ts: '2026-06-16T12:00:05Z',
-          matched_tools: [{ tool_name: 'read_file', status: 'ok', turn: 1 }],
-        },
-      ],
-      'sess-2': [
-        { role: 'assistant', content: 'Aquí puedes simular ideas y probar la UI de K-Chat.', ts: '2026-06-15T10:00:00Z' },
-      ],
-      'sess-3': [
-        { role: 'user', content: 'Muéstrame un widget', ts: '2026-06-16T14:00:00Z' },
-        {
-          role: 'assistant',
-          content: `Aquí tienes un widget de reloj:\n\n\`\`\`html-widget clock\n${randomWidget()}\n\`\`\`\n\nFunciona dentro de un iframe sandboxed.`,
-          ts: '2026-06-16T14:00:05Z',
-          matched_tools: [{ tool_name: 'widget_create', status: 'ok', turn: 1 }],
-        },
-      ],
-      'tele_12345': [
-        {
-          role: 'assistant',
-          content: 'Conexión con Telegram activa. Eventos canalizados vía EventBus.',
-          ts: '2026-06-14T09:00:00Z',
-        },
-      ],
-    };
-
-    this._activeSessionId = 'sess-1';
+  constructor(apiClient: ApiClient) {
+    this._apiClient = apiClient;
+    this._logger = getLogger('session-store');
   }
 
   get sessions() { return this._sessions; }
   get activeSessionId() { return this._activeSessionId; }
   get activeHistory() { return this.getHistory(this._activeSessionId); }
 
-  init(eventBus: IEventBus): void {
+  async init(eventBus: IEventBus): Promise<void> {
     this._eventBus = eventBus;
 
     const selectCb = (data: { sessionId: string }) => {
@@ -79,17 +46,20 @@ export class SessionStore implements ISessionStore {
     eventBus.on<{ sessionId: string }>('session:select', selectCb);
     this._boundListeners.push({ event: 'session:select', cb: selectCb });
 
-    const renameCb = (data: { sessionId: string; name: string }) => {
-      this.renameSession(data.sessionId, data.name);
+    const renameCb = async (data: { sessionId: string; name: string }) => {
+      await this.renameSession(data.sessionId, data.name);
     };
     eventBus.on<{ sessionId: string; name: string }>('session:rename', renameCb);
-    this._boundListeners.push({ event: 'session:rename', cb: renameCb });
+    this._boundListeners.push({ event: 'session:rename', cb: renameCb as EventCallback<any> });
 
-    const deleteCb = (data: { sessionId: string }) => {
-      this.deleteSession(data.sessionId);
+    const deleteCb = async (data: { sessionId: string }) => {
+      await this.deleteSession(data.sessionId);
     };
     eventBus.on<{ sessionId: string }>('session:delete', deleteCb);
-    this._boundListeners.push({ event: 'session:delete', cb: deleteCb });
+    this._boundListeners.push({ event: 'session:delete', cb: deleteCb as EventCallback<any> });
+
+    // Load sessions from backend
+    await this.loadSessions();
   }
 
   dispose(): void {
@@ -99,23 +69,35 @@ export class SessionStore implements ISessionStore {
     this._boundListeners = [];
   }
 
-  createSession(name?: string): string {
-    const id = 'sess-' + Date.now();
-    this._sessions.unshift({
-      id,
-      name: name || 'Nueva Conversación',
-      count: 0,
-      last_str: new Date().toISOString().substring(0, 10),
-    });
-    this._histories[id] = [];
-    this._activeSessionId = id;
-    this._emit('session:created', { id });
-    this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
-    this._emit('history:updated', { sessionId: id, history: [] });
-    return id;
+  async createSession(name?: string): Promise<string> {
+    try {
+      const resp = await this._apiClient.createSession();
+      const data = await resp.json() as { id: string };
+      const id = data.id;
+      this._sessions.unshift({
+        id,
+        name: name || id.substring(0, 8),
+        count: 0,
+        last_str: new Date().toISOString().substring(0, 10),
+      });
+      this._histories[id] = [];
+      this._activeSessionId = id;
+      this._emit('session:created', { id });
+      this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
+      this._emit('history:updated', { sessionId: id, history: [] });
+      return id;
+    } catch (err) {
+      this._logger.error('createSession failed', err);
+      return '';
+    }
   }
 
-  deleteSession(id: string): void {
+  async deleteSession(id: string): Promise<void> {
+    try {
+      await this._apiClient.deleteSession(id);
+    } catch (err) {
+      this._logger.warn('deleteSession API failed', err);
+    }
     this._sessions = this._sessions.filter(s => s.id !== id);
     delete this._histories[id];
     if (this._activeSessionId === id) {
@@ -123,13 +105,17 @@ export class SessionStore implements ISessionStore {
     }
     this._emit('session:deleted', { id });
     this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
-    // Emit history:updated so UI reloads the new active session's messages
     if (this._activeSessionId) {
       this._emit('history:updated', { sessionId: this._activeSessionId, history: this.getHistory(this._activeSessionId) });
     }
   }
 
-  renameSession(id: string, name: string): void {
+  async renameSession(id: string, name: string): Promise<void> {
+    try {
+      await this._apiClient.renameSession(id, name);
+    } catch (err) {
+      this._logger.warn('renameSession API failed', err);
+    }
     const session = this._sessions.find(s => s.id === id);
     if (session) {
       session.name = name;
@@ -142,7 +128,8 @@ export class SessionStore implements ISessionStore {
     if (this._activeSessionId !== id && this._sessions.some(s => s.id === id)) {
       this._activeSessionId = id;
       this._emit('session:selected', { id });
-      this._emit('history:updated', { sessionId: id, history: this.getHistory(id) });
+      // Load history for selected session
+      this.loadHistory(id);
     }
   }
 
@@ -162,6 +149,40 @@ export class SessionStore implements ISessionStore {
 
   getHistory(sessionId: string): MessageData[] {
     return this._histories[sessionId] || [];
+  }
+
+  // ── API calls ──
+
+  private async loadSessions(): Promise<void> {
+    try {
+      const resp = await this._apiClient.getSessions();
+      const data = await resp.json() as Array<{ id: string; name: string; count: number; last_str: string }>;
+      this._sessions = data;
+      this._logger.info('loadSessions', `count=${data.length}`);
+      if (data.length > 0) {
+        this._activeSessionId = data[0].id;
+        await this.loadHistory(this._activeSessionId);
+      }
+      this._loaded = true;
+      this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
+    } catch (err) {
+      this._logger.warn('loadSessions failed, using empty state', err);
+      this._sessions = [];
+      this._loaded = true;
+      this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
+    }
+  }
+
+  private async loadHistory(sessionId: string): Promise<void> {
+    try {
+      const resp = await this._apiClient.getSessionMessages(sessionId);
+      const data = await resp.json() as MessageData[];
+      this._histories[sessionId] = data;
+      this._emit('history:updated', { sessionId, history: data });
+    } catch (err) {
+      this._logger.warn('loadHistory failed', err);
+      this._histories[sessionId] = [];
+    }
   }
 
   private _emit(event: string, data: unknown): void {
