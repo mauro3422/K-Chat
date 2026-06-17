@@ -83,6 +83,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     await init_memory_db()
     init_deleted_sessions_db()
+    # ── Composition Root: Repositories ─────────────────────────
+    from src.memory.repos import get_repos
+    repos = get_repos()
+    app.state.repos = repos
+    logger.info("Composition root: Repositories created and injected")
     try:
         from src.logbus import get_logbus
         from src.logbus.writers import JsonlWriter, ConsoleWriter, SqliteWriter
@@ -247,8 +252,9 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
     # ── Composition Root: create & inject all Lego blocks ────────────
-    from web.services.event_bus import EventBus
+    from web.services.event_bus import EventBus, set_event_bus
     event_bus = EventBus()
+    set_event_bus(event_bus)
     app.state.event_bus = event_bus
     logger.info("Composition root: EventBus created and injected")
 

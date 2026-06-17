@@ -92,13 +92,26 @@ class EventBus(IEventBus):
             await self.unsubscribe(client_id)
 
 
+# Module-level injected instance (set by composition root)
+# When set, get_event_bus() returns this instance instead of the singleton
+_injected_bus: IEventBus | None = None
+
+
+def set_event_bus(bus: IEventBus) -> None:
+    """Set the EventBus instance (called by composition root)."""
+    global _injected_bus
+    _injected_bus = bus
+
+
 # Module-level singleton (lazy, created on first use)
-# DEPRECATED: inject EventBus instance instead
+# DEPRECATED: inject EventBus instance instead via set_event_bus()
 _bus: EventBus | None = None
 
 
-def get_event_bus() -> EventBus:
-    """Get or create the global EventBus singleton."""
+def get_event_bus() -> IEventBus:
+    """Get EventBus — prefers injected instance, falls back to singleton."""
+    if _injected_bus is not None:
+        return _injected_bus
     global _bus
     if _bus is None:
         _bus = EventBus()
