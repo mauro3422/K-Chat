@@ -37,6 +37,7 @@ import { AudioBus } from './core/notification/AudioBus';
 import { GridController } from './core/ui/GridController';
 import { CanvasOverlay } from './widgets/CanvasOverlay';
 import { getLogger } from './core/LoggerFactory';
+import { SystemLogPanel } from './core/debug/SystemLogPanel';
 
 document.addEventListener('DOMContentLoaded', async () => {
 
@@ -82,7 +83,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   const skillsUI = new SkillsUI(eventBus);
+  const systemLogPanel = new SystemLogPanel(apiClient);
   skillsUI.init();
+  systemLogPanel.init();
+
+  window.addEventListener('kairos:ui-log', (event) => {
+    const detail = (event as CustomEvent<{ label?: string; detail?: string }>).detail;
+    if (!detail?.label) return;
+    debug.logUI(detail.label, detail.detail || '');
+  });
 
   debug.init();
   fileUploader.init();
@@ -293,6 +302,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         debug.setActiveMessage(lastMsg, null);
       }
       debug.refresh();
+      systemLogPanel.refresh();
     }
   }, 400);
   window.addEventListener('beforeunload', () => {

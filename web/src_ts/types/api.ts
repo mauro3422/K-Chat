@@ -55,6 +55,7 @@ export interface ClientLogEntry {
 export interface IDebugApi {
   loadDebugInfo(sessionId: string): Promise<Response>;
   loadBackendLogs(): Promise<Response>;
+  loadSystemLogs(): Promise<Response>;
   sendClientLogs(entries: ClientLogEntry[]): Promise<Response>;
 }
 

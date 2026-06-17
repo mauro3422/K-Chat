@@ -2,7 +2,6 @@
  * K-Chat Skills UI
  * Handles catalog fetching, rendering the list, and showing skill instructions in a modal overlay.
  */
-import { ApiClient } from './api-client.js';
 
 interface Skill {
   name: string;
@@ -42,7 +41,7 @@ export const SkillsUI = {
           const btn = document.createElement('button');
           btn.className = 'skill-item-btn';
           btn.dataset.name = skill.name;
-          btn.textContent = `• ${skill.title}`;
+          btn.textContent = `- ${skill.title}`;
           btn.addEventListener('click', () => {
             this.openSkill(skill.name);
           });

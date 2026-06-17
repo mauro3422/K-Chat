@@ -117,7 +117,7 @@ def get_available_models() -> list[dict[str, str]]:
     return grouped
 
 
-def resolve_frontend_entry(preferred_name: str = "app.js", fallback_name: str = "app.js") -> str:
+def resolve_frontend_entry(preferred_name: str = "app_mock.js", fallback_name: str = "app.js") -> str:
     """Return the best available frontend entrypoint.
 
     Uses the Vite-built bundle when present, otherwise falls back to the
@@ -147,7 +147,7 @@ def home(request: Request, new: bool = False) -> HTMLResponse:
         "session_id": session_id,
         "model": FALLBACK_MODEL,
         "models": get_available_models(),
-        "frontend_entry": resolve_frontend_entry("app.js"),
+        "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     # Always refresh the cookie so "new" actually persists
@@ -161,7 +161,7 @@ def session_page(request: Request, session_id: str) -> HTMLResponse:
         "session_id": session_id,
         "model": FALLBACK_MODEL,
         "models": get_available_models(),
-        "frontend_entry": resolve_frontend_entry("app.js"),
+        "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp

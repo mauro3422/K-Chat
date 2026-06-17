@@ -52,6 +52,35 @@
   font-size: 12px;
 }
 
+.debug-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.debug-tab {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border-radius: 8px 8px 0 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.debug-tab.active {
+  background: var(--bg-secondary);
+  color: var(--text-bright);
+  font-weight: 700;
+}
+
+.debug-tab:hover {
+  color: var(--text-bright);
+}
+
 .debug-toggle {
   cursor: pointer;
   font-size: 12px;
@@ -151,6 +180,10 @@
 .sl-item.sl-info {
   background: var(--alpha-link-10);
   color: var(--accent-link);
+}
+
+.sl-item.sl-debug {
+  color: var(--text-muted);
 }
 
 .wi-block {

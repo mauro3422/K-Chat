@@ -13,7 +13,7 @@ def get_chat_ts(request: Request) -> HTMLResponse:
         "session_id": "sess-1",
         "model": FALLBACK_MODEL,
         "models": get_available_models(),
-        "frontend_entry": resolve_frontend_entry("app_mock.js", "app.js"),
+        "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update({"Cache-Control": "no-cache, no-store, must-revalidate"})
     return resp

@@ -32,7 +32,7 @@ function removeAllListeners(event) {
   }
 }
 
-// Logging listeners — registrados una vez, no se limpian
+// Logging listeners â€” registrados una vez, no se limpian
 on('reasoning', function(token) { logStream('reasoning', token); });
 on('content', function(token) { logStream('content', token); });
 on('tool_call', function(dataStr) { logStream('tool_call', dataStr); });

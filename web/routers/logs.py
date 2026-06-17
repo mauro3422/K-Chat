@@ -90,32 +90,44 @@ def ingest_client_logs(entries: list[ClientLogEntry]):
 @router.get("/api/logs/tail")
 def tail_logs(
     lines: int = Query(50, ge=1, le=500),
-    source: str = Query("server", pattern="^(server|client)$"),
+    source: str = Query("server", pattern="^(server|client|all)$"),
 ):
     """Tail the latest JSONL log files (like tail -f but one-shot), merged with LogBus.
 
     Returns entries from both file_logger and LogBus, sorted by timestamp descending.
     """
-    log_dir = SERVER_LOG_DIR if source == "server" else CLIENT_LOG_DIR
-    log_dir.mkdir(parents=True, exist_ok=True)
+    path: Optional[Path] = None
+    entries: list[dict] = []
+    if source == "server":
+        log_dir = SERVER_LOG_DIR
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path = _latest_log_path(log_dir)
+        entries = _tail_file(path, lines) if path else []
+    elif source == "client":
+        log_dir = CLIENT_LOG_DIR
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path = _latest_log_path(log_dir)
+        entries = _tail_file(path, lines) if path else []
+    else:
+        server_path = _latest_log_path(SERVER_LOG_DIR)
+        client_path = _latest_log_path(CLIENT_LOG_DIR)
+        entries = []
+        if server_path:
+            entries.extend(_tail_file(server_path, lines))
+        if client_path:
+            entries.extend(_tail_file(client_path, lines))
+        entries.extend(_tail_gateway_logs(lines))
+        entries.extend(_tail_logbus_logs(lines))
 
-    path = _latest_log_path(log_dir)
-    entries = _tail_file(path, lines) if path else []
+    if source == "server":
+        entries.extend(_tail_logbus_logs(lines))
+    elif source == "client":
+        entries.extend(_tail_logbus_logs(lines))
 
-    # Also fetch from LogBus JSONL files
-    logbus_entries: list[dict] = []
-    try:
-        logbus_dir = Path("logs/server")
-        logbus_files = sorted(logbus_dir.glob("logbus_*.jsonl"))
-        if logbus_files:
-            logbus_entries = _tail_file(logbus_files[-1], lines)
-    except Exception:
-        pass
+    def _sort_key(entry: dict):
+        return entry.get("t") or entry.get("ts") or ""
 
-    # Merge: both sources, sorted by timestamp descending
-    all_entries = entries + logbus_entries
-    all_entries.sort(key=lambda e: e.get("t") or e.get("ts", 0), reverse=True)
-    merged = all_entries[:lines]
+    merged = sorted(entries, key=_sort_key, reverse=True)[:lines]
 
     return {
         "date": path.stem if path else "",
@@ -139,6 +151,38 @@ def _resolve_log_path(log_dir: Path, date: Optional[str]) -> Optional[Path]:
 def _latest_log_path(log_dir: Path) -> Optional[Path]:
     files = sorted(log_dir.glob("*.jsonl"))
     return files[-1] if files else None
+
+
+def _tail_gateway_logs(lines: int) -> list[dict]:
+    try:
+        from src.gateway_log import get_recent_logs
+        entries = []
+        for item in get_recent_logs(lines):
+            detail = item.get('detail', '')
+            event = item.get('event', '')
+            message = f"{event}: {detail}".strip(": ").strip()
+            entries.append({
+                "t": item.get("ts", ""),
+                "l": item.get("level", "INFO")[0:1],
+                "m": f"gateway.{item.get('service', 'gateway')}",
+                "msg": message,
+                "d": item.get("meta", {}),
+                "source": "gateway",
+            })
+        return entries
+    except Exception:
+        return []
+
+
+def _tail_logbus_logs(lines: int) -> list[dict]:
+    try:
+        logbus_dir = Path("logs/server")
+        logbus_files = sorted(logbus_dir.glob("logbus_*.jsonl"))
+        if logbus_files:
+            return _tail_file(logbus_files[-1], lines)
+    except Exception:
+        pass
+    return []
 
 
 MAX_LOG_ENTRIES = 10000
@@ -190,31 +234,18 @@ def _tail_lines(path: Path, n: int) -> list[str]:
 
 def _tail_file(path: Path, n: int) -> list[dict]:
     """Read the last n JSON lines from a file efficiently."""
-    entries = []
     try:
-        with open(path) as f:
-            # Read file backwards for last n lines
-            f.seek(0, 2)
-            pos = f.tell()
-            buf = ""
-            while pos >= 0 and len(entries) < n:
-                f.seek(pos)
-                chunk = f.read(max(2048, n * 256))
-                lines = chunk.split("\n")
-                for line in reversed(lines):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entries.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-                    if len(entries) >= n:
-                        break
-                pos -= len(chunk)
-                if pos < 0:
-                    break
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
     except Exception:
         return []
-    entries.reverse()
-    return entries[-n:]
+    entries = []
+    for line in lines[-n:]:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return entries

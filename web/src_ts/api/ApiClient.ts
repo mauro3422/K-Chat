@@ -76,6 +76,14 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     return fetch(`${this.baseUrl}/sessions/${sessionId}/delete`, { method: 'POST' });
   }
 
+  favoriteSession(sessionId: string, favorite: boolean): Promise<Response> {
+    return fetch(`${this.baseUrl}/sessions/${sessionId}/favorite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ favorite })
+    });
+  }
+
   saveWidgetState(sessionId: string, widgetId: string, state: string): Promise<Response> {
     return fetch(`${this.baseUrl}/sessions/${sessionId}/widgets/${widgetId}/state`, {
       method: 'POST',
@@ -116,11 +124,27 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     return fetch(`${this.baseUrl}/debug/backend-logs`);
   }
 
+  loadSystemLogs(): Promise<Response> {
+    return fetch(`${this.baseUrl}/api/logs/tail?source=all&lines=200`, { cache: 'no-store' });
+  }
+
   sendClientLogs(entries: ClientLogEntry[]): Promise<Response> {
     return fetch(`${this.baseUrl}/api/logs/client`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(entries)
+    });
+  }
+
+  transcribeAudio(audioBlob: Blob, sessionId?: string): Promise<Response> {
+    const formData = new FormData();
+    formData.append('audio', audioBlob);
+    if (sessionId) formData.append('session_id', sessionId);
+    let url = `${this.baseUrl}/api/asr/transcribe`;
+    if (sessionId) url += `?session_id=${encodeURIComponent(sessionId)}`;
+    return fetch(url, {
+      method: 'POST',
+      body: formData
     });
   }
 }

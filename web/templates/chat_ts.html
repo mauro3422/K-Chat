@@ -146,7 +146,12 @@
     <h3>Debug</h3>
     <span class="debug-close" id="debug-close">&times;</span>
   </div>
+  <div class="debug-tabs">
+    <button type="button" class="debug-tab active" id="debug-tab-btn">Debug</button>
+    <button type="button" class="debug-tab" id="logs-tab-btn">Logs</button>
+  </div>
   <div id="debug-content" class="debug-body">Envia un mensaje para ver el debug</div>
+  <div id="system-log-content" class="debug-body" style="display:none">Abre Logs para ver el sistema</div>
 </div>
 </div>
 <script type="module" src="{{ frontend_entry }}"></script>
