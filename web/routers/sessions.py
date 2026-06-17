@@ -22,8 +22,10 @@ async def rename(session_id: str, request: Request, name: str = Body(..., embed=
 async def create_session(request: Request) -> JSONResponse:
     """Create a new session and return its id."""
     repos = getattr(request.app.state, 'repos', None) or get_repos()
+    from src.api import generate_session_id
     from src.api.session import ensure_session
-    sid = await ensure_session(session_repo=repos.sessions)
+    sid = generate_session_id()
+    await ensure_session(sid, session_repo=repos.sessions)
     return JSONResponse({"id": sid})
 
 

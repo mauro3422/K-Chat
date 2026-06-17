@@ -171,9 +171,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // ── 5. New Session button ────────────────────────────
-  document.getElementById('btn-new-session')?.addEventListener('click', () => {
-    sessionStore.createSession();
-    debug.logUI('new_session', sessionStore.activeSessionId);
+  document.getElementById('btn-new-session')?.addEventListener('click', async () => {
+    const id = await sessionStore.createSession();
+    if (id) logger.info('session_created', id);
   });
 
   // ── 6. Event Bus Bindings ────────────────────────────
