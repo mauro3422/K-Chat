@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     messageView, streamSimulator, sessionStore, chatForm,
     iframeBuilder, containerRenderer, widgetRegistry,
     rateLimitCooldown, debug, retryController,
-    undefined, // ndjsonClient (null until real backend is ready)
+    ndjsonClient, // IA real conectada
     eventBus,
   );
 
