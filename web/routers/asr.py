@@ -68,7 +68,7 @@ async def asr_transcribe(request: Request):
     if result.get("success"):
         logger.info("ASR: transcribed %d chars", len(result.get("transcript", "")))
         await _append_telemetry(
-            session_id,
+            request, session_id,
             {
                 "transport": "http",
                 "kind": "segment",
@@ -82,7 +82,7 @@ async def asr_transcribe(request: Request):
     else:
         logger.warning("ASR: transcription failed: %s", result.get("error"))
         await _append_telemetry(
-            session_id,
+            request, session_id,
             {
                 "transport": "http",
                 "kind": "segment",
@@ -96,7 +96,7 @@ async def asr_transcribe(request: Request):
 
 
 @router.websocket("/api/asr/stream")
-async def asr_stream(websocket: WebSocket):
+async def asr_stream(websocket: WebSocket, request: Request):
     await websocket.accept()
     session_id = websocket.query_params.get("session_id")
     try:
@@ -117,7 +117,7 @@ async def asr_stream(websocket: WebSocket):
 
             if len(audio_data) > MAX_AUDIO_SIZE:
                 await _append_telemetry(
-                    session_id,
+                    request, session_id,
                     {
                         "transport": "ws",
                         "kind": "segment",
@@ -157,7 +157,7 @@ async def asr_stream(websocket: WebSocket):
                 continue
 
             await _append_telemetry(
-                session_id,
+                request, session_id,
                 {
                     "transport": "ws",
                     "kind": "segment",
@@ -194,11 +194,11 @@ def _transcribe_segment(audio_data: bytes, content_type: str | None = None):
     return transcribe_audio(audio_data, content_type=content_type)
 
 
-async def _append_telemetry(session_id: str | None, event: dict) -> None:
+async def _append_telemetry(request: Request, session_id: str | None, event: dict) -> None:
     if not session_id:
         return
     try:
-        repos = get_repos()
+        repos = getattr(request.app.state, 'repos', None) or get_repos()
         await repos.debug.append_asr_telemetry(session_id, event)
     except Exception:
         logger.exception("ASR telemetry append failed for %s", session_id)

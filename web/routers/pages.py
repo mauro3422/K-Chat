@@ -146,7 +146,7 @@ def session_page(request: Request, session_id: str) -> HTMLResponse:
 
 @router.get("/sidebar", response_class=HTMLResponse)
 async def sidebar(request: Request) -> HTMLResponse:
-    repos = get_repos()
+    repos = getattr(request.app.state, 'repos', None) or get_repos()
     raw = await repos.sessions.get_all(50)
     current = request.query_params.get("current", "")
     sessions = []
