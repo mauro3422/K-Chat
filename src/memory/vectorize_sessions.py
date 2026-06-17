@@ -193,21 +193,28 @@ async def vectorize_exchange(exchange: dict[str, Any], session_id: str, idx: int
         store = VectorStore(resolve_memory_db_path())
         own_store = True
 
-    existing_rowid = store.find_by_hash(text_hash, source="session")
-    if existing_rowid is not None:
-        # Duplicado: reusamos rowid existente, sin embeds nuevos
-        if own_store:
-            store.close()
-        return {
-            "rowid": existing_rowid,
-            "keywords": [w for w, _ in kws],
-            "noise": False,
-            "reason": "",
-            "cluster_id": None,
-            "cluster_similarity": 0.0,
-            "entities": entities,
-            "dedup": True,
-        }
+    # Check against DB first (persistent dedup via content_hash)
+    try:
+        conn = store._get_conn()
+        existing = conn.execute(
+            "SELECT rowid FROM vec_meta WHERE content_hash = ?", (text_hash,)
+        ).fetchone()
+        if existing is not None:
+            existing_rowid = existing[0]
+            if own_store:
+                store.close()
+            return {
+                "rowid": existing_rowid,
+                "keywords": [w for w, _ in kws],
+                "noise": False,
+                "reason": "",
+                "cluster_id": None,
+                "cluster_similarity": 0.0,
+                "entities": entities,
+                "dedup": True,
+            }
+    except Exception:
+        pass  # Column might not exist yet — fall through
 
     metadata = {
         "created_at": exchange.get("created_at", ""),
@@ -228,6 +235,7 @@ async def vectorize_exchange(exchange: dict[str, Any], session_id: str, idx: int
             text=text[:2000],
             metadata=metadata,
             hash=text_hash,
+            content_hash=text_hash,
         )
         # Step 3.5: Write keywords to vec_keywords for keyword search
         if rowid and kws:
@@ -319,6 +327,7 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
     noise_count = 0
     mappings: list[dict[str, Any]] = []
     entities_list: list[dict[str, Any]] = []
+    seen_hashes: set[str] = set()
 
     own_store = False
     if store is None:
@@ -355,20 +364,34 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                 add_to_global_corpus(text)
 
                 text_hash = hashlib.md5(_normalize_for_dedup(text[:4000]).encode()).hexdigest()
-                existing_rowid = store.find_by_hash(text_hash, source="session")
-                if existing_rowid is not None:
-                    count += 1
-                    entities_list.append({
-                        "entities": entities,
-                        "keywords": [w for w, _ in kws],
-                    })
-                    if linker is not None and entities:
-                        linker.link_exchange(
-                            entities, session_id,
-                            exchange_rowid=existing_rowid,
-                            exchange_text=text,
-                        )
+
+                # Check against DB first (persistent dedup via content_hash)
+                try:
+                    existing = store._get_conn().execute(
+                        "SELECT rowid FROM vec_meta WHERE content_hash = ?", (text_hash,)
+                    ).fetchone()
+                    if existing is not None:
+                        logger.debug("Hash collision — skipping duplicate exchange (hash=%s)", text_hash[:12])
+                        count += 1
+                        entities_list.append({
+                            "entities": entities,
+                            "keywords": [w for w, _ in kws],
+                        })
+                        if linker is not None and entities:
+                            linker.link_exchange(
+                                entities, session_id,
+                                exchange_rowid=existing[0],
+                                exchange_text=text,
+                            )
+                        continue
+                except Exception:
+                    pass  # Column might not exist yet — fall through
+
+                # Then check in-memory set
+                if text_hash in seen_hashes:
+                    logger.debug("In-memory hash collision — skipping (hash=%s)", text_hash[:12])
                     continue
+                seen_hashes.add(text_hash)
 
                 candidates.append((idx, exchange, text_hash, kw_json, kws, entities))
 
@@ -397,6 +420,7 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                         text=exchange["text"][:2000],
                         metadata=metadata,
                         hash=text_hash,
+                        content_hash=text_hash,
                     )
 
                     if rowid and kws:

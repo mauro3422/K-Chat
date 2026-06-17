@@ -19,19 +19,16 @@ _reranker_lock = threading.Lock()
 
 
 class Reranker:
-    """Cross-encoder reranker with preloaded model.
-    
-    Loads the model at construction time. If the model cannot be loaded
-    (e.g. first download fails), rerank() returns candidates unchanged.
+    """Cross-encoder reranker with lazy-loaded model.
+
+    The model is NOT loaded at construction time — it is loaded on the first
+    call to rerank(). If loading fails, rerank() returns candidates unchanged.
     """
 
     def __init__(self):
         self._model = None
         self._ready = False
-        try:
-            self._load_model()
-        except Exception as e:
-            logger.warning("Reranker model not available, will skip: %s", e)
+        # Model is NOT loaded here — loaded lazily on first rerank()
 
     def _load_model(self):
         from sentence_transformers import CrossEncoder
@@ -54,7 +51,14 @@ class Reranker:
             Re-ranked candidates with updated 'score' from cross-encoder.
             Falls back to original order if model is unavailable.
         """
-        if not self._ready or not candidates:
+        if not self._ready:
+            try:
+                self._load_model()
+            except Exception as e:
+                logger.warning("Reranker unavailable, returning candidates unchanged: %s", e)
+                return candidates[:top_k]
+
+        if not candidates:
             return candidates[:top_k]
 
         texts = [c.get("text", "") for c in candidates]

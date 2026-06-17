@@ -18,6 +18,7 @@ import asyncio
 import logging
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -73,11 +74,18 @@ class ModelRegistry:
     Thread-safe. Zero framework deps.
     """
 
-    def __init__(self, config: Any = None) -> None:
+    def __init__(
+        self,
+        config: Any = None,
+        provider_registry: Any = None,
+        provider_fn: Callable[..., Any] | None = None,
+    ) -> None:
         if config is None:
             from src._config import resolve_config
             config = resolve_config(config)
         self._config = config
+        self._provider_registry = provider_registry
+        self._provider_fn = provider_fn
         self._lock = threading.Lock()
         # Go API models (premium, standard, economy)
         self._go_models: list[str] = []
@@ -109,9 +117,11 @@ class ModelRegistry:
 
         # 1. Fetch Go API models
         try:
-            from src.llm.providers import _get_provider
-
-            provider = _get_provider(config=self._config)
+            if self._provider_fn is not None:
+                provider = self._provider_fn()
+            else:
+                from src.llm.providers import _get_provider
+                provider = _get_provider(config=self._config)
             go_raw = await provider.list_models()
             go_ids = [
                 m if isinstance(m, str) else getattr(m, "id", "")
@@ -129,9 +139,11 @@ class ModelRegistry:
 
             fresh = copy.copy(self._config)
             fresh.llm_mode = "zen"
-            from src.llm.providers import _get_registry
-
-            pcls = _get_registry().get(fresh.llm_provider)
+            if self._provider_registry is not None:
+                pcls = self._provider_registry.get(fresh.llm_provider)
+            else:
+                from src.llm.providers import _get_registry
+                pcls = _get_registry().get(fresh.llm_provider)
             if pcls:
                 zen_provider = pcls(
                     api_key=fresh.opencode_zen_api_key,
@@ -290,3 +302,12 @@ def get_verified_models() -> list[str]:
 
 # Backward-compatible alias
 get_verified_models_safe = get_verified_models
+
+
+# ── Container-aware helpers ────────────────────────────────────────
+
+def get_model_registry_from_container(config: Any = None) -> ModelRegistry:
+    """Get model registry from the default DI container."""
+    from src.llm.container import get_container
+    container = get_container(config=config)
+    return container.get_model_registry()

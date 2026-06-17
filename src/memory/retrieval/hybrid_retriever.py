@@ -156,20 +156,19 @@ class HybridRetriever:
 
         # ── Cross-encoder re-ranking ──────────────────────────────
         if results and query:
+            dicts = [r.to_dict() for r in results]
             try:
                 from src.memory.retrieval.reranker import rerank
-                dicts = [r.to_dict() for r in results]
                 reranked_dicts = rerank(query, dicts, top_k=top_k)
                 reranked_ids = {d["rowid"] for d in reranked_dicts}
                 results = [r for r in results if r.rowid in reranked_ids]
-                # Restore fusion_score from reranker output
                 score_map = {d["rowid"]: d["score"] for d in reranked_dicts}
                 for r in results:
                     r.fusion_score = score_map.get(r.rowid, r.fusion_score)
-                # Sort by reranker score
                 results.sort(key=lambda x: x.fusion_score, reverse=True)
             except Exception as e:
-                logger.warning("Reranker failed (non-fatal): %s", e)
+                logger.warning("Reranker failed (non-fatal), using original results: %s", e)
+                # Fall through with original results
 
         # Apply token budget if requested
         if apply_budget:

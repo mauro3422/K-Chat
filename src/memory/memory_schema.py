@@ -392,6 +392,16 @@ def _migration_010_relevance_metadata(conn: sqlite3.Connection, engine) -> None:
     logger.info("Relevance metadata and retrieval_log added to vec_meta")
 
 
+def _migration_012_content_hash(conn: sqlite3.Connection, engine) -> None:
+    """Add content_hash column to vec_meta for efficient dedup."""
+    cursor = conn.execute("PRAGMA table_info(vec_meta)")
+    cols = {r[1] for r in cursor.fetchall()}
+    if "content_hash" not in cols:
+        conn.execute("ALTER TABLE vec_meta ADD COLUMN content_hash TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_vec_meta_content_hash ON vec_meta(content_hash)")
+    logger.info("content_hash column added to vec_meta")
+
+
 def _migration_011_vec_keywords_covering_index(conn: sqlite3.Connection, engine) -> None:
     """Add covering index on (word, rowid, score) for keyword_search performance.
 
@@ -420,6 +430,7 @@ _MEMORY_MIGRATIONS = (
     _migration_009_entity_dedup,
     _migration_010_relevance_metadata,
     _migration_011_vec_keywords_covering_index,
+    _migration_012_content_hash,
 )
 
 

@@ -76,9 +76,24 @@ class CircuitBreaker:
         self.record_success(model)
 
 
+# ── Container-aware helpers (migration to DI) ──────────────────────
+
+def get_breaker_from_container() -> CircuitBreaker:
+    """Get circuit breaker from the default DI container."""
+    from src.llm.container import get_container
+    return get_container().get_circuit_breaker()
+
+
 # Global singleton for convenience (will be migrated to DI)
 _breaker = CircuitBreaker()
 
 
 def get_breaker() -> CircuitBreaker:
-    return _breaker
+    """Get the global CircuitBreaker singleton.
+
+    Prefers the DI container if available, falls back to module singleton.
+    """
+    try:
+        return get_breaker_from_container()
+    except Exception:
+        return _breaker

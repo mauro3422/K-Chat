@@ -56,7 +56,35 @@ def _reset_provider() -> None:
         _provider = None
 
 
+# ── Container-aware factory ────────────────────────────────────────
+
+
+def create_provider(config: Any | None = None, registry: ProviderRegistry | None = None) -> LLMProvider:
+    """Create a provider using explicit dependency injection.
+
+    Unlike _get_provider(), this does NOT use module-level singletons.
+    Callers can pass config and registry directly.
+    """
+    from src._config import resolve_config
+    cfg = resolve_config(config)
+
+    if registry is None:
+        registry = _get_registry()
+
+    provider_class = registry.get(cfg.llm_provider)
+    if provider_class is None:
+        raise ValueError(f"Unknown provider: {cfg.llm_provider}")
+
+    api_key = cfg.opencode_zen_api_key
+    base_url = cfg.opencode_zen_base_url
+    if cfg.llm_mode == "go":
+        base_url = cfg.opencode_go_base_url
+
+    return provider_class(api_key=api_key, base_url=base_url)
+
+
 def _get_provider(config: Any | None = None, registry: ProviderRegistry | None = None) -> LLMProvider:
+    # TODO: Migrate to create_provider() via container — this singleton will be removed
     global _provider
     if _provider is None:
         with _provider_lock:

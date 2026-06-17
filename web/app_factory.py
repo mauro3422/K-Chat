@@ -67,6 +67,13 @@ def _get_config():
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     cfg = _get_config()
     searxng_started = False
+    # ── Precalentar modelo de embeddings ────────────────────────────
+    try:
+        from src.memory.embeddings.service import generate_embedding
+        asyncio.create_task(asyncio.to_thread(generate_embedding, "warmup"))
+        logger.info("Embedding model preload initiated")
+    except Exception:
+        pass
     if cfg.testing or os.environ.get("SEARXNG_AUTO_START", "false").lower() in ("1", "true"):
         err = deps.searxng_start()
         if err:

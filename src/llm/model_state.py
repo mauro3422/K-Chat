@@ -93,29 +93,54 @@ PRIORITY = [m for m in [DEFAULT_MODEL, SECONDARY_MODEL] if m]
 FALLBACK_MODEL = DEFAULT_MODEL
 
 
+def _get_state_from_container() -> ModelState:
+    """Get ModelState from the default DI container."""
+    from src.llm.container import get_container
+    return get_container().get_model_state()
+
+
+def _resolve_state(state: ModelState | None = None) -> ModelState:
+    """Resolve ModelState: explicit param > legacy singleton > container.
+    
+    Legacy singleton is preferred over container for now to maintain
+    backward compatibility with existing tests that mock module-level
+    functions and state. The container path is used only when the
+    legacy singleton fails.
+    """
+    if state is not None:
+        return state
+    try:
+        return _get_state()
+    except Exception:
+        try:
+            return _get_state_from_container()
+        except Exception:
+            return _get_state()
+
+
 # Convenience wrappers — accept optional state param for DI
 def is_model_failed(model: str, state: ModelState | None = None) -> bool:
-    return _get_state(state).is_model_failed(model)
+    return _resolve_state(state).is_model_failed(model)
 
 
 def mark_model_failed(model: str, state: ModelState | None = None) -> None:
-    _get_state(state).mark_model_failed(model)
+    _resolve_state(state).mark_model_failed(model)
 
 
 def clear_failed_models(state: ModelState | None = None) -> None:
-    _get_state(state).clear_failed_models()
+    _resolve_state(state).clear_failed_models()
 
 
 def get_cached_models_safe(state: ModelState | None = None) -> Any:
-    return _get_state(state).get_cached_models_safe()
+    return _resolve_state(state).get_cached_models_safe()
 
 
 def set_cached_models(value: Any, state: ModelState | None = None) -> None:
-    _get_state(state).set_cached_models(value)
+    _resolve_state(state).set_cached_models(value)
 
 
 def _switch_model(model: str, state: ModelState | None = None) -> str:
-    return _get_state(state).switch_model(model)
+    return _resolve_state(state).switch_model(model)
 
 
 __all__ = [

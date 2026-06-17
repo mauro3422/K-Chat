@@ -9,6 +9,24 @@ from src.llm.retry import is_rate_limit_error
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+def _resolve_breaker():
+    """Get circuit breaker, preferring container if available."""
+    try:
+        from src.llm.container import get_container
+        return get_container().get_circuit_breaker()
+    except Exception:
+        return get_breaker()
+
+
+def _resolve_rate_store():
+    """Get rate limit store, preferring container if available."""
+    try:
+        from src.llm.container import get_container
+        return get_container().get_rate_limit_store()
+    except Exception:
+        return get_rate_limit_store()
+
+
 def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None = None) -> str:
     """Marks model as failed, refreshes verified list, and returns the alternative model.
 
@@ -21,16 +39,18 @@ def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None 
         except Exception:
             logger.exception("Failed to refresh verified models")
 
+    breaker = _resolve_breaker()
+    rate_store = _resolve_rate_store()
+
     models.mark_model_failed(model)
-    get_breaker().record_failure(model)
+    breaker.record_failure(model)
 
     # Track rate limit separately with cooldown
     if error is not None:
         err_str = str(error)
         if is_rate_limit_error(error):
-            store = get_rate_limit_store()
             detail = err_str[:200]
-            store.mark_rate_limited(model, retry_after=60.0, detail=detail)
+            rate_store.mark_rate_limited(model, retry_after=60.0, detail=detail)
             logger.warning("Rate limit recorded for %s — will retry after cooldown", model)
         elif "insufficient balance" in err_str.lower():
             # Go quota exhausted — mark registry so UI can show a warning
@@ -44,7 +64,7 @@ def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None 
     try:
         next_model = models._switch_model(model)
     except RuntimeError:
-        if not get_breaker().is_available(model):
+        if not breaker.is_available(model):
             raise RuntimeError("All models are circuit-broken — no LLM available")
         logger.critical("All models have failed! Using last resort: %s", model)
         next_model = model  # last resort

@@ -126,16 +126,31 @@ class ModelRateLimitStore:
         }
 
 
+# ── Container-aware helpers (migration to DI) ──────────────────────
+
+def get_rate_limit_store_from_container() -> ModelRateLimitStore:
+    """Get rate limit store from the default DI container."""
+    from src.llm.container import get_container
+    return get_container().get_rate_limit_store()
+
+
 # --- Global singleton (for convenience, can be injected) --------------
 _RATE_LIMIT_STORE: ModelRateLimitStore | None = None
 _lock = threading.Lock()
 
 
 def get_rate_limit_store() -> ModelRateLimitStore:
-    """Get or create the global rate limit store (lazy singleton)."""
-    global _RATE_LIMIT_STORE
-    if _RATE_LIMIT_STORE is None:
-        with _lock:
-            if _RATE_LIMIT_STORE is None:
-                _RATE_LIMIT_STORE = ModelRateLimitStore()
-    return _RATE_LIMIT_STORE
+    """Get the global ModelRateLimitStore singleton.
+
+    Prefers the DI container if available, falls back to module singleton.
+    """
+    try:
+        return get_rate_limit_store_from_container()
+    except Exception:
+        # Fallback to legacy singleton
+        global _RATE_LIMIT_STORE
+        if _RATE_LIMIT_STORE is None:
+            with _lock:
+                if _RATE_LIMIT_STORE is None:
+                    _RATE_LIMIT_STORE = ModelRateLimitStore()
+        return _RATE_LIMIT_STORE

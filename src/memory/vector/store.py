@@ -87,14 +87,19 @@ class VectorStore:
                 hash TEXT NOT NULL DEFAULT '',
                 relevance_score REAL NOT NULL DEFAULT 0.5,
                 query_count INTEGER NOT NULL DEFAULT 0,
-                last_accessed TEXT NOT NULL DEFAULT ''
+                last_accessed TEXT NOT NULL DEFAULT '',
+                content_hash TEXT
             )
         """)
-        # Safety: add hash column if table existed before migration 006
-        try:
-            conn.execute("ALTER TABLE vec_meta ADD COLUMN hash TEXT DEFAULT ''")
-        except Exception:
-            pass  # Column already exists
+        # Safety: add columns if table existed before migrations
+        for col in [
+            ("hash", "TEXT DEFAULT ''"),
+            ("content_hash", "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE vec_meta ADD COLUMN {col[0]} {col[1]}")
+            except Exception:
+                pass
 
         # Create indexes if they don't exist
         existing = {r[0] for r in conn.execute(
@@ -104,6 +109,8 @@ class VectorStore:
             conn.execute("CREATE INDEX idx_vec_meta_source ON vec_meta (source, source_key)")
         if "idx_vec_meta_hash" not in existing:
             conn.execute("CREATE INDEX idx_vec_meta_hash ON vec_meta (hash)")
+        if "idx_vec_meta_content_hash" not in existing:
+            conn.execute("CREATE INDEX idx_vec_meta_content_hash ON vec_meta (content_hash)")
         conn.commit()
 
     # --- CRUD operations ---
@@ -114,11 +121,13 @@ class VectorStore:
                exchange_idx: int = 0,
                text: str = "",
                metadata: Optional[dict] = None,
-               hash: str = "") -> int:
+               hash: str = "",
+               content_hash: str = "") -> int:
         """Insert a vector and its metadata. Returns the rowid.
 
         Args:
             hash: Optional MD5 hash of the source text, used for deduplication.
+            content_hash: Normalized MD5 hash for cross-session dedup.
         """
         with self._lock:
             conn = self._get_conn()
@@ -138,9 +147,9 @@ class VectorStore:
 
             # Insert metadata
             conn.execute(
-                "INSERT INTO vec_meta(rowid, source, source_key, exchange_idx, text, metadata, created_at, hash, relevance_score) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [rowid, source, source_key, exchange_idx, text, meta_json, now, hash, round(score, 4)]
+                "INSERT INTO vec_meta(rowid, source, source_key, exchange_idx, text, metadata, created_at, hash, relevance_score, content_hash) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [rowid, source, source_key, exchange_idx, text, meta_json, now, hash, round(score, 4), content_hash]
             )
             conn.commit()
             return rowid

@@ -6,7 +6,7 @@ import pytest
 from src.llm.selector import get_default_model, _get_default_model_candidates
 
 
-@patch("src.llm.model_state.get_verified_models_safe")
+@patch("src.llm.model_registry.get_verified_models")
 @patch("src.llm.model_state.is_model_failed")
 @patch("src.llm.model_state.PRIORITY", ["big-pickle", "deepseek-v4-flash-free"])
 @pytest.mark.anyio
@@ -21,7 +21,7 @@ async def test_get_default_model_returns_first_available_priority_model_from_ver
     assert result == "big-pickle"
 
 
-@patch("src.llm.model_state.get_verified_models_safe")
+@patch("src.llm.model_registry.get_verified_models")
 @patch("src.llm.model_state.is_model_failed")
 @patch("src.llm.discovery.get_free_models")
 @patch("src.llm.model_state.PRIORITY", ["big-pickle", "deepseek-v4-flash-free"])
@@ -43,7 +43,7 @@ async def test_get_default_model_falls_back_to_free_models_when_no_verified_mode
     assert result == "deepseek-v4-flash-free"
 
 
-@patch("src.llm.model_state.get_verified_models_safe")
+@patch("src.llm.model_registry.get_verified_models")
 @patch("src.llm.model_state.is_model_failed")
 @patch("src.llm.model_state.FALLBACK_MODEL", "deepseek-v4-flash-free")
 @pytest.mark.anyio
@@ -58,7 +58,7 @@ async def test_get_default_model_returns_fallback_model_on_error(
     assert result == "deepseek-v4-flash-free"
 
 
-@patch("src.llm.model_state.get_verified_models_safe")
+@patch("src.llm.model_registry.get_verified_models")
 @patch("src.llm.model_state.is_model_failed")
 @patch("src.llm.model_state.FALLBACK_MODEL", "deepseek-v4-flash-free")
 @patch("src.llm.model_state.PRIORITY", ["big-pickle", "deepseek-v4-flash-free"])
@@ -74,7 +74,7 @@ async def test_get_default_model_handles_all_models_failed_gracefully(
     assert result == "deepseek-v4-flash-free"
 
 
-@patch("src.llm.model_state.get_verified_models_safe")
+@patch("src.llm.model_registry.get_verified_models")
 @pytest.mark.anyio
 async def test_get_default_model_candidates_returns_cached_verified_list(mock_get_verified_models_safe):
     mock_get_verified_models_safe.return_value = ["model1", "model2"]
@@ -85,7 +85,7 @@ async def test_get_default_model_candidates_returns_cached_verified_list(mock_ge
     assert verified_cache_used is True
 
 
-@patch("src.llm.model_state.get_verified_models_safe")
+@patch("src.llm.model_registry.get_verified_models")
 @patch("src.llm.discovery.get_free_models")
 @pytest.mark.anyio
 async def test_get_default_model_candidates_returns_free_models_when_no_cache(

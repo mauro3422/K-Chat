@@ -22,7 +22,7 @@ _embedding_model: Optional[TextEmbedding] = None
 
 # Idle tracking: timestamp of last embedding call
 _last_used: float = 0.0
-IDLE_TIMEOUT: float = 300.0  # 5 minutes
+IDLE_TIMEOUT: float = 999999.0  # Nunca descargar de RAM
 
 # Default model: multilingual, 384 dims, ~80MB RAM
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

@@ -383,6 +383,14 @@ def main() -> None:
     asyncio.run(init_db())
     root_logger.setLevel(prev_level)
 
+    # ── Precalentar modelo de embeddings ────────────────────────────
+    try:
+        from src.memory.embeddings.service import generate_embedding
+        asyncio.create_task(asyncio.to_thread(generate_embedding, "warmup"))
+        logger.info("Embedding model preload initiated")
+    except Exception:
+        logger.warning("Embedding model preload failed (non-fatal)")
+
     from src.gateway_log import log_startup
 
     _log_starting("Memory DB")

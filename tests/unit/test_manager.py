@@ -106,7 +106,7 @@ class TestGetFreeModels:
 
 
 class TestGetVerifiedModels:
-    @patch("src.llm.discovery.models.get_verified_models_safe")
+    @patch("src.llm.discovery.registry.get_verified_models")
     @pytest.mark.anyio
     async def test_returns_cached_when_available(self, mock_get_verified):
         mock_get_verified.return_value = ["deepseek-v4-flash-free"]
@@ -118,8 +118,8 @@ class TestGetVerifiedModels:
     @patch("src.llm.discovery._is_go_mode", return_value=False)
     @patch("src.llm.discovery.get_free_models", new_callable=AsyncMock)
     @patch("src.llm.verifier.verify_model", new_callable=AsyncMock)
-    @patch("src.llm.discovery.models.set_verified_models")
-    @patch("src.llm.discovery.models.get_verified_models_safe")
+    @patch("src.llm.discovery.registry.set_verified_models")
+    @patch("src.llm.discovery.registry.get_verified_models")
     @pytest.mark.anyio
     async def test_verifies_free_models(
         self, mock_get_verified, mock_set_verified, mock_verify, mock_get_free, _
@@ -140,8 +140,8 @@ class TestGetVerifiedModels:
     @patch("src.llm.discovery._is_go_mode", return_value=False)
     @patch("src.llm.discovery.get_free_models", new_callable=AsyncMock)
     @patch("src.llm.verifier.verify_model", new_callable=AsyncMock)
-    @patch("src.llm.discovery.models.set_verified_models")
-    @patch("src.llm.discovery.models.get_verified_models_safe")
+    @patch("src.llm.discovery.registry.set_verified_models")
+    @patch("src.llm.discovery.registry.get_verified_models")
     @pytest.mark.anyio
     async def test_forces_refresh(
         self, mock_get_verified, mock_set_verified, mock_verify, mock_get_free, _
@@ -159,8 +159,8 @@ class TestGetVerifiedModels:
 
     @patch("src.llm.discovery._is_go_mode", return_value=False)
     @patch("src.llm.discovery.get_free_models", new_callable=AsyncMock)
-    @patch("src.llm.discovery.models.set_verified_models")
-    @patch("src.llm.discovery.models.get_verified_models_safe")
+    @patch("src.llm.discovery.registry.set_verified_models")
+    @patch("src.llm.discovery.registry.get_verified_models")
     @pytest.mark.anyio
     async def test_fallback_on_error(
         self, mock_get_verified, mock_set_verified, mock_get_free, _
@@ -174,8 +174,8 @@ class TestGetVerifiedModels:
 
     @patch("src.llm.discovery._is_go_mode", return_value=False)
     @patch("src.llm.discovery.get_free_models", new_callable=AsyncMock)
-    @patch("src.llm.discovery.models.set_verified_models")
-    @patch("src.llm.discovery.models.get_verified_models_safe")
+    @patch("src.llm.discovery.registry.set_verified_models")
+    @patch("src.llm.discovery.registry.get_verified_models")
     @pytest.mark.anyio
     async def test_uses_fallback_model_when_no_cache(
         self, mock_get_verified, mock_set_verified, mock_get_free, _
@@ -191,7 +191,7 @@ class TestGetVerifiedModels:
 
 class TestGetDefaultModel:
     @patch("src.llm.selector.models.is_model_failed")
-    @patch("src.llm.selector.models.get_verified_models_safe")
+    @patch("src.llm.selector.registry.get_verified_models")
     @patch("src.llm.selector.discovery.get_free_models", new_callable=AsyncMock)
     @pytest.mark.anyio
     async def test_returns_priority_model_when_available(self, mock_get_free, mock_get_verified, mock_failed):
@@ -208,7 +208,7 @@ class TestGetDefaultModel:
         assert result == "deepseek-v4-flash"
 
     @patch("src.llm.selector.models.is_model_failed")
-    @patch("src.llm.selector.models.get_verified_models_safe")
+    @patch("src.llm.selector.registry.get_verified_models")
     @patch("src.llm.selector.discovery.get_free_models", new_callable=AsyncMock)
     @pytest.mark.anyio
     async def test_skips_failed_model(self, mock_get_free, mock_get_verified, mock_failed):
@@ -234,7 +234,7 @@ class TestGetDefaultModel:
         assert result == "deepseek-v4-flash"
 
     @patch("src.llm.selector.models.is_model_failed")
-    @patch("src.llm.selector.models.get_verified_models_safe")
+    @patch("src.llm.selector.registry.get_verified_models")
     @patch("src.llm.selector.discovery.get_free_models", new_callable=AsyncMock)
     @pytest.mark.anyio
     async def test_prefers_deepseek_even_when_big_pickle_is_available(self, mock_get_free, mock_get_verified, mock_failed):
@@ -249,7 +249,7 @@ class TestGetDefaultModel:
         assert result == "deepseek-v4-flash"
 
     @patch("src.llm.selector.models.is_model_failed")
-    @patch("src.llm.selector.models.get_verified_models_safe")
+    @patch("src.llm.selector.registry.get_verified_models")
     @patch("src.llm.selector.discovery.get_free_models", new_callable=AsyncMock)
     @pytest.mark.anyio
     async def test_prefers_verified_cache_when_available(self, mock_get_free, mock_get_verified, mock_failed):
