@@ -87,13 +87,13 @@ def format_memories_for_prompt(
         return ""
     
     lines = [
-        "\n--- 🔍 Recordando... (memorias relevantes recuperadas) ---",
+        "\n--- 🔍 Retrieving relevant memories... ---",
         "The memories below were automatically retrieved based on the user's current message.",
         "They come from past sessions and curated memory. Treat them as context.",
         "",
     ]
     if query:
-        lines.append(f"  (búsqueda: \"{query}\")\n")
+        lines.append(f"  (search: \"{query}\")\n")
     
     for i, r in enumerate(results, 1):
         score_pct = int(r.get("score", 0) * 100)

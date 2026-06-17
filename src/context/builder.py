@@ -128,9 +128,9 @@ def build_system_prompt(model: str, tool_definitions: dict[str, Any] | None = No
     # MEMORY.md contains ALL saved facts; this block contains only results
     # relevant to the current query — they are complementary, not duplicates.
     if memory_results:
-        context += "\n\n━━━ 🔍 RECORDANDO (memorias recuperadas) ━━━\n"
+        context += "\n\n━━━ 🔍 RETRIEVING RELEVANT MEMORIES ━━━\n"
         context += memory_results
-        context += "\n━━━ FIN MEMORIAS RECUPERADAS ━━━\n"
+        context += "\n━━━ END RETRIEVED MEMORIES ━━━\n"
 
     # Identity and model block is placed FIRST so the LLM cannot miss it
     identity = (
