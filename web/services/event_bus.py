@@ -9,12 +9,20 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, Protocol as TypingProtocol
 
 logger = logging.getLogger(__name__)
 
 
-class EventBus:
+class IEventBus(TypingProtocol):
+    """Protocol for the EventBus — enables DI without coupling to the concrete class."""
+    async def subscribe(self, client_id: str) -> asyncio.Queue: ...
+    async def unsubscribe(self, client_id: str) -> None: ...
+    async def publish(self, event_type: str, data: Any = None) -> None: ...
+    async def stream(self, client_id: str) -> AsyncGenerator[str, None]: ...
+
+
+class EventBus(IEventBus):
     """Simple in-memory pub/sub event bus.
 
     Usage::
@@ -85,6 +93,7 @@ class EventBus:
 
 
 # Module-level singleton (lazy, created on first use)
+# DEPRECATED: inject EventBus instance instead
 _bus: EventBus | None = None
 
 

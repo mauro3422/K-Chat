@@ -1,6 +1,7 @@
 import json
 
 from src.api import filter_messages_for_ui, match_tools_to_msgs, get_repos
+from src.api.repos import Repositories
 from web.services.widget_contract import extract_inline_widget_states
 from web.services.message_renderer_contract import MessageRenderDeps
 
@@ -9,7 +10,11 @@ def _resolve_render_deps(deps: MessageRenderDeps | None = None) -> MessageRender
     return deps or MessageRenderDeps()
 
 
-async def render_session_messages(session_id: str, deps: MessageRenderDeps | None = None) -> dict:
+async def render_session_messages(
+    session_id: str,
+    repos: Repositories | None = None,
+    deps: MessageRenderDeps | None = None,
+) -> dict:
     """Returns a dict containing messages and widget states for a session."""
     _deps = _resolve_render_deps(deps)
     get_session_messages_fn = _deps.get_session_messages_fn
@@ -18,7 +23,7 @@ async def render_session_messages(session_id: str, deps: MessageRenderDeps | Non
     get_tool_history_fn = _deps.get_tool_history_fn
     get_widget_states_fn = _deps.get_widget_states_fn
     extract_inline_widget_states_fn = _deps.extract_inline_widget_states_fn or extract_inline_widget_states
-    repos = _deps.repos or get_repos()
+    repos = repos or _deps.repos or get_repos()
 
     if get_session_messages_fn:
         raw_msgs = await get_session_messages_fn(session_id)

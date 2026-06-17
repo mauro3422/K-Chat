@@ -245,6 +245,13 @@ def create_app() -> FastAPI:
     setup_logging()
     app = FastAPI(lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+    # ── Composition Root: create & inject all Lego blocks ────────────
+    from web.services.event_bus import EventBus
+    event_bus = EventBus()
+    app.state.event_bus = event_bus
+    logger.info("Composition root: EventBus created and injected")
+
     register_middlewares(app)
     register_exception_handlers(app)
     register_routers(app)

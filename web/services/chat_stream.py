@@ -49,6 +49,7 @@ def build_stream_generator(
     save_fn: MessagePersisterProtocol | None = None,
     rename_fn: Callable | None = None,
     deps: StreamGeneratorDeps | None = None,
+    orchestrator_deps: OrchestratorDeps | None = None,
 ) -> StreamGeneratorProtocol:
     """Builds the NDJSON generator for the chat stream."""
     _deps = deps or StreamGeneratorDeps(
@@ -86,24 +87,27 @@ def build_stream_generator(
         last_save_time = time.monotonic()
         save_interval = 30
 
-        # Prepare orchestrator dependencies
-        repos = get_repos()
-        telemetry_service = TelemetryService()
-        orchestrator_deps = OrchestratorDeps(
-            repos=repos,
-            history_service=HistoryService(repos=repos),
-            telemetry_service=telemetry_service,
-            llm_service=LLMService(telemetry_service=telemetry_service),
-            tool_service=ToolExecutionService(),
-            session_id=session_id,
-            tagged=True,
-            debug=debug_info,
-            phases_output=phases_output,
-            background_tasks=background_tasks
-        )
+        # Prepare orchestrator dependencies (injected or built inline)
+        if orchestrator_deps is None:
+            repos = get_repos()
+            telemetry_service = TelemetryService()
+            _orch_deps = OrchestratorDeps(
+                repos=repos,
+                history_service=HistoryService(repos=repos),
+                telemetry_service=telemetry_service,
+                llm_service=LLMService(telemetry_service=telemetry_service),
+                tool_service=ToolExecutionService(),
+                session_id=session_id,
+                tagged=True,
+                debug=debug_info,
+                phases_output=phases_output,
+                background_tasks=background_tasks
+            )
+        else:
+            _orch_deps = orchestrator_deps
 
         try:
-            async for tipo, token in _chat_stream(message, history, model, deps=orchestrator_deps):
+            async for tipo, token in _chat_stream(message, history, model, deps=_orch_deps):
                 now = time.monotonic()
 
                 if tipo == "heartbeat":
@@ -185,7 +189,7 @@ def build_stream_generator(
             return
         finally:
             # Always enqueue background vectorization (even on disconnect)
-            background_tasks.add_task(_vectorize_session, session_id)
+            background_tasks.add_task(_vectorize_session, session_id, _orch_deps)
 
             if not state.persisted and state.has_output():
                 logger.info("Saving partial message for session %s after stream interruption", session_id)
@@ -196,7 +200,7 @@ def build_stream_generator(
     return generate
 
 
-async def _vectorize_session(session_id: str) -> None:
+async def _vectorize_session(session_id: str, orchestrator_deps: OrchestratorDeps | None = None) -> None:
     """Background task: vectorize session exchanges (FASE 7 + FASE 2 pipeline).
 
     Runs the full pipeline per exchange:
@@ -224,7 +228,7 @@ async def _vectorize_session(session_id: str) -> None:
             )
             from src.memory.memory_db_path import resolve_memory_db_path
 
-            repos = get_repos()
+            repos = _orch_deps.repos if _orch_deps and _orch_deps.repos else get_repos()
             db_path = resolve_memory_db_path()
             clusterer = HeuristicClusterer()
             linker = EntityLinker()

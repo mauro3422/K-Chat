@@ -2,7 +2,7 @@ import json
 import time
 from typing import Any
 
-from src.api.repos import DebugInfo, MessageRecord
+from src.api.repos import DebugInfo, MessageRecord, Repositories
 from src.api import get_repos
 from web.services.message_persister_contract import MessagePersisterDeps
 
@@ -29,15 +29,14 @@ async def save_assistant_message(
     phases_output: list[dict[str, Any]],
     debug_info: DebugInfo,
     model: str,
-    repos: 'Repositories | None' = None,
+    repos: Repositories | None = None,
     deps: MessagePersisterDeps | None = None,
 ) -> None:
     """Persists the assistant message and debug info to the database."""
     _deps = _resolve_persister_deps(deps)
     record_cls = _deps.message_record_cls or MessageRecord
 
-    if repos is None:
-        repos = get_repos()
+    repos = repos or get_repos()
 
     phases_output[:] = _dedup_phases(phases_output)
     phases_json = json.dumps(phases_output, ensure_ascii=False)

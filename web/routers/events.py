@@ -17,7 +17,7 @@ import uuid
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from web.services.event_bus import get_event_bus
+from web.services.event_bus import IEventBus, get_event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ async def sse_stream(request: Request) -> StreamingResponse:
     The client connects here and receives events as they happen.
     """
     client_id = f"webui_{uuid.uuid4().hex[:12]}"
-    bus = get_event_bus()
+    bus: IEventBus = getattr(request.app.state, 'event_bus', None) or get_event_bus()
 
     async def event_generator():
         async for sse_message in bus.stream(client_id):
@@ -65,7 +65,7 @@ async def notify_event(request: Request) -> dict:
 
     event_type = body.get("type", "unknown")
     event_data = body.get("data", {})
-    bus = get_event_bus()
+    bus: IEventBus = getattr(request.app.state, 'event_bus', None) or get_event_bus()
     await bus.publish(event_type, event_data)
     logger.info("SSE notify: %s → %d clients", event_type, len(bus._queues))
     return {"ok": True, "type": event_type}
