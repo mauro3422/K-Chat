@@ -1,3 +1,11 @@
+"""Model failure state tracking.
+
+This module ONLY tracks which models have failed and manages model switching.
+Model discovery and verification are in model_registry.py.
+
+Do NOT add verified model tracking here — use model_registry instead.
+"""
+
 import logging
 import threading
 from typing import Any
@@ -13,7 +21,6 @@ class ModelState:
         self._priority = priority or [DEFAULT_MODEL, SECONDARY_MODEL]
         self._fallback_model = fallback_model or DEFAULT_MODEL
         self._failed_models: set[str] = set()
-        self._verified_models: list[str] | None = None
         self._cached_models: list[Any] | None = None
 
     @property
@@ -36,14 +43,6 @@ class ModelState:
         with self._lock:
             self._failed_models.clear()
 
-    def get_verified_models_safe(self) -> list[str] | None:
-        with self._lock:
-            return self._verified_models
-
-    def set_verified_models(self, value: list[str] | None) -> None:
-        with self._lock:
-            self._verified_models = value
-
     def get_cached_models_safe(self) -> Any:
         with self._lock:
             return self._cached_models
@@ -53,14 +52,7 @@ class ModelState:
             self._cached_models = value
 
     def _candidates(self) -> list[str]:
-        """Return candidate models in priority order for failover.
-
-        If verified models are available (from discovery), use those first.
-        Otherwise fall back to the hardcoded priority list.
-        """
-        verified = self._verified_models
-        if verified:
-            return verified
+        """Return candidate models in priority order for failover."""
         return self._priority
 
     def switch_model(self, model: str) -> str:
@@ -114,14 +106,6 @@ def clear_failed_models(state: ModelState | None = None) -> None:
     _get_state(state).clear_failed_models()
 
 
-def get_verified_models_safe(state: ModelState | None = None) -> list[str] | None:
-    return _get_state(state).get_verified_models_safe()
-
-
-def set_verified_models(value: list[str] | None, state: ModelState | None = None) -> None:
-    _get_state(state).set_verified_models(value)
-
-
 def get_cached_models_safe(state: ModelState | None = None) -> Any:
     return _get_state(state).get_cached_models_safe()
 
@@ -138,7 +122,6 @@ __all__ = [
     "ModelState",
     "PRIORITY", "FALLBACK_MODEL",
     "is_model_failed", "mark_model_failed", "clear_failed_models",
-    "get_verified_models_safe", "set_verified_models",
     "get_cached_models_safe", "set_cached_models",
     "_switch_model",
 ]

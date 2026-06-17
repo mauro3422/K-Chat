@@ -38,6 +38,7 @@ class HistoryMessage(BaseModel):
     phases: str = "[]"
     tool_calls: list[dict[str, Any]] | None = None
     tool_call_id: str | None = None
+    id: int | None = None
 
     def as_llm_message(self) -> dict[str, Any]:
         msg: dict[str, Any] = {
@@ -63,6 +64,7 @@ class DebugInfo:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     history_before: list[dict[str, Any]] = field(default_factory=list)
     system_prompt: str = ""
+    auto_memories: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -76,6 +78,7 @@ class DebugInfo:
             "tool_calls": self.tool_calls,
             "history_before": self.history_before,
             "system_prompt": self.system_prompt,
+            "auto_memories": self.auto_memories,
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens,

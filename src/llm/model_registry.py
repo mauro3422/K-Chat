@@ -75,8 +75,8 @@ class ModelRegistry:
 
     def __init__(self, config: Any = None) -> None:
         if config is None:
-            from src.config_loader import load_config
-            config = load_config()
+            from src._config import resolve_config
+            config = resolve_config(config)
         self._config = config
         self._lock = threading.Lock()
         # Go API models (premium, standard, economy)
@@ -85,6 +85,8 @@ class ModelRegistry:
         self._free_candidates: list[str] = []
         # All models in registry (union of Go + verified free)
         self._all_models: list[str] = []
+        # Verified models (from discovery verifier)
+        self._verified_models: set[str] = set()
         # Go account health
         self._go_quota_exhausted: bool = False
         # Last refresh timestamp
@@ -194,6 +196,24 @@ class ModelRegistry:
         with self._lock:
             return model_id in self._free_candidates
 
+    # ── Verified models ──────────────────────────────────────────
+
+    def add_verified_model(self, model_id: str) -> None:
+        with self._lock:
+            self._verified_models.add(model_id)
+
+    def remove_verified_model(self, model_id: str) -> None:
+        with self._lock:
+            self._verified_models.discard(model_id)
+
+    def set_verified_models(self, models: list[str] | None) -> None:
+        with self._lock:
+            self._verified_models = set(models or [])
+
+    def get_verified_models(self) -> list[str]:
+        with self._lock:
+            return sorted(self._verified_models)
+
     # ── Go account health ──────────────────────────────────────────
 
     def mark_quota_exhausted(self) -> None:
@@ -250,3 +270,23 @@ async def ensure_registry_refreshed(config: Any = None) -> None:
     reg = get_model_registry(config)
     if not reg.get_go_models():
         await reg.refresh()
+
+
+def add_verified_model(model_id: str) -> None:
+    get_model_registry().add_verified_model(model_id)
+
+
+def remove_verified_model(model_id: str) -> None:
+    get_model_registry().remove_verified_model(model_id)
+
+
+def set_verified_models(models: list[str] | None) -> None:
+    get_model_registry().set_verified_models(models)
+
+
+def get_verified_models() -> list[str]:
+    return get_model_registry().get_verified_models()
+
+
+# Backward-compatible alias
+get_verified_models_safe = get_verified_models

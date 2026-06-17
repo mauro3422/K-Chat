@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from src.memory.repos.base import _BaseRepository
 from src.memory.repos.debug_repository import DebugRepository
@@ -19,6 +20,9 @@ from src.memory.repos.protocols import (
     MemoryIndexRepositoryProtocol,
 )
 
+if TYPE_CHECKING:
+    from src.memory.repos_memory import MemoryRepositories
+
 
 @dataclass
 class Repositories:
@@ -30,7 +34,7 @@ class Repositories:
     debug: DebugRepositoryProtocol
     saved_widgets: SavedWidgetRepositoryProtocol
     memory_index: MemoryIndexRepositoryProtocol
-    memory: object = None  # MemoryRepositories instance (lazy-imported in __post_init__)
+    memory: MemoryRepositories | None = None  # memory.db repos (lazy-initialized)
 
     def __post_init__(self) -> None:
         if self.memory is None:

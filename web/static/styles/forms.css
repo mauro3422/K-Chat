@@ -60,6 +60,7 @@
 .toolbar-right {
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
 /* Model Selector Wrapper */
@@ -82,10 +83,14 @@
 }
 
 .model-select-wrapper .robot-icon {
-  font-size: 1.1rem;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   filter: grayscale(0.2);
   transition: filter 0.2s, transform 0.2s;
+  vertical-align: middle;
 }
 
 .model-select-wrapper:hover .robot-icon {
@@ -207,6 +212,33 @@
   border-color: var(--accent-neon);
 }
 
+/* ── Drag & Drop Overlay ──────────────────────────────────────────────── */
+
+.chat-input-container.drag-over {
+  border-color: var(--accent-neon, #00ff99) !important;
+  box-shadow: 0 0 20px rgba(0, 255, 153, 0.25), inset 0 0 15px rgba(0, 255, 153, 0.05) !important;
+  background: rgba(0, 255, 153, 0.03) !important;
+}
+
+/* ── Estado Streaming (pensando) ───────────────────────────────────────── */
+
+@keyframes thinking-pulse {
+  0%, 100% { border-color: var(--border, rgba(255,255,255,0.1)); opacity: 0.7; }
+  50% { border-color: var(--accent-neon, #00ff99); opacity: 1; }
+}
+
+.chat-input-container.streaming {
+  animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+
+.chat-input-container.streaming #msg-input::placeholder {
+  color: var(--accent-neon, #00ff99);
+  opacity: 0.5;
+}
+
+
+/* ── Attach Preview ──────────────────────────────────────────────────── */
+
 .attach-preview {
   display: flex;
   gap: 8px;
@@ -325,4 +357,17 @@
 
 .htmx-request .htmx-indicator {
   display: inline;
+}
+
+/* Animation for blocked input keypress */
+@keyframes shake-blocked {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.chat-input-container.input-blocked-flash {
+  animation: shake-blocked 0.25s ease-in-out;
+  border-color: #f85149 !important;
+  box-shadow: 0 0 10px rgba(248, 81, 73, 0.3) !important;
 }

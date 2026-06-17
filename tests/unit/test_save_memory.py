@@ -30,7 +30,7 @@ def temp_memory_file():
 
 @pytest.mark.anyio
 async def test_save_memory_create_new_key(temp_memory_file):
-    res = save_memory_run(key="Preferencia", value="Python")
+    res = await save_memory_run(key="Preferencia", value="Python")
     assert "saved" in res
     
     with open(temp_memory_file, "r", encoding="utf-8") as f:
@@ -43,8 +43,8 @@ async def test_save_memory_create_new_key(temp_memory_file):
 
 @pytest.mark.anyio
 async def test_save_memory_update_key(temp_memory_file):
-    save_memory_run(key="Preferencia", value="Python")
-    res = save_memory_run(key="Preferencia", value="TypeScript")
+    await save_memory_run(key="Preferencia", value="Python")
+    res = await save_memory_run(key="Preferencia", value="TypeScript")
     assert "saved" in res
     
     with open(temp_memory_file, "r", encoding="utf-8") as f:
@@ -55,8 +55,8 @@ async def test_save_memory_update_key(temp_memory_file):
 
 @pytest.mark.anyio
 async def test_save_memory_delete_key(temp_memory_file):
-    save_memory_run(key="Preferencia", value="Python")
-    res = save_memory_run(key="Preferencia", value="")
+    await save_memory_run(key="Preferencia", value="Python")
+    res = await save_memory_run(key="Preferencia", value="")
     assert "deleted" in res
     
     with open(temp_memory_file, "r", encoding="utf-8") as f:
@@ -66,10 +66,10 @@ async def test_save_memory_delete_key(temp_memory_file):
 
 @pytest.mark.anyio
 async def test_save_memory_empty_key(temp_memory_file):
-    res = save_memory_run(key="", value="Algo")
+    res = await save_memory_run(key="", value="Algo")
     assert "ERROR" in res
 
 @pytest.mark.anyio
 async def test_save_memory_delete_nonexistent_key(temp_memory_file):
-    res = save_memory_run(key="Inexistente", value="")
+    res = await save_memory_run(key="Inexistente", value="")
     assert "did not exist" in res

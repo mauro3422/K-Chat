@@ -1,8 +1,8 @@
+import asyncio
 import pytest
 from unittest.mock import AsyncMock
 import os
 import tempfile
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from unittest.mock import patch
 
 
@@ -32,11 +32,11 @@ async def test_parallel_save_unique_keys():
     try:
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
             pairs = [("k1", "v1"), ("k2", "v2"), ("k3", "v3"), ("k4", "v4")]
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                futs = {pool.submit(save_memory_run, key=k, value=v): (k, v) for k, v in pairs}
-                for fut in as_completed(futs):
-                    res = fut.result()
-                    assert "[OK]" in res, f"Failed: {res}"
+            results = await asyncio.gather(*[
+                save_memory_run(key=k, value=v) for k, v in pairs
+            ])
+            for res in results:
+                assert "[OK]" in res, f"Failed: {res}"
 
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -56,14 +56,12 @@ async def test_parallel_save_same_key():
     temp_dir, filepath = _temp_memory_file()
     try:
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                futs = [
-                    pool.submit(save_memory_run, key="key", value="A"),
-                    pool.submit(save_memory_run, key="key", value="B"),
-                ]
-                for fut in as_completed(futs):
-                    res = fut.result()
-                    assert "[OK]" in res, f"Failed: {res}"
+            results = await asyncio.gather(
+                save_memory_run(key="key", value="A"),
+                save_memory_run(key="key", value="B"),
+            )
+            for res in results:
+                assert "[OK]" in res, f"Failed: {res}"
 
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -81,11 +79,11 @@ async def test_parallel_save_many_keys():
     try:
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
             pairs = [(f"k{i}", f"v{i}") for i in range(20)]
-            with ThreadPoolExecutor(max_workers=8) as pool:
-                futs = {pool.submit(save_memory_run, key=k, value=v): (k, v) for k, v in pairs}
-                for fut in as_completed(futs):
-                    res = fut.result()
-                    assert "[OK]" in res
+            results = await asyncio.gather(*[
+                save_memory_run(key=k, value=v) for k, v in pairs
+            ])
+            for res in results:
+                assert "[OK]" in res
 
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -107,7 +105,7 @@ async def test_corrupted_file_repair():
             f.write("\n## Memories\n- **k1**: v1\nbasura: sin formato\n")
 
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
-            res = save_memory_run(key="k2", value="v2")
+            res = await save_memory_run(key="k2", value="v2")
             assert "[OK]" in res
 
             with open(filepath, "r", encoding="utf-8") as f:

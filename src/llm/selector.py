@@ -3,6 +3,7 @@ import inspect
 import logging
 
 import src.llm.model_state as models
+import src.llm.model_registry as registry
 import src.llm.discovery as discovery
 from src.config_loader import SECONDARY_MODEL
 
@@ -25,7 +26,7 @@ def _get_free_models_sync() -> list:
 
 
 def _get_default_model_candidates() -> tuple[list[str], bool]:
-    cached_verified = models.get_verified_models_safe()
+    cached_verified = registry.get_verified_models()
     if cached_verified:
         return cached_verified, True
     free_models = _get_free_models_sync()

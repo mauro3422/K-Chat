@@ -22,5 +22,6 @@ export interface IWidgetContainerRenderer {
     existingByKey: Record<string, HTMLElement>,
     renderedKeys: Record<string, boolean>,
   ): ProcessResult;
+  destroyAll(container: HTMLElement): void;
   reset(): void;
 }

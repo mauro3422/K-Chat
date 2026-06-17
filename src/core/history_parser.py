@@ -64,6 +64,7 @@ def _parse_rows(rows: list[Any]) -> list[HistoryMessage]:
                 phases=_get_row_value(row, "phases") or "[]",
                 tool_calls=parsed_tool_calls,
                 tool_call_id=tool_call_id,
+                id=_get_row_value(row, "id"),
             )
         )
     return raw_msgs

@@ -395,6 +395,18 @@ ${safeCode}
     return iframe;
   }
 
+  /**
+   * Destroy an iframe inside a container to free memory.
+   */
+  destroyContainer(container: HTMLElement): void {
+    const iframe = container.querySelector('iframe');
+    if (iframe) {
+      (iframe as HTMLIFrameElement).src = 'about:blank';
+      iframe.remove();
+    }
+    container.innerHTML = '';
+  }
+
   /** Reset state for new session */
   reset(): void {
     this.widgetObserver?.disconnect();

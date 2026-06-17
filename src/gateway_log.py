@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.logbus import LogEvent, get_logbus
 from src.memory.db_path import resolve_db_path
 
 logger = logging.getLogger("gateway.db")
@@ -37,6 +38,16 @@ def log_event(
     pid: int | None = None,
     meta: dict[str, Any] | None = None,
 ) -> None:
+    try:
+        bus = get_logbus()
+        bus.emit(LogEvent(
+            level=level,
+            module=f"gateway.{service}",
+            msg=f"{event}: {detail}" if detail else event,
+            data=meta,
+        ))
+    except Exception:
+        pass
     try:
         conn = _get_conn()
         try:

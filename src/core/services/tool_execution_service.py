@@ -1,8 +1,8 @@
 from typing import Any, Generator, Callable, AsyncGenerator
 from src.core.services.protocols import ToolExecutionServiceProtocol
-from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
+from src.core.tool_loop import ToolLoopProtocol, run_tool_loop_streaming, run_tool_loop_sync
 from src.tools.runner import run_parallel_tools
-from src.tools.registry import ToolRegistry
+from src.tools.registry import ToolRegistryProtocol
 from src.context.runtime import invalidate_context_cache
 import src.tools as tools
 
@@ -25,7 +25,7 @@ def _wrap_run_with_cache_invalidation() -> Callable[..., AsyncGenerator[Any, Non
 
 
 class ToolExecutionService(ToolExecutionServiceProtocol):
-    def __init__(self, tool_registry: ToolRegistry | None = None, telemetry_service: 'TelemetryServiceProtocol | None' = None):
+    def __init__(self, tool_registry: ToolRegistryProtocol | None = None, telemetry_service: 'TelemetryServiceProtocol | None' = None):
         self.tool_registry = tool_registry or tools.get_default_registry()
         self.telemetry_service = telemetry_service
 
@@ -46,7 +46,7 @@ class ToolExecutionService(ToolExecutionServiceProtocol):
         tool_detail: list[dict[str, Any]] = []
 
         run_fn = _wrap_run_with_cache_invalidation()
-        loop_fn = run_tool_loop_streaming if streaming else run_tool_loop_sync
+        loop_fn: ToolLoopProtocol = run_tool_loop_streaming if streaming else run_tool_loop_sync
         async for event in loop_fn(
             history, model, session_id, tagged, debug, phases_output,
             used_tools, tool_detail, run_fn, self.tool_registry.tool_map,

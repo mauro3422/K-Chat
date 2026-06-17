@@ -8,7 +8,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response, 
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.api import llm_chat_stream, rebuild_history, get_default_model, get_repos, MessageRecord, DebugInfo
+from src.api.repos import MessageRecord, DebugInfo
+from src.api import llm_chat_stream, rebuild_history, get_default_model, get_repos
 from web.services.chat_stream import build_stream_generator
 from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.protocols import MessagePersisterProtocol, StreamGeneratorProtocol
@@ -153,3 +154,21 @@ async def get_attachment(session_id: str, filename: str):
         content = f.read()
 
     return Response(content=content, media_type=ct)
+
+
+@router.delete("/chat/{session_id}/messages/{message_id}")
+async def delete_message(session_id: str, message_id: int) -> Response:
+    repos = get_repos()
+    success = await repos.messages.delete_message(message_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Message not found or already deleted")
+
+    try:
+        from web.services.event_bus import get_event_bus
+        bus = get_event_bus()
+        await bus.publish("message_deleted", {"session_id": session_id, "message_id": message_id})
+    except Exception as e:
+        logger.warning("Failed to publish message_deleted event: %s", e)
+
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"status": "ok"})

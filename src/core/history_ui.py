@@ -39,6 +39,7 @@ def _coerce_message(msg: Any) -> HistoryMessage:
         phases=_get_field(msg, "phases", "[]") or "[]",
         tool_calls=_parse_json_field(tool_calls_raw),
         tool_call_id=_get_field(msg, "tool_call_id"),
+        id=_get_field(msg, "id"),
     )
 
 

@@ -3,7 +3,8 @@ export const STREAM_EVENT_TYPES = {
   CONTENT: 'content',
   REASONING: 'reasoning',
   TOOL_CALL: 'tool_call',
-  ERROR: 'error'
+  ERROR: 'error',
+  MEMORY: 'memory'
 };
 
 export const STREAM_EVENT_VALUES = Object.values(STREAM_EVENT_TYPES);

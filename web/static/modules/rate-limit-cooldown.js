@@ -33,6 +33,7 @@ function getRemainingSec() {
 function _disableInput() {
   var input = document.getElementById('msg-input');
   if (input) {
+    input.dataset.originalPlaceholder = input.placeholder;
     input.disabled = true;
     input.placeholder = '⏳ Rate limit activo — esperá al countdown...';
   }
@@ -47,7 +48,8 @@ function _enableInput() {
   var input = document.getElementById('msg-input');
   if (input) {
     input.disabled = false;
-    input.placeholder = '';
+    input.placeholder = input.dataset.originalPlaceholder || 'Escribe un mensaje...';
+    delete input.dataset.originalPlaceholder;
   }
   var btn = document.getElementById('chat-submit-btn');
   if (btn) {

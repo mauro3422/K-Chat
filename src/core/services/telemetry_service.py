@@ -47,6 +47,18 @@ class TelemetryService(TelemetryServiceProtocol):
 
     def track_llm_usage(self, model: str, tokens: int, latency: float):
         """Specific method to track LLM metrics."""
+        try:
+            from src.logbus import LogEvent, get_logbus
+            bus = get_logbus()
+            bus.emit(LogEvent(
+                level="INFO",
+                module="telemetry",
+                msg="llm_usage",
+                duration_ms=latency * 1000,
+                data={"model": model, "tokens": tokens},
+            ))
+        except Exception:
+            pass
         self.log_event("llm_usage", {
             "model": model,
             "tokens": tokens,
@@ -55,6 +67,18 @@ class TelemetryService(TelemetryServiceProtocol):
 
     def track_tool_execution(self, tool_name: str, success: bool, duration: float):
         """Specific method to track tool execution metrics."""
+        try:
+            from src.logbus import LogEvent, get_logbus
+            bus = get_logbus()
+            bus.emit(LogEvent(
+                level="INFO",
+                module="telemetry",
+                msg="tool_execution",
+                duration_ms=duration * 1000,
+                data={"tool_name": tool_name, "success": success},
+            ))
+        except Exception:
+            pass
         self.log_event("tool_execution", {
             "tool_name": tool_name,
             "success": success,

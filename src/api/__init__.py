@@ -49,10 +49,6 @@ from src.api.orchestrator import (
     HistoryRebuildDeps,
     filter_messages_for_ui,
     match_tools_to_msgs,
-    HistoryService,
-    LLMService,
-    ToolExecutionService,
-    TelemetryService,
 )
 
 # ── LLM / Model discovery ──────────────────────────────────────────────────
@@ -72,13 +68,6 @@ from src.api.llm_client import (
 # ── Repositories & data ──────────────────────────────────────────────────
 from src.api.repos import (
     get_repos,
-    Repositories,
-    MessageRecord,
-    SessionRepository,
-    DebugRepository,
-    init_db,
-    DebugInfo,
-    get_conn,
 )
 
 # ── Context builder ────────────────────────────────────────────────────────
@@ -120,14 +109,12 @@ __all__ = [
     "chat_stream", "generate_session_id", "OrchestratorDeps",
     "rebuild_history", "HistoryRebuildDeps",
     "filter_messages_for_ui", "match_tools_to_msgs",
-    "HistoryService", "LLMService", "ToolExecutionService", "TelemetryService",
     # llm
     "get_default_model", "get_verified_models", "get_verified_models_safe",
     "get_model_registry", "ensure_registry_refreshed", "get_rate_limit_store",
     "PRIORITY", "FALLBACK_MODEL", "llm_chat_stream", "llm_chat",
-    # repos & data
-    "get_repos", "Repositories", "MessageRecord", "SessionRepository",
-    "DebugRepository", "init_db", "DebugInfo", "get_conn",
+    # repos
+    "get_repos",
     # context
     "build_system_prompt",
     # background

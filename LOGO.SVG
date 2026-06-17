@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 300 310" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+<style>
+  .tail-glow{animation:tailPulse 2s ease-in-out infinite}
+  .cursor{animation:blink 0.7s infinite}
+  @keyframes blink{0%,100%{opacity:0.85}50%{opacity:0.05}}
+  @keyframes tailPulse{0%,100%{opacity:0.8}50%{opacity:0.4}}
+</style>
+<defs>
+  <filter id="g3"><feGaussianBlur stdDeviation="3"/></filter>
+  <filter id="g4"><feGaussianBlur stdDeviation="8"/></filter>
+  <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#0c180c"/>
+    <stop offset="100%" stop-color="#081208"/>
+  </linearGradient>
+</defs>
+<!-- ambient glow -->
+<path d="M165,100 Q195,80 230,85 Q262,100 254,118 Q222,132 165,118 Q138,148 112,218 Q124,254 150,258 Q182,216 168,122" fill="none" stroke="#00ff99" stroke-width="1" opacity="0.12" filter="url(#g3)"/>
+<!-- tail -->
+<path d="M115,236C92,226 68,205 52,178C38,152 35,128 45,108C56,90 72,82 90,84C104,86 114,96 110,108C106,116 96,118 88,112" fill="none" stroke="#00ff99" stroke-width="5.5" stroke-linecap="round" class="tail-glow"/>
+<path d="M115,236C92,226 68,205 52,178C38,152 35,128 45,108C56,90 72,82 90,84C104,86 114,96 110,108C106,116 96,118 88,112" fill="none" stroke="#00ff99" stroke-width="1.8" opacity="0.2" filter="url(#g4)"/>
+<!-- terminal cursor blink on tail -->
+<rect x="82" y="104" width="3.5" height="13" rx="1" fill="#00ffff" class="cursor"/>
+<!-- body glow aura -->
+<path d="M165,118 Q138,148 112,218 Q124,254 150,258 Q182,216 168,122" fill="none" stroke="#00ff99" stroke-width="10" opacity="0.05" filter="url(#g4)"/>
+<!-- main body -->
+<path d="M165,118C152,128 138,148 128,168C116,192 112,218 118,240C124,254 136,260 150,258C162,256 172,246 178,234C184,216 182,196 180,180C177,158 173,138 168,122" fill="url(#bodyGrad)" stroke="#00ff99" stroke-width="1.8"/>
+<!-- cybernetic circuit lines -->
+<path d="M158 132 L150 150 L144 168 L138 188 L132 208 L126 225" fill="none" stroke="#00ff99" stroke-width="0.7" opacity="0.4" stroke-dasharray="3,4"/>
+<path d="M168 140 L174 160 L178 180 L176 200 L172 220 L166 238" fill="none" stroke="#00ff99" stroke-width="0.7" opacity="0.35" stroke-dasharray="2,3"/>
+<circle cx="150" cy="150" r="1.3" fill="#00ff99" opacity="0.55"/>
+<circle cx="144" cy="168" r="1.3" fill="#00ff99" opacity="0.55"/>
+<circle cx="138" cy="188" r="1.3" fill="#00ff99" opacity="0.5"/>
+<circle cx="132" cy="208" r="1.3" fill="#00ff99" opacity="0.5"/>
+<circle cx="174" cy="160" r="1.3" fill="#00ff99" opacity="0.45"/>
+<circle cx="178" cy="180" r="1.3" fill="#00ff99" opacity="0.45"/>
+<circle cx="176" cy="200" r="1.3" fill="#00ff99" opacity="0.4"/>
+<!-- scales -->
+<circle cx="158" cy="128" r="0.8" fill="#00ff99" opacity="0.10"/>
+<circle cx="152" cy="142" r="0.9" fill="#00ff99" opacity="0.13"/>
+<circle cx="146" cy="158" r="0.8" fill="#00ff99" opacity="0.10"/>
+<circle cx="140" cy="174" r="0.7" fill="#00ff99" opacity="0.13"/>
+<circle cx="134" cy="192" r="1.0" fill="#00ff99" opacity="0.10"/>
+<circle cx="128" cy="212" r="0.9" fill="#00ff99" opacity="0.13"/>
+<circle cx="124" cy="228" r="0.8" fill="#00ff99" opacity="0.10"/>
+<circle cx="170" cy="135" r="0.9" fill="#00ff99" opacity="0.10"/>
+<circle cx="174" cy="155" r="0.8" fill="#00ff99" opacity="0.13"/>
+<circle cx="178" cy="175" r="0.7" fill="#00ff99" opacity="0.10"/>
+<circle cx="176" cy="195" r="1.0" fill="#00ff99" opacity="0.13"/>
+<circle cx="172" cy="215" r="0.9" fill="#00ff99" opacity="0.10"/>
+<circle cx="168" cy="232" r="0.8" fill="#00ff99" opacity="0.13"/>
+<circle cx="144" cy="138" r="0.7" fill="#00ff99" opacity="0.10"/>
+<circle cx="140" cy="156" r="0.9" fill="#00ff99" opacity="0.13"/>
+<circle cx="136" cy="172" r="0.8" fill="#00ff99" opacity="0.10"/>
+<circle cx="138" cy="192" r="1.0" fill="#00ff99" opacity="0.13"/>
+<circle cx="144" cy="208" r="0.8" fill="#00ff99" opacity="0.10"/>
+<circle cx="150" cy="222" r="0.7" fill="#00ff99" opacity="0.13"/>
+<!-- legs -->
+<path d="M148,158C132,168 120,175 92,200" fill="none" stroke="#00ff99" stroke-width="2.5" stroke-linecap="round"/>
+<path d="M170,162C186,172 196,178 214,198" fill="none" stroke="#00ff99" stroke-width="2.5" stroke-linecap="round"/>
+<path d="M125,240C110,250 100,258 72,272" fill="none" stroke="#00ff99" stroke-width="2.5" stroke-linecap="round"/>
+<path d="M152,254C160,262 166,268 160,284" fill="none" stroke="#00ff99" stroke-width="2.5" stroke-linecap="round"/>
+<!-- toe pads (5 per foot, lamellae pattern) -->
+<!-- front left paw -->
+<circle cx="97" cy="199" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="96" cy="201" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="95" cy="203" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="94" cy="205" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="93" cy="207" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/>
+<!-- front right paw -->
+<circle cx="219" cy="197" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="219" cy="199" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="219" cy="201" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="218" cy="203" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="217" cy="205" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/>
+<!-- back left paw -->
+<circle cx="77" cy="271" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="77" cy="273" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="77" cy="275" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="76" cy="277" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="75" cy="278" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/>
+<!-- back right paw -->
+<circle cx="157" cy="283" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="157" cy="285" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="157" cy="287" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="156" cy="289" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/><circle cx="155" cy="290" r="2.5" fill="#0a140a" stroke="#00ff99" stroke-width="0.8" opacity="0.9"/>
+<!-- head (wedge shape) -->
+<path d="M165,100C185,78 225,82 252,95C262,100 260,112 254,118C242,126 222,132 200,130C178,128 165,120 165,100" fill="url(#bodyGrad)" stroke="#00ff99" stroke-width="1.8"/>
+<!-- left eye with vertical slit pupil -->
+<ellipse cx="200" cy="104" rx="10" ry="12" fill="#010606" stroke="#00ffff" stroke-width="1.3"/>
+<ellipse cx="200" cy="104" rx="6" ry="8.5" fill="#00ffff" opacity="0.65"/>
+<rect x="199.2" y="97" width="1.6" height="14" rx="0.8" fill="#010606"/>
+<circle cx="202.5" cy="101" r="2" fill="#fff" opacity="0.9"/>
+<circle cx="198.5" cy="107" r="0.9" fill="#00ffff" opacity="0.3"/>
+<!-- right eye with vertical slit pupil -->
+<ellipse cx="224" cy="108" rx="10" ry="12" fill="#010606" stroke="#00ffff" stroke-width="1.3"/>
+<ellipse cx="224" cy="108" rx="6" ry="8.5" fill="#00ffff" opacity="0.65"/>
+<rect x="223.2" y="101" width="1.6" height="14" rx="0.8" fill="#010606"/>
+<circle cx="226.5" cy="105" r="2" fill="#fff" opacity="0.9"/>
+<circle cx="222.5" cy="111" r="0.9" fill="#00ffff" opacity="0.3"/>
+<!-- nostrils and subtle mouth line -->
+<ellipse cx="250" cy="108" rx="1.8" ry="1" fill="#00ff9933"/>
+<path d="M232,116 Q242,120 252,118" fill="none" stroke="#00ff9944" stroke-width="0.7"/>
+</svg>

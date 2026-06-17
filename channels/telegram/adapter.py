@@ -53,7 +53,7 @@ CHANNEL_SYSTEM_MESSAGE = {
 }
 
 # ─── Timeout ───────────────────────────────────────────────────────────
-_STREAM_TIMEOUT = 120  # seconds
+_STREAM_TIMEOUT = 120  # seconds of inactivity between events
 
 
 # ─── Public API ────────────────────────────────────────────────────────
@@ -190,7 +190,7 @@ async def process_message(
     logger.info("TG[%d] processing: %.60s", chat_id, text)
 
     try:
-        reasoning_buf: list[str] = []    # flush buffer (20-token chunks)
+        reasoning_buf: list[str] = []    # flush buffer (shared with WS)
         full_reasoning: list[str] = []   # accumulates ALL reasoning for DB
         content_buf: list[str] = []
         phases_output: list[dict] = []   # accumulates phases for web UI
@@ -198,7 +198,13 @@ async def process_message(
         reasoning_tg_interval = 20       # Telegram API flush (fewer edits = less lag)
         content_ws_interval = 5
         content_tg_interval = 15
-        start_time = time.time()
+        tg_reasoning_offset = 0          # tracks how much of reasoning_buf
+                                         # was already sent to Telegram, so
+                                         # we only send NEW tokens each flush.
+                                         # (WS gets the full buffer, which it
+                                         # replaces; Telegram appends, so
+                                         # sending the full buffer = dupes.)
+        last_event_time = time.time()
 
         async for event_type, token in _late_imports.chat_stream(
             message_user=text,
@@ -208,12 +214,14 @@ async def process_message(
             tagged=True,
             phases_output=phases_output,
         ):
-            # ── Timeout check ─────────────────────────────────────────
-            if time.time() - start_time > _STREAM_TIMEOUT:
+            # ── Timeout check (inactivity-based) ──────────────────────
+            if time.time() - last_event_time > _STREAM_TIMEOUT:
                 if content_buf:
                     yield f"__content__:{"".join(content_buf)}"
                 elif reasoning_buf:
-                    yield f"__reasoning__:{"".join(reasoning_buf)}"
+                    new_tokens = reasoning_buf[tg_reasoning_offset:]
+                    if new_tokens:
+                        yield f"__reasoning__:{"".join(new_tokens)}"
                 else:
                     yield "__error__:Operación agotada. Mandame el mensaje de nuevo."
                 # Save partial data before exiting
@@ -237,6 +245,7 @@ async def process_message(
                 if rlen == 1:
                     # First token → flush to both
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
+                    tg_reasoning_offset = rlen
                     asyncio.create_task(get_ws_client().send_event("stream:reasoning", {
                         "session_id": session_id,
                         "text": "".join(reasoning_buf),
@@ -249,15 +258,24 @@ async def process_message(
                             "text": "".join(reasoning_buf),
                         }))
                     # Telegram flush every reasoning_tg_interval (fewer edits)
+                    # IMPORTANT: only send NEW tokens since last flush, NOT
+                    # the entire buffer. The renderer appends each chunk, so
+                    # sending the full buffer = duplicated text.
                     if rlen % reasoning_tg_interval == 0:
-                        yield f"__reasoning__:{"".join(reasoning_buf)}"
+                        new_tokens = reasoning_buf[tg_reasoning_offset:]
+                        if new_tokens:
+                            yield f"__reasoning__:{"".join(new_tokens)}"
+                            tg_reasoning_offset = rlen
 
             # ── Content ────────────────────────────────────────────────
             elif event_type == "content":
                 # Flush any pending reasoning first
                 if reasoning_buf:
-                    yield f"__reasoning__:{"".join(reasoning_buf)}"
+                    new_tokens = reasoning_buf[tg_reasoning_offset:]
+                    if new_tokens:
+                        yield f"__reasoning__:{"".join(new_tokens)}"
                     reasoning_buf = []
+                    tg_reasoning_offset = 0
                 content_buf.append(token)
                 clen = len(content_buf)
                 if clen == 1:
@@ -301,17 +319,24 @@ async def process_message(
                 }))
 
                 # Flush reasoning (shows why the tool was called),
-                # discard content (it's always incomplete before a tool)
+                # flush any content accumulated so the user doesn't lose it
                 if reasoning_buf:
-                    yield f"__reasoning__:{"".join(reasoning_buf)}"
+                    new_tokens = reasoning_buf[tg_reasoning_offset:]
+                    if new_tokens:
+                        yield f"__reasoning__:{"".join(new_tokens)}"
                     reasoning_buf = []
-                content_buf = []
+                    tg_reasoning_offset = 0
+                if content_buf:
+                    yield f"__content__:{"".join(content_buf)}"
+                    content_buf = []
                 yield f"__tool__:{tool_id}:{name}:{status}"
 
             # ── Error ──────────────────────────────────────────────────
             elif event_type == "error":
                 if reasoning_buf:
-                    yield f"__reasoning__:{"".join(reasoning_buf)}"
+                    new_tokens = reasoning_buf[tg_reasoning_offset:]
+                    if new_tokens:
+                        yield f"__reasoning__:{"".join(new_tokens)}"
                 if content_buf:
                     yield f"__content__:{"".join(content_buf)}"
                 # Notify web UI about error
@@ -326,9 +351,14 @@ async def process_message(
             elif event_type == "heartbeat":
                 pass
 
+            # Reset inactivity timer on every event
+            last_event_time = time.time()
+
         # ── Final flush + persist ──────────────────────────────────────
         if reasoning_buf:
-            yield f"__reasoning__:{"".join(reasoning_buf)}"
+            new_tokens = reasoning_buf[tg_reasoning_offset:]
+            if new_tokens:
+                yield f"__reasoning__:{"".join(new_tokens)}"
 
         if content_buf:
             final_content = "".join(content_buf).strip()
@@ -634,12 +664,12 @@ class _LazyImports:
         if self._loaded:
             return
         from src.api import (
-            MessageRecord,
             build_system_prompt,
             chat_stream,
             get_default_model,
             get_repos,
         )
+        from src.api.repos import MessageRecord
         self.MessageRecord = MessageRecord
         self.build_system_prompt = build_system_prompt
         self.chat_stream = chat_stream

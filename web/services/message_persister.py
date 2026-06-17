@@ -2,7 +2,8 @@ import json
 import time
 from typing import Any
 
-from src.api import DebugInfo, MessageRecord, get_repos
+from src.api.repos import DebugInfo, MessageRecord
+from src.api import get_repos
 from web.services.message_persister_contract import MessagePersisterDeps
 
 
@@ -78,4 +79,4 @@ async def save_assistant_message(
             error="",
         )
     except Exception:
-        pass
+        logger.exception("log_turn failed in save_assistant_message")

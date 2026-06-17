@@ -104,6 +104,12 @@ export const ApiClient = {
     });
   },
 
+  deleteMessage(sessionId, messageId) {
+    return fetch('/chat/' + sessionId + '/messages/' + messageId, {
+      method: 'DELETE'
+    });
+  },
+
   // ASR (Speech-to-text)
   transcribeAudio(audioBlob, sessionId) {
     var formData = new FormData();

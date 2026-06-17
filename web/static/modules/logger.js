@@ -30,10 +30,13 @@ class Logger {
     };
     _logBuffer.push(entry);
 
-    // Mirror to console for active debugging
-    if (level === 'E') console.error('[' + this.name + ']', msg, data || '');
-    else if (level === 'W') console.warn('[' + this.name + ']', msg, data || '');
-    else console.log('[' + this.name + ']', msg, data || '');
+    // Mirror to console for active debugging (only in dev or debug mode)
+    var _enableConsole = localStorage.getItem('debug_console') === '1' || window.__DEBUG__ || window.location.hostname === 'localhost';
+    if (_enableConsole) {
+      if (level === 'E') console.error('[' + this.name + ']', msg, data || '');
+      else if (level === 'W') console.warn('[' + this.name + ']', msg, data || '');
+      else console.log('[' + this.name + ']', msg, data || '');
+    }
 
     // Also feed into existing debug panel
     try {

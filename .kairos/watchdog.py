@@ -158,6 +158,24 @@ def _health_check() -> bool:
         return False
 
 
+def _check_bot_alive() -> bool:
+    """Check if the Telegram bot process is alive via its PID file.
+
+    Returns True if the PID file exists and the process is running.
+    This is a non-critical check — the bot is managed by systemd
+    (``Restart=always``), so this just provides visibility.
+    """
+    pid_file = PROJECT_ROOT / ".kairos" / "telegram_bot.pid"
+    if not pid_file.exists():
+        return False
+    try:
+        pid = int(pid_file.read_text().strip())
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError, IOError):
+        return False
+
+
 def main() -> None:
     logger.info("Watchdog started (interval=%ds, url=%s)", CHECK_INTERVAL, HEALTH_URL)
     logger.info("Project root: %s", PROJECT_ROOT)
@@ -170,9 +188,19 @@ def main() -> None:
     last_healthy = time.time()
     crash_cooldown = 60  # Don't trigger crash recovery more than once per minute
     last_crash_time = 0.0
+    bot_status_log = 0  # Only log bot status every N cycles
 
     while True:
         try:
+            # ─── Bot status check (non-critical, periodic) ─────────────
+            bot_status_log += 1
+            if bot_status_log % 12 == 0:  # ~every 60s (12 × 5s)
+                if not _check_bot_alive():
+                    logger.warning("Bot PID file not found or process dead "
+                                   "(systemd should auto-restart)")
+                bot_status_log = 0
+
+            # ─── Web server health check ───────────────────────────────
             healthy = _health_check()
 
             if healthy:
@@ -212,6 +240,15 @@ def main() -> None:
                 f"This likely means a recent code edit caused a runtime error.\n"
             )
             _write_error_context("SERVER_DOWN", detail)
+
+            # Write cache invalidation marker so runtime.py forces a reload
+            invalidate_path = ERROR_CONTEXT_FILE.parent / "invalidate_cache"
+            try:
+                invalidate_path.write_text(datetime.now().isoformat())
+                logger.info("Wrote cache invalidation marker")
+            except Exception as e:
+                logger.error("Failed to write invalidation marker: %s", e)
+
             _restart_service()
 
             # Reset counter and wait for server to come back

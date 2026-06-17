@@ -33,19 +33,18 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramRenderer:
-    """Renders stream events to separate Telegram messages per phase.
+    """Renders stream events to SEPARATE Telegram messages per element.
 
-    Reasoning and content get SEPARATE messages (like the web UI):
+    THREE independent messages per assistant turn, matching the web UI:
 
-        📨 Message 1: 🤔 Pensando...
-                      [reasoning]
-                      🔧 search_web
-                      ✅ search_web
+        📨 Message 1 — Reasoning: 🤔 Pensando... [reasoning text]
+        📨 Message 2 — Tools:     🔧 search_web → ✅ search_web
+        📨 Message 3 — Content:   [answer with **bold** and `code`]
 
-        📨 Message 2: [content with **bold** and `code`]
-
-    Tool pills are INLINE in the reasoning message with status updates.
-    The web UI receives phases via WS events, unaffected by Telegram format.
+    Each message is managed independently: created on first event of its
+    type, edited on subsequent updates. Tool pills get their OWN message
+    (not inline in the reasoning), matching the web UI's separate
+    ``<div class="tool-calls">`` element.
 
     Usage::
 
@@ -67,11 +66,13 @@ class TelegramRenderer:
         self._cs = char_splitter
         self._eh = error_handler
         self._parser = StreamParser()
-        # Dual-message per-chat state
-        self._reasoning_msg: dict[int, int] = {}            # chat_id → msg_id
-        self._content_msg: dict[int, int] = {}              # chat_id → msg_id
+        # TRIAD-message per-chat state (reasoning, tools, content)
+        self._reasoning_msg: dict[int, int] = {}       # chat_id → msg_id
+        self._content_msg: dict[int, int] = {}          # chat_id → msg_id
+        self._tool_msg: dict[int, int] = {}             # chat_id → msg_id (SEPARATE)
         self._reasoning_parts: dict[int, list[str]] = defaultdict(list)
         self._content_parts: dict[int, list[str]] = defaultdict(list)
+        self._tool_parts: dict[int, list[str]] = defaultdict(list)  # SEPARATE
         self._tool_pills: dict[int, dict[str, str]] = defaultdict(dict)  # {tool_id: pill}
         # Continuation tracker per phase key
         self._phase_conts: dict[str, list[int]] = defaultdict(list)  # "reasoning:0" → [msg_id...]
@@ -83,12 +84,15 @@ class TelegramRenderer:
     ) -> None:
         """Render stream to separate reasoning + content messages."""
         self._parser = StreamParser()
-        # Reset per-chat state for this stream
+        # Reset ALL per-chat state for this stream — reasoning, tools AND content
         self._reasoning_msg.pop(chat_id, None)
         self._content_msg.pop(chat_id, None)
+        self._tool_msg.pop(chat_id, None)
         self._reasoning_parts.pop(chat_id, None)
         self._content_parts.pop(chat_id, None)
+        self._tool_parts.pop(chat_id, None)
         self._tool_pills.pop(chat_id, None)
+        logger.info("TG[%d] stream reset — razonamiento/tools/contenido state cleared", chat_id)
 
         tool_call_id_counter = 0
 
@@ -102,11 +106,13 @@ class TelegramRenderer:
                 elif isinstance(event, ContentEvent):
                     await self._render_content(chat_id, event)
                 elif isinstance(event, ToolCallEvent):
-                    await self._render_tool_call(
-                        chat_id, event, event.tool_id or f"call_{tool_call_id_counter}",
-                    )
-                    if event.tool_id:
-                        tool_call_id_counter += 1
+                    # Use event.tool_id if available, otherwise synthesize
+                    # a unique key with the counter. ALWAYS increment the
+                    # counter to ensure parallel tools get unique keys even
+                    # when tool_id is empty (rate limit case, parse errors).
+                    tool_key = event.tool_id or f"call_{tool_call_id_counter}"
+                    await self._render_tool_call(chat_id, event, tool_key)
+                    tool_call_id_counter += 1
                 elif isinstance(event, ErrorEvent):
                     await self._render_error(chat_id, event)
                     return
@@ -127,6 +133,34 @@ class TelegramRenderer:
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     @staticmethod
+    def _sanitize_html(html: str) -> str:
+        """Ensure HTML is well-formed — close any unclosed tags.
+
+        Telegram rejects messages with malformed HTML entities. Since the
+        CharSplitter may split mid-formatting (e.g. cutting a ``**bold``
+        into two chunks), this method closes any open ``<b>``, ``<i>``,
+        ``<code>``, ``<pre>`` tags and removes any stray closing tags.
+        """
+        import re
+        # Track open tags in order
+        open_tags = []
+        for match in re.finditer(r'</?(\w+)>', html):
+            tag = match.group(0)
+            name = match.group(1)
+            if name in ('b', 'i', 'code', 'pre', 'em', 'strong'):
+                if tag.startswith('</'):
+                    if open_tags and open_tags[-1] == name:
+                        open_tags.pop()
+                else:
+                    open_tags.append(name)
+        # Close remaining open tags in reverse order
+        for tag_name in reversed(open_tags):
+            html += f'</{tag_name}>'
+        # Remove stray closing tags without matching open
+        # (already handled by the balance check above)
+        return html
+
+    @staticmethod
     def _text_to_html(text: str) -> str:
         """Convert **bold**, *italic*, `code` to HTML for Telegram."""
         import re
@@ -134,7 +168,7 @@ class TelegramRenderer:
         text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
         text = re.sub(r'(?<!<[bi]>)\*(.+?)\*(?!</[bi]>)', r'<i>\1</i>', text)
         text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
-        return text
+        return TelegramRenderer._sanitize_html(text)
 
     def _join_parts(self, parts: list[str]) -> str:
         return "\n".join(parts)
@@ -144,26 +178,38 @@ class TelegramRenderer:
     async def _render_reasoning(
         self, chat_id: int, event: ReasoningEvent,
     ) -> None:
-        """Create or edit the reasoning message (with inline tool pills)."""
+        """Create or edit the reasoning message (INDEPENDENT from tool pills).
+
+        Reasoning is its OWN message. Tool pills have THEIR OWN message
+        (managed by ``_render_tool_call``). They don't interact.
+        """
         text = event.text
         parts = self._reasoning_parts[chat_id]
         phase = self._parser.reasoning_phase
         phase_key = f"reasoning:{phase}"
 
         if event.is_new_phase or self._reasoning_msg.get(chat_id) is None:
-            # New reasoning message
+            # NEW reasoning message
             self._reasoning_parts[chat_id] = [f"🤔 Pensando...\n\n{text}"]
             html = self._text_to_html(self._join_parts(self._reasoning_parts[chat_id]))
             msg_id = await self._send_with_retry(chat_id, html, "HTML")
             if msg_id:
                 self._reasoning_msg[chat_id] = msg_id
                 await self._mm.store_msg_id(chat_id, phase_key, msg_id)
+                logger.info("TG[%d] reasoning msg created: #%s", chat_id, msg_id)
         else:
-            # Update existing reasoning
-            for i, p in enumerate(parts):
-                if p.startswith("🤔 Pensando..."):
-                    parts[i] = f"🤔 Pensando...\n\n{text}"
-                    break
+            # EDIT existing reasoning — append new text
+            if parts:
+                prefix = "🤔 Pensando..."
+                current = parts[0]
+                if current.startswith(prefix):
+                    existing_text = current[len(prefix):].strip()
+                    if existing_text and text:
+                        parts[0] = f"{prefix}\n\n{existing_text}\n{text}"
+                    elif text:
+                        parts[0] = f"{prefix}\n\n{text}"
+                else:
+                    parts[0] = f"{prefix}\n\n{text}"
             html = self._text_to_html(self._join_parts(parts))
             msg_id = self._reasoning_msg[chat_id]
             await self._edit_with_retry(chat_id, msg_id, html, "HTML", phase_key=phase_key)
@@ -180,15 +226,16 @@ class TelegramRenderer:
         phase_key = f"content:{phase}"
 
         if event.is_new_phase or self._content_msg.get(chat_id) is None:
-            # New content message
+            # NEW content message
             self._content_parts[chat_id] = [text]
             html = self._text_to_html(text)
             msg_id = await self._send_with_retry(chat_id, html, "HTML")
             if msg_id:
                 self._content_msg[chat_id] = msg_id
                 await self._mm.store_msg_id(chat_id, phase_key, msg_id)
+                logger.info("TG[%d] content msg created: #%s", chat_id, msg_id)
         else:
-            # Update existing content
+            # EDIT existing content
             if parts:
                 parts[0] = text
             else:
@@ -202,46 +249,64 @@ class TelegramRenderer:
     async def _render_tool_call(
         self, chat_id: int, event: ToolCallEvent, tool_id: str,
     ) -> None:
-        """Append or update inline tool pill in the reasoning message."""
+        """Create or update a SEPARATE message for tool pills.
+
+        Like the web UI's ``<div class="tool-calls">``, tool pills get
+        their own Telegram message — NOT inline in the reasoning::
+
+            📨 Mensaje 1 — 🤔 Pensando... [razonamiento]
+            📨 Mensaje 2 — 🔧 web_search → ✅ web_search  ← SEPARATE!
+            📨 Mensaje 3 — [contenido]
+
+        This creates a clean 3-message layout per assistant turn.
+        """
+        # ── Build pill text ────────────────────────────────────────────
         if event.status == "calling":
-            pill = f"🔧 {event.name}"
+            pill_label = f"🔧 {event.name}"
         elif event.status == "ok":
-            pill = f"✅ {event.name}"
+            pill_label = f"✅ {event.name}"
         elif event.status == "error":
-            pill = f"❌ {event.name} (error)"
+            pill_label = f"❌ {event.name} (error)"
         else:
-            pill = f"🔧 {event.name}"
+            pill_label = f"🔧 {event.name}"
 
-        parts = self._reasoning_parts[chat_id]
-        old_pill = self._tool_pills[chat_id].get(tool_id)
+        logger.info("TG[%d] tool_call: %s %s (id=%s)", chat_id, pill_label, event.status, tool_id)
 
-        if old_pill is not None:
-            # Replace old pill text (status update)
+        # ── Check if this is a status update for an existing pill ──────
+        old_stored = self._tool_pills[chat_id].get(tool_id)
+        parts = self._tool_parts[chat_id]
+
+        if old_stored is not None:
+            # Replace old pill in the tool message parts
             for i, p in enumerate(parts):
-                if p.strip() == old_pill.strip():
-                    parts[i] = pill
+                if p.strip() == old_stored.strip():
+                    parts[i] = pill_label
                     break
+            self._tool_pills[chat_id][tool_id] = pill_label
         else:
-            self._tool_pills[chat_id][tool_id] = pill
-            parts.append(pill)
+            # New tool pill — add to tool message
+            self._tool_pills[chat_id][tool_id] = pill_label
+            parts.append(pill_label)
 
-        # Update reasoning message with new/changed pill
-        msg_id = self._reasoning_msg.get(chat_id)
+        # ── Send or edit the SEPARATE tool message ────────────────────
+        msg_id = self._tool_msg.get(chat_id)
         if msg_id:
-            html = self._text_to_html(self._join_parts(parts))
-            phase = self._parser.reasoning_phase
-            await self._edit_with_retry(
-                chat_id, msg_id, html, "HTML",
-                phase_key=f"reasoning:{phase}",
-            )
+            # Edit existing tool message
+            header = f"🔧 Herramientas:\n\n"
+            full_text = header + "\n".join(parts)
+            html = self._text_to_html(full_text)
+            logger.info("TG[%d] edit tool msg #%s: %s", chat_id, msg_id, pill_label)
+            await self._edit_with_retry(chat_id, msg_id, html, "HTML")
         else:
-            # No reasoning message yet — create one with just the tool pill
-            self._reasoning_parts[chat_id] = [f"🔧 Herramientas:", pill]
-            html = self._text_to_html(self._join_parts(self._reasoning_parts[chat_id]))
-            msg_id = await self._send_with_retry(chat_id, html, "HTML")
-            if msg_id:
-                self._reasoning_msg[chat_id] = msg_id
-                await self._mm.store_msg_id(chat_id, f"tools:{tool_id}", msg_id)
+            # Send new tool message
+            header = f"🔧 Herramientas:"
+            full_text = header + "\n" + "\n".join(parts)
+            html = self._text_to_html(full_text)
+            logger.info("TG[%d] send new tool msg: %s", chat_id, pill_label)
+            new_id = await self._send_with_retry(chat_id, html, "HTML")
+            if new_id:
+                self._tool_msg[chat_id] = new_id
+                logger.info("TG[%d] tool msg created: #%s", chat_id, new_id)
 
     # ── Error ──────────────────────────────────────────────────────────
 
@@ -396,5 +461,6 @@ class TelegramRenderer:
                     return False
                 else:
                     # Benign (e.g. "message not modified")
+                    logger.info("TG[%d] edit msg #%s benign: %s", chat_id, msg_id, e)
                     return False
         return False

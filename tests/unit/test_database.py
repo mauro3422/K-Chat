@@ -1,54 +1,54 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-import src.memory.connection_pool as connection
-import src.memory.bootstrap as bootstrap
-
-
-@pytest.mark.anyio
-async def test_get_conn_initializes_each_db_path_once(monkeypatch):
-    raw_one = AsyncMock()
-    init_calls: list[str] = []
-
-    async def fake_get_raw_conn(db_path):
-        return raw_one
-
-    async def fake_ensure(path):
-        init_calls.append(path)
-
-    monkeypatch.setattr(connection, "get_raw_conn", fake_get_raw_conn)
-    monkeypatch.setattr(bootstrap, "ensure_db_initialized", fake_ensure)
-    monkeypatch.setattr(connection, "_conn_storage", {"conn": None, "db_path": None})
-    monkeypatch.setattr(connection, "resolve_db_path", lambda: "/tmp/kairos-test.db")
-
-    conn_one = await connection.get_conn()
-    assert conn_one._conn is raw_one
-    assert init_calls == ["/tmp/kairos-test.db"]
-    assert connection._conn_storage["conn"] is raw_one
-    assert connection._conn_storage["db_path"] == "/tmp/kairos-test.db"
-
-    conn_two = await connection.get_conn()
-    assert conn_two._conn is raw_one
-    assert init_calls == ["/tmp/kairos-test.db"]
+from src.memory.connection_pool import get_conn, return_conn
 
 
 @pytest.mark.anyio
-async def test_get_conn_replaces_stale_connection_when_db_path_changes(monkeypatch):
+async def test_get_conn_creates_new_connection_on_first_call(monkeypatch):
+    raw = AsyncMock()
+    monkeypatch.setattr("src.memory.connection_pool.create_raw_conn", AsyncMock(return_value=raw))
+    monkeypatch.setattr("src.memory.connection_pool.resolve_db_path", lambda: "/tmp/kairos-test.db")
+
+    pooled = await get_conn()
+    assert pooled._conn is raw
+    assert pooled._db_path == "/tmp/kairos-test.db"
+
+
+@pytest.mark.anyio
+async def test_get_conn_reuses_pooled_connection(monkeypatch):
+    raw = AsyncMock()
+    create_calls = []
+    async def fake_create(db_path):
+        create_calls.append(db_path)
+        return raw
+    monkeypatch.setattr("src.memory.connection_pool.create_raw_conn", fake_create)
+    monkeypatch.setattr("src.memory.connection_pool.resolve_db_path", lambda: "/tmp/kairos-test.db")
+
+    c1 = await get_conn()
+    assert len(create_calls) == 1
+
+    await return_conn("/tmp/kairos-test.db", c1)
+
+    c2 = await get_conn()
+    assert c2._conn is raw
+    assert len(create_calls) == 1
+
+
+@pytest.mark.anyio
+async def test_get_conn_creates_new_when_pool_empty(monkeypatch):
     raw_one = AsyncMock()
     raw_two = AsyncMock()
+    calls = []
+    async def fake_create(db_path):
+        conn = raw_two if calls else raw_one
+        calls.append(conn)
+        return conn
+    monkeypatch.setattr("src.memory.connection_pool.create_raw_conn", fake_create)
+    monkeypatch.setattr("src.memory.connection_pool.resolve_db_path", lambda: "/tmp/kairos-test.db")
 
-    async def fake_get_raw_conn(db_path):
-        return raw_one if db_path == "/tmp/kairos-old.db" else raw_two
+    c1 = await get_conn()
+    assert c1._conn is raw_one
 
-    async def fake_ensure(path):
-        pass
-
-    monkeypatch.setattr(connection, "get_raw_conn", fake_get_raw_conn)
-    monkeypatch.setattr(bootstrap, "ensure_db_initialized", fake_ensure)
-    monkeypatch.setattr(connection, "_conn_storage", {"conn": raw_one, "db_path": "/tmp/kairos-old.db"})
-
-    monkeypatch.setattr(connection, "resolve_db_path", lambda: "/tmp/kairos-new.db")
-
-    conn_two = await connection.get_conn()
-    assert conn_two._conn is raw_two
-    raw_one.close.assert_called_once()
+    c2 = await get_conn()
+    assert c2._conn is raw_two

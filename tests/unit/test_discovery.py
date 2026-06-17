@@ -2,7 +2,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from src.llm.model_state import clear_failed_models, set_cached_models, set_verified_models
+from src.llm.model_state import clear_failed_models, set_cached_models
+from src.llm.model_registry import set_verified_models
 from src.llm.discovery import get_models, get_free_models, get_verified_models
 
 

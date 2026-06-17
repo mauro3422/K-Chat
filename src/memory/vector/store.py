@@ -1,0 +1,280 @@
+"""Vector store wrapper around sqlite-vec.
+
+Provides insert, search (KNN), delete, and metadata filtering
+on top of sqlite-vec's virtual table.
+"""
+
+from __future__ import annotations
+import json
+import sqlite3
+import threading
+import logging
+from datetime import datetime
+from typing import Optional
+
+import sqlite_vec
+
+from .models import VectorEntry, SearchResult
+
+logger = logging.getLogger(__name__)
+
+
+def compute_relevance(
+    *,
+    avg_tfidf: float = 0.0,
+    entity_count: int = 0,
+    cluster_weight: float = 0.5,
+    days_old: float = 0.0,
+    source: str = "session",
+) -> float:
+    """Compute relevance_score (0.0-1.0) from available signals."""
+    tfidf_factor = avg_tfidf
+    entity_factor = min(entity_count / 10.0, 1.0)
+    recency_factor = max(0.0, 1.0 - days_old / 30.0)
+    source_factor = 1.0 if source == "memory" else 0.7
+
+    score = (
+        tfidf_factor * 0.30
+        + entity_factor * 0.20
+        + cluster_weight * 0.20
+        + recency_factor * 0.15
+        + source_factor * 0.15
+    )
+    return max(0.0, min(1.0, score))
+
+
+class VectorStore:
+    """sqlite-vec backed vector store for embeddings."""
+
+    def __init__(self, db_path: str):
+        self._db_path = db_path
+        self._conn: Optional[sqlite3.Connection] = None
+        self._lock = threading.Lock()
+
+    # --- Connection management ---
+
+    def _get_conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            self._conn.enable_load_extension(True)
+            sqlite_vec.load(self._conn)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._init_tables()
+        return self._conn
+
+    def _init_tables(self):
+        """Ensure vector store tables exist (fallback if migration hasn't run).
+
+        Primary table creation happens via memory_schema.py migrations.
+        This is a safety net for the case where the DB exists but is
+        pre-migration (e.g., freshly cloned repo).
+        """
+        conn = self._conn
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS vec_entries USING vec0(
+                embedding float[384] distance_metric=cosine
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS vec_meta (
+                rowid INTEGER PRIMARY KEY,
+                source TEXT NOT NULL,
+                source_key TEXT NOT NULL DEFAULT '',
+                exchange_idx INTEGER NOT NULL DEFAULT 0,
+                text TEXT NOT NULL DEFAULT '',
+                metadata TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT '',
+                hash TEXT NOT NULL DEFAULT '',
+                relevance_score REAL NOT NULL DEFAULT 0.5,
+                query_count INTEGER NOT NULL DEFAULT 0,
+                last_accessed TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        # Safety: add hash column if table existed before migration 006
+        try:
+            conn.execute("ALTER TABLE vec_meta ADD COLUMN hash TEXT DEFAULT ''")
+        except Exception:
+            pass  # Column already exists
+
+        # Create indexes if they don't exist
+        existing = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+        ).fetchall()}
+        if "idx_vec_meta_source" not in existing:
+            conn.execute("CREATE INDEX idx_vec_meta_source ON vec_meta (source, source_key)")
+        if "idx_vec_meta_hash" not in existing:
+            conn.execute("CREATE INDEX idx_vec_meta_hash ON vec_meta (hash)")
+        conn.commit()
+
+    # --- CRUD operations ---
+
+    def insert(self, embedding: list[float], *,
+               source: str = "",
+               source_key: str = "",
+               exchange_idx: int = 0,
+               text: str = "",
+               metadata: Optional[dict] = None,
+               hash: str = "") -> int:
+        """Insert a vector and its metadata. Returns the rowid.
+
+        Args:
+            hash: Optional MD5 hash of the source text, used for deduplication.
+        """
+        with self._lock:
+            conn = self._get_conn()
+            now = datetime.now().isoformat(timespec="seconds")
+            meta_json = json.dumps(metadata or {})
+
+            # Insert vector into vec0
+            vec_array = f"[{','.join(str(v) for v in embedding)}]"
+            conn.execute(
+                "INSERT INTO vec_entries(embedding) VALUES (?)",
+                [vec_array]
+            )
+            rowid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+            # Compute initial relevance score
+            score = compute_relevance(source=source, days_old=0.0)
+
+            # Insert metadata
+            conn.execute(
+                "INSERT INTO vec_meta(rowid, source, source_key, exchange_idx, text, metadata, created_at, hash, relevance_score) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [rowid, source, source_key, exchange_idx, text, meta_json, now, hash, round(score, 4)]
+            )
+            conn.commit()
+            return rowid
+
+    def search(self, query_embedding: list[float], k: int = 10,
+               source_filter: Optional[str] = None,
+               min_relevance: float = 0.0) -> list[SearchResult]:
+        """Search for the k nearest neighbors.
+
+        Args:
+            query_embedding: The query vector.
+            k: Number of results (default 10, max 50).
+            source_filter: Optional filter by source ('memory' or 'session').
+            min_relevance: Minimum relevance_score filter (0.0 = no filter).
+
+        Returns:
+            List of SearchResult ordered by similarity (closest first).
+        """
+        with self._lock:
+            conn = self._get_conn()
+            vec_array = f"[{','.join(str(v) for v in query_embedding)}]"
+            k = min(k, 50)
+
+            # sqlite-vec KNN with MATCH clause, then join metadata
+            if source_filter:
+                rows = conn.execute(
+                    """
+                    SELECT v.rowid, v.distance, m.source, m.source_key,
+                           m.exchange_idx, m.text, m.metadata, m.created_at
+                    FROM (
+                        SELECT rowid, distance
+                        FROM vec_entries
+                        WHERE embedding MATCH ?
+                        AND k = ?
+                    ) v
+                    JOIN vec_meta m ON v.rowid = m.rowid
+                    WHERE m.source = ?
+                    AND m.relevance_score >= ?
+                    ORDER BY v.distance
+                    """,
+                    [vec_array, k, source_filter, min_relevance]
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT v.rowid, v.distance, m.source, m.source_key,
+                           m.exchange_idx, m.text, m.metadata, m.created_at
+                    FROM (
+                        SELECT rowid, distance
+                        FROM vec_entries
+                        WHERE embedding MATCH ?
+                        AND k = ?
+                    ) v
+                    JOIN vec_meta m ON v.rowid = m.rowid
+                    WHERE m.relevance_score >= ?
+                    ORDER BY v.distance
+                    """,
+                    [vec_array, k, min_relevance]
+                ).fetchall()
+
+            results = []
+            for row in rows:
+                entry = VectorEntry(
+                    id=row[0],
+                    source=row[2],
+                    source_key=row[3],
+                    exchange_idx=row[4],
+                    text=row[5],
+                    metadata=row[6],
+                    created_at=row[7],
+                )
+                distance = row[1] if row[1] is not None else 1.0
+                results.append(SearchResult(entry=entry, distance=distance, score=1.0 - distance))
+
+            return results
+
+    def find_by_hash(self, hash: str, source: str = "") -> Optional[int]:
+        """Find a vector entry by its text hash. Returns rowid or None.
+
+        Used for deduplication: if the same text has already been embedded,
+        we skip creating a duplicate embedding.
+        """
+        with self._lock:
+            conn = self._get_conn()
+            if source:
+                row = conn.execute(
+                    "SELECT rowid FROM vec_meta WHERE hash = ? AND source = ? LIMIT 1",
+                    [hash, source]
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT rowid FROM vec_meta WHERE hash = ? LIMIT 1",
+                    [hash]
+                ).fetchone()
+            return row[0] if row else None
+
+    def delete(self, rowid: int) -> bool:
+        """Delete a vector entry by rowid."""
+        with self._lock:
+            conn = self._get_conn()
+            cursor = conn.execute("DELETE FROM vec_entries WHERE rowid = ?", [rowid])
+            conn.execute("DELETE FROM vec_meta WHERE rowid = ?", [rowid])
+            conn.commit()
+        return cursor.rowcount > 0
+
+    def delete_by_source(self, source_key: str) -> int:
+        """Delete all entries for a given source_key (e.g., a session or memory key)."""
+        with self._lock:
+            conn = self._get_conn()
+            rows = conn.execute(
+                "SELECT rowid FROM vec_meta WHERE source_key = ?", [source_key]
+            ).fetchall()
+            for (rowid,) in rows:
+                conn.execute("DELETE FROM vec_entries WHERE rowid = ?", [rowid])
+            deleted = conn.execute(
+                "DELETE FROM vec_meta WHERE source_key = ?", [source_key]
+            ).rowcount
+            conn.commit()
+            return deleted
+
+    def count(self, source: Optional[str] = None) -> int:
+        """Count total entries, optionally filtered by source."""
+        with self._lock:
+            conn = self._get_conn()
+            if source:
+                return conn.execute(
+                    "SELECT COUNT(*) FROM vec_meta WHERE source = ?", [source]
+                ).fetchone()[0]
+            return conn.execute("SELECT COUNT(*) FROM vec_meta").fetchone()[0]
+
+    def close(self):
+        if self._conn:
+            self._conn.close()
+            self._conn = None
+
+    def __del__(self):
+        self.close()

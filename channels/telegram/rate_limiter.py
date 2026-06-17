@@ -1,7 +1,12 @@
 """Rate limiter — throttles edits to respect Telegram's per-message limits.
 
-Telegram allows roughly 1 edit per second per message. Exceeding this
-triggers a 429 "Too Many Requests" response with a ``retry_after`` field.
+Telegram enforces a ~20 edits/min limit per message (≈1 edit per 3s).
+Exceeding this triggers a 429 "Too Many Requests" response with a
+``retry_after`` field.
+
+A typical stream with 3 tools does ~27 edits to the reasoning message
+(inline tool status updates) in ~30s — that's ~54 edits/min, nearly 3x
+over Telegram's limit. The 3.0s interval keeps us safely within bounds.
 
 This component tracks edits per (chat_id, message_id) pair and enforces
 a minimum interval between edits. It also handles 429 backoff globally
@@ -23,11 +28,11 @@ logger = logging.getLogger(__name__)
 class RateLimiter:
     """Per-message edit rate limiter with global 429 backoff.
 
-    Defaults to 1.2s between edits on the same message (slightly more
-    conservative than Telegram's ~1/s limit).
+    Defaults to 3.0s between edits on the same message to stay within
+    Telegram's ~20 edits/min limit.
     """
 
-    def __init__(self, min_edit_interval: float = 1.2) -> None:
+    def __init__(self, min_edit_interval: float = 3.0) -> None:
         self._min_interval = min_edit_interval
         # {(chat_id, message_id): last_edit_timestamp}
         self._last_edit: dict[tuple[int, int], float] = {}

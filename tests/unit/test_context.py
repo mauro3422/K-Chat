@@ -143,21 +143,25 @@ async def test_build_tools_md_integer_param():
 
 
 @pytest.mark.anyio
-async def test_load_context():
+async def test_context_snapshot():
+    """Test build_context_snapshot returns the expected context."""
+    from src.context.runtime import invalidate_context_cache, build_context_snapshot
+    from src.context.runtime import ContextSnapshot
+
+    invalidate_context_cache()
+
     content_map = {
         os.path.join(CONTEXT_DIR, "SOUL.md"): "# Soul content",
         os.path.join(CONTEXT_DIR, "MEMORY.md"): "# Memory content",
         os.path.join(CONTEXT_DIR, "AGENTS.md"): "# Agents content",
     }
 
-    with patch("src.context.builder._ensure_file") as mock_ensure:
-        with patch("src.context.builder._read_file", side_effect=lambda p: content_map.get(p, "")):
-            from src.context import load_context
-
-            result = load_context()
+    with patch("src.context.runtime._ensure_file") as mock_ensure:
+        with patch("src.context.runtime._read_file", side_effect=lambda p: content_map.get(p, "")):
+            result = build_context_snapshot(force=True)
 
             assert mock_ensure.call_count == 3
-            assert result == "# Soul content\n\n# Memory content\n\n# Agents content"
+            assert result.text == "# Soul content\n\n# Memory content\n\n# Agents content"
 
 
 @pytest.mark.anyio

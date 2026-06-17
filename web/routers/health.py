@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from src.api import get_conn
+from src.api.repos import get_conn
 from src.config_loader import load_config
 
 router = APIRouter()

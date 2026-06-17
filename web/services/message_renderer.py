@@ -58,6 +58,7 @@ async def render_session_messages(session_id: str, deps: MessageRenderDeps | Non
                 pass
 
         formatted_msgs.append({
+            "id": getattr(row, "id", None),
             "role": role,
             "content": content,
             "reasoning": reasoning,

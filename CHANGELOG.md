@@ -1,6 +1,65 @@
-# Changelog — K-Chat TypeScript Frontend
+# Changelog — K-Chat
 
-## [2026-06-16] — Refactor masivo: desacople total, lifecycle, SSE, tests
+## [2026-06-16] — Auditoría general + estabilización full-stack
+
+### 🔥 Bugs críticos corregidos
+- **Connection leak**: `_BaseRepository._transaction()` ahora cierra conexiones en `finally` (antes se filtraban)
+- **Dual-write no atómico** (bug #11): save_memory ahora escribe a `.tmp` + `os.replace()` atómico, con restore on failure
+- **entity_search case-sensitive** (bug #2): queries usan `LOWER()` en ambos lados del WHERE
+- **Hardcode paths**: curator, gardener, tracer ahora resuelven paths dinámicamente
+- **Cache invalidation prematura** (bug #4): solo invalida tras write exitoso
+
+### 🧠 Memoria (12+ fixes)
+- **Connection pool**: `threading.Lock` → `asyncio.Lock`, sync/async consistency fix
+- **Thread-safety**: keywords extractor, entity extractor, reranker singleton — locks agregados
+- **Async flushes**: clustering (heuristic.py, relations.py) y entity linker migrados de `sqlite3` sync a `aiosqlite`
+- **Env vars unificadas**: `K_CHAT_MEMORY_DB` → `resolve_memory_db_path()` en garderner/tracer
+- **Dead code eliminado**: `classify_exchange`, `extract_keywords_batch`, `extract_entities_batch`, `cosine_similarity_keywords`, `backfill_relevance.py`, `entity_search_batch`
+- **Split manage_memory.py**: 683→140 líneas, 7 archivos en `src/memory/operations/`
+- **Split hybrid_retriever.py**: 304→206 líneas, hydrator + tracker extraídos
+- **Hash dedup normalizado**: whitespace + lowercase antes de hashear
+
+### ⚡ Frontend performance (8 fixes)
+- **SSE incremental rendering**: `insertAdjacentHTML('beforeend')` con tracking de `dataset.renderedLen` — fin del innerHTML spam
+- **CSS optimizado**: box-shadow reemplazado por outline+opacity (solo composite layer, sin repaints)
+- **Logger production guard**: console mirror solo en localhost/DEBUG
+- **Event listener cleanup**: `dispose()` en NotificationBell, SessionStore, CanvasWorkspace
+- **EventBus limit**: MAX_LISTENERS=50 con warning de leak
+- **Virtual scrolling**: IntersectionObserver windowing — mensajes fuera de viewport se reemplazan con placeholder
+- **Widget/Iframe GC**: `destroyContainer()` + MAX_WIDGETS=10
+- **Vendor bundling**: marked + dompurify via npm en vez de scripts externos
+
+### 🏗️ Infraestructura (12+ fixes)
+- **LogBus**: sistema unificado de logging async con queue, consumer batch, writers JSONL+SQLite+Console, middleware FastAPI
+- **LogBus API**: `GET /api/logbus`, `/tail`, `/sessions/{id}`, `/cleanup`
+- **LogBus conectado**: gateway_log, chat_journal, telemetry_service wrappeados a LogBus
+- **Docker**: multi-stage builder, non-root `kchat` user, python 3.13-slim, HEALTHCHECK
+- **DBs huérfanas**: eliminadas 5 DBs de 0 bytes en raíz del proyecto
+- **`.dockerignore`**: completado con logs/, memory/, data/, *.db
+- **Deps pineadas**: aiosqlite, pytest-testmon con versiones fijas
+- **`.env.example`**: completado con todas las claves soportadas
+- **Ruff**: actualizado v0.4.4 → v0.11.2
+- **Coverage**: pytest-cov configurado (opcional)
+
+### 🎯 Core/LLM (8 fixes)
+- **Orchestrator SRP**: auto-retrieval extraído a `RetrievalService` — orchestrator pierde ~50 líneas
+- **load_config unificado**: patrón duplicado `if config is None: load_config()` eliminado de 6 archivos → `src/_config.resolve_config()`
+- **load_dotenv lazy**: movido de import-time a llamada explícita en `load_config()`
+- **Memory leak rate limiter**: `_call_counts` con cleanup de sesiones inactivas cada 100 calls
+- **Circuit breaker**: `CircuitBreaker` con estados CLOSED/OPEN/HALF_OPEN, 3 fallos → 60s cooldown. Previene loop infinito de failover
+- **Model consolidation**: `_verified_models` movido de model_state a model_registry
+- **Retrieval throttle**: `dict[str,int]` reemplazado por `OrderedDict` con LRU eviction
+- **Tests de retrieval**: 9 tests para fuse_rrf, fuse_weighted_sum, normalize_scores
+
+### 🧪 Tests
+- 9 tests nuevos para RRF fusion
+- 3 tests de repositorios arreglados (telegram_chat_id column)
+- Tests de discovery/llm adaptados a model_registry
+- BackendLogHandler deprecado, test adaptado
+
+---
+
+## [2026-06-16] — Refactor masivo: desacople total, lifecycle, SSE, tests (Frontend TS)
 
 ### 🏗️ Arquitectura (Lego total)
 

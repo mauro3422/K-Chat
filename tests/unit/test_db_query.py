@@ -5,8 +5,10 @@ import pytest
 from pathlib import Path
 
 # Set test DB path before importing tool
+# NOTE: uses SESSIONS_DB_PATH (not MEMORY_DB_PATH) — that's the var
+# that db_path.py / db_query tool actually read.
 TEST_DB = "/tmp/kchat_test_db_query.db"
-os.environ["MEMORY_DB_PATH"] = TEST_DB
+os.environ["SESSIONS_DB_PATH"] = TEST_DB
 
 import importlib.util
 spec = importlib.util.spec_from_file_location("db_query", "skills/db-query/tool.py")

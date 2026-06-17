@@ -1,6 +1,8 @@
 import os
 import logging
 import asyncio
+from typing import Any
+from src.tools._path_helpers import resolve_and_validate_path
 DEFINITION: dict[str, Any] = {
     "type": "function",
     "function": {

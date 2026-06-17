@@ -64,13 +64,19 @@ async def run(**kwargs) -> str:
     if _repos is None:
         return "[ERROR] Repositorios no disponibles."
 
+    # Validate role_filter to prevent SQL injection
+    if role_filter not in ("all", "user", "assistant"):
+        role_filter = "all"
+
     try:
         conn = await _repos.messages._get_conn()
 
         # Get all messages ordered by session and time
         role_sql = ""
+        params: list[str] = []
         if role_filter != "all":
-            role_sql = f"AND m.role = '{role_filter}'"
+            role_sql = "AND m.role = ?"
+            params = [role_filter]
 
         cursor = await conn.execute(
             f"""SELECT m.id, m.session_id, m.role, m.content, m.created_at, s.name as session_name
@@ -78,6 +84,7 @@ async def run(**kwargs) -> str:
                LEFT JOIN sessions s ON m.session_id = s.session_id
                WHERE 1=1 {role_sql}
                ORDER BY m.session_id, m.id ASC""",
+            params,
         )
         all_rows = await cursor.fetchall()
         await conn.close()

@@ -15,7 +15,96 @@ function init() {
   if (msgInput) {
     msgInput.addEventListener('paste', handlePaste);
   }
+
+  // ── Drag & Drop ────────────────────────────────────────────────────
+  var dropZone = document.querySelector('.chat-input-container');
+  if (dropZone) {
+    dropZone.addEventListener('dragenter', handleDragEnter);
+    dropZone.addEventListener('dragover', handleDragOver);
+    dropZone.addEventListener('dragleave', handleDragLeave);
+    dropZone.addEventListener('drop', handleDrop);
+  }
 }
+
+// ── Drag & Drop Handlers ────────────────────────────────────────────────
+
+function handleDragEnter(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  var zone = e.currentTarget;
+  zone.classList.add('drag-over');
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  // Set drop effect to copy (not move)
+  e.dataTransfer.dropEffect = 'copy';
+}
+
+function handleDragLeave(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  var zone = e.currentTarget;
+  // Only remove class if actually leaving the zone (not entering a child)
+  var related = e.relatedTarget;
+  if (!related || !zone.contains(related)) {
+    zone.classList.remove('drag-over');
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  var zone = e.currentTarget;
+  zone.classList.remove('drag-over');
+
+  var items = e.dataTransfer.items || [];
+  var files = e.dataTransfer.files || [];
+  var hasFiles = false;
+
+  // ── Procesar archivos del drag ─────────────────────────────────────
+  for (var i = 0; i < files.length; i++) {
+    var file = files[i];
+    if (file.size > 0 && !file.type.startsWith('text/uri-list')) {
+      hasFiles = true;
+      if (file.size > MAX_FILE_SIZE) {
+        alert('El archivo "' + file.name + '" excede el límite de 10MB.');
+        continue;
+      }
+      if (!attachedFiles.find(function(af) { return af.name === file.name && af.size === file.size; })) {
+        attachedFiles.push(file);
+      }
+    }
+  }
+
+  // ── Si no hay archivos, probar con URLs arrastradas ────────────────
+  if (!hasFiles && items.length > 0) {
+    for (var j = 0; j < items.length; j++) {
+      if (items[j].kind === 'string' && items[j].type === 'text/uri-list') {
+        items[j].getAsString(function(url) {
+          // Insertar la URL en el input de texto
+          var input = document.getElementById('msg-input');
+          if (input && url) {
+            var start = input.selectionStart;
+            var before = input.value.substring(0, start);
+            var after = input.value.substring(start);
+            input.value = before + url + after;
+            input.selectionStart = input.selectionEnd = start + url.length;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+        break;
+      }
+    }
+  }
+
+  if (hasFiles) {
+    renderPreview();
+  }
+}
+
+// ── Paste Handler ───────────────────────────────────────────────────────
 
 function handlePaste(e) {
   var items = e.clipboardData && e.clipboardData.items;
@@ -46,7 +135,7 @@ function handlePaste(e) {
       file = new File([file], 'clipboard-' + timestamp + '.' + ext, { type: file.type });
 
       if (file.size > MAX_FILE_SIZE) {
-        alert('La imagen pegaada excede el límite de 10MB.');
+        alert('La imagen pegada excede el límite de 10MB.');
         continue;
       }
 
@@ -73,6 +162,8 @@ function handlePaste(e) {
   }
 }
 
+// ── File Select Handler ─────────────────────────────────────────────────
+
 function handleFileSelect(e) {
   var files = Array.from(e.target.files);
   files.forEach(function(f) {
@@ -87,6 +178,8 @@ function handleFileSelect(e) {
   renderPreview();
   e.target.value = '';
 }
+
+// ── Preview Renderer ────────────────────────────────────────────────────
 
 function renderPreview() {
   var container = document.getElementById('attach-preview');

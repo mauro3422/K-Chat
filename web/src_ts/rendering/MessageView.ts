@@ -2,9 +2,11 @@ import { IDomRenderer } from '../types/rendering';
 import { BrowserDomRenderer } from './DomRenderer';
 import { IIframeBuilder } from '../types/iframe';
 import { IMessageView } from '../types/message-view';
+import { IWidgetContainerRenderer } from '../types/widget-renderer';
 import { C } from '../core/DomContracts';
 import { getLogger } from '../core/LoggerFactory';
 import { ILogger } from '../core/Logger';
+import { MessageWindowing } from './MessageWindowing';
 
 interface PhaseData {
   memory?: string;
@@ -35,20 +37,27 @@ export class MessageView implements IMessageView {
   private containerEl: HTMLElement | null = null;
   private renderer: IDomRenderer;
   private iframeBuilder?: IIframeBuilder;
+  private windowing: MessageWindowing;
 
   constructor(
     renderer: IDomRenderer = new BrowserDomRenderer(),
     iframeBuilder?: IIframeBuilder,
+    private widgetContainerRenderer?: IWidgetContainerRenderer,
   ) {
     this.renderer = renderer;
     this.iframeBuilder = iframeBuilder;
+    this.windowing = new MessageWindowing();
   }
 
   init(): void {
     this.containerEl = document.getElementById('messages');
     if (!this.containerEl) {
       console.warn('[MessageView] #messages container not found');
+      return;
     }
+    this.containerEl.addEventListener('msg:restore', ((e: Event) => {
+      this._handleMsgRestore(e as CustomEvent);
+    }) as EventListener);
   }
 
   /** Append a fully-formed message (from history) */
@@ -65,133 +74,18 @@ export class MessageView implements IMessageView {
     if (msg.ts) msgEl.dataset.ts = String(msg.ts);
     if (msg.id) msgEl.dataset.id = String(msg.id);
 
-    // Label
-    const label = document.createElement('div');
-    label.className = C.MSG_LABEL;
-    label.textContent = msg.role === 'user' ? 'Tu' : 'Kairos';
-    msgEl.appendChild(label);
-
-    // Delete button
-    if (msg.id) {
-      const delBtn = document.createElement('button');
-      delBtn.className = C.MSG_DELETE_BTN;
-      delBtn.title = 'Eliminar mensaje';
-      delBtn.textContent = '🗑️';
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (confirm('¿Eliminar este mensaje?')) msgEl.remove();
-      });
-      msgEl.appendChild(delBtn);
-    }
-
-    const content = msg.content || '';
-    const reasoning = msg.reasoning || '';
-    const matchedTools = msg.matched_tools || [];
-    const phases = msg.phases || [];
-
-    if (msg.role === 'assistant' && phases.length > 0) {
-      // Multi-phase rendering
-      const toolsByTurn: Record<number, Array<{ name: string; status: string }>> = {};
-      matchedTools.forEach((t) => {
-        const turn = t.turn || 0;
-        (toolsByTurn[turn] = toolsByTurn[turn] || []).push({
-          name: t.tool_name,
-          status: t.status,
-        });
-      });
-
-      const hasAnyContent = phases.some((p) => p.content);
-
-      phases.forEach((phase, idx) => {
-        // Memory block
-        if (phase.memory) {
-          const details = document.createElement('details');
-          details.className = C.REASONING_MEMORIES;
-          details.open = true;
-          details.innerHTML = `<summary>📖 Memorias</summary><div class="${C.MEMORY_CONTENT}">${this.escapeHtml(phase.memory)}</div>`;
-          msgEl.appendChild(details);
-        }
-
-        // Reasoning block
-        if (phase.reasoning) {
-          const details = document.createElement('details');
-          details.className = C.REASONING;
-          details.open = true;
-          details.innerHTML = `<summary>Razonamiento (Fase ${idx + 1})</summary><div class="${C.RT}">${this.escapeHtml(phase.reasoning)}</div>`;
-          msgEl.appendChild(details);
-        }
-
-        // Content with markdown + widgets
-        if (hasAnyContent && phase.content) {
-          const body = document.createElement('div');
-          body.className = C.MSG_BODY + ' ' + C.MD_CONTENT;
-          this.renderWithWidgets(body, phase.content);
-          msgEl.appendChild(body);
-        }
-
-        // Tool pills
-        const turnTools = toolsByTurn[idx + 1] || [];
-        if (turnTools.length > 0) {
-          const wrapper = document.createElement('div');
-          wrapper.className = C.TOOL_CALLS;
-          turnTools.forEach((t) => {
-            const pill = document.createElement('span');
-            pill.className = C.TC_ITEM + ' ' + t.status;
-            pill.innerHTML = `${t.status === 'ok' ? '&#10003;' : '&#10007;'} ${this.escapeHtml(t.name)}`;
-            wrapper.appendChild(pill);
-          });
-          msgEl.appendChild(wrapper);
-        }
-      });
-
-      // Fallback: if no phase content but main content exists
-      if (!hasAnyContent && content) {
-        const body = document.createElement('div');
-        body.className = C.MSG_BODY + ' ' + C.MD_CONTENT;
-        this.renderWithWidgets(body, content);
-        msgEl.appendChild(body);
-      }
-    } else {
-      // Simple message (no phases)
-      if (reasoning) {
-        const details = document.createElement('details');
-        details.className = C.REASONING;
-        details.open = true;
-        details.innerHTML = `<summary>Razonamiento</summary><div class="${C.RT}">${this.escapeHtml(reasoning)}</div>`;
-        msgEl.appendChild(details);
-      }
-
-      const body = document.createElement('div');
-      body.className = msg.role === 'assistant' ? C.MSG_BODY + ' ' + C.MD_CONTENT : C.MSG_BODY;
-      this.renderWithWidgets(body, content);
-      msgEl.appendChild(body);
-
-      // Tool pills
-      if (msg.role === 'assistant' && matchedTools.length > 0) {
-        const wrapper = document.createElement('div');
-        wrapper.className = C.TOOL_CALLS;
-        matchedTools.forEach((t) => {
-          const pill = document.createElement('span');
-          pill.className = C.TC_ITEM + ' ' + t.status;
-          pill.innerHTML = `${t.status === 'ok' ? '&#10003;' : '&#10007;'} ${this.escapeHtml(t.tool_name)}`;
-          wrapper.appendChild(pill);
-        });
-        msgEl.appendChild(wrapper);
-      }
-    }
-
-    // Timestamp
-    if (msg.ts) {
-      const ts = document.createElement('div');
-      ts.className = C.MSG_TS;
-      ts.textContent = typeof msg.ts === 'string' ? msg.ts.substring(0, 16).replace('T', ' ') : String(msg.ts);
-      msgEl.appendChild(ts);
-    }
+    this._renderMessageContent(msgEl, msg);
 
     this.containerEl.appendChild(msgEl);
     // Only auto-scroll if near bottom (user isn't reading history)
     const dist = this.containerEl.scrollHeight - this.containerEl.scrollTop - this.containerEl.clientHeight;
     if (dist <= 100) this.containerEl.scrollTop = this.containerEl.scrollHeight;
+
+    // Windowing
+    const msgId = msg.id !== undefined ? String(msg.id) : `msg-${Date.now()}-${Math.random()}`;
+    msgEl.dataset.msgId = msgId;
+    this.windowing.observeMessage(msgEl, msg);
+
     return msgEl;
   }
 
@@ -223,18 +117,180 @@ export class MessageView implements IMessageView {
     // Only auto-scroll if near bottom
     const dist = this.containerEl.scrollHeight - this.containerEl.scrollTop - this.containerEl.clientHeight;
     if (dist <= 100) this.containerEl.scrollTop = this.containerEl.scrollHeight;
+
+    // Windowing: mark as live so it's never virtualized
+    msgEl.dataset.msgId = 'live';
+    this.windowing.setLiveMsgId('live');
+
     return msgEl;
+  }
+
+  /** Called when streaming ends — live message becomes eligible for windowing */
+  endStreaming(): void {
+    this.windowing.setLiveMsgId(null);
   }
 
   /** Clear all messages */
   clearContainer(): void {
     if (this.containerEl) {
+      if (this.widgetContainerRenderer) {
+        this.widgetContainerRenderer.destroyAll(this.containerEl);
+      }
+      this.windowing.clear();
       this.containerEl.innerHTML = '';
       this.logger.info('clear_container');
     }
   }
 
   // ── Private Helpers ──────────────────────────────────
+
+  /** Render label, delete button, content, and timestamp into an element */
+  private _renderMessageContent(el: HTMLElement, msg: MessageData): void {
+    // Label
+    const label = document.createElement('div');
+    label.className = C.MSG_LABEL;
+    label.textContent = msg.role === 'user' ? 'Tu' : 'Kairos';
+    el.appendChild(label);
+
+    // Delete button
+    if (msg.id) {
+      const delBtn = document.createElement('button');
+      delBtn.className = C.MSG_DELETE_BTN;
+      delBtn.title = 'Eliminar mensaje';
+      delBtn.textContent = '🗑️';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('¿Eliminar este mensaje?')) el.remove();
+      });
+      el.appendChild(delBtn);
+    }
+
+    const content = msg.content || '';
+    const reasoning = msg.reasoning || '';
+    const matchedTools = msg.matched_tools || [];
+    const phases = msg.phases || [];
+
+    if (msg.role === 'assistant' && phases.length > 0) {
+      // Multi-phase rendering
+      const toolsByTurn: Record<number, Array<{ name: string; status: string }>> = {};
+      matchedTools.forEach((t) => {
+        const turn = t.turn || 0;
+        (toolsByTurn[turn] = toolsByTurn[turn] || []).push({
+          name: t.tool_name,
+          status: t.status,
+        });
+      });
+
+      const hasAnyContent = phases.some((p) => p.content);
+
+      phases.forEach((phase, idx) => {
+        // Memory block
+        if (phase.memory) {
+          const details = document.createElement('details');
+          details.className = C.REASONING_MEMORIES;
+          details.open = true;
+          details.innerHTML = `<summary>📖 Memorias</summary><div class="${C.MEMORY_CONTENT}">${this.escapeHtml(phase.memory)}</div>`;
+          el.appendChild(details);
+        }
+
+        // Reasoning block
+        if (phase.reasoning) {
+          const details = document.createElement('details');
+          details.className = C.REASONING;
+          details.open = true;
+          details.innerHTML = `<summary>Razonamiento (Fase ${idx + 1})</summary><div class="${C.RT}">${this.escapeHtml(phase.reasoning)}</div>`;
+          el.appendChild(details);
+        }
+
+        // Content with markdown + widgets
+        if (hasAnyContent && phase.content) {
+          const body = document.createElement('div');
+          body.className = C.MSG_BODY + ' ' + C.MD_CONTENT;
+          this.renderWithWidgets(body, phase.content);
+          el.appendChild(body);
+        }
+
+        // Tool pills
+        const turnTools = toolsByTurn[idx + 1] || [];
+        if (turnTools.length > 0) {
+          const wrapper = document.createElement('div');
+          wrapper.className = C.TOOL_CALLS;
+          turnTools.forEach((t) => {
+            const pill = document.createElement('span');
+            pill.className = C.TC_ITEM + ' ' + t.status;
+            pill.innerHTML = `${t.status === 'ok' ? '&#10003;' : '&#10007;'} ${this.escapeHtml(t.name)}`;
+            wrapper.appendChild(pill);
+          });
+          el.appendChild(wrapper);
+        }
+      });
+
+      // Fallback: if no phase content but main content exists
+      if (!hasAnyContent && content) {
+        const body = document.createElement('div');
+        body.className = C.MSG_BODY + ' ' + C.MD_CONTENT;
+        this.renderWithWidgets(body, content);
+        el.appendChild(body);
+      }
+    } else {
+      // Simple message (no phases)
+      if (reasoning) {
+        const details = document.createElement('details');
+        details.className = C.REASONING;
+        details.open = true;
+        details.innerHTML = `<summary>Razonamiento</summary><div class="${C.RT}">${this.escapeHtml(reasoning)}</div>`;
+        el.appendChild(details);
+      }
+
+      const body = document.createElement('div');
+      body.className = msg.role === 'assistant' ? C.MSG_BODY + ' ' + C.MD_CONTENT : C.MSG_BODY;
+      this.renderWithWidgets(body, content);
+      el.appendChild(body);
+
+      // Tool pills
+      if (msg.role === 'assistant' && matchedTools.length > 0) {
+        const wrapper = document.createElement('div');
+        wrapper.className = C.TOOL_CALLS;
+        matchedTools.forEach((t) => {
+          const pill = document.createElement('span');
+          pill.className = C.TC_ITEM + ' ' + t.status;
+          pill.innerHTML = `${t.status === 'ok' ? '&#10003;' : '&#10007;'} ${this.escapeHtml(t.tool_name)}`;
+          wrapper.appendChild(pill);
+        });
+        el.appendChild(wrapper);
+      }
+    }
+
+    // Timestamp
+    if (msg.ts) {
+      const ts = document.createElement('div');
+      ts.className = C.MSG_TS;
+      ts.textContent = typeof msg.ts === 'string' ? msg.ts.substring(0, 16).replace('T', ' ') : String(msg.ts);
+      el.appendChild(ts);
+    }
+  }
+
+  /** Restore a virtualized message when it scrolls back into view */
+  private _handleMsgRestore(e: CustomEvent): void {
+    const el = e.target as HTMLElement;
+    if (!el || !el.classList.contains('msg')) return;
+    const data = e.detail?.data as MessageData;
+    if (!data) return;
+
+    // Preserve dataset attributes that were set on the original element
+    const tsAttr = el.dataset.ts;
+    const idAttr = el.dataset.id;
+    const msgIdAttr = el.dataset.msgId;
+
+    el.innerHTML = '';
+
+    // Restore dataset
+    if (tsAttr) el.dataset.ts = tsAttr;
+    if (idAttr) el.dataset.id = idAttr;
+    if (msgIdAttr) el.dataset.msgId = msgIdAttr;
+
+    this._renderMessageContent(el, data);
+  }
 
   private renderWithWidgets(container: HTMLElement, content: string): void {
     this.logger.debug('render_with_widgets', `content_length=${content.length}`);

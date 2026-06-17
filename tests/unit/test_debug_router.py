@@ -68,6 +68,18 @@ class TestLocalOnly:
 
 @pytest.mark.anyio
 @patch("web.routers.debug.get_repos")
+async def test_debug_info_missing_session_returns_404(mock_get_repos):
+    mock_repos = MagicMock()
+    mock_repos.sessions = AsyncMock()
+    mock_repos.sessions.require_session = AsyncMock(side_effect=ValueError("Session not found"))
+    mock_get_repos.return_value = mock_repos
+    with pytest.raises(HTTPException) as exc:
+        await debug_info("nonexistent")
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.anyio
+@patch("web.routers.debug.get_repos")
 async def test_debug_info_returns_json(mock_get_repos):
     mock_repos = MagicMock()
     mock_repos.sessions = AsyncMock()

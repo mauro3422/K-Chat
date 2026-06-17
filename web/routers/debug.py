@@ -5,7 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from src.api import get_repos, get_rate_limit_store, get_model_registry
-from web.logging_handler import get_backend_logs
+# BackendLogHandler deprecated — LogBus replaces it
+# Keep import lazy for backward compat
+try:
+    from web.logging_handler import get_backend_logs
+except ImportError:
+    get_backend_logs = lambda: []
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -75,7 +80,10 @@ def _local_only(request: Request) -> None:
 @router.get("/sessions/{session_id}/debug", dependencies=[Depends(_local_only)])
 async def debug_info(session_id: str) -> JSONResponse:
     repos = get_repos()
-    await repos.sessions.require_session(session_id)
+    try:
+        await repos.sessions.require_session(session_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Session not found")
     d = await repos.debug.get_info(session_id)
     return JSONResponse(d)
 

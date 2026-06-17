@@ -5,7 +5,7 @@ import logging
 import asyncio
 from datetime import datetime
 from collections.abc import AsyncGenerator
-from typing import Any, TYPE_CHECKING
+from typing import Any, Protocol, runtime_checkable, TYPE_CHECKING
 
 from src.tools._rate_limiter import _check_rate_limit
 from src.tools._tool_parser import _parse_tool_call
@@ -16,6 +16,26 @@ if TYPE_CHECKING:
     from src.memory.repos import Repositories
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class ToolRunnerProtocol(Protocol):
+    """Protocol for the run_parallel_tools function."""
+    async def __call__(
+        self,
+        tool_calls: list[Any],
+        session_id: str,
+        turn: int,
+        history: list[dict[str, Any]],
+        tool_detail: list[dict[str, Any]],
+        used_tools: list[str],
+        phase_tool_ids: list[str],
+        repos: 'Repositories',
+        tagged: bool = False,
+        tool_map: dict[str, Any] | None = None,
+        skill_registry: Any | None = None,
+        invalidate_cache_fn: Any | None = None,
+    ) -> AsyncGenerator[Any, None]: ...
 
 
 async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: 'Repositories', skill_registry: Any | None = None, invalidate_cache_fn: Any | None = None) -> AsyncGenerator[Any, None]:
@@ -46,9 +66,13 @@ async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], t
             yield ("tool_call", json.dumps({"id": tc.id, "name": name, "status": status}))
 
 
-def _prepare_rate_limiters(session_id: str) -> tuple[bool, str]:
-    """Check rate limits. Returns (ok, message)."""
-    return _check_rate_limit(session_id)
+def _prepare_rate_limiters(session_id: str, tcs_info: list[tuple[Any, str, dict[str, Any]]]) -> tuple[bool, str]:
+    """Check rate limits per tool and globally. Returns (ok, message)."""
+    for _tc, name, _args in tcs_info:
+        ok, msg = _check_rate_limit(session_id, tool_name=name)
+        if not ok:
+            return ok, msg
+    return True, ""
 
 
 async def _yield_tool_error_events(
@@ -133,7 +157,7 @@ async def run_parallel_tools(
             yield ("tool_call", json.dumps({"id": tc.id, "name": name, "args": args, "status": "calling"}))
             phase_tool_ids.append(tc.id)
 
-    ok, msg = _prepare_rate_limiters(session_id)
+    ok, msg = _prepare_rate_limiters(session_id, tcs_info)
     if not ok:
         async for event in _yield_tool_error_events(
             tcs_info, msg, tagged, session_id, turn, history, tool_detail, repos

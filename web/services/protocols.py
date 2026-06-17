@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Any, Protocol
 
-from src.api import DebugInfo
+from src.api.repos import DebugInfo
 from web.services.message_persister_contract import MessagePersisterDeps
 from web.services.message_renderer_contract import MessageRenderDeps
 

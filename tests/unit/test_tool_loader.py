@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 from src.tools.loader import TOOL_MAP, TOOL_DEFINITIONS
 
 EXPECTED_TOOLS = [
+    "extract_text",
     "fetch_url",
     "get_tool_history",
     "get_widget_code",

@@ -108,14 +108,21 @@ class TestStreamParser:
         assert events[0].name == "web_search"
 
     def test_tool_between_reasoning_and_content(self):
-        """Tool call after reasoning resets phases properly."""
-        p = StreamParser()
-        p.feed("__reasoning__:Pienso")  # reasoning_phase=0
-        p.feed("__tool__:search")        # tool resets phases
+        """Tool call is INLINE — next reasoning continues same phase.
 
-        # Next reasoning should be in a NEW phase (not editing old one)
+        Unlike the web UI where tools create a new turn boundary, Telegram
+        renders tools inline in the same reasoning message to avoid visual
+        fragmentation. Reasoning after a tool call APPENDS to the existing
+        message, it does NOT create a new one.
+        """
+        p = StreamParser()
+        p.feed("__reasoning__:Pienso")  # reasoning_phase=0, new_phase=True
+        p.feed("__tool__:search")        # inline tool, _last_type="tool"
+
+        # Next reasoning is SAME phase (tool was inline)
         events = p.feed("__reasoning__:Pienso otra vez")
-        assert events[0].is_new_phase is True
+        assert events[0].is_new_phase is False  # same phase!
+        assert p.reasoning_phase == 0  # no increment
 
     def test_error_event(self):
         """Error creates ErrorEvent and marks stream as finished."""

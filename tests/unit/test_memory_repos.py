@@ -378,3 +378,329 @@ class TestMemoryIndexRepository:
         await repo.upsert("sess_1", "k1", "v1")
         await repo.delete("sess_1", "k1")
         assert await repo.get("sess_1", "k1") is None
+
+
+_MEMORY_SCHEMA = [
+    """CREATE TABLE IF NOT EXISTS memory_index (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS entities (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        metadata TEXT DEFAULT '{}',
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        mention_count INTEGER DEFAULT 1
+    )""",
+    """CREATE TABLE IF NOT EXISTS entity_relations (
+        source_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        relation_type TEXT NOT NULL,
+        weight REAL DEFAULT 1.0,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        PRIMARY KEY (source_id, target_id, relation_type)
+    )""",
+    """CREATE TABLE IF NOT EXISTS entity_mentions (
+        entity_id TEXT NOT NULL,
+        exchange_rowid INTEGER NOT NULL,
+        session_id TEXT NOT NULL DEFAULT '',
+        first_seen TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (entity_id, exchange_rowid)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_entities_name ON entities (name)",
+    "CREATE INDEX IF NOT EXISTS idx_entities_type ON entities (entity_type)",
+    "CREATE INDEX IF NOT EXISTS idx_entity_relations_target ON entity_relations (target_id)",
+    "CREATE INDEX IF NOT EXISTS idx_entity_mentions_exchange ON entity_mentions (exchange_rowid)",
+    "CREATE INDEX IF NOT EXISTS idx_entity_mentions_entity ON entity_mentions (entity_id)",
+]
+
+
+@pytest.fixture
+async def memory_db_conn():
+    import aiosqlite
+
+    conn = await aiosqlite.connect(":memory:")
+    conn.row_factory = aiosqlite.Row
+    for stmt in _MEMORY_SCHEMA:
+        await conn.execute(stmt)
+    await conn.commit()
+    yield conn
+    await conn.close()
+
+
+@pytest.fixture
+def global_index_repo(memory_db_conn):
+    from src.memory.repos_memory.memory_index_repo import GlobalMemoryIndexRepository
+
+    return GlobalMemoryIndexRepository(conn=memory_db_conn)
+
+
+@pytest.fixture
+def entity_repo(memory_db_conn):
+    from src.memory.repos_memory.entity_repo import EntityRepository
+
+    return EntityRepository(conn=memory_db_conn)
+
+
+class TestGlobalMemoryIndexRepository:
+    @pytest.mark.anyio
+    async def test_upsert_and_get(self, global_index_repo):
+        await global_index_repo.upsert("user:interests", "coding, music")
+        result = await global_index_repo.get("user:interests")
+        assert result == "coding, music"
+
+    @pytest.mark.anyio
+    async def test_upsert_overwrite(self, global_index_repo):
+        await global_index_repo.upsert("k1", "old value")
+        await global_index_repo.upsert("k1", "new value")
+        result = await global_index_repo.get("k1")
+        assert result == "new value"
+
+    @pytest.mark.anyio
+    async def test_get_nonexistent(self, global_index_repo):
+        result = await global_index_repo.get("nonexistent")
+        assert result is None
+
+    @pytest.mark.anyio
+    async def test_delete(self, global_index_repo):
+        await global_index_repo.upsert("k1", "v1")
+        await global_index_repo.delete("k1")
+        assert await global_index_repo.get("k1") is None
+
+    @pytest.mark.anyio
+    async def test_get_all(self, global_index_repo):
+        await global_index_repo.upsert("k1", "v1")
+        await global_index_repo.upsert("k2", "v2")
+        all_entries = await global_index_repo.get_all()
+        assert len(all_entries) == 2
+        keys = [e["key"] for e in all_entries]
+        assert keys == ["k1", "k2"]
+
+    @pytest.mark.anyio
+    async def test_get_all_empty(self, global_index_repo):
+        assert await global_index_repo.get_all() == []
+
+    @pytest.mark.anyio
+    async def test_search(self, global_index_repo):
+        await global_index_repo.upsert("user:name", "Mauro")
+        await global_index_repo.upsert("user:stack", "Python, Rust")
+        results = await global_index_repo.search("Mauro")
+        assert len(results) == 1
+        assert results[0]["key"] == "user:name"
+
+    @pytest.mark.anyio
+    async def test_count(self, global_index_repo):
+        assert await global_index_repo.count() == 0
+        await global_index_repo.upsert("k1", "v1")
+        await global_index_repo.upsert("k2", "v2")
+        assert await global_index_repo.count() == 2
+
+
+class TestEntityRepository:
+    @pytest.mark.anyio
+    async def test_upsert_entity(self, entity_repo):
+        await entity_repo.upsert_entity(
+            "e1",
+            "Python",
+            "tecnologia",
+            metadata={"type": "language"},
+            timestamp="2024-01-01",
+        )
+        entity = await entity_repo.get_entity("e1")
+        assert entity is not None
+        assert entity["name"] == "Python"
+        assert entity["entity_type"] == "tecnologia"
+        assert entity["mention_count"] == 1
+
+    @pytest.mark.anyio
+    async def test_upsert_entity_update(self, entity_repo):
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-01"
+        )
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-02"
+        )
+        entity = await entity_repo.get_entity("e1")
+        assert entity["mention_count"] == 2
+        assert entity["last_seen"] == "2024-01-02"
+
+    @pytest.mark.anyio
+    async def test_get_entity(self, entity_repo):
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-01"
+        )
+        entity = await entity_repo.get_entity("e1")
+        assert entity is not None
+        assert entity["id"] == "e1"
+
+    @pytest.mark.anyio
+    async def test_get_entity_nonexistent(self, entity_repo):
+        assert await entity_repo.get_entity("nonexistent") is None
+
+    @pytest.mark.anyio
+    async def test_get_entity_by_name(self, entity_repo):
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-01"
+        )
+        entity = await entity_repo.get_entity_by_name("Python", "tecnologia")
+        assert entity is not None
+        assert entity["id"] == "e1"
+
+    @pytest.mark.anyio
+    async def test_get_entity_by_name_nonexistent(self, entity_repo):
+        entity = await entity_repo.get_entity_by_name("Nope", "unknown")
+        assert entity is None
+
+    @pytest.mark.anyio
+    async def test_search_entities(self, entity_repo):
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-01"
+        )
+        await entity_repo.upsert_entity(
+            "e2", "Rust", "tecnologia", timestamp="2024-01-01"
+        )
+        results = await entity_repo.search_entities("Python")
+        assert len(results) == 1
+        assert results[0]["name"] == "Python"
+
+    @pytest.mark.anyio
+    async def test_search_entities_by_type(self, entity_repo):
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-01"
+        )
+        await entity_repo.upsert_entity(
+            "e2", "Mauro", "persona", timestamp="2024-01-01"
+        )
+        results = await entity_repo.search_entities("P", entity_type="tecnologia")
+        assert len(results) == 1
+        assert results[0]["name"] == "Python"
+
+    @pytest.mark.anyio
+    async def test_upsert_relation(self, entity_repo):
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-01"
+        )
+        await entity_repo.upsert_entity(
+            "e2", "FastAPI", "tecnologia", timestamp="2024-01-01"
+        )
+        await entity_repo.upsert_relation("e1", "e2", "used_by", 0.8, "2024-01-01")
+
+    @pytest.mark.anyio
+    async def test_explore_graph(self, entity_repo):
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-01"
+        )
+        await entity_repo.upsert_entity(
+            "e2", "FastAPI", "tecnologia", timestamp="2024-01-01"
+        )
+        await entity_repo.upsert_entity(
+            "e3", "Django", "tecnologia", timestamp="2024-01-01"
+        )
+        await entity_repo.upsert_relation("e1", "e2", "used_by", 0.8, "2024-01-01")
+        await entity_repo.upsert_relation("e1", "e3", "used_by", 0.6, "2024-01-01")
+        result = await entity_repo.explore_graph("e1", depth=1)
+        names = {r["name"] for r in result}
+        assert "FastAPI" in names or "Django" in names
+        assert "Python" not in names
+
+    @pytest.mark.anyio
+    async def test_explore_graph_nonexistent(self, entity_repo):
+        result = await entity_repo.explore_graph("nonexistent", depth=2)
+        assert result == []
+
+    @pytest.mark.anyio
+    async def test_count(self, entity_repo):
+        assert await entity_repo.count() == 0
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-01"
+        )
+        assert await entity_repo.count() == 1
+
+    @pytest.mark.anyio
+    async def test_delete(self, entity_repo):
+        await entity_repo.upsert_entity(
+            "e1", "Python", "tecnologia", timestamp="2024-01-01"
+        )
+        assert await entity_repo.delete("e1") is True
+        assert await entity_repo.get_entity("e1") is None
+
+    @pytest.mark.anyio
+    async def test_delete_nonexistent(self, entity_repo):
+        assert await entity_repo.delete("nonexistent") is False
+
+
+class TestFlushRelationsToDb:
+    @pytest.mark.anyio
+    async def test_flush_relations_skips_integrity_error(self, in_memory_db, caplog):
+        import os
+        import tempfile
+        import aiosqlite
+        from src.memory.entity.linker import EntityLinker, EntityRelation, flush_relations_to_db
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db_path = tmp.name
+        tmp.close()
+
+        try:
+            async with aiosqlite.connect(db_path) as db:
+                await db.execute("PRAGMA foreign_keys=ON")
+                await db.execute("""CREATE TABLE entities (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    metadata TEXT DEFAULT '{}',
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    mention_count INTEGER DEFAULT 1
+                )""")
+                await db.execute("""CREATE TABLE entity_relations (
+                    source_id TEXT NOT NULL REFERENCES entities(id),
+                    target_id TEXT NOT NULL REFERENCES entities(id),
+                    relation_type TEXT NOT NULL,
+                    weight REAL DEFAULT 1.0,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    PRIMARY KEY (source_id, target_id, relation_type)
+                )""")
+                await db.commit()
+
+            async with aiosqlite.connect(db_path) as db:
+                await db.execute(
+                    "INSERT INTO entities (id, name, entity_type, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)",
+                    ("e1", "Entity1", "test_type", "2024-01-01", "2024-01-01"),
+                )
+                await db.execute(
+                    "INSERT INTO entities (id, name, entity_type, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)",
+                    ("e2", "Entity2", "test_type", "2024-01-01", "2024-01-01"),
+                )
+                await db.commit()
+
+            linker = EntityLinker()
+            linker._relations[("e1", "e2", "co_occurrence")] = EntityRelation(
+                source_id="e1", target_id="e2", relation_type="co_occurrence",
+                weight=1.0, first_seen="2024-01-01", last_seen="2024-01-01",
+            )
+            linker._relations[("nonexistent", "e2", "co_occurrence")] = EntityRelation(
+                source_id="nonexistent", target_id="e2", relation_type="co_occurrence",
+                weight=1.0, first_seen="2024-01-01", last_seen="2024-01-01",
+            )
+
+            caplog.set_level("WARNING", logger="src.memory.entity.linker")
+            count = await flush_relations_to_db(linker, db_path)
+
+            assert count == 1
+            assert "Skipping entity relation with missing entity" in caplog.text
+
+            async with aiosqlite.connect(db_path) as db:
+                cursor = await db.execute("SELECT COUNT(*) as c FROM entity_relations")
+                row = await cursor.fetchone()
+                assert row[0] == 1
+
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)

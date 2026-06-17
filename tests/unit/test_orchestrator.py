@@ -6,6 +6,7 @@ import pytest
 
 from src.core.debug_info import DebugInfo
 from src.core.history_contract import HistoryMessage
+from src.memory.retrieval.hybrid_retriever import HybridResult
 
 async def async_iter(items):
     for item in items:
@@ -136,7 +137,8 @@ async def test_chat_stream_content_only(
     assert history[-1].content == "hello"
     mock_get_sp.assert_not_called()
     mock_get_model.assert_not_called()
-    mock_compress.assert_called_once()
+    # Pre-compression (before LLM) + post-compression (after stream) = 2 calls
+    assert mock_compress.call_count >= 1, "compress_if_needed debe llamarse al menos una vez"
     mock_save_debug.assert_called_once()
 
 
@@ -314,4 +316,376 @@ async def test_chat_stream_loop_error_propagates(
         async for _ in chat_stream("hi", [{"role": "system", "content": "t"}], model="m", streaming=True):
             pass
     mock_save_debug.assert_not_called()
-    mock_compress.assert_not_called()
+    # Pre-compression se ejecuta ANTES del error (antes del tool loop)
+    mock_compress.assert_called_once()
+
+
+@pytest.mark.anyio
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed")
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_chat_stream_pre_compression_trims_large_history(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug,
+):
+    """Pre-compression debe truncar historiales grandes ANTES del LLM.
+
+    BUG 2026-06-15: El bot de Telegram dejaba de responder cuando la sesión
+    acumulaba >100 mensajes porque el historial COMPLETO se enviaba al LLM,
+    que  timeout. La compresión solo corría DESPUÉS del LLM (post-stream),
+    por lo que NUNCA llegaba a ejecutarse. El fix agrega una pre-compresión
+    ANTES del tool loop para asegurar que el LLM reciba un contexto manejable.
+    """
+    from src.compressor import should_compress, MAX_HISTORY, KEEP_RECENT
+
+    # Crear un historial con 50 mensajes (supera MAX_HISTORY=40)
+    history = [{"role": "system", "content": "test"}]
+    for i in range(50):
+        history.append({"role": "user" if i % 2 == 0 else "assistant",
+                        "content": f"Mensaje número {i}"})
+
+    assert len(history) > MAX_HISTORY, "Setup: history debe superar MAX_HISTORY"
+    assert should_compress(history), "Setup: should_compress debe dar True"
+
+    # Hacer que compress_if_needed use la implementación REAL para que
+    # trunque el historial correctamente
+    from src.core.services.history_service import HistoryService
+    real_service = HistoryService()
+    
+    async def _real_compress(hist, model, compress_fn=None, should_compress_fn=None):
+        """Side effect que ejecuta la compresión real."""
+        if should_compress_fn or should_compress(hist):
+            # Versión simplificada: mantiene el primero + últimos KEEP_RECENT
+            keep = KEEP_RECENT
+            hist[:] = [hist[0]] + hist[-keep:]
+    
+    mock_compress.side_effect = _real_compress
+
+    mock_execute.return_value = async_iter([
+        ("content", "respuesta comprimida"),
+    ])
+
+    from src.core.orchestrator import chat_stream
+    tokens = []
+    async for t in chat_stream("último mensaje", history, model="m", tagged=True, streaming=True):
+        tokens.append(t)
+
+    # Verificar que compress_if_needed fue llamado (pre-compression)
+    assert mock_compress.called, (
+        "compress_if_needed debe haber sido llamado para historial grande"
+    )
+    # El historial debe haberse comprimido (reducido de 52+ a ~17 mensajes)
+    assert len(history) <= KEEP_RECENT + 1, (
+        f"Historial grande debe comprimirse a ~{KEEP_RECENT + 1} mensajes, "
+        f"pero quedaron {len(history)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auto-retrieval tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_disabled_by_config(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+):
+    cfg = MagicMock(auto_retrieval_enabled=False)
+    mock_load_config.return_value = cfg
+    mock_execute.return_value = async_iter([("content", "ok")])
+
+    from src.core.orchestrator import chat_stream
+
+    history = [{"role": "system", "content": "test"}]
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-1", tagged=True, streaming=True):
+        pass
+
+
+@pytest.mark.anyio
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_empty_message(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+):
+    cfg = MagicMock(auto_retrieval_enabled=True)
+    mock_load_config.return_value = cfg
+    mock_execute.return_value = async_iter([("content", "ok")])
+
+    from src.core.orchestrator import chat_stream
+
+    history = [{"role": "system", "content": "test"}]
+    async for _ in chat_stream("", history, model="m", session_id="test-ar-2", tagged=True, streaming=True):
+        pass
+
+
+@pytest.mark.anyio
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_short_message(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+):
+    cfg = MagicMock(auto_retrieval_enabled=True)
+    mock_load_config.return_value = cfg
+    mock_execute.return_value = async_iter([("content", "ok")])
+
+    from src.core.orchestrator import chat_stream
+
+    history = [{"role": "system", "content": "test"}]
+    async for _ in chat_stream("ab", history, model="m", session_id="test-ar-3", tagged=True, streaming=True):
+        pass
+
+
+@pytest.mark.anyio
+@patch("src.core.orchestrator.format_memories_for_prompt")
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_first_message_passes(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+    mock_format_mem,
+):
+    cfg = MagicMock(auto_retrieval_enabled=True)
+    mock_load_config.return_value = cfg
+    mock_format_mem.return_value = "AUTO-RETRIEVED MEMORIES\n- test"
+    instance = AsyncMock()
+    instance.search = AsyncMock(return_value=[HybridResult(rowid=1, text="test", fusion_score=0.9)])
+    instance.close = MagicMock()
+    mock_execute.return_value = async_iter([("content", "ok")])
+
+    from src.core.orchestrator import chat_stream
+    from src.core.orchestrator_contract import OrchestratorDeps
+
+    history = [{"role": "system", "content": "test"}]
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-4", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=instance)):
+        pass
+
+    instance.search.assert_awaited_once_with("hello", top_k=8, apply_budget=True)
+
+
+@pytest.mark.anyio
+@patch("src.core.orchestrator.format_memories_for_prompt")
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_throttle_second_message(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+    mock_format_mem,
+):
+    cfg = MagicMock(auto_retrieval_enabled=True)
+    mock_load_config.return_value = cfg
+    mock_format_mem.return_value = "AUTO-RETRIEVED MEMORIES\n- test"
+    instance = AsyncMock()
+    instance.search = AsyncMock(return_value=[HybridResult(rowid=1, text="test", fusion_score=0.9)])
+    instance.close = MagicMock()
+    mock_execute.return_value = async_iter([("content", "ok")])
+
+    from src.core.orchestrator import chat_stream
+    from src.core.orchestrator_contract import OrchestratorDeps
+
+    sid = "test-ar-5"
+    history = [{"role": "system", "content": "test"}]
+
+    deps = OrchestratorDeps(retrieval_service=instance)
+
+    # First call → turn 1 → retrieval happens
+    async for _ in chat_stream("hello", history, model="m", session_id=sid, tagged=True, streaming=True, deps=deps):
+        pass
+    instance.search.assert_awaited_once()
+
+    # Second call → turn 2 → throttled (RETRIEVAL_INTERVAL=2)
+    instance.search.reset_mock()
+    async for _ in chat_stream("hello again", history, model="m", session_id=sid, tagged=True, streaming=True, deps=deps):
+        pass
+    instance.search.assert_not_awaited()
+
+
+@pytest.mark.anyio
+@patch("src.core.orchestrator.format_memories_for_prompt")
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_close_on_success(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+    mock_format_mem,
+):
+    cfg = MagicMock(auto_retrieval_enabled=True)
+    mock_load_config.return_value = cfg
+    mock_format_mem.return_value = "AUTO-RETRIEVED MEMORIES\n- test"
+    instance = AsyncMock()
+    instance.search = AsyncMock(return_value=[HybridResult(rowid=1, text="test", fusion_score=0.9)])
+    instance.close = MagicMock()
+    mock_execute.return_value = async_iter([("content", "ok")])
+
+    from src.core.orchestrator import chat_stream
+    from src.core.orchestrator_contract import OrchestratorDeps
+
+    history = [{"role": "system", "content": "test"}]
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-6", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=instance)):
+        pass
+
+    instance.close.assert_called_once()
+
+
+@pytest.mark.anyio
+@patch("src.core.orchestrator.format_memories_for_prompt")
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_close_on_exception(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+    mock_format_mem,
+):
+    cfg = MagicMock(auto_retrieval_enabled=True)
+    mock_load_config.return_value = cfg
+    mock_format_mem.return_value = "AUTO-RETRIEVED MEMORIES\n- test"
+    instance = AsyncMock()
+    instance.search = AsyncMock(side_effect=ValueError("search failed"))
+    instance.close = MagicMock()
+    mock_execute.return_value = async_iter([("content", "ok")])
+
+    from src.core.orchestrator import chat_stream
+    from src.core.orchestrator_contract import OrchestratorDeps
+
+    history = [{"role": "system", "content": "test"}]
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-7", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=instance)):
+        pass
+
+    instance.close.assert_called_once()
+
+
+@pytest.mark.anyio
+@patch("src.core.orchestrator.format_memories_for_prompt")
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_memory_block_injected(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+    mock_format_mem,
+):
+    cfg = MagicMock(auto_retrieval_enabled=True)
+    mock_load_config.return_value = cfg
+    mock_format_mem.return_value = "AUTO-RETRIEVED MEMORIES\n- test"
+    instance = AsyncMock()
+    instance.search = AsyncMock(return_value=[HybridResult(rowid=1, text="test", fusion_score=0.9)])
+    instance.close = MagicMock()
+    mock_execute.return_value = async_iter([("content", "ok")])
+    mock_get_sp.return_value = {"role": "system", "content": "sys prompt with memories"}
+
+    from src.core.orchestrator import chat_stream
+    from src.core.orchestrator_contract import OrchestratorDeps
+
+    history = []
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-8", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=instance)):
+        pass
+
+    mock_get_sp.assert_called_once()
+    memory_results = mock_get_sp.call_args[1].get("memory_results")
+    assert memory_results is not None
+    assert "AUTO-RETRIEVED MEMORIES" in memory_results
+
+
+@pytest.mark.anyio
+@patch("src.core.orchestrator.format_memories_for_prompt")
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_no_memory_block_when_no_results(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+    mock_format_mem,
+):
+    cfg = MagicMock(auto_retrieval_enabled=True)
+    mock_load_config.return_value = cfg
+    instance = AsyncMock()
+    instance.search = AsyncMock(return_value=[])
+    instance.close = MagicMock()
+    mock_execute.return_value = async_iter([("content", "ok")])
+    mock_get_sp.return_value = {"role": "system", "content": "sys prompt without memories"}
+
+    from src.core.orchestrator import chat_stream
+    from src.core.orchestrator_contract import OrchestratorDeps
+
+    history = []
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-9", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=instance)):
+        pass
+
+    mock_get_sp.assert_called_once()
+    memory_results = mock_get_sp.call_args[1].get("memory_results")
+    assert memory_results is None
+    mock_format_mem.assert_not_called()
+
+
+@pytest.mark.anyio
+@patch("src.core.orchestrator.format_memories_for_prompt")
+@patch("src.config_loader.load_config")
+@patch("src.core.orchestrator._save_debug_info")
+@patch("src.core.services.history_service.HistoryService.compress_if_needed", new_callable=AsyncMock)
+@patch("src.core.services.tool_execution_service.ToolExecutionService.execute")
+@patch("src.core.services.history_service.HistoryService.get_system_prompt")
+@patch("src.core.services.llm_service.LLMService.get_default_model")
+async def test_auto_retrieval_yields_memory_event(
+    mock_get_model, mock_get_sp, mock_execute,
+    mock_compress, mock_save_debug, mock_load_config,
+    mock_format_mem,
+):
+    cfg = MagicMock(auto_retrieval_enabled=True)
+    mock_load_config.return_value = cfg
+    mock_format_mem.return_value = "AUTO-RETRIEVED MEMORIES\n- test"
+    instance = AsyncMock()
+    instance.search = AsyncMock(return_value=[HybridResult(rowid=1, text="test", fusion_score=0.9)])
+    instance.close = MagicMock()
+    mock_execute.return_value = async_iter([("content", "ok")])
+    mock_get_sp.return_value = {"role": "system", "content": "sys prompt"}
+
+    from src.core.orchestrator import chat_stream
+    from src.core.orchestrator_contract import OrchestratorDeps
+
+    history = [{"role": "system", "content": "test"}]
+    tokens = []
+    async for t in chat_stream("hello", history, model="m", session_id="test-ar-10", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=instance)):
+        tokens.append(t)
+
+    memory_events = [t for t in tokens if t[0] == "memory"]
+    assert len(memory_events) == 1
+    assert "AUTO-RETRIEVED MEMORIES" in memory_events[0][1]

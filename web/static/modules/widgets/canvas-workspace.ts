@@ -96,7 +96,9 @@ export const CanvasWorkspace = {
           let w = appW - ev.clientX;
           if (w < 250) w = 250;
           if (w > appW * 0.8) w = appW * 0.8;
-          canvasEl.style.width = w + 'px';
+          if (canvasEl) {
+            canvasEl.style.width = w + 'px';
+          }
           localStorage.setItem(`canvas_width_${_currentSessionId}`, String(w));
         }
         

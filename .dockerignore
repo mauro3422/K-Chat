@@ -11,8 +11,15 @@ tests
 docs
 *.md
 *.log
-.env
+.env*
 .config
 dependencies/searxng
 web/static/marked.min.js
 web/static/purify.min.js
+logs/
+memory/
+data/
+*.db
+.mypy_cache/
+.pytest_cache/
+.testmondata*

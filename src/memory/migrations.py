@@ -316,6 +316,52 @@ async def _migration_017_telegram_chat_id(conn: Any, engine: Any) -> None:
         pass
 
 
+async def _migration_018_auto_memories(conn: Any, engine: Any) -> None:
+    """Add auto_memories column to debug_info table."""
+    try:
+        await engine.execute(conn, "ALTER TABLE debug_info ADD COLUMN auto_memories TEXT NOT NULL DEFAULT ''")
+    except Exception:
+        pass  # Column already exists
+
+
+async def _migration_019_memory_index_weight(conn: Any, engine: Any) -> None:
+    """Add weight column to memory_index in sessions.db."""
+    try:
+        await engine.execute(conn, "ALTER TABLE memory_index ADD COLUMN weight REAL NOT NULL DEFAULT 1.0")
+    except Exception:
+        pass
+
+
+async def _migration_020_chat_journal_fk(conn: Any, engine: Any) -> None:
+    """Add cascade cleanup trigger for chat_journal when session is deleted.
+
+    chat_journal was created in _migration_015 without a FK constraint,
+    so orphaned rows accumulate when sessions are deleted. This trigger
+    mirrors _migration_011's pattern for other session-scoped tables.
+    """
+    await engine.execute(conn, """
+        CREATE TRIGGER IF NOT EXISTS trg_cleanup_chat_journal
+        AFTER DELETE ON sessions
+        BEGIN
+            DELETE FROM chat_journal WHERE session_id = OLD.session_id;
+        END;
+    """)
+
+
+async def _migration_021_messages_session_created_index(conn: Any, engine: Any) -> None:
+    """Add composite index on (session_id, created_at) for session listing performance.
+
+    The get_all query does:
+        GROUP BY m.session_id ORDER BY MAX(m.created_at) DESC
+
+    A composite index covers both the GROUP BY and the ORDER BY without a filesort.
+    """
+    await engine.execute(conn, """
+        CREATE INDEX IF NOT EXISTS idx_messages_session_created
+        ON messages (session_id, created_at)
+    """)
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -334,4 +380,8 @@ MIGRATIONS = (
     _migration_015_chat_journal,
     _migration_016_telegram_msg_ids,
     _migration_017_telegram_chat_id,
+    _migration_018_auto_memories,
+    _migration_019_memory_index_weight,
+    _migration_020_chat_journal_fk,
+    _migration_021_messages_session_created_index,
 )

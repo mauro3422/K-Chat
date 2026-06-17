@@ -20,6 +20,10 @@ MEMORY_TABLES = frozenset({
     "memory_index",
 })
 
+# ── Tablas de deleted_sessions.db ───────────────────────────────────────
+DELETED_TABLES = frozenset({
+    "deleted_sessions",
+})
 # Columnas por defecto por tabla
 DEFAULT_COLUMNS = {
     "messages": "id, session_id, role, substr(content,1,80) as content, created_at, model",
@@ -32,6 +36,7 @@ DEFAULT_COLUMNS = {
     "chat_journal": "id, session_id, user_msg, model, duration_ms, ts",
     "gateway_log": "id, ts, level, service, event",
     "memory_index": "key, substr(value,1,80) as value, updated_at",
+    "deleted_sessions": "session_id, name, message_count, substr(summary,1,80) as summary, topics, deleted_at",
 }
 
 # Columnas de texto por tabla (para búsqueda LIKE)
@@ -46,6 +51,7 @@ SEARCHABLE_COLUMNS = {
     "chat_journal": ["user_msg", "assistant_msg", "error", "session_id"],
     "gateway_log": ["level", "service", "event", "detail"],
     "memory_index": ["key", "value"],
+    "deleted_sessions": ["summary", "name", "session_id"],
 }
 
 DEFAULT_ORDER = {
@@ -56,17 +62,21 @@ DEFAULT_ORDER = {
     "widget_states": "updated_at",
     "debug_info": "updated_at",
     "widget_versions": "created_at",
-    "chat_journal": "id",
     "gateway_log": "id",
     "memory_index": "updated_at",
+    "deleted_sessions": "deleted_at",
 }
 
 
 def _get_db_path(db_name: str) -> str:
-    """Resuelve la ruta de la base según el nombre: 'sessions' o 'memory'."""
+    """Resuelve la ruta de la base según el nombre: 'sessions', 'memory' o 'deleted'."""
     cfg = load_config()
     if db_name == "memory":
         return os.environ.get("KAIROS_MEMORY_DB_PATH", cfg.memory_db_path)
+    if db_name == "deleted":
+        # deleted_sessions.db al mismo nivel que sessions.db
+        base = os.environ.get("SESSIONS_DB_PATH", cfg.sessions_db_path)
+        return os.path.join(os.path.dirname(base), "deleted_sessions.db")
     # sessions por defecto (mantiene compatibilidad)
     return os.environ.get("SESSIONS_DB_PATH", cfg.sessions_db_path)
 
@@ -76,15 +86,15 @@ DEFINITION: dict[str, Any] = {
     "function": {
         "name": "db_query",
         "description": "Consulta SQLite del sistema en modo solo lectura. "
-                       "Soporta sessions.db (chats, tools, widgets) y memory.db (memoria curada). "
-                       "Ahora con búsqueda por contenido (search), filtros WHERE, y selección de base.",
+                       "Soporta sessions.db (chats, tools, widgets), memory.db (memoria curada), "
+                       "y deleted_sessions.db (sesiones eliminadas).",
         "parameters": {
             "type": "object",
             "properties": {
                 "table": {
                     "type": "string",
-                    "enum": sorted(SESSIONS_TABLES | MEMORY_TABLES),
-                    "description": "Tabla a consultar. Según la tabla, se conecta a sessions.db o memory.db automáticamente."
+                    "enum": sorted(SESSIONS_TABLES | MEMORY_TABLES | DELETED_TABLES),
+                    "description": "Tabla a consultar. Segun la tabla, se conecta a sessions.db, memory.db o deleted_sessions.db automaticamente."
                 },
                 "session_id": {
                     "type": "string",
@@ -142,10 +152,12 @@ def _validate_and_sanitize(
     limit: int,
     order_by: str,
     order_dir: str,
-    columns: str,
+    columns: str = "",
+    all_tables: frozenset = SESSIONS_TABLES | MEMORY_TABLES | DELETED_TABLES,
 ) -> tuple[str | None, dict[str, Any]]:
     """Valida y sanitiza parámetros. Devuelve (error, params_dict)."""
-    all_tables = SESSIONS_TABLES | MEMORY_TABLES
+    """Valida y sanitiza parámetros. Devuelve (error, params_dict)."""
+    all_tables = SESSIONS_TABLES | MEMORY_TABLES | DELETED_TABLES
     if table not in all_tables:
         allowed = ", ".join(sorted(all_tables))
         return f"[ERROR] Tabla '{table}' no permitida. Permitidas: {allowed}", None
@@ -244,7 +256,7 @@ def _format_rows_as_table(table: str, rows: list[Any]) -> str:
         result = result[:29997] + "..."
     return result
 
-
+    db_name = "deleted" if table in DELETED_TABLES else ("memory" if _is_memory_table(table) else "sessions")
 def _execute_query(table: str, session_id: str | None, params: dict[str, Any]) -> str:
     """Ejecuta la consulta SQL y formatea resultados."""
     db_name = "memory" if _is_memory_table(table) else "sessions"

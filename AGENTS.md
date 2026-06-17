@@ -66,7 +66,7 @@ These rules apply to ALL code modifications. Violations are regressions.
 - **db_query**: Consulta la base de datos SQLite del sistema en modo solo lectura. 
 - **Sintaxis**: `db_query(table="messages", session_id="id", limit=10)`
 - **Tablas**: sessions, messages, tool_calls, saved_widgets, widget_states, debug_info, memory_index, widget_versions
-- **Available tools**: web_search, fetch_url, read_file, read_multiple, write_file, edit_file, search_files, analyze_code, list_files, execute_command, git_operation, run_code, validate_all, save_memory, memory_search, list_memories, search_conversations (grep para sessions), read_skill, save_widget, update_widget, get_widget_code, get_tool_history, db_query, extract_text
+- **Available tools**: web_search, fetch_url, read_file, read_multiple, write_file, edit_file, search_files, analyze_code, list_files, execute_command, git_operation, run_code, validate_all, save_memory, memory_search, list_memories, search_conversations (grep para sessions), read_skill, save_widget, update_widget, get_widget_code, get_tool_history, db_query, extract_text, query_external_llm
 
 --- 🐍 USO DE RUN_CODE ---
 
@@ -85,6 +85,7 @@ These rules apply to ALL code modifications. Violations are regressions.
 - **Diferencia con execute_command**: execute_command corre comandos shell en tu terminal real (peligroso, sin sandbox). run_code corre SOLO Python en un entorno aislado (seguro). Preferí run_code sobre execute_command para debug y prototipado.
 - **No usar para**: operaciones del proyecto (compilar, mover archivos, git) — para eso está execute_command.
 
+- **No usar para**: operaciones del proyecto (compilar, mover archivos, git) — para eso está execute_command.
 --- 📚 USO DE READ_MULTIPLE ---
 
 - **read_multiple**: Lee MULTIPLES archivos en una sola llamada. Usala cuando necesites entender un flujo completo (orchestrator → tool_loop → runner) o comparar archivos relacionados.
@@ -136,7 +137,4 @@ These rules apply to ALL code modifications. Violations are regressions.
 | Moure/copiar archivos | `move_file` (nueva) | `mv`, `cp` |
 | Calcular/transformar datos | `run_code` | `python3 -c "..."` |
 | Operaciones git | `git_operation` | `git status`, etc. |
-| Buscar en la web | `web_search` | `curl + grep` |
 | Búsqueda en sesiones | `search_conversations` | `grep` sobre DB |
-
-**REGLA DE ORO**: Si existe una tool para lo que necesitás, NO uses execute_command.

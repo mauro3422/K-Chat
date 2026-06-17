@@ -22,7 +22,20 @@ def mock_ws_client():
 def mock_lazy_imports():
     """Create a minimal _LazyImports substitute with a mock chat_stream."""
     li = MagicMock()
-    li.get_repos.return_value = MagicMock()
+    
+    mock_sessions = AsyncMock()
+    mock_sessions.find_by_telegram_chat_id.return_value = "tele-12345"
+    mock_sessions.ensure = AsyncMock()
+    mock_sessions.update_telegram_chat_id = AsyncMock()
+    
+    mock_messages = AsyncMock()
+    mock_messages.get_session_messages.return_value = []
+    
+    repos = MagicMock()
+    repos.sessions = mock_sessions
+    repos.messages = mock_messages
+    
+    li.get_repos.return_value = repos
     li.get_default_model.return_value = "test-model"
 
     async def dummy_stream(**kwargs):
@@ -42,7 +55,8 @@ def mock_lazy_imports():
             yield "content", token
 
     li.chat_stream = dummy_stream
-    return li
+    with patch("channels.telegram.adapter._LazyImports", return_value=li):
+        yield li
 
 
 @pytest.mark.asyncio
@@ -120,20 +134,12 @@ async def test_send_event_contains_session_id(mock_ws_client, mock_lazy_imports)
 
 
 @pytest.mark.asyncio
-async def test_send_event_not_called_for_heartbeat(mock_ws_client):
+async def test_send_event_not_called_for_heartbeat(mock_ws_client, mock_lazy_imports):
     """Heartbeat events should NOT trigger send_event."""
-    from channels.telegram.adapter import _LazyImports
-
-    # Create mock that only yields heartbeat
-    li = MagicMock()
-    repos = MagicMock()
-
     async def heartbeat_stream(**kwargs):
         yield "heartbeat", ""
 
-    li.chat_stream = heartbeat_stream
-    li.get_repos.return_value = repos
-    li.get_default_model.return_value = "test"
+    mock_lazy_imports.chat_stream = heartbeat_stream
 
     from channels.telegram.adapter import process_message
     async for _ in process_message("test", 12345, MagicMock()):
@@ -143,21 +149,15 @@ async def test_send_event_not_called_for_heartbeat(mock_ws_client):
 
 
 @pytest.mark.asyncio
-async def test_reasoning_flush_interval_respected(mock_ws_client):
+async def test_reasoning_flush_interval_respected(mock_ws_client, mock_lazy_imports):
     """send_event should be called at reasoning_flush_interval boundaries."""
-    from channels.telegram.adapter import process_message, _LazyImports
-
     reasoning_tokens = [f"token_{i}" for i in range(25)]  # 25 tokens, flush at 5
-
-    li = MagicMock()
 
     async def reasoning_stream(**kwargs):
         for t in reasoning_tokens:
             yield "reasoning", t
 
-    li.chat_stream = reasoning_stream
-    li.get_repos.return_value = MagicMock()
-    li.get_default_model.return_value = "test"
+    mock_lazy_imports.chat_stream = reasoning_stream
 
     from channels.telegram.adapter import process_message
     async for _ in process_message("test", 12345, MagicMock()):

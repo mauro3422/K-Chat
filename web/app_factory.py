@@ -6,8 +6,8 @@ import asyncio
 import importlib
 import logging
 import os
+import sys
 import time
-from collections import defaultdict
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,15 +20,40 @@ from fastapi.staticfiles import StaticFiles
 from dependencies import manage as deps
 from src.api.exceptions import ServiceException
 from src.config_loader import load_config
-from src.api import init_db
-from src.memory.memory_schema import init_memory_db
+from src.api.repos import init_db, init_memory_db
+from src.memory.deleted_sessions_db import init_deleted_sessions_db
 
 logger = logging.getLogger(__name__)
 
-_rate_limit_store: dict[str, list[float]] = defaultdict(list)
-_RATE_WINDOW = 60.0
 
-_config = None
+class RateLimitStore:
+    """Per-IP rate limit store with automatic eviction."""
+    def __init__(self, window: float = 60.0, max_ips: int = 1000):
+        self._window = window
+        self._max_ips = max_ips
+        self._store: dict[str, list[float]] = {}
+
+    def check_and_record(self, ip: str, max_requests: int) -> bool:
+        now = time.time()
+        if len(self._store) > self._max_ips:
+            self._evict()
+        bucket = self._store.get(ip, [])
+        bucket[:] = [t for t in bucket if now - t < self._window]
+        if len(bucket) >= max_requests:
+            return False
+        bucket.append(now)
+        self._store[ip] = bucket
+        return True
+
+    def _evict(self):
+        now = time.time()
+        self._store = {k: v for k, v in self._store.items()
+                      if v and now - v[-1] < self._window * 2}
+
+
+_rate_limit_store = RateLimitStore()
+
+_config = None  # Intentional cache: lazily loaded via _get_config()
 
 
 def _get_config():
@@ -50,6 +75,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             searxng_started = True
     await init_db()
     await init_memory_db()
+    init_deleted_sessions_db()
+    try:
+        from src.logbus import get_logbus
+        from src.logbus.writers import JsonlWriter, ConsoleWriter, SqliteWriter
+        bus = get_logbus()
+        bus.add_writer(JsonlWriter())
+        bus.add_writer(SqliteWriter())
+        if os.environ.get("LOG_LEVEL", "").upper() == "DEBUG":
+            bus.add_writer(ConsoleWriter())
+        await bus.start()
+    except Exception:
+        pass
     try:
         from src.api import SkillRegistry
         SkillRegistry().generate_index_md()
@@ -69,22 +106,47 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await asyncio.wait_for(ensure_registry_refreshed(), timeout=10)
         except Exception:
             pass  # registry will lazy-refresh on first request
+        # Preload embedding model so first chat request doesn't wait 6+ seconds
+        try:
+            from src.memory.embeddings.service import get_model
+            model = await asyncio.to_thread(get_model)
+            if model is not None:
+                logger.info("Embedding model preloaded successfully")
+            else:
+                logger.warning("Embedding model not available at startup (will lazy-load)")
+        except Exception as e:
+            logger.warning("Embedding model preload failed (non-fatal): %s", e)
+    try:
+        from src.logbus import get_logbus
+        await get_logbus().stop()
+    except Exception:
+        pass
     yield
     if searxng_started:
         deps.searxng_stop()
+    # Unload ML models to free memory on shutdown
+    try:
+        from src.memory.embeddings.service import unload_model as unload_embeddings
+        unload_embeddings()
+    except Exception:
+        pass
+    try:
+        from src.memory.retrieval.reranker import unload_model as unload_reranker
+        unload_reranker()
+    except Exception:
+        pass
+    logger.info("ML models unloaded on shutdown")
 
 def register_middlewares(app: FastAPI) -> None:
+    from src.logbus.middleware import LogBusMiddleware
+    app.add_middleware(LogBusMiddleware)
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
             return await call_next(request)
         client_ip = request.client.host if request.client else "unknown"
-        now = time.time()
-        bucket = _rate_limit_store[client_ip]
-        bucket[:] = [t for t in bucket if now - t < _RATE_WINDOW]
-        if len(bucket) >= _get_config().http_rate_limit:
+        if not _rate_limit_store.check_and_record(client_ip, _get_config().http_rate_limit):
             return JSONResponse({"detail": "Rate limit exceeded. Try again later."}, status_code=429)
-        bucket.append(now)
         return await call_next(request)
 
     @app.middleware("http")
@@ -94,8 +156,8 @@ def register_middlewares(app: FastAPI) -> None:
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: blob:; "
-            "frame-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob: https:; "
+            "frame-src 'self' 'unsafe-inline' https:; "
             "connect-src 'self'"
         )
         return response
@@ -143,8 +205,37 @@ def register_routers(app: FastAPI) -> None:
         except Exception as e:
             logger.warning("Router %s: error loading (%s), skipped", mod_name, e)
 
+def setup_logging() -> None:
+    """Configure root logger for the web server process.
+
+    Called once at app creation — ensures all ``logger.info(...)`` calls
+    from web services (chat_stream, routers, etc.) actually go somewhere.
+    Also installs the structured JSONL handler for persistent searchable logs.
+    """
+    cfg = _get_config()
+    log_level = getattr(logging, cfg.log_level.upper(), logging.INFO)
+
+    # Only configure if root logger has no handlers yet (idempotent)
+    if not logging.getLogger().hasHandlers():
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%H:%M:%S",
+            stream=sys.stderr,
+        )
+
+    # Install JSONL handler for the whole "web" tree
+    try:
+        from web.services.file_logger import install_jsonl_handler
+        install_jsonl_handler("web")
+    except Exception:
+        pass  # non-fatal
+
+
+
 
 def create_app() -> FastAPI:
+    setup_logging()
     app = FastAPI(lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
     register_middlewares(app)

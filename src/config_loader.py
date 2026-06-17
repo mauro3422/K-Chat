@@ -4,7 +4,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+_dotenv_loaded = False
+def _ensure_dotenv_loaded() -> None:
+    global _dotenv_loaded
+    if not _dotenv_loaded:
+        load_dotenv()
+        _dotenv_loaded = True
 
 # ── Model name constants ────────────────────────────────────────────────
 DEFAULT_MODEL: str = "deepseek-v4-flash"
@@ -33,12 +38,15 @@ class Config:
     testing: bool = False
     environment: str = "production"
     user_name: str = "user"
+    auto_retrieval_enabled: bool = True
     # ── Telegram Bot ────────────────────────────────────────────────
     telegram_bot_token: str = ""
     telegram_allowed_users: str = ""
     # ── Watchdog ────────────────────────────────────────────────────
     watchdog_interval: int = 5
     watchdog_url: str = "http://127.0.0.1:8000/health"
+    # ── Session retention ──────────────────────────────────────────
+    session_max_age_days: int = 90
 
 
 def _resolve_project_root() -> Path:
@@ -46,6 +54,7 @@ def _resolve_project_root() -> Path:
 
 
 def load_config(overrides: dict | None = None) -> Config:
+    _ensure_dotenv_loaded()
     root = _resolve_project_root()
     cfg = Config(
         opencode_zen_api_key=os.getenv("OPENCODE_ZEN_API_KEY", "") or os.getenv("OPENCODE_ZEN_API_KEY_FALLBACK", ""),
@@ -68,12 +77,15 @@ def load_config(overrides: dict | None = None) -> Config:
         testing=os.getenv("TESTING", "").lower() in ("1", "true", "yes"),
         environment=os.getenv("ENVIRONMENT", "production"),
         user_name=os.getenv("USER", "") or os.getenv("USERNAME", "user"),
+        auto_retrieval_enabled=os.getenv("AUTO_RETRIEVAL_ENABLED", "true").lower() in ("1", "true", "yes"),
         # ── Telegram ────────────────────────────────────────────────
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         telegram_allowed_users=os.getenv("TELEGRAM_ALLOWED_USERS", ""),
         # ── Watchdog ───────────────────────────────────────────────
         watchdog_interval=int(os.getenv("WATCHDOG_INTERVAL", "5")),
         watchdog_url=os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/health"),
+        # ── Session retention ──────────────────────────────────────
+        session_max_age_days=int(os.getenv("SESSION_MAX_AGE_DAYS", "90")),
     )
 
     if overrides:

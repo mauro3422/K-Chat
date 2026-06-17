@@ -129,33 +129,52 @@ class StreamParser:
 
         Returns ``True`` if this is a new phase (caller should create a
         new message), ``False`` if same phase (caller should edit).
+
+        Phase rules (Telegram-optimized):
+
+        - tool calls are INLINE in the current reasoning phase — they
+          do NOT create a new turn (unlike the web UI which separates).
+          Reasoning post-tool-calls appends to the SAME reasoning message.
+        - reasoning → content  : new content phase (new message)
+        - content  → reasoning : new reasoning phase (new message)
+        - anything → error     : terminal
         """
         if new_type == "tool":
-            # Tool calls reset both reasoning and content phases.
-            # Setting _last_type = None means the NEXT event (reasoning
-            # or content) will be treated as first-of-phase (→ new msg).
-            self._reasoning_phase += 1
-            self._content_phase += 1
-            self._last_type = None
-            return True  # tool always creates a new message
+            # Tool calls are inline — keep _last_type as "tool" so the
+            # next reasoning/content continues the SAME phase.
+            self._last_type = "tool"
+            return False  # tool does NOT create a new message
 
         if new_type == "reasoning":
             if self._last_type == "content":
-                # Transition content → reasoning: new reasoning phase
+                # content → reasoning: new reasoning turn
                 self._reasoning_phase += 1
                 self._last_type = "reasoning"
-                return True  # new phase → new message
+                return True
+            if self._last_type == "tool":
+                # tool → reasoning: same turn, append to existing message
+                self._last_type = "reasoning"
+                return False
+            # First event ever
             is_first = self._last_type is None
             self._last_type = "reasoning"
-            return is_first  # only new if first event ever
+            return is_first
 
         if new_type == "content":
             if self._last_type == "reasoning":
-                # Transition reasoning → content: new content phase
+                # reasoning → content: new content phase
                 self._content_phase += 1
                 self._last_type = "content"
-                return True  # new phase → new message
+                return True
+            if self._last_type == "tool":
+                # tool → content: first content of the turn
+                self._content_phase += 1
+                self._last_type = "content"
+                return True
+            # First event ever — still count as phase 1 for consistency
             is_first = self._last_type is None
+            if is_first:
+                self._content_phase += 1
             self._last_type = "content"
             return is_first
 

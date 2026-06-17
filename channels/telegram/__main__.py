@@ -19,28 +19,41 @@ from channels.telegram.bot import run_bot
 _PID_FILE = Path(__file__).resolve().parent.parent.parent / ".kairos" / "telegram_bot.pid"
 
 
-def _check_pid_lock() -> None:
-    """Exit if another bot instance is running. Write PID file on success."""
+def _check_pid_lock(force: bool = False) -> None:
+    """Exit if another bot instance is running. Write PID file on success.
+
+    Args:
+        force: If True, override any existing PID lock (``--force`` flag).
+    """
     _PID_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    if _PID_FILE.exists():
+    if _PID_FILE.exists() and not force:
         try:
             old_pid = int(_PID_FILE.read_text().strip())
-            # Check if that PID is still alive and is a python process
+            # Check if that PID is still alive
             try:
                 os.kill(old_pid, 0)
-                # Process exists — check if it's actually us
-                with open(f"/proc/{old_pid}/cmdline", "rb") as fh:
-                    cmdline = fh.read().decode("utf-8", errors="replace")
-                if "channels.telegram" in cmdline:
-                    print(f"❌ Bot ya está corriendo (PID {old_pid}).")
-                    print("   Si querés forzar reinicio, borrá:")
-                    print(f"   rm {_PID_FILE}")
-                    sys.exit(1)
-            except (OSError, IOError, ValueError):
-                pass  # PID not alive or not accessible
+                # Process exists — check if it's actually the bot
+                try:
+                    with open(f"/proc/{old_pid}/cmdline", "rb") as fh:
+                        cmdline = fh.read().decode("utf-8", errors="replace")
+                    if "channels.telegram" in cmdline:
+                        print(f"❌ Bot ya está corriendo (PID {old_pid}).")
+                        print("   Si querés forzar reinicio, usá --force")
+                        sys.exit(1)
+                except (OSError, IOError):
+                    # Can't read cmdline — pid might be a zombie or different process
+                    print(f"⚠️  PID {old_pid} existe pero no es accesible.")
+                    print("   Eliminando PID lock stale...")
+                    _PID_FILE.unlink(missing_ok=True)
+            except (OSError, IOError):
+                # PID not alive — stale lock file, clean it up
+                print(f"⚠️  PID {old_pid} ya no está vivo. Limpiando PID lock stale...")
+                _PID_FILE.unlink(missing_ok=True)
         except (OSError, ValueError):
-            pass  # Invalid PID file
+            # Invalid PID file content — clean it up
+            print(f"⚠️  PID lock corrupto. Limpiando...")
+            _PID_FILE.unlink(missing_ok=True)
 
     # Write our PID
     _PID_FILE.write_text(str(os.getpid()))
@@ -48,8 +61,6 @@ def _check_pid_lock() -> None:
 
 
 def main() -> None:
-    _check_pid_lock()
-
     parser = argparse.ArgumentParser(description="K-Chat Telegram Bot")
     parser.add_argument(
         "--debug", "-d",
@@ -68,6 +79,8 @@ def main() -> None:
         help="Force start even if PID file exists (ignores lock)",
     )
     args = parser.parse_args()
+
+    _check_pid_lock(force=args.force)
 
     level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(

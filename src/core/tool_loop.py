@@ -3,7 +3,7 @@ import json
 from collections.abc import AsyncGenerator, Callable, Awaitable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from src.constants import max_tool_turns
 from src.memory.types import DebugInfo
@@ -11,6 +11,30 @@ from src.memory.repos import Repositories
 from src.core.history_contract import HistoryMessage
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class ToolLoopProtocol(Protocol):
+    """Protocol for tool loop functions (run_tool_loop_streaming / run_tool_loop_sync)."""
+    async def __call__(
+        self,
+        history: list[dict[str, Any]],
+        model: str,
+        session_id: str | None,
+        tagged: bool,
+        debug: DebugInfo | None,
+        phases_output: list[dict[str, Any]] | None,
+        used_tools: list[str],
+        tool_detail: list[dict[str, Any]],
+        run_parallel_tools_fn: Any,
+        tool_map: dict[str, Any],
+        max_turns: int = ...,
+        repos: 'Repositories | None' = ...,
+        llm_chat_fn: Callable[..., Any] | None = ...,
+        llm_chat_stream_fn: Callable[..., Any] | None = ...,
+        tool_defs: list[dict[str, Any]] | None = ...,
+        skill_registry: Any | None = ...,
+    ) -> AsyncGenerator[Any, None]: ...
 
 
 @dataclass

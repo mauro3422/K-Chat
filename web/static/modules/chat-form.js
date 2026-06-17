@@ -10,6 +10,7 @@ var lastUserMessageText = '';
 var currentController = null;
 var currentRetryController = createRetryController();
 var retryClickBound = false;
+var streaming = false; // ← flag para saber si estamos en medio de una generación
 
 function getNav(deps) {
   if (!deps || !deps.nav) {
@@ -72,6 +73,7 @@ function buildMessageNode(roleClass, label, bodyClass, bodyText, files) {
 }
 
 function retryLastMessage() {
+  if (streaming) return;
   var lastAsstMsg = document.querySelector('.msg.assistant:last-child');
   if (lastAsstMsg && lastAsstMsg.querySelector('.' + C.ERROR_CARD)) {
     lastAsstMsg.remove();
@@ -97,7 +99,26 @@ function retryLastMessage() {
   }
 }
 
+// ── Marcar/desmarcar el estado "streaming" ────────────────────────────
+
+function setStreamingState(isStreaming) {
+  streaming = isStreaming;
+  var container = document.querySelector('.chat-input-container');
+  if (container) {
+    container.classList.toggle('streaming', isStreaming);
+  }
+}
+
+function isStreaming() {
+  return streaming;
+}
+
 function init(deps) {
+  // Evitar doble inicialización (el chunk stream-lifecycle importa app.js sin cache buster,
+  // generando dos copias del módulo con duplicación de event listeners)
+  if (window._kcChatFormReady) return;
+  window._kcChatFormReady = true;
+
   FileAttachment.init();
   if (!retryClickBound) {
     retryClickBound = true;
@@ -113,17 +134,31 @@ function init(deps) {
     if (form.id !== 'chat-form') return;
     e.preventDefault();
 
+    // SI estamos en streaming: solo permitir abortar (stop/Escape), bloquear submits nuevos
+    if (streaming) {
+      var submitBtn = document.getElementById('chat-submit-btn');
+      if (submitBtn && submitBtn.classList.contains('btn-stop')) {
+        if (currentController) currentController.abort();
+      }
+      return;
+    }
+
+    // Lock streaming INMEDIATAMENTE para evitar reentrada por MutationObserver/eventos síncronos
+    setStreamingState(true);
+
     var input = document.getElementById('msg-input');
     var text = input ? input.value.trim() : '';
-    if (!text) return;
+    if (!text) {
+      setStreamingState(false);
+      return;
+    }
+
+    // Limpiar el input INMEDIATAMENTE al enviar (no esperar a que termine el stream)
+    input.value = '';
+    input.style.height = '';
 
     var currentFiles = FileAttachment.hasFiles() ? FileAttachment.getFiles() : [];
 
-    var submitBtn = document.getElementById('chat-submit-btn');
-    if (submitBtn && submitBtn.classList.contains('btn-stop')) {
-      if (currentController) currentController.abort();
-      return;
-    }
     var messages = document.getElementById('messages');
     if (messages) {
       messages.appendChild(buildMessageNode('user', 'Tu', C.MSG_BODY, text, currentFiles));
@@ -132,6 +167,7 @@ function init(deps) {
     if (messages) {
       messages.appendChild(asstDiv);
     }
+    if (currentController) currentController.abort();
     currentController = new AbortController();
     if (!currentRetryController || text !== lastUserMessageText) {
       currentRetryController = createRetryController();
@@ -143,17 +179,22 @@ function init(deps) {
     var oldUrl = nav.location.pathname;
     if (oldUrl === '/') { nav.history.replaceState({sid:SessionContext.getSessionId()}, '', '/sessions/' + SessionContext.getSessionId()); }
 
-    input.disabled = true;
+    // ── NO deshabilitamos el input ──
+    // input.disabled = true;  ← ELIMINADO. El usuario puede escribir mientras piensa.
     document.getElementById('spinner').textContent = '...';
 
     // Set button to stop state
+    var submitBtn = document.getElementById('chat-submit-btn');
     if (submitBtn) {
       submitBtn.className = 'btn-stop';
       submitBtn.title = 'Detener generación (Esc)';
+      submitBtn.setAttribute('aria-label', 'Detener generación');
       submitBtn.innerHTML = '<svg class="stop-svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>';
     }
 
     Utils.scrollToBottom();
+
+    // streaming ya está en true desde arriba (setStreamingState(true))
 
     StreamOrchestrator.startStream({
       text: text,
@@ -183,16 +224,47 @@ function init(deps) {
     }
   });
 
-  // ── Enter para enviar (sin Shift) ────────────────────────────────────
+  // ── Enter para enviar (sin Shift) — bloqueado si está streaming ─────
   var input = document.getElementById('msg-input');
   if (input) {
     input.addEventListener('keydown', function(event) {
+      // Allow Ctrl+Enter as alternative submit
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        if (streaming) {
+          event.preventDefault();
+          var container = document.querySelector('.chat-input-container');
+          if (container) {
+            container.classList.remove('input-blocked-flash');
+            void container.offsetWidth;
+            container.classList.add('input-blocked-flash');
+          }
+          return;
+        }
+        event.preventDefault();
+        document.getElementById('chat-form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        return;
+      }
       if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault();
+        if (streaming) {
+          var container = document.querySelector('.chat-input-container');
+          if (container) {
+            container.classList.remove('input-blocked-flash');
+            void container.offsetWidth;
+            container.classList.add('input-blocked-flash');
+          }
+          return;
+        }
         if (input.value.trim()) {
           document.getElementById('chat-form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
         }
       }
+    });
+
+    // Auto-resize textarea
+    input.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 180) + 'px';
     });
   }
 }
@@ -200,10 +272,34 @@ function init(deps) {
 function resetForm() {
   lastUserMessageText = '';
   currentRetryController.resetRetryCount();
+  // Abortar cualquier generación en curso
+  if (currentController) {
+    try { currentController.abort(); } catch(e) {}
+    currentController = null;
+  }
+  // Asegurar que el input quede habilitado
+  var input = document.getElementById('msg-input');
+  if (input) {
+    input.disabled = false;
+    input.value = '';
+    input.style.height = 'auto';
+    input.focus();
+  }
+  // Resetear botón a estado de envío
+  var btn = document.getElementById('chat-submit-btn');
+  if (btn) {
+    btn.className = '';
+    btn.title = 'Enviar mensaje';
+    btn.setAttribute('aria-label', 'Enviar mensaje');
+    btn.innerHTML = '<svg class="send-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>';
+  }
+  setStreamingState(false);
 }
 
 export const ChatForm = {
   init: init,
   retry: retryLastMessage,
-  reset: resetForm
+  reset: resetForm,
+  isStreaming: isStreaming,
+  setStreamingState: setStreamingState
 };

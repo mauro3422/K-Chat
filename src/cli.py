@@ -8,14 +8,15 @@ from src.api import (
     generate_session_id,
     get_default_model,
     OrchestratorDeps,
+    get_repos,
+)
+from src.api.orchestrator import (
     HistoryService,
     LLMService,
     ToolExecutionService,
     TelemetryService,
-    init_db,
-    MessageRecord,
-    get_repos,
 )
+from src.api.repos import init_db, MessageRecord
 from src.cli_commands import handle_command
 
 logger: logging.Logger = logging.getLogger(__name__)

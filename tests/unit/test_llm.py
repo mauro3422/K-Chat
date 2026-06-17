@@ -3,7 +3,8 @@ from unittest.mock import ANY, patch, MagicMock, AsyncMock
 import pytest
 
 from src.llm.client import chat
-from src.llm.model_state import clear_failed_models, set_cached_models, set_verified_models
+from src.llm.model_state import clear_failed_models, set_cached_models
+from src.llm.model_registry import set_verified_models
 from src.llm.api_call import _api_call
 from src.context import build_system_prompt
 

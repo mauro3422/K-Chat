@@ -367,6 +367,9 @@ function refreshDebug() {
     dc.appendChild(createSection('Razonamiento:', 'text', {
       preText: d.reasoning || '(ninguno)'
     }));
+    dc.appendChild(createSection('Auto Memorias:', 'text', {
+      preText: d.auto_memories || '(ninguna)'
+    }));
     dc.appendChild(createSection('Tools:', 'text', {
       preText: JSON.stringify(d.tool_calls || [], null, 2)
     }));

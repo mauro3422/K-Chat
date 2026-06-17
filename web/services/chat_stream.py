@@ -9,14 +9,16 @@ from fastapi import BackgroundTasks
 from src.api import (
     chat_stream,
     OrchestratorDeps,
+    get_repos,
+    auto_rename_session,
+)
+from src.api.orchestrator import (
     HistoryService,
     LLMService,
     ToolExecutionService,
     TelemetryService,
-    DebugInfo,
-    get_repos,
-    auto_rename_session,
 )
+from src.api.repos import DebugInfo
 from web.services.loop_detector import LoopDetector
 from web.services.message_persister import save_assistant_message
 from web.services.stream_error_classifier import classify_error
@@ -29,6 +31,10 @@ from web.services.stream_state import StreamState
 logger = logging.getLogger(__name__)
 
 HEARTBEAT_INTERVAL = 20
+
+# Per-session locks to prevent data races between concurrent vectorization
+# and delete operations for the same session_id.
+_vectorize_locks: dict[str, asyncio.Lock] = {}
 
 
 def build_stream_generator(
@@ -164,7 +170,7 @@ def build_stream_generator(
             return
         except Exception as e:
             error_type, error_msg = classify_error(e)
-            logger.error("Stream error for %s: [%s] %s", session_id, error_type, error_msg)
+            logger.error("Stream error for %s: [%s] %s — %s: %s", session_id, error_type, error_msg, type(e).__name__, e)
             if _deps.retry_handler is not None and _deps.retry_handler.can_retry and state.has_output():
                 try:
                     async for rtipo, rtoken in _deps.retry_handler.attempt_recovery(
@@ -178,11 +184,68 @@ def build_stream_generator(
             yield serialize_stream_event("error", {"type": error_type, "message": error_msg})
             return
         finally:
+            # Always enqueue background vectorization (even on disconnect)
+            background_tasks.add_task(_vectorize_session, session_id)
+
             if not state.persisted and state.has_output():
                 logger.info("Saving partial message for session %s after stream interruption", session_id)
                 if await _save_with_retry("interruption"):
                     state.mark_persisted(time.monotonic())
                 else:
                     logger.warning("Could not save partial message for session %s", session_id)
-
     return generate
+
+
+async def _vectorize_session(session_id: str) -> None:
+    """Background task: vectorize session exchanges (FASE 7 + FASE 2 pipeline).
+
+    Runs the full pipeline per exchange:
+      keywords → noise filter → embed → cluster → extract entities → link entities
+
+    Reuses the repos connection pool instead of opening standalone connections.
+    Fails silently — never blocks the stream response.
+
+    Uses a per-session asyncio lock to prevent data races with concurrent
+    delete_memory or delete_cascade operations for the same session_id.
+    """
+    if session_id not in _vectorize_locks:
+        _vectorize_locks[session_id] = asyncio.Lock()
+    lock = _vectorize_locks[session_id]
+    async with lock:
+        try:
+            from src.api.repos import get_repos
+            from src.memory.vectorize_sessions import vectorize_session as _vs
+            from src.memory.clustering.heuristic import HeuristicClusterer, flush_clusters_to_db
+            from src.memory.clustering.relations import detect_relations, flush_relations_to_db
+            from src.memory.entity.linker import (
+                EntityLinker, flush_entities_to_db,
+                flush_relations_to_db as flush_entity_relations_to_db,
+                flush_entity_mentions_to_db,
+            )
+            from src.memory.memory_db_path import resolve_memory_db_path
+
+            repos = get_repos()
+            db_path = resolve_memory_db_path()
+            clusterer = HeuristicClusterer()
+            linker = EntityLinker()
+
+            count, noise, mappings, _ = await _vs(
+                session_id, clusterer=clusterer, repos=repos, linker=linker,
+            )
+            if count > 0:
+                await flush_clusters_to_db(clusterer, db_path, mappings=mappings)
+                cluster_dicts = [c.as_dict for c in clusterer.clusters.values()]
+                relations = detect_relations(cluster_dicts)
+                if relations:
+                    await flush_relations_to_db(relations, db_path)
+
+                await flush_entities_to_db(linker, db_path)
+                await flush_entity_relations_to_db(linker, db_path)
+                await flush_entity_mentions_to_db(linker, db_path)
+
+                logger.info("Vectorized session %s: %d exchanges (%d noise, %d clusters, %d entities)",
+                            session_id, count, noise, len(clusterer.clusters), len(linker.get_entities()))
+        except Exception:
+            logger.exception("Failed to vectorize session %s (non-fatal)", session_id)
+        finally:
+            _vectorize_locks.pop(session_id, None)

@@ -64,12 +64,17 @@ export function renderMessage(msg) {
   const ts = msg.ts;
   const phases = msg.phases;
   const matched_tools = msg.matched_tools || [];
+  const msgId = msg.id;
 
   const label = role === "user" ? "Tu" : "Kairos";
   const parts = [];
 
-  parts.push('<div class="msg ' + role + '" data-ts="' + (ts || '') + '">');
+  const dataIdAttr = msgId ? ' data-id="' + msgId + '"' : '';
+  parts.push('<div class="msg ' + role + '" data-ts="' + (ts || '') + '"' + dataIdAttr + '>');
   parts.push('<div class="msg-label">' + label + '</div>');
+  if (msgId) {
+    parts.push('<button class="msg-delete-btn" title="Eliminar mensaje" data-msg-id="' + msgId + '">🗑️</button>');
+  }
 
   if (role === "assistant" && phases && phases.length > 0) {
     const toolsByTurn = {};
@@ -84,6 +89,16 @@ export function renderMessage(msg) {
     const hasAnyPhaseContent = phases.some(p => p.content);
 
     phases.forEach((phase, idx) => {
+      // Memory injection phase (auto-retrieved memories)
+      const mText = phase.memory || "";
+      if (mText) {
+        parts.push(
+          '<details class="reasoning memories-phase" open>',
+          '<summary>📖 Memorias</summary>',
+          '<div class="rt memory-content">' + escapeHtml(mText) + '</div>',
+          '</details>'
+        );
+      }
       const rText = phase.reasoning || "";
       if (rText) {
         parts.push(
@@ -151,7 +166,7 @@ export function renderMessageList(messages, widget_states) {
   const parts = [];
   
   if (!messages || messages.length === 0) {
-    parts.push(`<div class="empty-state">Send a message to start</div>`);
+    parts.push(`<div class="empty-state">Envía un mensaje para empezar</div>`);
   } else {
     messages.forEach(msg => {
       parts.push(renderMessage(msg));

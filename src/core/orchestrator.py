@@ -27,6 +27,7 @@ from src.core.services.tool_execution_service import ToolExecutionService
 from src.core.services.telemetry_service import TelemetryService
 
 if TYPE_CHECKING:
+    from src.core.services.retrieval_service import RetrievalService
     from src.core.services.protocols import (
         HistoryServiceProtocol,
         LLMServiceProtocol,
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
     )
 
 logger: logging.Logger = logging.getLogger(__name__)
+
 
 
 def generate_session_id() -> str:
@@ -143,15 +145,50 @@ async def chat_stream(
         _deps.debug.history_before = []
         _deps.debug.system_prompt = ""
 
+    # ── Auto-retrieve memories from last user message ────────────────
+    memory_block = None
+    if _deps.retrieval_service is not None:
+        memory_block = await _deps.retrieval_service.retrieve_if_allowed(
+            message_user=message_user,
+            session_id=_deps.session_id,
+        )
+    else:
+        from src.core.services.retrieval_service import RetrievalService
+        svc = RetrievalService()
+        memory_block = await svc.retrieve_if_allowed(
+            message_user=message_user,
+            session_id=_deps.session_id,
+        )
+    if memory_block:
+        if _deps.phases_output is not None:
+            _deps.phases_output.append({"memory": memory_block})
+        if _deps.debug is not None:
+            _deps.debug.auto_memories = memory_block
+
     if not history:
         tool_defs = (_deps.tool_service.tool_registry.definitions
                      if _deps.tool_service and _deps.tool_service.tool_registry else None)
-        sp = _deps.history_service.get_system_prompt(model, tool_definitions=tool_defs)
+        sp = _deps.history_service.get_system_prompt(model, tool_definitions=tool_defs, memory_results=memory_block)
         history.append(HistoryMessage(
             role=sp["role"],
             content=sp["content"],
             created_at=datetime.now().isoformat()
         ))
+    elif memory_block:
+        # Subsequent turns: update system prompt content with new memories
+        sp = _deps.history_service.get_system_prompt(model, memory_results=memory_block)
+        new_content = sp["content"]
+        if isinstance(history[0], dict):
+            history[0]["content"] = new_content
+        else:
+            # HistoryMessage (Pydantic BaseModel)
+            try:
+                history[0].content = new_content
+            except (AttributeError, TypeError):
+                # Fallback: reconstruct the entry
+                created_at = getattr(history[0], "created_at", datetime.now().isoformat())
+                role = getattr(history[0], "role", sp["role"])
+                history[0] = HistoryMessage(role=role, content=new_content, created_at=created_at)
 
     if _deps.debug is not None:
         _deps.debug.system_prompt = getattr(history[0], "content", "") or ""
@@ -164,6 +201,19 @@ async def chat_stream(
 
     if _deps.debug is not None:
         _deps.debug.history_before = [_msg_snapshot(m) for m in history]
+
+    # ── Pre-compression: trim history BEFORE sending to LLM ─────────────
+    # Without this, a session with 100+ messages sends ALL of them to the
+    # LLM in one go → context overflow → timeout → no compression ever runs.
+    # compress_if_needed only runs when history exceeds MAX_HISTORY (40).
+    if _deps.history_service is not None:
+        await _deps.history_service.compress_if_needed(
+            history, model, _deps.compress_fn, _deps.should_compress_fn
+        )
+
+    # Emit auto-retrieved memories as a stream event (for frontend display)
+    if memory_block and _deps.streaming:
+        yield ("memory", memory_block)
 
     # Execute tool loop via ToolExecutionService
     async for event in _deps.tool_service.execute(

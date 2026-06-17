@@ -316,7 +316,7 @@ async def test_api_facade_exports_complete() -> None:
         "db_save_widget", "db_get_widget",
         "chat_stream", "generate_session_id", "OrchestratorDeps",
         "get_default_model", "get_verified_models", "get_verified_models_safe",
-        "get_repos", "init_db",
+        "get_repos",
         "build_system_prompt",
         "auto_rename_session",
         "log_turn",

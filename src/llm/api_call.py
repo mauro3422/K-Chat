@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any
 
@@ -18,10 +19,10 @@ async def _api_call(**kwargs: Any) -> Any:
         tools=kwargs.get("tools"),
         stream=is_stream,
         temperature=kwargs.get("temperature"),
-        max_tokens=kwargs.get("max_tokens"),
+        max_tokens=kwargs.get("max_tokens") or 32768,
     )
     if is_stream:
-        return await execute_with_retry(lambda: _get_provider().chat_stream(req), model_name)
-    return await execute_with_retry(lambda: _get_provider().chat(req), model_name)
+        return await execute_with_retry(lambda: _get_provider().chat_stream(req), model_name, timeout=60.0)
+    return await execute_with_retry(lambda: _get_provider().chat(req), model_name, timeout=60.0)
 
 

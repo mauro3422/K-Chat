@@ -2,6 +2,7 @@ import logging
 
 import src.llm.model_state as models
 import src.llm.discovery as discovery
+from src.llm.circuit_breaker import get_breaker
 from src.llm.rate_limit_state import get_rate_limit_store
 from src.llm.retry import is_rate_limit_error
 
@@ -21,6 +22,7 @@ def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None 
             logger.exception("Failed to refresh verified models")
 
     models.mark_model_failed(model)
+    get_breaker().record_failure(model)
 
     # Track rate limit separately with cooldown
     if error is not None:
@@ -42,6 +44,8 @@ def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None 
     try:
         next_model = models._switch_model(model)
     except RuntimeError:
+        if not get_breaker().is_available(model):
+            raise RuntimeError("All models are circuit-broken — no LLM available")
         logger.critical("All models have failed! Using last resort: %s", model)
         next_model = model  # last resort
     return next_model

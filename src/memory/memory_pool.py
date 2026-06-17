@@ -5,14 +5,16 @@ independent and allow syncing memory.db across devices.
 """
 
 import os
+import asyncio
 import aiosqlite
 from typing import Any
 
 from src.memory.memory_db_path import resolve_memory_db_path
 from src.memory.lifecycle import is_initialized
+from src.memory.connection_pool import ConnectionPool
 
 
-_conn_storage: dict[str, Any] = {"conn": None, "db_path": None}
+_memory_pool = ConnectionPool(max_connections=5)
 
 
 async def get_memory_raw_conn(db_path: str) -> aiosqlite.Connection:
@@ -27,25 +29,26 @@ async def get_memory_raw_conn(db_path: str) -> aiosqlite.Connection:
 
 
 async def get_memory_conn() -> aiosqlite.Connection:
-    """Get a cached connection to memory.db (singleton per process)."""
+    """Get a connection to memory.db from the per-process pool."""
     db_path = resolve_memory_db_path()
 
-    raw = _conn_storage["conn"]
-    cached_path = _conn_storage["db_path"]
-
-    if raw is not None and cached_path != db_path:
-        await raw.close()
-        raw = None
-        _conn_storage["conn"] = None
-
+    raw = await _memory_pool.acquire(db_path)
     if raw is None:
-        # Ensure DB is initialized BEFORE opening the pooled connection
         if not is_initialized(db_path):
             from src.memory.memory_schema import init_memory_db
             await init_memory_db()
 
         raw = await get_memory_raw_conn(db_path)
-        _conn_storage["conn"] = raw
-        _conn_storage["db_path"] = db_path
 
     return raw
+
+
+async def return_memory_conn(conn: Any) -> None:
+    """Return a memory.db connection to the pool."""
+    db_path = resolve_memory_db_path()
+    await _memory_pool.release(db_path, conn)
+
+
+async def close_memory_all() -> None:
+    """Close all connections in the memory pool."""
+    await _memory_pool.close_all()

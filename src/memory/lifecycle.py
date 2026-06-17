@@ -1,8 +1,14 @@
+"""Database initialization lifecycle management.
+
+Uses module-level Lock and set as intentional initialization guards
+to prevent double-initialization of database paths across the app.
+"""
+
 import threading
 from typing import Callable
 
-_init_lock = threading.Lock()
-_initialized_db_paths: set[str] = set()
+_init_lock = threading.Lock()              # Intentional init guard — prevents
+_initialized_db_paths: set[str] = set()    # double-init of database paths
 
 
 def mark_initialized(db_path: str) -> None:

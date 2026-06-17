@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Callable, Protocol
+from typing import Any, AsyncGenerator, Callable, Protocol, runtime_checkable
 
 
 class HistoryServiceProtocol(Protocol):
@@ -50,3 +50,29 @@ class TelemetryServiceProtocol(Protocol):
     def track_llm_usage(self, model: str, tokens: int, latency: float) -> None: ...
 
     def track_tool_execution(self, tool_name: str, success: bool, duration: float) -> None: ...
+
+
+@runtime_checkable
+class HybridRetrieverProtocol(Protocol):
+    """Protocol for the hybrid retriever (search + close)."""
+    async def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        source_filter: str | None = None,
+        apply_budget: bool = False,
+        session_id: str = "",
+    ) -> list[Any]: ...
+
+    def close(self) -> None: ...
+
+
+class RetrievalServiceProtocol(Protocol):
+    """Protocol for the auto-retrieval service (orchestrator-level)."""
+    async def retrieve_if_allowed(
+        self,
+        message_user: str,
+        session_id: str | None = None,
+        config: Any | None = None,
+        db_path: str | None = None,
+    ) -> str | None: ...

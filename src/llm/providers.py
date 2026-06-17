@@ -1,9 +1,14 @@
 import logging
+import threading
 from typing import Any
 from src.llm.protocol import LLMProvider
 from src.llm.adapters import ADAPTERS
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+# Thread-safety locks for lazy singletons
+_registry_lock = threading.Lock()
+_provider_lock = threading.Lock()
 
 
 class ProviderRegistry:
@@ -32,9 +37,11 @@ def _get_registry(registry: ProviderRegistry | None = None) -> ProviderRegistry:
         return registry
     global _registry
     if _registry is None:
-        _registry = ProviderRegistry()
-        for name, cls in ADAPTERS.items():
-            _registry.register(name, cls)
+        with _registry_lock:
+            if _registry is None:
+                _registry = ProviderRegistry()
+                for name, cls in ADAPTERS.items():
+                    _registry.register(name, cls)
     return _registry
 
 
@@ -45,22 +52,25 @@ _PROVIDER_REGISTRY: dict[str, type[LLMProvider]] = {}  # kept for tests that rea
 
 def _reset_provider() -> None:
     global _provider
-    _provider = None
+    with _provider_lock:
+        _provider = None
 
 
 def _get_provider(config: Any | None = None, registry: ProviderRegistry | None = None) -> LLMProvider:
     global _provider
     if _provider is None:
-        if config is None:
-            from src.config_loader import load_config
-            config = load_config()
-        reg = registry or _get_registry()
-        provider_name = config.llm_provider
-        cls = reg.get(provider_name)
-        if cls is None:
-            raise ValueError(f"Unknown LLM provider: {provider_name}")
-        base_url = config.opencode_go_base_url if config.llm_mode == "go" else config.opencode_zen_base_url
-        _provider = cls(api_key=config.opencode_zen_api_key, base_url=base_url)
+        with _provider_lock:
+            if _provider is None:
+                if config is None:
+                    from src.config_loader import load_config
+                    config = load_config()
+                reg = registry or _get_registry()
+                provider_name = config.llm_provider
+                cls = reg.get(provider_name)
+                if cls is None:
+                    raise ValueError(f"Unknown LLM provider: {provider_name}")
+                base_url = config.opencode_go_base_url if config.llm_mode == "go" else config.opencode_zen_base_url
+                _provider = cls(api_key=config.opencode_zen_api_key, base_url=base_url)
     return _provider
 
 

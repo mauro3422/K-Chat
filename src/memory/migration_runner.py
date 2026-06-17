@@ -14,9 +14,8 @@ async def run_pending_migrations(
     cursor = await conn.cursor()
     for version, migration in enumerate(migrations[current_version:], start=current_version + 1):
         await migration(conn, engine)
-        await cursor.execute(f"DELETE FROM {schema_table}")
         await cursor.execute(
-            f"INSERT INTO {schema_table} (version) VALUES (?)",
+            f"INSERT OR REPLACE INTO {schema_table} (version) VALUES (?)",
             (version,),
         )
         await engine.commit(conn)

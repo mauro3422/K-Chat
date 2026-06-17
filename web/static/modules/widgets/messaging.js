@@ -1,6 +1,10 @@
 /**
  * Kairos Widgets — Messaging & Persistence
  *
+ * ⚠️ NOTE: the old +4px height buffer was removed on 2026-06-16.
+ * It was realimenting the infinite widget growth loop.
+ * See: iframe-builder.js header doc for full bug history.
+ *
  * Escucha postMessage desde los iframes y gestiona IntersectionObserver global.
  */
 import { SessionContext } from '../session-context.js';
@@ -44,8 +48,8 @@ export function startMessageHandler(deps) {
         if (event.data.type === 'resize-iframe') {
             var iframe = document.querySelector('[data-widget-id="' + event.data.id + '"] iframe');
             if (iframe) {
-                iframe.style.height = (event.data.height + 4) + 'px';
-                log(event.data.id, 'altura', event.data.height + 'px -> ' + (event.data.height + 4) + 'px');
+                iframe.style.height = event.data.height + 'px';
+                log(event.data.id, 'altura', event.data.height + 'px');
             }
         } else if (event.data.type === 'save-widget-state') {
             var code = WidgetManager._registry[event.data.id];

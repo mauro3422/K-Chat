@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 from types import SimpleNamespace
@@ -6,6 +7,7 @@ from typing import Any
 import src.llm.model_state as models
 import src.llm.api_call as api_call
 from src._types import DebugInfo
+from src.llm.circuit_breaker import get_breaker
 from src.llm.failover import _mark_and_refresh
 from src.llm.selector import get_default_model
 from src.llm.retry import is_rate_limit_error
@@ -35,12 +37,12 @@ async def _with_fallback(
 ) -> Any:
     try:
         res = fn(model)
-        import asyncio
         if asyncio.iscoroutine(res):
             res = await res
         # Mark model as available on success
         from src.llm.rate_limit_state import get_rate_limit_store
         get_rate_limit_store().mark_available(model)
+        get_breaker().record_success(model)
         return res
     except Exception as e:
         logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
@@ -67,6 +69,7 @@ async def _try_stream(
         # Mark model as available on stream start
         from src.llm.rate_limit_state import get_rate_limit_store
         get_rate_limit_store().mark_available(model)
+        get_breaker().record_success(model)
         return s
     except Exception as e:
         logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)
@@ -166,6 +169,15 @@ async def chat(messages: list[dict[str, Any]], model: str | None = None, build_p
 
 
 
+async def _iter_with_timeout(stream: Any, timeout: float = 30.0) -> AsyncGenerator[Any, None]:
+    while True:
+        try:
+            chunk = await asyncio.wait_for(stream.__anext__(), timeout=timeout)
+            yield chunk
+        except StopAsyncIteration:
+            break
+
+
 async def _process_chunks(
     stream: Any,
     reasoning_output: list[str] | None,
@@ -179,7 +191,7 @@ async def _process_chunks(
     stats.has_content = False
     stats.has_reasoning = False
 
-    async for chunk in stream:
+    async for chunk in _iter_with_timeout(stream):
         stats.chunk_count += 1
 
         if isinstance(chunk, tuple) and len(chunk) == 2 and isinstance(chunk[0], str):

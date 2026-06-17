@@ -3,13 +3,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Protocol, runtime_checkable
 import importlib
 import importlib.util
 import os
 import logging
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class ToolRegistryProtocol(Protocol):
+    @property
+    def tool_map(self) -> dict[str, Callable[..., str]]: ...
+    @property
+    def definitions(self) -> dict[str, dict[str, Any]]: ...
+    @property
+    def tools_openai(self) -> list[dict[str, Any]]: ...
+    def get(self, name: str) -> Callable[..., str] | None: ...
+    def has(self, name: str) -> bool: ...
+    def get_definition(self, name: str) -> dict[str, Any] | None: ...
+    def load_tool(self, name: str) -> Callable[..., str]: ...
 
 
 @dataclass(slots=True)
@@ -120,3 +134,22 @@ class ToolRegistry:
         if not self._built:
             self.build()
         return self._tool_map.get(name)
+
+    def has(self, name: str) -> bool:
+        """Check if a tool is registered (triggers lazy build if needed)."""
+        if not self._built:
+            self.build()
+        return name in self._tool_map
+
+    def get_definition(self, name: str) -> dict[str, Any] | None:
+        """Get a tool definition by name (triggers lazy build if needed)."""
+        if not self._built:
+            self.build()
+        return self._definitions.get(name)
+
+    def load_tool(self, name: str) -> Callable[..., str]:
+        """Get a tool's run function by name or raise KeyError."""
+        run_fn = self.get(name)
+        if run_fn is None:
+            raise KeyError(f"Tool {name!r} not found in registry")
+        return run_fn

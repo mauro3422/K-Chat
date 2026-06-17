@@ -37,6 +37,9 @@ class _BaseRepository:
                 await conn.rollback()
             logger.exception("Database transaction failed")
             raise
+        finally:
+            if self._conn is None:
+                await conn.close()
 
     async def delete_by_session(self, session_id: str, cursor: Any = None) -> None:
         if not self._table_name:

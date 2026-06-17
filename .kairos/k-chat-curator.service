@@ -1,0 +1,15 @@
+[Unit]
+Description=K-Chat Memory Curator — nightly memory health
+Documentation=https://github.com/mauro3422/K-Chat
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/dev/K-Chat/.kairos/curator.py
+WorkingDirectory=%h/dev/K-Chat
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

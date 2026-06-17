@@ -55,6 +55,12 @@ export function connect() {
         return;
       }
 
+      // ── Live streaming: auto-retrieved memories ──────────────────
+      if (event.type === 'stream:memory' && sid === _currentSessionId) {
+        streamMemory(event.data);
+        return;
+      }
+
       // ── Live streaming: error ────────────────────────────────────
       if (event.type === 'stream:error' && sid === _currentSessionId) {
         streamError(event.data);
@@ -70,12 +76,21 @@ export function connect() {
           refreshSidebar().then(function() {
             var first = document.querySelector('.session-item[data-sid]');
             if (first) {
-              var target = '/sessions/' + first.getAttribute('data-sid');
-              console.log('Redirecting to:', target);
-              window.location.href = target;
+              var targetSid = first.getAttribute('data-sid');
+              console.log('Redirecting SPA-style to:', targetSid);
+              import('./session-page.js').then(function(sp) {
+                sp.loadSession(targetSid);
+              });
             } else {
-              console.log('No sessions left, redirecting to /');
-              window.location.href = '/';
+              console.log('No sessions left, clearing view');
+              var messagesDiv = document.getElementById('messages');
+              if (messagesDiv) {
+                messagesDiv.innerHTML = '<div class="empty-state">Envía un mensaje para empezar</div>';
+              }
+              import('./session-context.js').then(function(sc) {
+                sc.SessionContext.setSessionId('');
+              });
+              window.history.replaceState({sid: ''}, '', '/');
             }
           }).catch(function(err) {
             console.error('refreshSidebar failed:', err);
@@ -86,6 +101,26 @@ export function connect() {
           refreshSidebar().catch(function(err) {
             console.error('refreshSidebar failed:', err);
           });
+        }
+        return;
+      }
+
+      // ── Message deleted (via other client / API) ─────────────────
+      if (event.type === 'message_deleted' && sid === _currentSessionId) {
+        var msgId = event.data && event.data.message_id;
+        if (msgId) {
+          var msgDiv = document.querySelector('.msg[data-id="' + msgId + '"]');
+          if (msgDiv) {
+            msgDiv.style.opacity = '0';
+            msgDiv.style.transition = 'opacity 0.2s ease';
+            setTimeout(function() {
+              msgDiv.remove();
+              var messagesDiv = document.getElementById('messages');
+              if (messagesDiv && messagesDiv.children.length === 0) {
+                messagesDiv.innerHTML = '<div class="empty-state">Envía un mensaje para empezar</div>';
+              }
+            }, 200);
+          }
         }
         return;
       }
@@ -235,6 +270,30 @@ function streamTool(data) {
   _liveCurrentTools.appendChild(pill);
 }
 
+function streamMemory(data) {
+  _ensureLiveMsg();
+  if (_livePhase !== 'memory') {
+    var details = document.createElement('details');
+    details.className = 'reasoning memories-phase';
+    details.open = true;
+    var summary = document.createElement('summary');
+    summary.textContent = '📖 Memorias';
+    details.appendChild(summary);
+    var rt = document.createElement('div');
+    rt.className = 'rt memory-content';
+    details.appendChild(rt);
+    // Insert memory block BEFORE reasoning (at the top of the message)
+    if (_liveMsg.firstChild) {
+      _liveMsg.insertBefore(details, _liveMsg.firstChild);
+    } else {
+      _liveMsg.appendChild(details);
+    }
+    _livePhase = 'memory';
+  }
+  var rt = _liveMsg.querySelector('.memory-content');
+  if (rt) rt.textContent = data.text || '';
+}
+
 function streamContent(data) {
   _ensureLiveMsg();
   if (_livePhase !== 'content') {
@@ -252,17 +311,34 @@ function streamContent(data) {
   if (!el) return;
   var text = data.text || '';
   if (text && typeof marked !== 'undefined') {
-    // Extract widget blocks before markdown parsing (live streaming)
-    var extracted = WidgetManager && WidgetManager.extract ? WidgetManager.extract(text) : text;
-    var html = marked.parse(extracted);
-    if (typeof DOMPurify !== 'undefined') {
-      html = DOMPurify.sanitize(html);
+    var prevLen = el.dataset.renderedLen ? parseInt(el.dataset.renderedLen, 10) : 0;
+    var delta = text.slice(prevLen);
+    if (delta) {
+      // Detect widget boundaries in delta — if present, do full replace to avoid split boundaries
+      var needsFullReplace = delta.indexOf('~~~widget-') !== -1;
+      if (needsFullReplace) {
+        var extracted = WidgetManager && WidgetManager.extract ? WidgetManager.extract(text) : text;
+        var html = marked.parse(extracted);
+        if (typeof DOMPurify !== 'undefined') {
+          html = DOMPurify.sanitize(html);
+        }
+        el.innerHTML = html;
+        el.dataset.renderedLen = String(text.length);
+      } else {
+        // Incremental: solo parsear lo nuevo y hacer append
+        var extracted = WidgetManager && WidgetManager.extract ? WidgetManager.extract(delta) : delta;
+        var html = marked.parse(extracted);
+        if (typeof DOMPurify !== 'undefined') {
+          html = DOMPurify.sanitize(html);
+        }
+        el.insertAdjacentHTML('beforeend', html);
+        el.dataset.renderedLen = String(text.length);
+      }
+      if (typeof initAll === 'function') initAll(el, true);
     }
-    el.innerHTML = html;
-    // Mount widget iframes immediately during live streaming
-    if (typeof initAll === 'function') initAll(el, true);
   } else {
     el.textContent = text;
+    el.dataset.renderedLen = '0';
   }
   import('./stream-lifecycle.js').then(function(sl) {
     if (typeof sl.scrollToBottomIfNear === 'function') sl.scrollToBottomIfNear();
@@ -319,6 +395,8 @@ function clearLiveMessage() {
   _liveMsg = null;
   _livePhase = null;
   _liveReasoningEls = [];
+  // Reset renderedLen tracking for all content elements
+  _liveContentEls.forEach(function(el) { delete el.dataset.renderedLen; });
   _liveContentEls = [];
   _liveCurrentTools = null;
 }

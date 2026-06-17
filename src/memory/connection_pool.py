@@ -1,73 +1,97 @@
+import asyncio
 import os
-import aiosqlite
 from typing import Any
 
 from src.memory.db_path import resolve_db_path
-from src.memory.engine_state import get_engine
-
-_conn_storage = {"conn": None, "db_path": None}
+from src.memory.conn_factory import create_raw_conn, configure_connection
 
 
-async def get_raw_conn(db_path: str):
-    engine = get_engine()
-    if engine is not None:
-        return await engine.connect()
-    raw_conn = await aiosqlite.connect(db_path)
-    raw_conn.row_factory = aiosqlite.Row
-    await raw_conn.execute("PRAGMA journal_mode=WAL")
-    await raw_conn.execute("PRAGMA busy_timeout=5000")
-    await raw_conn.execute("PRAGMA foreign_keys=ON")
-    return raw_conn
+class ConnectionPool:
+    """Async-safe connection pool for SQLite databases."""
+
+    def __init__(self, max_connections: int = 5):
+        self._max = max_connections
+        self._connections: dict[str, list[Any]] = {}
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, db_path: str) -> Any | None:
+        async with self._lock:
+            pool = self._connections.get(db_path)
+            if pool:
+                return pool.pop()
+            return None
+
+    async def release(self, db_path: str, conn: Any) -> None:
+        should_close = False
+        async with self._lock:
+            if db_path not in self._connections:
+                self._connections[db_path] = []
+            pool = self._connections[db_path]
+            if len(pool) < self._max:
+                pool.append(conn)
+            else:
+                should_close = True
+        if should_close:
+            await conn.close()
+
+    async def close_all(self) -> None:
+        async with self._lock:
+            pools = list(self._connections.items())
+            self._connections.clear()
+        for db_path, pool in pools:
+            for conn in pool:
+                await conn.close()
 
 
-async def configure_connection(conn: Any) -> None:
-    engine = get_engine()
-    if engine is not None:
-        await engine.execute(conn, "PRAGMA journal_mode=WAL")
-        await engine.execute(conn, "PRAGMA busy_timeout=5000")
-        await engine.execute(conn, "PRAGMA foreign_keys=ON")
-    else:
-        await conn.execute("PRAGMA journal_mode=WAL")
-        await conn.execute("PRAGMA busy_timeout=5000")
-        await conn.execute("PRAGMA foreign_keys=ON")
+_pool = ConnectionPool()
 
 
 class PooledConnection:
-    """Wraps a connection so .close() is a no-op (connection stays in the pool)."""
+    """Wraps a connection so .close() returns it to the pool."""
 
-    def __init__(self, conn: Any) -> None:
+    def __init__(self, conn: Any, db_path: str) -> None:
         self._conn = conn
+        self._db_path = db_path
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._conn, name)
 
     async def close(self) -> None:
-        pass
+        if self._conn is not None:
+            conn, self._conn = self._conn, None
+            await return_conn(self._db_path, conn)
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        if exc_type is not None:
+            try:
+                await self.rollback()
+            except Exception:
+                pass
+        await self.close()
 
 
-async def get_conn() -> PooledConnection:
-    db_path = resolve_db_path()
+async def get_conn(db_path: str | None = None) -> PooledConnection:
+    if db_path is None:
+        db_path = resolve_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    
-    raw = _conn_storage["conn"]
-    cached_path = _conn_storage["db_path"]
-    
-    if raw is not None and cached_path != db_path:
-        await raw.close()
-        raw = None
-        _conn_storage["conn"] = None
-        
+
+    raw = await _pool.acquire(db_path)
     if raw is None:
-        raw = await get_raw_conn(db_path)
-        _conn_storage["conn"] = raw
-        _conn_storage["db_path"] = db_path
-        # Lazy import to avoid circular dependency
-        from src.memory.bootstrap import ensure_db_initialized
-        await ensure_db_initialized(db_path)
-    return PooledConnection(raw)
+        raw = await create_raw_conn(db_path)
+    return PooledConnection(raw, db_path)
+
+
+async def return_conn(db_path: str, conn: Any) -> None:
+    if isinstance(conn, PooledConnection):
+        if conn._conn is not None:
+            raw, conn._conn = conn._conn, None
+            await _pool.release(db_path, raw)
+        return
+    await _pool.release(db_path, conn)
+
+
+async def close_all() -> None:
+    await _pool.close_all()

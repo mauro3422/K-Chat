@@ -15,12 +15,12 @@ def is_rate_limit_error(error: Exception) -> bool:
     return "rate limit" in error_msg or "ratelimit" in error_msg or "429" in error_msg
 
 
-async def execute_with_retry(fn: Callable[[], Awaitable[Any] | Any], model_name: str, max_retries: int | None = None, retry_delay: float | None = None) -> Any:
+async def execute_with_retry(fn: Callable[[], Awaitable[Any] | Any], model_name: str, max_retries: int | None = None, retry_delay: float | None = None, timeout: float | None = None) -> Any:
     """Wrapper that executes an async function with exponential backoff on rate limit or retryable errors."""
     last_error: Exception | None = None
     if max_retries is None or retry_delay is None:
-        from src.config_loader import load_config
-        _cfg = load_config()
+        from src._config import resolve_config
+        _cfg = resolve_config()
         if max_retries is None:
             max_retries = _cfg.llm_max_retries
         if retry_delay is None:
@@ -29,6 +29,8 @@ async def execute_with_retry(fn: Callable[[], Awaitable[Any] | Any], model_name:
         try:
             res = fn()
             if asyncio.iscoroutine(res):
+                if timeout is not None:
+                    return await asyncio.wait_for(res, timeout=timeout)
                 return await res
             return res
         except Exception as e:

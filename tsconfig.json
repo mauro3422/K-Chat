@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -11,5 +11,5 @@
     "checkJs": false,
     "lib": ["DOM", "DOM.Iterable", "ESNext"]
   },
-  "include": ["web/static/**/*"]
+  "include": ["web/static/**/*", "web/src_ts/**/*"]
 }

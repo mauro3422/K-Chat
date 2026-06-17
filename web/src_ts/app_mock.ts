@@ -295,7 +295,13 @@ document.addEventListener('DOMContentLoaded', () => {
       debug.refresh();
     }
   }, 400);
-  window.addEventListener('beforeunload', () => clearInterval(debugIntervalId));
+  window.addEventListener('beforeunload', () => {
+    clearInterval(debugIntervalId);
+    notificationBell?.dispose();
+    sessionStore?.dispose();
+    canvasWorkspace?.dispose();
+    eventBus.removeAllListeners();
+  });
 
   // Expose Lego blocks for AI / widget access
   (window as any).__k = {

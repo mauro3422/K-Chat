@@ -119,8 +119,6 @@ def _cleanup_orphans() -> None:
             capture_output=True, timeout=5,
         )
     time.sleep(0.3)
-    for port in [8000, 8080]:
-        _sp.run(["fuser", "-k", f"{port}/tcp"], capture_output=True, timeout=5)
     time.sleep(0.3)
 
 
@@ -342,6 +340,20 @@ def main() -> None:
     cfg = load_config()
     _start_time = time.time()
 
+    from src.logbus import get_logbus
+    from src.logbus.writers import JsonlWriter, SqliteWriter
+
+    async def _init_logbus():
+        bus = get_logbus()
+        bus.add_writer(JsonlWriter())
+        bus.add_writer(SqliteWriter())
+        await bus.start()
+
+    try:
+        asyncio.run(_init_logbus())
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description="Kairos Gateway — unified launcher")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show debug logs in console")
     parser.add_argument("--no-web", action="store_true", help="Skip web dashboard")
@@ -364,7 +376,7 @@ def main() -> None:
         print(f"  {CYAN}{line}{RESET}")
     print()
 
-    from src.api import init_db
+    from src.api.repos import init_db
     root_logger = logging.getLogger()
     prev_level = root_logger.level
     root_logger.setLevel(logging.WARNING)

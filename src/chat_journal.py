@@ -50,6 +50,26 @@ def log_turn(
             "status": t.get("status", "ok"),
         })
     try:
+        from src.logbus import LogEvent, get_logbus
+        bus = get_logbus()
+        bus.emit(LogEvent(
+            level="INFO",
+            module="chat.journal",
+            msg="chat_turn",
+            session_id=session_id,
+            duration_ms=duration_ms,
+            data={
+                "user_msg": (user_msg or "")[:200],
+                "assistant_msg": (assistant_msg or "")[:200],
+                "tools_used": tools_summary,
+                "model": model,
+                "token_count": token_count,
+                "error": (error or "")[:500],
+            },
+        ))
+    except Exception:
+        pass
+    try:
         conn = _get_conn()
         try:
             conn.execute(

@@ -198,7 +198,7 @@ class TestSessionRepository:
     @patch("src.memory.repos.base.get_conn", new_callable=AsyncMock)
     async def test_check_should_rename_empty_name_one_message(self, mock_get_conn, mock_conn):
         conn, cursor = mock_conn
-        cursor.fetchone.side_effect = [{"name": ""}, (1,)]
+        cursor.fetchone.side_effect = [{"name": "", "telegram_chat_id": None}, (1,)]
         mock_get_conn.return_value = conn
         repo = SessionRepository()
 
@@ -208,7 +208,7 @@ class TestSessionRepository:
     @patch("src.memory.repos.base.get_conn", new_callable=AsyncMock)
     async def test_check_should_rename_none_name(self, mock_get_conn, mock_conn):
         conn, cursor = mock_conn
-        cursor.fetchone.side_effect = [{"name": None}, (1,)]
+        cursor.fetchone.side_effect = [{"name": None, "telegram_chat_id": None}, (1,)]
         mock_get_conn.return_value = conn
         repo = SessionRepository()
 
@@ -218,7 +218,7 @@ class TestSessionRepository:
     @patch("src.memory.repos.base.get_conn", new_callable=AsyncMock)
     async def test_check_should_rename_already_named(self, mock_get_conn, mock_conn):
         conn, cursor = mock_conn
-        cursor.fetchone.return_value = {"name": "My Session"}
+        cursor.fetchone.return_value = {"name": "My Session", "telegram_chat_id": None}
         mock_get_conn.return_value = conn
         repo = SessionRepository()
 
@@ -332,7 +332,7 @@ class TestDebugRepository:
     @patch("src.memory.repos.base.get_conn", new_callable=AsyncMock)
     async def test_get_info_found(self, mock_get_conn, mock_conn):
         conn, cursor = mock_conn
-        cursor.fetchone.return_value = {"model": "m1", "reasoning": "thinking", "system_prompt": "sys prompt", "tool_calls": "[]", "history_before": "[]", "asr_telemetry": "[]"}
+        cursor.fetchone.return_value = {"model": "m1", "reasoning": "thinking", "system_prompt": "sys prompt", "tool_calls": "[]", "history_before": "[]", "asr_telemetry": "[]", "auto_memories": ""}
         mock_get_conn.return_value = conn
         repo = DebugRepository()
 
@@ -345,6 +345,7 @@ class TestDebugRepository:
             "tool_calls": [],
             "history_before": [],
             "asr_telemetry": [],
+            "auto_memories": "",
         }
 
     @pytest.mark.anyio

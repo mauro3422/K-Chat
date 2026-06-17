@@ -73,13 +73,13 @@ export class CanvasWorkspace implements ICanvasWorkspace {
 
     // Cleanup event listeners
     if (this.toggleBtn && this.boundToggle) {
-      this.toggleBtn.onclick = null;
+      this.toggleBtn.removeEventListener('click', this.boundToggle);
     }
     if (this.closeBtn && this.boundClose) {
-      this.closeBtn.onclick = null;
+      this.closeBtn.removeEventListener('click', this.boundClose);
     }
     if (this.gutterEl && this.boundGutterDown) {
-      this.gutterEl.onmousedown = null;
+      this.gutterEl.removeEventListener('mousedown', this.boundGutterDown);
     }
     if (this.boundGutterMove && this.boundGutterUp) {
       document.removeEventListener('mousemove', this.boundGutterMove);
@@ -98,6 +98,10 @@ export class CanvasWorkspace implements ICanvasWorkspace {
     this.closeBtn = null;
     this.cardsContainer = null;
     this.logger.info('reset');
+  }
+
+  dispose(): void {
+    this.reset();
   }
 
   pinWidget(containerEl: HTMLElement, widgetKey: string, code: string): void {
@@ -202,7 +206,7 @@ export class CanvasWorkspace implements ICanvasWorkspace {
         this.canvasEl!.style.width = w + 'px';
       }
     };
-    this.toggleBtn.onclick = this.boundToggle;
+    this.toggleBtn?.addEventListener('click', this.boundToggle);
   }
 
   private bindClose(): void {
@@ -215,7 +219,7 @@ export class CanvasWorkspace implements ICanvasWorkspace {
         localStorage.setItem(`canvas_collapsed_${this.currentSessionId}`, 'true');
       }
     };
-    this.closeBtn.onclick = this.boundClose;
+    this.closeBtn?.addEventListener('click', this.boundClose);
   }
 
   private bindGutterResize(): void {
@@ -246,7 +250,7 @@ export class CanvasWorkspace implements ICanvasWorkspace {
       document.addEventListener('mousemove', this.boundGutterMove);
       document.addEventListener('mouseup', this.boundGutterUp);
     };
-    this.gutterEl.onmousedown = this.boundGutterDown;
+    this.gutterEl?.addEventListener('mousedown', this.boundGutterDown);
   }
 
   // ── Layout persistence ───────────────────────────────

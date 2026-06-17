@@ -92,16 +92,37 @@ def tail_logs(
     lines: int = Query(50, ge=1, le=500),
     source: str = Query("server", pattern="^(server|client)$"),
 ):
-    """Tail the latest JSONL log file (like tail -f but one-shot)."""
+    """Tail the latest JSONL log files (like tail -f but one-shot), merged with LogBus.
+
+    Returns entries from both file_logger and LogBus, sorted by timestamp descending.
+    """
     log_dir = SERVER_LOG_DIR if source == "server" else CLIENT_LOG_DIR
     log_dir.mkdir(parents=True, exist_ok=True)
 
     path = _latest_log_path(log_dir)
-    if not path:
-        return {"entries": [], "source": source}
+    entries = _tail_file(path, lines) if path else []
 
-    entries = _tail_file(path, lines)
-    return {"date": path.stem, "source": source, "entries": entries, "returned": len(entries)}
+    # Also fetch from LogBus JSONL files
+    logbus_entries: list[dict] = []
+    try:
+        logbus_dir = Path("logs/server")
+        logbus_files = sorted(logbus_dir.glob("logbus_*.jsonl"))
+        if logbus_files:
+            logbus_entries = _tail_file(logbus_files[-1], lines)
+    except Exception:
+        pass
+
+    # Merge: both sources, sorted by timestamp descending
+    all_entries = entries + logbus_entries
+    all_entries.sort(key=lambda e: e.get("t") or e.get("ts", 0), reverse=True)
+    merged = all_entries[:lines]
+
+    return {
+        "date": path.stem if path else "",
+        "source": source,
+        "entries": merged,
+        "returned": len(merged),
+    }
 
 
 # ---- helpers ----

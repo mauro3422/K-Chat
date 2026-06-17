@@ -1,0 +1,11 @@
+[Unit]
+Description=K-Chat Memory Curator — nightly at 3 AM
+Requires=k-chat-curator.service
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,6 +1,21 @@
 /**
  * Kairos Widgets — IFrame Builder
  *
+ * ⚠️ HISTORIA: INFINITE WIDGET GROWTH BUG (2026-06-16)
+ * ─────────────────────────────────────────────────────
+ * Síntoma: widget crecía +4px cada ~35ms sin parar (de 4500px a 15000px+).
+ * Causa raíz: SVG <animate repeatCount="indefinite"> + ResizeObserver sin debounce +
+ *             getDocHeight() usando documentElement.scrollHeight (refleja viewport) +
+ *             buffer +4px en el padre realimentaban el loop.
+ * Fix: (1) sanitizeWidgetCode() strippe SVG animate/animatetransform/set,
+ *      (2) getDocHeight() usa SOLO body.scrollHeight,
+ *      (3) ResizeObserver con debounce 200ms,
+ *      (4) +4px buffer reemplazado por padding-bottom:16px en body.
+ *
+ * ⚡ REGLA PARA LA IA: no generar <animate>/<animateTransform>/<set> en widgets.
+ * Usar CSS @keyframes. El sanitize los elimina automáticamente, pero es mejor
+ * no crearlos. Ver memoria key: herramienta:widget-svg-animate-prohibido
+ *
  * Genera el srcdoc HTML inyectado en cada iframe sandboxed.
  * También crea y monta iframes con soporte para widgets oficiales.
  */
@@ -142,10 +157,34 @@ export function createIframe(container, id, code) {
     log(id, 'montado', 'padre-scroll=' + parentScroll + ' contenedor-h=' + container.offsetHeight + 'px');
 }
 
+/**
+ * Strip SVG animation elements that cause infinite ResizeObserver feedback loops
+ * inside widget iframes. SVG <animate>/<animateTransform>/<set> with
+ * repeatCount="indefinite" trigger continuous repaints → micro layout changes →
+ * sendHeight() never settles → widget grows forever.
+ *
+ * ⚡ AI RULE: prefer CSS @keyframes over SVG animate. This is a safety net.
+ * See: debug:widget-infinite-growth-fix-2026-06-16 en memoria
+ *
+ * @param {string} code - Raw widget HTML
+ * @returns {string} Sanitized HTML with SVG animations removed
+ */
+function sanitizeWidgetCode(code) {
+    return code
+        .replace(/<animate\b[^>]*\/>/gi, '')
+        .replace(/<animate\b[^>]*>[\s\S]*?<\/animate>/gi, '')
+        .replace(/<animateTransform\b[^>]*\/>/gi, '')
+        .replace(/<animateTransform\b[^>]*>[\s\S]*?<\/animateTransform>/gi, '')
+        .replace(/<animateMotion\b[^>]*\/>/gi, '')
+        .replace(/<animateMotion\b[^>]*>[\s\S]*?<\/animateMotion>/gi, '')
+        .replace(/<set\b[^>]*\/>/gi, '')
+        .replace(/<set\b[^>]*>[\s\S]*?<\/set>/gi, '');
+}
+
 export function buildIframeSrc(id, code, stateStr) {
     // Widget code goes directly in the HTML body (not inside a <script> tag).
     // Its own <script> tags must close naturally — do NOT escape </script>.
-    var safeCode = code;
+    var safeCode = sanitizeWidgetCode(code);
     return '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n' +
         '<style>\n' +
         'body { margin:0; padding:12px; font-family:system-ui,-apple-system,sans-serif; color:#c9d1d9; background:#161b22; }\n' +
@@ -159,16 +198,19 @@ export function buildIframeSrc(id, code, stateStr) {
         '</' + 'script>\n' +
         safeCode + '\n' +
         '<style>\n' +
-        'html,body{margin:0;padding:12px;overflow:hidden;scrollbar-width:none;box-sizing:border-box;width:100%;}\n' +
+        // margin-bottom 4px evita clipping sin realimentar el loop (reemplaza el viejo +4px en el padre)
+        'html,body{margin:0;padding:12px 12px 16px;overflow:hidden;scrollbar-width:none;box-sizing:border-box;width:100%;}\n' +
         'html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;}\n' +
         '</style>\n' +
         '<script>\n' +
         'var _lastSentH=0;\n' +
-        'function getDocHeight(){return Math.max(document.documentElement.scrollHeight,document.documentElement.offsetHeight,document.body.scrollHeight,document.body.offsetHeight);}\n' +
+        'function getDocHeight(){return Math.max(1,document.body.scrollHeight||0);}\n' +
         'function sendHeight(){var h=Math.max(1,Math.round(getDocHeight()));if(Math.abs(h-_lastSentH)<=2)return;_lastSentH=h;window.parent.postMessage({type:"resize-iframe",id:"' + id + '",height:h},_origin);}\n' +
+        // Debounce: coalesce rapid ResizeObserver callbacks (SVG animations, filter recalculations)
+        'var _rsTimer=null;function _debouncedResize(){if(_rsTimer)clearTimeout(_rsTimer);_rsTimer=setTimeout(sendHeight,200);}\n' +
         'sendHeight();setTimeout(sendHeight,100);setTimeout(sendHeight,600);setTimeout(sendHeight,2000);\n' +
         'window.addEventListener("load",function(){sendHeight();requestAnimationFrame(function(){requestAnimationFrame(function(){requestAnimationFrame(sendHeight);});});});\n' +
-        'if(window.ResizeObserver){var _ro=new ResizeObserver(sendHeight);_ro.observe(document.documentElement);_ro.observe(document.body);}\n' +
+        'if(window.ResizeObserver){var _ro=new ResizeObserver(_debouncedResize);_ro.observe(document.documentElement);_ro.observe(document.body);}\n' +
         '</' + 'script>\n' +
         '</body>\n</html>';
 }

@@ -190,3 +190,81 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── DebugManager custom styles ── */
+.dbg-section {
+  font-size: 11px;
+  color: var(--text-bright);
+  margin: 8px 0 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dbg-row {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  padding: 1px 0;
+  font-family: monospace;
+}
+
+.dbg-indent { padding-left: 12px; }
+
+.dbg-label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 40px;
+}
+
+.dbg-val {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.dbg-text {
+  color: var(--text-code);
+  font-size: 10px;
+}
+
+.dbg-muted {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.dbg-log {
+  max-height: 180px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.dbg-entry {
+  padding: 1px 4px;
+  border-bottom: 1px solid var(--border-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dbg-entry.dbg-reasoning { color: var(--text-muted); }
+.dbg-entry.dbg-tool { color: var(--accent-link); background: var(--alpha-blue-10); }
+.dbg-entry.dbg-content { color: var(--text-code); }
+.dbg-entry.dbg-memory { color: var(--accent-success); background: var(--alpha-green-10); }
+.dbg-entry.dbg-error { color: var(--text-error-bright); background: var(--bg-error-line); }
+
+.dbg-dom {
+  max-height: 250px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.dbg-tree-elem { padding: 0; }
+.dbg-tree-text { color: var(--text-muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbg-tag { color: var(--accent-link); }
+.dbg-cls { color: var(--accent-warning); margin-left: 2px; }
+.dbg-id { color: var(--accent-success); }
+.dbg-dim { color: var(--accent-link); margin-left: 4px; font-weight: 600; }

@@ -172,6 +172,35 @@ export function registerContentHandler() {
       console.error('Content handler error:', e);
     }
   });
+
+  // ── Memory events: auto-retrieved memories ────────────────────────
+  StreamDispatcher.on('memory', function(data, ctx) {
+    try {
+      var asstDiv = ctx && (typeof ctx.getAsstDiv === 'function' ? ctx.getAsstDiv() : ctx.asstDiv);
+      if (!asstDiv) return;
+
+      // Create details element (same style as reasoning, green tint)
+      var details = document.createElement('details');
+      details.className = 'reasoning memories-phase';
+      details.open = true;
+      var summary = document.createElement('summary');
+      summary.textContent = '📖 Memorias';
+      details.appendChild(summary);
+      var rt = document.createElement('div');
+      rt.className = 'rt memory-content';
+      rt.textContent = data || '';
+      details.appendChild(rt);
+
+      // Insert at the top of the message (before reasoning/content)
+      if (asstDiv.firstChild) {
+        asstDiv.insertBefore(details, asstDiv.firstChild);
+      } else {
+        asstDiv.appendChild(details);
+      }
+    } catch (e) {
+      console.error('Memory handler error:', e);
+    }
+  });
 }
 
 registerContentHandler();

@@ -55,8 +55,11 @@ function showToast(message, type) {
 }
 
 function finalizeStream(input) {
-  input.disabled = false;
+  // input.disabled = false;  ← ya no se deshabilita, el usuario escribe mientras piensa
+  if (!input) { console.warn('[DEBUG] finalizeStream: input is null/undefined'); return; }
   input.value = '';
+  input.style.height = '';
+
   var spinner = document.getElementById('spinner');
   if (spinner) spinner.textContent = '';
 
@@ -66,6 +69,10 @@ function finalizeStream(input) {
     btn.title = 'Enviar mensaje';
     btn.innerHTML = '<svg class="send-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>';
   }
+
+  // Quitar estado streaming del contenedor
+  var container = document.querySelector('.chat-input-container');
+  if (container) container.classList.remove('streaming');
 
   input.focus();
   scrollToBottom();

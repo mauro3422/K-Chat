@@ -218,6 +218,21 @@ function initSessionPage(deps) {
       nav.history.replaceState({sid: SessionContext.getSessionId()}, '', '/sessions/' + SessionContext.getSessionId());
     }
 
+    // Bind New Session Button click
+    var newSessionBtn = document.getElementById('btn-new-session');
+    if (newSessionBtn) {
+      newSessionBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        function uuidv4() {
+          return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, function(c) {
+            return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16);
+          });
+        }
+        var newSid = uuidv4();
+        loadSession(newSid, deps);
+      });
+    }
+
     // Bind widget-unpinned event listener
     document.addEventListener('widget-unpinned', function(e) {
       loadSession(SessionContext.getSessionId(), deps);
@@ -266,6 +281,31 @@ function initSessionPage(deps) {
     }
   });
   document.addEventListener('click', function(e) {
+    var deleteMsgBtn = e.target.closest('.msg-delete-btn');
+    if (deleteMsgBtn) {
+      var msgId = deleteMsgBtn.getAttribute('data-msg-id');
+      var sessionId = SessionContext.getSessionId();
+      if (confirm('¿Eliminar este mensaje?')) {
+        var msgDiv = deleteMsgBtn.closest('.msg');
+        if (msgDiv) {
+          msgDiv.style.opacity = '0.5';
+          msgDiv.style.transition = 'opacity 0.2s ease';
+        }
+        ApiClient.deleteMessage(sessionId, msgId).then(function(r) {
+          if (!r.ok) {
+            alert('Error al borrar el mensaje');
+            if (msgDiv) msgDiv.style.opacity = '1';
+          } else {
+            if (msgDiv) msgDiv.remove();
+          }
+        }).catch(function(err) {
+          console.error(err);
+          alert('Error de conexión');
+          if (msgDiv) msgDiv.style.opacity = '1';
+        });
+      }
+      return;
+    }
     var item = e.target.closest('.session-item');
     if (!item) return;
     var sid = item.dataset.sid;
@@ -329,10 +369,39 @@ function initSessionPage(deps) {
     }
     if (e.target.classList.contains('act-confirm') && item.querySelector('.act-del')) {
       // Optimistic: remove from DOM immediately, don't wait for the server
-      if (SessionContext.getSessionId() === sid) { nav.location.href = '/'; }
-      else { item.remove(); }
-      import('./sidebar-refresh.js').then(function(sr) { sr.refreshSidebar(); });
-      ApiClient.deleteSession(sid).catch(function(err) { console.error('Delete failed:', err); });
+      if (SessionContext.getSessionId() === sid) {
+        item.remove();
+        import('./sidebar-refresh.js').then(function(sr) {
+          sr.refreshSidebar();
+          var firstSession = document.querySelector('.session-item');
+          if (firstSession) {
+            var nextSid = firstSession.dataset.sid;
+            if (nextSid && nextSid !== sid) {
+              loadSession(nextSid, deps);
+              return;
+            }
+          }
+          var messagesDiv = document.getElementById('messages');
+          if (messagesDiv) {
+            messagesDiv.innerHTML = '<div class="empty-state">Envía un mensaje para empezar</div>';
+          }
+          import('./session-context.js').then(function(sc) {
+            sc.SessionContext.setSessionId('');
+          });
+          nav.history.replaceState({sid: ''}, '', '/');
+        });
+      } else {
+        item.remove();
+      }
+      ApiClient.deleteSession(sid).then(function(r) {
+        if (!r.ok) {
+          console.error('Delete failed:', r.status);
+          import('./sidebar-refresh.js').then(function(sr) { sr.refreshSidebar(); });
+        }
+      }).catch(function(err) {
+        console.error('Delete failed:', err);
+        import('./sidebar-refresh.js').then(function(sr) { sr.refreshSidebar(); });
+      });
       return;
     }
     if (e.target.classList.contains('act-confirm') && item.querySelector('.act-ok')) {
@@ -347,6 +416,10 @@ function initSessionPage(deps) {
 function loadSession(sid, deps) {
   var nav = getNav(deps);
   SessionContext.setSessionId(sid);
+  var messagesDiv = document.getElementById('messages');
+  if (messagesDiv) {
+    messagesDiv.innerHTML = '<div class="empty-state loading-messages"><div class="tc-spinner"></div> Cargando mensajes...</div>';
+  }
   // Notify SSE client of current session and clear unread
   import('./sse-client.js').then(function(sse) {
     sse.setCurrentSessionId(sid);
@@ -386,6 +459,9 @@ function loadSession(sid, deps) {
         MarkdownRenderer.renderAll();
         // On initial load, always scroll to bottom
         Utils.scrollToBottom();
+        // Focus input after loading session
+        var chatInput = document.getElementById('msg-input');
+        if (chatInput) chatInput.focus();
       }
       // Clear loading flag so SSE can take over
       import('./sse-client.js').then(function(sse) { sse.setLoadingSession(false); }).catch(function() {});

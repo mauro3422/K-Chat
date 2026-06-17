@@ -22,6 +22,10 @@ env/
 *.sqlite-wal
 *.db
 
+# Embedding models (descargados en runtime, NO git)
+/data/fastembed_cache/
+/data/huggingface/
+
 # Tests
 .pytest_cache/
 .coverage

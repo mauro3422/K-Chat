@@ -11,11 +11,29 @@ import { logUI } from './log-ui.js';
 import { SessionContext } from './session-context.js';
 import { refreshSidebar } from './sidebar-refresh.js';
 import { handleSuccessfulStream } from './stream-completion.js';
+import { ChatForm } from './chat-form.js';
+
+var _streamGuard = false;
+var _lastStartMs = 0;
 
 export const StreamOrchestrator = {
 
   async startStream(params) {
-    var text = params.text;
+    var now = Date.now();
+    if (now - _lastStartMs < 500) {
+      console.warn('[stream] startStream ignorado: duplicado en ' + (now - _lastStartMs) + 'ms');
+      return;
+    }
+    // Guard absoluto: solo un stream a la vez, pase lo que pase
+    if (_streamGuard) {
+      console.warn('[stream] startStream ignorado: ya hay un stream activo');
+      return;
+    }
+    _streamGuard = true;
+    _lastStartMs = Date.now();
+
+    try {
+      var text = params.text;
     var form = params.form;
     var input = params.input;
     var asstDiv = params.asstDiv;
@@ -77,6 +95,7 @@ export const StreamOrchestrator = {
           asstDiv.remove();
         }
         retryController.resetRetryCount();
+        ChatForm.setStreamingState(false);
         Utils.finalizeStream(input);
         try { refreshSidebar(); } catch(e) {}
         cleanupStream();
@@ -96,6 +115,7 @@ export const StreamOrchestrator = {
         hasSuccessfulTools: hasSuccessfulTools,
         retryController: retryController
       })) {
+        ChatForm.setStreamingState(false);
         cleanupStream();
         return;
       }
@@ -104,13 +124,16 @@ export const StreamOrchestrator = {
       StreamErrorHandler.showRetryMessage(asstDiv, 'No se pudo recibir la respuesta después de ' + retryController.getMaxRetries() + ' reintentos. Detalle: ' + Utils.escHtml(e2.toString()));
       logUI('stream_error_final', 'falló definitivamente: ' + e2.message);
       retryController.resetRetryCount();
+      ChatForm.setStreamingState(false);
+      Utils.finalizeStream(input);
+      cleanupStream();
+      return;
     }
 
     clearTimeout(timeoutId);
 
     var hasContent = fetchResult ? fetchResult.hasContent : false;
 
-    var streamError = errorHandler.getError();
     var streamError = errorHandler.getError();
     if (streamError) {
       logUI('stream_backend_error', streamError.type + ': ' + streamError.message);
@@ -121,6 +144,7 @@ export const StreamOrchestrator = {
       if (errorType === 'auth' || errorType === 'rate_limit') {
         StreamErrorHandler.showRetryMessage(asstDiv, errorMsg, errorType);
         retryController.resetRetryCount();
+        ChatForm.setStreamingState(false);
         Utils.finalizeStream(input);
         cleanupStream();
         return;
@@ -137,18 +161,23 @@ export const StreamOrchestrator = {
         hasSuccessfulTools: hasSuccessfulTools,
         retryController: retryController
       })) {
+        ChatForm.setStreamingState(false);
         cleanupStream();
         return;
       }
       StreamErrorHandler.showRetryMessage(asstDiv, errorMsg);
       retryController.resetRetryCount();
+      ChatForm.setStreamingState(false);
       Utils.finalizeStream(input);
       cleanupStream();
       return;
     }
 
     if (context.getReasoningEls().length) {
-      context.getReasoningEls()[context.getReasoningEls().length - 1].querySelector('summary').textContent = 'Razonamiento';
+      var lastSummary = context.getReasoningEls()[context.getReasoningEls().length - 1].querySelector('summary');
+      if (lastSummary) {
+        lastSummary.textContent = 'Razonamiento';
+      }
       logUI('reasoning_done', context.getReasoningEls().length + ' fases');
     }
 
@@ -179,6 +208,7 @@ export const StreamOrchestrator = {
         hasContent: false,
         hasSuccessfulTools: hasSuccessfulTools,
       })) {
+        ChatForm.setStreamingState(false);
         cleanupStream();
         return;
       }
@@ -197,7 +227,11 @@ export const StreamOrchestrator = {
       });
     }
 
+    ChatForm.setStreamingState(false);
     Utils.finalizeStream(input);
+    } finally {
+      _streamGuard = false;
+    }
   }
 
 };

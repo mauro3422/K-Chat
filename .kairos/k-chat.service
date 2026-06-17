@@ -10,17 +10,19 @@ WorkingDirectory=%h/dev/K-Chat
 # ── Environment ────────────────────────────────────────────────────
 EnvironmentFile=%h/dev/K-Chat/.env
 Environment=PYTHONUNBUFFERED=1
+Environment=FASTEMBED_CACHE_PATH=%h/dev/K-Chat/data/fastembed_cache
+Environment=HF_HOME=%h/dev/K-Chat/data/huggingface
 
 # ── Execute ────────────────────────────────────────────────────────
 ExecStart=%h/dev/K-Chat/venv/bin/uvicorn web.server:app \
-    --host 127.0.0.1 \
+    --host 0.0.0.0 \
     --port 8000 \
     --log-level info \
     --no-access-log
 
 # ── Lifecycle ──────────────────────────────────────────────────────
-Restart=on-failure
-RestartSec=10
+Restart=always
+RestartSec=5
 RestartSteps=5
 RestartMaxDelaySec=30
 

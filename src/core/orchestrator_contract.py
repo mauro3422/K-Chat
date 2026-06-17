@@ -17,13 +17,14 @@ from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
 from src.memory.repos import Repositories
-from src.tools.registry import ToolRegistry
+from src.tools.registry import ToolRegistryProtocol
 from src.core.debug_info import DebugInfo
 
 if TYPE_CHECKING:
     from src.core.services.protocols import (
         HistoryServiceProtocol,
         LLMServiceProtocol,
+        RetrievalServiceProtocol,
         ToolExecutionServiceProtocol,
         TelemetryServiceProtocol,
     )
@@ -45,17 +46,18 @@ class LLMDeps:
 @dataclass(slots=True)
 class ToolDeps:
     """Tool-related dependencies: registry and execution service."""
-    tool_registry: ToolRegistry | None = None
+    tool_registry: ToolRegistryProtocol | None = None
     tool_service: ToolExecutionServiceProtocol | None = None
 
 
 @dataclass(slots=True)
 class StorageDeps:
-    """Storage/history dependencies: repos, history service, compression."""
+    """Storage/history dependencies: repos, history service, compression, retrieval."""
     repos: Repositories | None = None
     history_service: HistoryServiceProtocol | None = None
     compress_fn: Callable[[list[dict[str, Any]], str], None] | None = None
     should_compress_fn: Callable[[list[dict[str, Any]]], bool] | None = None
+    retrieval_service: RetrievalServiceProtocol | None = None
 
 
 @dataclass(slots=True)
@@ -83,6 +85,7 @@ _FIELD_MAP: dict[str, str] = {
     "history_service": "storage",
     "compress_fn": "storage",
     "should_compress_fn": "storage",
+    "retrieval_service": "storage",
     "session_id": "state",
     "tagged": "state",
     "streaming": "state",

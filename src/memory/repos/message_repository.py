@@ -66,7 +66,7 @@ class MessageRepository(_BaseRepository):
         try:
             conn = await self._get_conn()
             cursor = await conn.execute('''
-                SELECT role, content, model, created_at, reasoning, phases, tool_calls, tool_call_id
+                SELECT role, content, model, created_at, reasoning, phases, tool_calls, tool_call_id, id
                 FROM messages
                 WHERE session_id = ?
                 ORDER BY id ASC
@@ -92,6 +92,19 @@ class MessageRepository(_BaseRepository):
         except Exception as e:
             logger.warning("Failed to delete messages for session %s: %s", session_id, e)
             return 0
+
+    async def delete_message(self, message_id: int) -> bool:
+        """Delete a single message by its autoincrement ID."""
+        try:
+            async with self._transaction() as conn:
+                cursor = await conn.execute(
+                    "DELETE FROM messages WHERE id = ?",
+                    (message_id,)
+                )
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.exception("Failed to delete message with id %s: %s", message_id, e)
+            return False
 
     async def delete_empty_assistant(self, session_id: str) -> None:
         """Delete assistant messages with empty content (left by tool loop resets)."""

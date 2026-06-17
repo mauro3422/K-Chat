@@ -1,7 +1,7 @@
 import logging
 import os
 
-from src.memory.connection_pool import configure_connection as _configure_connection, get_raw_conn as _get_raw_conn
+from src.memory.conn_factory import configure_connection as _configure_connection, create_raw_conn as _get_raw_conn
 from src.memory.db_path import resolve_db_path as _get_db_path
 from src.memory.engine_state import get_engine
 from src.memory.migration_runner import run_pending_migrations

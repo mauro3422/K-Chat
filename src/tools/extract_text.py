@@ -18,6 +18,40 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# ── Verificación de dependencias al cargar el módulo ──────────────────────
+
+_MISSING_DEPS: list[str] = []
+
+try:
+    import fitz  # noqa: F401
+except ImportError:
+    _MISSING_DEPS.append("PyMuPDF (fitz)")
+
+try:
+    from PIL import Image  # noqa: F401
+except ImportError:
+    _MISSING_DEPS.append("Pillow (PIL)")
+
+try:
+    import pytesseract  # noqa: F401
+except ImportError:
+    _MISSING_DEPS.append("pytesseract")
+
+if _MISSING_DEPS:
+    logger.warning(
+        "Dependencias faltantes para extract_text: %s. "
+        "Corré: pip install %s",
+        ", ".join(_MISSING_DEPS),
+        " ".join(
+            {
+                "PyMuPDF (fitz)": "PyMuPDF",
+                "Pillow (PIL)": "Pillow",
+                "pytesseract": "pytesseract",
+            }.get(d, d)
+            for d in _MISSING_DEPS
+        ),
+    )
+
 # ── Definición para el LLM ────────────────────────────────────────────────
 
 DEFINITION: dict[str, Any] = {
@@ -196,49 +230,62 @@ def _sync_extract_text(files: list[str]) -> str:
     Returns:
         Texto formateado con los resultados de cada archivo.
     """
-    if not files:
-        return "No se especificaron archivos para extraer."
+    try:
+        if not files:
+            return "No se especificaron archivos para extraer."
 
-    if len(files) > 10:
-        files = files[:10]
+        if len(files) > 10:
+            files = files[:10]
 
-    output: list[str] = []
-    errors: list[str] = []
+        output: list[str] = []
+        errors: list[str] = []
 
-    for path in files:
-        # Resolver path (~, relative, etc.)
-        resolved = os.path.expanduser(os.path.expandvars(path))
-        if not os.path.isabs(resolved):
-            resolved = os.path.join(os.getcwd(), resolved)
+        for path in files:
+            # Resolver path (~, relative, etc.)
+            resolved = os.path.expanduser(os.path.expandvars(path))
+            if not os.path.isabs(resolved):
+                resolved = os.path.join(os.getcwd(), resolved)
 
-        result = _extract_single_file(resolved)
-        filename = os.path.basename(resolved)
+            result = _extract_single_file(resolved)
+            filename = os.path.basename(resolved)
 
-        if result["status"] == "ok":
-            method_label = {
-                "pdf_native": "📄 PDF (texto nativo)",
-                "pdf_ocr": "📄 PDF (OCR)",
-                "image_ocr": "🖼️ Imagen (OCR)",
-            }.get(result["method"], result["method"])
+            if result["status"] == "ok":
+                method_label = {
+                    "pdf_native": "PDF (texto nativo)",
+                    "pdf_ocr": "PDF (OCR)",
+                    "image_ocr": "Imagen (OCR)",
+                }.get(result["method"], result["method"])
 
-            output.append(f"## {filename} — {method_label}")
-            output.append(result["text"])
-        else:
-            errors.append(f"- {filename}: {result['error']}")
+                output.append(f"## {filename} — {method_label}")
+                output.append(result["text"])
+            else:
+                errors.append(f"- {filename}: {result['error']}")
 
-    final: list[str] = []
-    if output:
-        final.extend(output)
-    if errors:
-        final.append(f"\n### Errores\n" + "\n".join(errors))
+        final: list[str] = []
+        if output:
+            final.extend(output)
+        if errors:
+            final.append(f"\n### Errores\n" + "\n".join(errors))
+
+        return "\n\n".join(final) if final else "No se pudo extraer texto de ningún archivo."
+    except Exception as e:
+        logger.exception("Error inesperado extrayendo texto: %s", e)
+        return f"[ERROR in extract_text]: Error interno: {e}"
 
 
 async def run(**kwargs: Any) -> str:
-    """Extrae texto de archivos PDF/Imagen (entrypoint async)."""
-    files: list[str] = kwargs.get("files", [])
-    if not files:
-        return "No se especificaron archivos para extraer."
-    if len(files) > 10:
-        files = files[:10]
-    return await asyncio.to_thread(_sync_extract_text, files)
-    return "\n\n".join(final) if final else "No se pudo extraer texto de ningún archivo."
+    """Extrae texto de archivos PDF/Imagen (entrypoint async).
+
+    Cualquier error interno se captura y devuelve como mensaje de error
+    para no interrumpir el stream.
+    """
+    try:
+        files: list[str] = kwargs.get("files", [])
+        if not files:
+            return "No se especificaron archivos para extraer."
+        if len(files) > 10:
+            files = files[:10]
+        return await asyncio.to_thread(_sync_extract_text, files)
+    except Exception as e:
+        logger.exception("Error inesperado en extract_text.run(): %s", e)
+        return f"[ERROR in extract_text]: Error interno: {e}"

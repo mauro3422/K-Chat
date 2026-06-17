@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Any
-from src.api import Repositories
+from src.api.repos import Repositories
 
 
 @dataclass(slots=True)

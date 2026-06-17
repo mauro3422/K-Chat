@@ -15,8 +15,8 @@ class DebugRepository(_BaseRepository):
         """Save or replace debug info for a session."""
         async with self._transaction() as conn:
             await conn.execute('''
-                INSERT OR REPLACE INTO debug_info (session_id, model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO debug_info (session_id, model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, auto_memories, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 session_id,
                 data.get("model", ""),
@@ -25,6 +25,7 @@ class DebugRepository(_BaseRepository):
                 json.dumps(data.get("tool_calls", []), ensure_ascii=False),
                 json.dumps(data.get("history_before", []), ensure_ascii=False),
                 json.dumps(data.get("asr_telemetry", []), ensure_ascii=False),
+                data.get("auto_memories", ""),
                 datetime.now().isoformat()
             ))
 
@@ -33,7 +34,7 @@ class DebugRepository(_BaseRepository):
         try:
             conn = await self._get_conn()
             cursor = await conn.execute('''
-                SELECT model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry
+                SELECT model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, auto_memories
                 FROM debug_info
                 WHERE session_id = ?
             ''', (session_id,))
@@ -46,6 +47,7 @@ class DebugRepository(_BaseRepository):
             tool_calls = row["tool_calls"]
             history_before = row["history_before"]
             asr_telemetry = row["asr_telemetry"]
+            auto_memories = row["auto_memories"] if "auto_memories" in row.keys() else ""
             return {
                 "model": model,
                 "reasoning": reasoning,
@@ -53,6 +55,7 @@ class DebugRepository(_BaseRepository):
                 "tool_calls": json.loads(tool_calls) if tool_calls else [],
                 "history_before": json.loads(history_before) if history_before else [],
                 "asr_telemetry": json.loads(asr_telemetry) if asr_telemetry else [],
+                "auto_memories": auto_memories,
             }
         except Exception:
             logger.exception("Failed to get debug info for %s", session_id)
