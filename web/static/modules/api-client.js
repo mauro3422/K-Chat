@@ -31,7 +31,7 @@ export const ApiClient = {
   // Sessions
   sidebar() {
     var urlBuilder = SessionContext.createSessionUrlBuilder();
-    return fetch(urlBuilder.sidebar()).then(function(r) { return r.text(); });
+    return fetch(urlBuilder.sidebar(), { cache: 'no-store' }).then(function(r) { return r.text(); });
   },
 
   loadMessages(sessionId) {

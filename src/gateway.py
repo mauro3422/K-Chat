@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import logging
 import os
 import signal
@@ -385,8 +386,9 @@ def main() -> None:
 
     # ── Precalentar modelo de embeddings ────────────────────────────
     try:
-        from src.memory.embeddings.service import generate_embedding
-        asyncio.create_task(asyncio.to_thread(generate_embedding, "warmup"))
+        generate_embedding = importlib.import_module("src.memory.embeddings.service").generate_embedding
+        import threading
+        threading.Thread(target=generate_embedding, args=("warmup",), daemon=True).start()
         logger.info("Embedding model preload initiated")
     except Exception:
         logger.warning("Embedding model preload failed (non-fatal)")

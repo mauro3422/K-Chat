@@ -7,7 +7,7 @@
 {% for s in sessions %}
 {% set is_telegram = s.sid.startswith('tele_') %}
 {% set label = s.name if s.name else s.sid[:8] %}
-{% set meta = s.user_count ~ " msgs - " ~ s.last_str[:10] %}
+{% set meta = s.count ~ " msgs - " ~ s.last_str[:10] %}
 {% set active = " active" if s.sid == current else "" %}
 <div class="session-item{{ active }}" data-sid="{{ s.sid }}" data-favorite="{{ '1' if s.is_favorite else '0' }}">
   <div class="session-main">

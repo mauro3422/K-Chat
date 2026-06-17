@@ -3,6 +3,8 @@ import sys
 import asyncio
 from typing import Any
 
+import anyio
+
 from src.api import (
     chat_stream,
     generate_session_id,
@@ -25,7 +27,7 @@ SALIR: tuple[str, ...] = ("salir", "exit", "quit", "/salir", "/exit", "chau", "b
 async def main() -> None:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')  # type: ignore[attr-defined]
     model: str = get_default_model()
-    init_db()
+    await init_db()
     session_id: str = generate_session_id()
     print("Kairos CLI")
     print("Escribí 'salir' para terminar.\n")
@@ -49,7 +51,7 @@ async def main() -> None:
 
     while True:
         try:
-            entry: str = (await asyncio.to_thread(input, "Tu> ")).strip()
+            entry: str = (await anyio.to_thread.run_sync(input, "Tu> ")).strip()
         except (EOFError, KeyboardInterrupt):
             print("\nChau.")
             break

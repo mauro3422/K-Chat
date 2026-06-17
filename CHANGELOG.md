@@ -1,4 +1,25 @@
-# Changelog — K-Chat
+# Changelog ??? K-Chat
+
+## [2026-06-17] - Estabilizacion local + logs al gateway
+
+### Bugfixes
+- Sidebar desincronizado: el contador ahora muestra el total real de mensajes y no un valor cacheado o parcial.
+- Rename de sesiones: el flujo de rename en `chat-ts` y en el frontend clasico ahora persiste y refresca la vista.
+- Assets 404: `skills-ui.js` vuelve a servir correctamente y se elimina el error de carga dinamica.
+- Logs al gateway: eventos clave de sesion ahora se registran en `gateway_log` (`session_created`, `session_renamed`, `session_deleted`).
+
+### Arquitectura
+- Se eliminaron imports directos innecesarios a `src.memory` desde la capa web y desde `gateway`.
+- El arranque y shutdown de modelos quedaron desacoplados con importacion dinamica.
+- `buildIframeSrc` mantiene el codigo del widget sin transformarlo, alineado con el contrato de tests.
+
+### Dependencias
+- Se ampliaron los requisitos de instalacion para incluir dependencias de ASR, embeddings y tests.
+
+### Verificacion
+- `tests/unit/test_anti_regression.py` ahora pasa.
+- `tests/unit/test_pages_router.py` y `tests/unit/api/test_api_session.py` pasan.
+- `GET /health` responde OK despues del reinicio del server.
 
 ## [2026-06-16] — Auditoría general + estabilización full-stack
 

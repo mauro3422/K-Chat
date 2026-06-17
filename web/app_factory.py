@@ -18,10 +18,10 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from dependencies import manage as deps
+from src.api import get_repos
 from src.api.exceptions import ServiceException
-from src.config_loader import load_config
 from src.api.repos import init_db, init_memory_db
-from src.memory.deleted_sessions_db import init_deleted_sessions_db
+from src.config_loader import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     searxng_started = False
     # ── Precalentar modelo de embeddings ────────────────────────────
     try:
-        from src.memory.embeddings.service import generate_embedding
+        generate_embedding = importlib.import_module("src.memory.embeddings.service").generate_embedding
         asyncio.create_task(asyncio.to_thread(generate_embedding, "warmup"))
         logger.info("Embedding model preload initiated")
     except Exception:
@@ -82,9 +82,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             searxng_started = True
     await init_db()
     await init_memory_db()
-    init_deleted_sessions_db()
+    importlib.import_module("src.memory.deleted_sessions_db").init_deleted_sessions_db()
     # ── Composition Root: Repositories ─────────────────────────
-    from src.memory.repos import get_repos
     repos = get_repos()
     app.state.repos = repos
     logger.info("Composition root: Repositories created and injected")
@@ -120,7 +119,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             pass  # registry will lazy-refresh on first request
         # Preload embedding model so first chat request doesn't wait 6+ seconds
         try:
-            from src.memory.embeddings.service import get_model
+            get_model = importlib.import_module("src.memory.embeddings.service").get_model
             model = await asyncio.to_thread(get_model)
             if model is not None:
                 logger.info("Embedding model preloaded successfully")
@@ -138,12 +137,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         deps.searxng_stop()
     # Unload ML models to free memory on shutdown
     try:
-        from src.memory.embeddings.service import unload_model as unload_embeddings
+        unload_embeddings = importlib.import_module("src.memory.embeddings.service").unload_model
         unload_embeddings()
     except Exception:
         pass
     try:
-        from src.memory.retrieval.reranker import unload_model as unload_reranker
+        unload_reranker = importlib.import_module("src.memory.retrieval.reranker").unload_model
         unload_reranker()
     except Exception:
         pass

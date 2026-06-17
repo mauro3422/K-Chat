@@ -5,7 +5,7 @@ to prevent double-initialization of database paths across the app.
 """
 
 import threading
-from typing import Callable
+from typing import Any, Callable
 
 _init_lock = threading.Lock()              # Intentional init guard — prevents
 _initialized_db_paths: set[str] = set()    # double-init of database paths

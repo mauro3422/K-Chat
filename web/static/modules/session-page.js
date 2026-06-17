@@ -128,14 +128,19 @@ function confirmRename(item, sid) {
   var name = inp.value.trim();
   if (!name) { cancelEdit(item); return; }
   ApiClient.renameSession(sid, name).then(function() {
-    item.querySelector('.session-preview').textContent = name;
+    var label = item.querySelector('.session-label') || item.querySelector('.session-preview');
+    if (label) {
+      label.textContent = name;
+    }
     restoreActions(item);
+    refreshSidebar();
   }).catch(function(err) { console.error('Rename failed:', err); });
 }
 
 function cancelEdit(item) {
   var orig = item.dataset.origName;
-  if (orig) { item.querySelector('.session-preview').textContent = orig; }
+  var label = item.querySelector('.session-label') || item.querySelector('.session-preview');
+  if (orig && label) { label.textContent = orig; }
   restoreActions(item);
   delete item.dataset.origName;
 }
@@ -318,8 +323,8 @@ function initSessionPage(deps) {
       return;
     }
     if (e.target.classList.contains('act-rename')) {
-      var preview = item.querySelector('.session-preview');
-      item.dataset.origName = preview.textContent;
+      var preview = item.querySelector('.session-label') || item.querySelector('.session-preview');
+      item.dataset.origName = preview ? preview.textContent : '';
       var input = setPreviewInput(preview, item.dataset.origName);
       var renameActions = item.querySelector('.session-actions');
       setActionButtons(
@@ -336,7 +341,7 @@ function initSessionPage(deps) {
         if (typeof inp.focus === 'function') { inp.focus(); }
         if (typeof inp.select === 'function') { inp.select(); }
         inp.onkeydown = function(ev) {
-          if (ev.key === 'Enter') { confirmRename(item, sid); }
+          if (ev.key === 'Enter') { ev.preventDefault(); confirmRename(item, sid); }
           if (ev.key === 'Escape') { cancelEdit(item); }
         };
       }

@@ -47,7 +47,7 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     if (currentSessionId) {
       url += `?current=${encodeURIComponent(currentSessionId)}`;
     }
-    return fetch(url);
+    return fetch(url, { cache: 'no-store' });
   }
 
   sessionDebug(sessionId: string): Promise<Response> {

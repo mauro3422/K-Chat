@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import sqlite3
 from datetime import datetime
 from typing import Any, TYPE_CHECKING
 from src.memory.repos.base import _BaseRepository
@@ -20,9 +21,17 @@ class SessionRepository(_BaseRepository):
             return
         try:
             async with self._transaction() as conn:
+                cursor = await conn.execute("PRAGMA table_info(sessions)")
+                columns = await cursor.fetchall()
+                if any(col[1] == "is_favorite" for col in columns):
+                    SessionRepository._did_alter_favorite = True
+                    return
                 await conn.execute("ALTER TABLE sessions ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
-        except Exception:
-            pass
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                logger.warning("Failed to ensure is_favorite column: %s", e)
+        except Exception as e:
+            logger.warning("Failed to ensure is_favorite column: %s", e)
         SessionRepository._did_alter_favorite = True
 
     async def ensure(self, session_id: str) -> None:

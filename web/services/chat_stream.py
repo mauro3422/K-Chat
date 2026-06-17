@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import time
+import importlib
 from collections.abc import Callable, AsyncGenerator
 from typing import Any
 
@@ -218,17 +219,21 @@ async def _vectorize_session(session_id: str, orchestrator_deps: OrchestratorDep
     async with lock:
         try:
             from src.api.repos import get_repos
-            from src.memory.vectorize_sessions import vectorize_session as _vs
-            from src.memory.clustering.heuristic import HeuristicClusterer, flush_clusters_to_db
-            from src.memory.clustering.relations import detect_relations, flush_relations_to_db
-            from src.memory.entity.linker import (
-                EntityLinker, flush_entities_to_db,
-                flush_relations_to_db as flush_entity_relations_to_db,
-                flush_entity_mentions_to_db,
-            )
-            from src.memory.memory_db_path import resolve_memory_db_path
+            _vs = importlib.import_module("src.memory.vectorize_sessions").vectorize_session
+            heuristic_mod = importlib.import_module("src.memory.clustering.heuristic")
+            relations_mod = importlib.import_module("src.memory.clustering.relations")
+            linker_mod = importlib.import_module("src.memory.entity.linker")
+            resolve_memory_db_path = importlib.import_module("src.memory.memory_db_path").resolve_memory_db_path
+            HeuristicClusterer = heuristic_mod.HeuristicClusterer
+            flush_clusters_to_db = heuristic_mod.flush_clusters_to_db
+            detect_relations = relations_mod.detect_relations
+            flush_relations_to_db = relations_mod.flush_relations_to_db
+            EntityLinker = linker_mod.EntityLinker
+            flush_entities_to_db = linker_mod.flush_entities_to_db
+            flush_entity_relations_to_db = linker_mod.flush_relations_to_db
+            flush_entity_mentions_to_db = linker_mod.flush_entity_mentions_to_db
 
-            repos = _orch_deps.repos if _orch_deps and _orch_deps.repos else get_repos()
+            repos = orchestrator_deps.repos if orchestrator_deps and orchestrator_deps.repos else get_repos()
             db_path = resolve_memory_db_path()
             clusterer = HeuristicClusterer()
             linker = EntityLinker()

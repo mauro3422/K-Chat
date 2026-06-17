@@ -2,7 +2,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from web.routers.pages import get_available_models, FALLBACK_MODEL
+from web.routers.pages import FALLBACK_MODEL, get_available_models, resolve_frontend_entry
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
@@ -13,6 +13,7 @@ def get_chat_ts(request: Request) -> HTMLResponse:
         "session_id": "sess-1",
         "model": FALLBACK_MODEL,
         "models": get_available_models(),
+        "frontend_entry": resolve_frontend_entry("app_mock.js", "app.js"),
     })
     resp.headers.update({"Cache-Control": "no-cache, no-store, must-revalidate"})
     return resp

@@ -18,6 +18,15 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates"
 templates.env.auto_reload = True
 
 _NOCACHE_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+_STATIC_DIR = Path(__file__).parent.parent / "static"
+_DIST_DIR = _STATIC_DIR / "dist" / "assets"
+
+
+def _request_repos(request: Request):
+    app = getattr(request, "app", None)
+    state = getattr(app, "__dict__", {}).get("state") if app is not None else None
+    repos = getattr(state, "repos", None) if state is not None else None
+    return repos or get_repos()
 
 # ── NO HARDCODED MODEL NAMES ──────────────────────────────────────────
 # Model discovery is fully dynamic via ModelRegistry (src/llm/model_registry.py).
@@ -108,6 +117,18 @@ def get_available_models() -> list[dict[str, str]]:
     return grouped
 
 
+def resolve_frontend_entry(preferred_name: str = "app.js", fallback_name: str = "app.js") -> str:
+    """Return the best available frontend entrypoint.
+
+    Uses the Vite-built bundle when present, otherwise falls back to the
+    checked-in ESM source so the app remains usable without a build step.
+    """
+    bundled = _DIST_DIR / preferred_name
+    if bundled.exists():
+        return f"/static/dist/assets/{preferred_name}"
+    return f"/static/{fallback_name}"
+
+
 @router.get("/favicon.ico")
 def favicon() -> FileResponse:
     return FileResponse(Path(__file__).parent.parent / "static" / "logo.png")
@@ -126,6 +147,7 @@ def home(request: Request, new: bool = False) -> HTMLResponse:
         "session_id": session_id,
         "model": FALLBACK_MODEL,
         "models": get_available_models(),
+        "frontend_entry": resolve_frontend_entry("app.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     # Always refresh the cookie so "new" actually persists
@@ -139,6 +161,7 @@ def session_page(request: Request, session_id: str) -> HTMLResponse:
         "session_id": session_id,
         "model": FALLBACK_MODEL,
         "models": get_available_models(),
+        "frontend_entry": resolve_frontend_entry("app.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp
@@ -146,7 +169,7 @@ def session_page(request: Request, session_id: str) -> HTMLResponse:
 
 @router.get("/sidebar", response_class=HTMLResponse)
 async def sidebar(request: Request) -> HTMLResponse:
-    repos = getattr(request.app.state, 'repos', None) or get_repos()
+    repos = _request_repos(request)
     raw = await repos.sessions.get_all(50)
     current = request.query_params.get("current", "")
     sessions = []
@@ -162,7 +185,9 @@ async def sidebar(request: Request) -> HTMLResponse:
             "name": name,
             "is_favorite": is_favorite,
         })
-    return templates.TemplateResponse(request, "sidebar.html", {"sessions": sessions, "current": current})
+    resp = templates.TemplateResponse(request, "sidebar.html", {"sessions": sessions, "current": current})
+    resp.headers.update(_NOCACHE_HEADERS)
+    return resp
 
 
 @router.get("/sessions/{session_id}/messages")
