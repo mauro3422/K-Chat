@@ -57,6 +57,7 @@ export class AudioBus implements IAudioBus {
     if (!audio) {
       audio = new Audio(src);
       audio.volume = this.volume;
+      audio.onerror = () => {};
       this.audioCache.set(sound, audio);
     }
     audio.currentTime = 0;

@@ -210,7 +210,7 @@
     "sidebar  chat     canvas"
     "sidebar  chat     canvas"
     "effects  toolbar  debug";
-  grid-template-columns: 260px 1fr 300px;
+  grid-template-columns: minmax(0, auto) 1fr minmax(0, auto);
   grid-template-rows: 1fr auto auto;
 }
 
@@ -218,6 +218,16 @@
 #app.grid-layout #main { grid-area: chat; }
 #app.grid-layout #canvas-workspace { grid-area: canvas; }
 #app.grid-layout #debug-panel { grid-area: debug; }
+
+/* Collapsed items in grid layout — don't consume space */
+#app.grid-layout #canvas-workspace.collapsed {
+  display: none;
+}
+#app.grid-layout #sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
 
 /* Canvas overlay */
 .fx-canvas {

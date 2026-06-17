@@ -176,9 +176,11 @@ export class SessionStore implements ISessionStore {
   private async loadHistory(sessionId: string): Promise<void> {
     try {
       const resp = await this._apiClient.getSessionMessages(sessionId);
-      const data = await resp.json() as MessageData[];
-      this._histories[sessionId] = data;
-      this._emit('history:updated', { sessionId, history: data });
+      const json = await resp.json() as Record<string, unknown>;
+      // API returns {messages: [...], widget_states: {...}}
+      const messages = Array.isArray(json) ? json : (json.messages as MessageData[] || []);
+      this._histories[sessionId] = messages;
+      this._emit('history:updated', { sessionId, history: messages });
     } catch (err) {
       this._logger.warn('loadHistory failed', err);
       this._histories[sessionId] = [];

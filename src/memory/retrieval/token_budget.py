@@ -87,7 +87,7 @@ def format_memories_for_prompt(
         return ""
     
     lines = [
-        "\n--- 📖 Auto-retrieved relevant memories ---",
+        "\n--- 🔍 Recordando... (memorias relevantes recuperadas) ---",
         "The memories below were automatically retrieved based on the user's current message.",
         "They come from past sessions and curated memory. Treat them as context.",
         "",

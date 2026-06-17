@@ -14,9 +14,26 @@ class DebugRepository(_BaseRepository):
     async def save_info(self, session_id: str, data: dict[str, Any]) -> None:
         """Save or replace debug info for a session."""
         async with self._transaction() as conn:
+            # Ensure phases column exists (lazy migration for existing DBs)
+            try:
+                await conn.execute("ALTER TABLE debug_info ADD COLUMN phases TEXT DEFAULT '[]'")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE debug_info ADD COLUMN prompt_tokens INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE debug_info ADD COLUMN completion_tokens INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await conn.execute("ALTER TABLE debug_info ADD COLUMN total_tokens INTEGER DEFAULT 0")
+            except Exception:
+                pass
             await conn.execute('''
-                INSERT OR REPLACE INTO debug_info (session_id, model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, auto_memories, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO debug_info (session_id, model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, auto_memories, phases, prompt_tokens, completion_tokens, total_tokens, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 session_id,
                 data.get("model", ""),
@@ -26,6 +43,10 @@ class DebugRepository(_BaseRepository):
                 json.dumps(data.get("history_before", []), ensure_ascii=False),
                 json.dumps(data.get("asr_telemetry", []), ensure_ascii=False),
                 data.get("auto_memories", ""),
+                data.get("phases", "[]"),
+                data.get("prompt_tokens", 0),
+                data.get("completion_tokens", 0),
+                data.get("total_tokens", 0),
                 datetime.now().isoformat()
             ))
 
@@ -33,30 +54,35 @@ class DebugRepository(_BaseRepository):
         """Retrieve debug info for a session."""
         try:
             conn = await self._get_conn()
-            cursor = await conn.execute('''
-                SELECT model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, auto_memories
+            # Check if phases column exists
+            col_info = await conn.execute("PRAGMA table_info(debug_info)")
+            columns = {row[1] for row in await col_info.fetchall()}
+            select_cols = "model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, auto_memories"
+            if "phases" in columns:
+                select_cols += ", phases, prompt_tokens, completion_tokens, total_tokens"
+            cursor = await conn.execute(f'''
+                SELECT {select_cols}
                 FROM debug_info
                 WHERE session_id = ?
             ''', (session_id,))
             row = await cursor.fetchone()
             if not row:
                 return {}
-            model = row["model"]
-            reasoning = row["reasoning"]
-            system_prompt = row["system_prompt"]
-            tool_calls = row["tool_calls"]
-            history_before = row["history_before"]
-            asr_telemetry = row["asr_telemetry"]
-            auto_memories = row["auto_memories"] if "auto_memories" in row.keys() else ""
-            return {
-                "model": model,
-                "reasoning": reasoning,
-                "system_prompt": system_prompt,
-                "tool_calls": json.loads(tool_calls) if tool_calls else [],
-                "history_before": json.loads(history_before) if history_before else [],
-                "asr_telemetry": json.loads(asr_telemetry) if asr_telemetry else [],
-                "auto_memories": auto_memories,
+            result = {
+                "model": row["model"],
+                "reasoning": row["reasoning"],
+                "system_prompt": row["system_prompt"],
+                "tool_calls": json.loads(row["tool_calls"]) if row["tool_calls"] else [],
+                "history_before": json.loads(row["history_before"]) if row["history_before"] else [],
+                "asr_telemetry": json.loads(row["asr_telemetry"]) if row["asr_telemetry"] else [],
+                "auto_memories": row["auto_memories"] if "auto_memories" in row.keys() else "",
             }
+            if "phases" in columns:
+                result["phases"] = row["phases"] if "phases" in row.keys() else "[]"
+                result["prompt_tokens"] = row["prompt_tokens"] if "prompt_tokens" in row.keys() else 0
+                result["completion_tokens"] = row["completion_tokens"] if "completion_tokens" in row.keys() else 0
+                result["total_tokens"] = row["total_tokens"] if "total_tokens" in row.keys() else 0
+            return result
         except Exception:
             logger.exception("Failed to get debug info for %s", session_id)
             return {}

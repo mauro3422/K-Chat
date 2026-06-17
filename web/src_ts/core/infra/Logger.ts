@@ -75,6 +75,6 @@ export class Logger implements ILogger {
   private _flush(): void {
     if (Logger._buffer.length === 0 || !this.apiClient) return;
     const batch = Logger._buffer.splice(0, Math.min(Logger._buffer.length, 100));
-    this.apiClient.sendClientLogs(batch).catch(() => {});
+    this.apiClient.sendClientLogs(batch).then(r => { if (!r.ok) r.text().catch(() => {}); }).catch(() => {});
   }
 }

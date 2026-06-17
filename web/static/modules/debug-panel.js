@@ -370,6 +370,14 @@ function refreshDebug() {
     dc.appendChild(createSection('Auto Memorias:', 'text', {
       preText: d.auto_memories || '(ninguna)'
     }));
+    dc.appendChild(createDetailsSection('Procesos (phases):', 'text', {
+      open: true,
+      preText: (function() {
+        var raw = d.phases || '[]';
+        try { return JSON.stringify(JSON.parse(raw), null, 2); }
+        catch(e) { return raw; }
+      })()
+    }));
     dc.appendChild(createSection('Tools:', 'text', {
       preText: JSON.stringify(d.tool_calls || [], null, 2)
     }));
