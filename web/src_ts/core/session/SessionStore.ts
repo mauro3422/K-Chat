@@ -94,20 +94,27 @@ export class SessionStore implements ISessionStore {
 
   async deleteSession(id: string): Promise<void> {
     try {
-      await this._apiClient.deleteSession(id);
+      const resp = await this._apiClient.deleteSession(id);
+      if (!resp.ok) {
+        this._logger.warn('deleteSession API returned', resp.status);
+      }
     } catch (err) {
       this._logger.warn('deleteSession API failed', err);
     }
+    // Update local state first
     this._sessions = this._sessions.filter(s => s.id !== id);
     delete this._histories[id];
     if (this._activeSessionId === id) {
       this._activeSessionId = this._sessions.length > 0 ? this._sessions[0].id : '';
     }
+    // Notify UI to cleanup widgets, canvas, messages
     this._emit('session:deleted', { id });
     this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
     if (this._activeSessionId) {
       this._emit('history:updated', { sessionId: this._activeSessionId, history: this.getHistory(this._activeSessionId) });
     }
+    // Reload from backend to confirm
+    await this.loadSessions();
   }
 
   async renameSession(id: string, name: string): Promise<void> {
