@@ -52,6 +52,12 @@ web/static/md-test.html
 # Auto-generated (se regenera en cada arranque)
 TOOLS.md
 
+# Runtime watchdog/crash files (auto-generated, no trackear)
+.kairos/crash_counter
+.kairos/error_context.md
+.kairos/telegram_bot.pid
+.kairos/telegram_offset
+
 # Scratch scripts
 scratch/
 
