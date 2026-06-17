@@ -5,13 +5,19 @@ import { ILogger } from './Logger';
 export class TypedEventBus implements IEventBus {
   private logger: ILogger = getLogger('event-bus');
   private listeners: Map<string, EventCallback[]> = new Map();
+  private static readonly MAX_LISTENERS = 50;
   private static _logDepth = 0;
 
   on<T>(event: string, callback: EventCallback<T>): void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
     }
-    this.listeners.get(event)!.push(callback);
+    const list = this.listeners.get(event)!;
+    if (list.length >= TypedEventBus.MAX_LISTENERS) {
+      console.warn(`[EventBus] Max listeners (${TypedEventBus.MAX_LISTENERS}) for "${event}" — possible leak`);
+      return;
+    }
+    list.push(callback);
     this._logDebug('on', event);
   }
 

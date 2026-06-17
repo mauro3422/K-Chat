@@ -272,7 +272,7 @@ export class ContentHandler {
 
     // ── Incremental path: only update last text segment if no new widget boundaries ──
     const delta = fullText.slice(this.lastRenderedLength);
-    const hasNewWidgetBoundary = delta ? /~~~widget-(?:start|end)/.test(delta) : false;
+    const hasNewWidgetBoundary = delta ? /```html-widget|~~~widget-(?:start|end)/.test(delta) : false;
 
     if (!isNewPhase && !hasNewWidgetBoundary) {
       const textSegments = bodyDiv.querySelectorAll(':scope > .' + C.MSG_TEXT_SEGMENT);

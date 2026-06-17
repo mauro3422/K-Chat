@@ -1,4 +1,4 @@
-import { IEventBus } from '../../types/events';
+import { IEventBus, EventCallback } from '../../types/events';
 import { MessageData } from '../../rendering/MessageView';
 import { randomWidget } from '../../widgets/templates';
 
@@ -21,6 +21,7 @@ export class SessionStore implements ISessionStore {
   private _histories: Record<string, MessageData[]>;
   private _activeSessionId: string;
   private _eventBus: IEventBus | null = null;
+  private _boundListeners: Array<{ event: string; cb: EventCallback<any> }> = [];
 
   constructor() {
     this._sessions = [
@@ -72,17 +73,30 @@ export class SessionStore implements ISessionStore {
   init(eventBus: IEventBus): void {
     this._eventBus = eventBus;
 
-    eventBus.on<{ sessionId: string }>('session:select', (data) => {
+    const selectCb = (data: { sessionId: string }) => {
       this.selectSession(data.sessionId);
-    });
+    };
+    eventBus.on<{ sessionId: string }>('session:select', selectCb);
+    this._boundListeners.push({ event: 'session:select', cb: selectCb });
 
-    eventBus.on<{ sessionId: string; name: string }>('session:rename', (data) => {
+    const renameCb = (data: { sessionId: string; name: string }) => {
       this.renameSession(data.sessionId, data.name);
-    });
+    };
+    eventBus.on<{ sessionId: string; name: string }>('session:rename', renameCb);
+    this._boundListeners.push({ event: 'session:rename', cb: renameCb });
 
-    eventBus.on<{ sessionId: string }>('session:delete', (data) => {
+    const deleteCb = (data: { sessionId: string }) => {
       this.deleteSession(data.sessionId);
-    });
+    };
+    eventBus.on<{ sessionId: string }>('session:delete', deleteCb);
+    this._boundListeners.push({ event: 'session:delete', cb: deleteCb });
+  }
+
+  dispose(): void {
+    if (this._eventBus) {
+      this._boundListeners.forEach(({ event, cb }) => this._eventBus!.off(event, cb));
+    }
+    this._boundListeners = [];
   }
 
   createSession(name?: string): string {

@@ -1,4 +1,4 @@
-import { IEventBus } from '../../types/events';
+import { IEventBus, EventCallback } from '../../types/events';
 import { getLogger } from '../infra/LoggerFactory';
 import { ILogger } from '../infra/Logger';
 
@@ -26,6 +26,10 @@ export class NotificationBell implements INotificationBell {
   private dropdownEl: HTMLElement | null = null;
   private listEl: HTMLElement | null = null;
   private dismissTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private _boundListeners: Array<{ event: string; cb: EventCallback<any> }> = [];
+  private _bellCb: ((e: MouseEvent) => void) | null = null;
+  private _clickCb: ((e: MouseEvent) => void) | null = null;
+  private _clearCb: (() => void) | null = null;
 
   constructor(eventBus: IEventBus) {
     this.eventBus = eventBus;
@@ -51,17 +55,19 @@ export class NotificationBell implements INotificationBell {
       </div>
     `;
     this.listEl = this.dropdownEl.querySelector('#notif-list');
-    this.dropdownEl.querySelector('#notif-clear')?.addEventListener('click', () => this.clearAll());
+    this._clearCb = () => this.clearAll();
+    this.dropdownEl.querySelector('#notif-clear')?.addEventListener('click', this._clearCb);
     this.bellEl!.parentNode?.insertBefore(this.dropdownEl, this.bellEl!.nextSibling);
   }
 
   private attachEvents(): void {
-    this.bellEl!.addEventListener('click', (e: MouseEvent) => {
+    this._bellCb = (e: MouseEvent) => {
       e.stopPropagation();
       this.toggleDropdown();
-    });
+    };
+    this.bellEl!.addEventListener('click', this._bellCb);
 
-    document.addEventListener('click', (e: MouseEvent) => {
+    this._clickCb = (e: MouseEvent) => {
       const target = e.target as Node;
       if (
         this.dropdownEl &&
@@ -71,23 +77,42 @@ export class NotificationBell implements INotificationBell {
       ) {
         this.closeDropdown();
       }
-    });
+    };
+    document.addEventListener('click', this._clickCb);
 
-    this.eventBus.on<any>('notification:show', (data) => {
+    const showCb = (data: any) => {
       this.addEntry(data.type, data.message, data.id);
-    });
+    };
+    this.eventBus.on<any>('notification:show', showCb);
+    this._boundListeners.push({ event: 'notification:show', cb: showCb });
 
-    this.eventBus.on<{ id: string }>('notification:dismiss', (data) => {
+    const dismissCb = (data: { id: string }) => {
       this.removeBadge(data.id);
-    });
+    };
+    this.eventBus.on<{ id: string }>('notification:dismiss', dismissCb);
+    this._boundListeners.push({ event: 'notification:dismiss', cb: dismissCb });
 
-    this.eventBus.on('rate-limit:started', () => {
+    const rlStartedCb = () => {
       this.addEntry('warning', '⏳ Rate limit activado');
-    });
+    };
+    this.eventBus.on('rate-limit:started', rlStartedCb);
+    this._boundListeners.push({ event: 'rate-limit:started', cb: rlStartedCb });
 
-    this.eventBus.on('rate-limit:expired', () => {
+    const rlExpiredCb = () => {
       this.addEntry('info', '✅ Rate limit expirado');
-    });
+    };
+    this.eventBus.on('rate-limit:expired', rlExpiredCb);
+    this._boundListeners.push({ event: 'rate-limit:expired', cb: rlExpiredCb });
+  }
+
+  dispose(): void {
+    this._boundListeners.forEach(({ event, cb }) => this.eventBus?.off(event, cb));
+    this._boundListeners = [];
+    if (this._bellCb) this.bellEl?.removeEventListener('click', this._bellCb);
+    if (this._clickCb) document.removeEventListener('click', this._clickCb);
+    if (this._clearCb) this.dropdownEl?.querySelector('#notif-clear')?.removeEventListener('click', this._clearCb);
+    this.dismissTimers.forEach(t => clearTimeout(t));
+    this.dismissTimers.clear();
   }
 
   private addEntry(type: string, message: string, id?: string): void {
