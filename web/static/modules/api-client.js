@@ -50,6 +50,14 @@ export const ApiClient = {
     return fetch('/sessions/' + sessionId + '/delete', { method: 'POST' });
   },
 
+  favoriteSession(sessionId, favorite) {
+    return fetch('/sessions/' + sessionId + '/favorite', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({favorite: favorite})
+    });
+  },
+
   // Widgets
   saveWidgetState(sessionId, widgetId, state) {
     return fetch('/sessions/' + sessionId + '/widgets/' + widgetId + '/state', {

@@ -37,13 +37,23 @@ async def list_sessions(request: Request) -> JSONResponse:
     sessions = []
     for s in raw:
         sid, first, last, count, user_count, name = s[0], s[1], s[2], s[3], s[4], s[5]
+        is_favorite = bool(s[7]) if len(s) > 7 else False
         sessions.append({
             "id": sid,
             "name": name or sid[:8],
             "count": count,
             "last_str": str(last)[:10] if last else "",
+            "is_favorite": is_favorite,
         })
     return JSONResponse(sessions)
+
+
+@router.post("/sessions/{session_id}/favorite")
+async def toggle_favorite(session_id: str, request: Request, body: dict = Body(...)) -> JSONResponse:
+    repos = getattr(request.app.state, 'repos', None) or get_repos()
+    favorite = body.get("favorite", False)
+    await repos.sessions.set_favorite(session_id, favorite)
+    return JSONResponse({"status": "ok"})
 
 
 @router.post("/sessions/{session_id}/delete")

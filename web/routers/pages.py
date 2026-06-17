@@ -152,6 +152,7 @@ async def sidebar(request: Request) -> HTMLResponse:
     sessions = []
     for s in raw:
         sid, first, last, count, user_count, name = s[0], s[1], s[2], s[3], s[4], s[5]
+        is_favorite = bool(s[7]) if len(s) > 7 else False
         sessions.append({
             "sid": sid,
             "first_str": str(first),
@@ -159,6 +160,7 @@ async def sidebar(request: Request) -> HTMLResponse:
             "count": count,
             "user_count": user_count,
             "name": name,
+            "is_favorite": is_favorite,
         })
     return templates.TemplateResponse(request, "sidebar.html", {"sessions": sessions, "current": current})
 

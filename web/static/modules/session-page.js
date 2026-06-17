@@ -408,6 +408,16 @@ function initSessionPage(deps) {
       confirmRename(item, sid);
       return;
     }
+    if (e.target.classList.contains('act-favorite')) {
+      var star = e.target;
+      var isFav = star.dataset.favorite === '1';
+      ApiClient.favoriteSession(sid, !isFav).then(function(r) {
+        if (r.ok) refreshSidebar();
+      }).catch(function(err) {
+        console.error('Favorite toggle failed:', err);
+      });
+      return;
+    }
     loadSession(sid, deps);
   });
   nav.onPopState(function(e) { if (e.state && e.state.sid) { SessionContext.setSessionId(e.state.sid); } });

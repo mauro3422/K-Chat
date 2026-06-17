@@ -13,6 +13,18 @@ if TYPE_CHECKING:
 
 class SessionRepository(_BaseRepository):
 
+    _did_alter_favorite = False
+
+    async def _ensure_favorite_column(self) -> None:
+        if SessionRepository._did_alter_favorite:
+            return
+        try:
+            async with self._transaction() as conn:
+                await conn.execute("ALTER TABLE sessions ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
+        SessionRepository._did_alter_favorite = True
+
     async def ensure(self, session_id: str) -> None:
         """Create a session row if it does not exist."""
         async with self._transaction() as conn:
@@ -212,7 +224,8 @@ class SessionRepository(_BaseRepository):
 
     # ── End of SessionRepository ───────────────────────────────────────────
     async def get_all(self, limit: int = 50) -> list[tuple[Any, ...]]:
-        """Return all sessions with summary data (now includes telegram_chat_id)."""
+        """Return all sessions with summary data (now includes is_favorite)."""
+        await self._ensure_favorite_column()
         try:
             conn = await self._get_conn()
             cursor = await conn.execute('''
@@ -222,7 +235,8 @@ class SessionRepository(_BaseRepository):
                        COUNT(*),
                        SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END),
                        COALESCE(s.name, ''),
-                       s.telegram_chat_id
+                       s.telegram_chat_id,
+                       COALESCE(s.is_favorite, 0)
                 FROM messages m
                 LEFT JOIN sessions s ON m.session_id = s.session_id
                 GROUP BY m.session_id
@@ -232,6 +246,29 @@ class SessionRepository(_BaseRepository):
             return await cursor.fetchall()
         except Exception:
             logger.exception("Failed to get all sessions")
+            return []
+
+    async def set_favorite(self, session_id: str, favorite: bool) -> None:
+        """Mark a session as favorite or not."""
+        await self._ensure_favorite_column()
+        async with self._transaction() as conn:
+            await conn.execute(
+                "UPDATE sessions SET is_favorite = ? WHERE session_id = ?",
+                (1 if favorite else 0, session_id),
+            )
+
+    async def get_favorites(self) -> list[dict]:
+        """Return all favorited sessions."""
+        await self._ensure_favorite_column()
+        try:
+            conn = await self._get_conn()
+            cursor = await conn.execute(
+                "SELECT session_id, name, created_at, is_favorite FROM sessions WHERE is_favorite = 1 ORDER BY created_at DESC",
+            )
+            rows = await cursor.fetchall()
+            return [{"session_id": r[0], "name": r[1], "created_at": r[2], "is_favorite": r[3]} for r in rows]
+        except Exception:
+            logger.exception("Failed to get favorite sessions")
             return []
 
     async def require_session(self, session_id: str) -> None:

@@ -30,11 +30,32 @@ function setSidebarHtml(el, html) {
   }
 }
 
+function applyFavFilter() {
+  var cb = document.getElementById('fav-filter-cb');
+  var list = document.getElementById('session-list');
+  if (!cb || !list) return;
+  list.classList.toggle('fav-filter-active', cb.checked);
+}
+
+var _favFilterInit = false;
+
+function initFavFilter() {
+  if (_favFilterInit) return;
+  _favFilterInit = true;
+  document.addEventListener('change', function(e) {
+    if (e.target.id === 'fav-filter-cb') {
+      applyFavFilter();
+    }
+  });
+}
+
 export function refreshSidebar(containerId) {
+  initFavFilter();
   var targetId = containerId || 'session-list';
   return ApiClient.sidebar().then(function(h) {
     var el = document.getElementById(targetId);
     if (el) setSidebarHtml(el, h);
+    applyFavFilter();
   }).catch(function(err) {
     console.error('Sidebar refresh failed:', err);
   });

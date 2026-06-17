@@ -423,12 +423,31 @@ async def curate_all(
         except Exception:
             logger.exception("Failed to save curation report")
 
+    # Step 5: Daily synthesis report
+    synthesis_path = None
+    if not dry:
+        try:
+            from src.memory.synthesis.daily import generate_daily_synthesis
+            mem_db = _get_memory_db_path()
+            synthesis_path = await generate_daily_synthesis(db_path=mem_db)
+            logger.info("Daily synthesis → %s", synthesis_path)
+            try:
+                await save_memory_fn(
+                    f"synthesis:{datetime.now().strftime('%Y-%m-%d')}",
+                    f"{datetime.now().strftime('%Y-%m-%d %H:%M')} | Daily synthesis → {synthesis_path}"
+                )
+            except Exception:
+                logger.exception("Failed to save synthesis reference to MEMORY.md")
+        except Exception:
+            logger.exception("Failed to generate daily synthesis")
+
     return {
         "gardener": gardener_results,
         "tracer": tracer_result,
         "entries": entries,
         "saved": saved,
         "report": report_lines,
+        "synthesis_path": synthesis_path,
         "dry": dry,
     }
 

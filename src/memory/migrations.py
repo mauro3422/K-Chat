@@ -368,6 +368,14 @@ async def _migration_021_messages_session_created_index(conn: Any, engine: Any) 
     """)
 
 
+async def _migration_022_add_session_favorite(conn: Any, engine: Any) -> None:
+    """Add is_favorite column to sessions table."""
+    try:
+        await engine.execute(conn, "ALTER TABLE sessions ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -390,4 +398,5 @@ MIGRATIONS = (
     _migration_019_memory_index_weight,
     _migration_020_chat_journal_fk,
     _migration_021_messages_session_created_index,
+    _migration_022_add_session_favorite,
 )
