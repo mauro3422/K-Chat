@@ -126,8 +126,84 @@
 - `npm run build` — ~700ms, bundle ~45KB
 - `npm run test:ts` — 96 tests, ~800ms
 
-### Pendiente (no bloquea)
+---
 
-- ASR (voz) — 8 archivos JS, ~940 líneas
-- Widget toolbar (editar/historial) — 4 archivos JS, ~290 líneas
-- Conexión AI — solo reemplazar `StreamSimulator` por `NDJSONStreamClient.startStream()`
+## [2026-06-16] — Sistema Lego de estilos + Backend Composition Root
+
+### 🧱 Frontend: Sistema de Layout Lego (5 nuevos bloques)
+
+- **`ILayoutGrid` / `GridController`** — motor de grid dinámico: celdas reordenables, persistencia en localStorage, CSS Grid nativo
+- **`ICanvasOverlay` / `CanvasOverlay`** — canvas full-page con 4 efectos (rain, snow, particles, fireworks) + drawing mode para que el usuario dibuje bloques y la IA los interprete
+- **`ICSSInjector` / `CSSInjector`** — `injectCSS(id, css)` y `removeCSS(id)` para estilos dinámicos sin tocar archivos
+- **`IAudioBus` / `AudioBus`** — sonidos automáticos en eventos del chat (message, error, notification, send)
+- **Layout types** (`types/layout.ts`) — interfaces centralizadas para todo el sistema de estilos
+
+### 🧱 Frontend: Refactor Canvas (F → A en desacople)
+
+- `ICanvasCardManager` + `ILayoutStore` interfaces creadas
+- `CanvasCardManager` ahora implementa `ICanvasCardManager`
+- `CanvasLayoutStore` implementa `ILayoutStore`
+- `CanvasWorkspace` recibe `cardManager` y `layoutStore` por constructor (eliminados 2 `new` internos)
+- Event listeners de toggle/close/gutter ahora se limpian en `reset()`
+- Último `: any` del módulo eliminado (reemplazado por `unknown`)
+- DOM containers se asignan via `setContainer()` post-constructor
+
+### 🧱 Frontend: Preparación para IA real
+
+- `ToolCallPayload` tipado como el backend (agregados `partial`, `idx`, `args`)
+- `_stream_args` y `partial` ignorados (como JS production)
+- Heartbeats resetear timeout vía `onChunk`
+- Soporte `files` en NDJSONStreamClient
+- First token limpia "✍️ Pensando..."
+- Sidebar refresh + pills error en fallo terminal
+- `lastAssistantMsgEl = null` en cleanup (memory leak cerrado)
+
+### 🧱 Frontend: Optimizaciones
+
+- `manualChunks` en vite: widgets, streaming, rendering, debug separados → app_mock.js **118KB → 30KB**
+- `sourcemap` condicional solo en dev → -648KB en prod
+- `handleContent()` incremental — salta 6/8 pasos DOM en tokens sin widgets
+- RAF throttle en drag handler de CanvasCardManager
+- 96/96 tests, tsc OK, build OK
+
+### 🔧 Backend: Composition Root + DI (Fases 1-4)
+
+- **`IEventBus` Protocol** en `event_bus.py` — EventBus implementa interfaz, inyectable
+- **`set_event_bus()`** — composición root inyecta instancia, `get_event_bus()` la prefiere
+- **Composition Root** en `app_factory.py` — crea EventBus + Repositories en `app.state`
+- **Protocols exportados** desde `src.api.orchestrator` (HistoryServiceProtocol, etc.)
+- **`chat_stream.py`** parametrizado — acepta `orchestrator_deps` opcional
+- **Routers limpios** — usan `request.app.state.*` con fallback a singletons
+
+### 🔧 Backend: SessionStore conectado a API real
+
+- SessionStore eliminó datos mock — ahora carga sesiones desde `GET /sessions`
+- `ApiClient`: nuevos métodos `getSessions()`, `createSession()`, `getSessionMessages()`
+- `POST /sessions/create` + `GET /sessions` endpoints JSON agregados
+- Delete sesión persiste en backend + recarga desde API
+
+### 🐛 Bugs corregidos
+
+- Widgets no se renderizaban por regex incorrecta en ContentHandler
+- `: any` → `: unknown` en type guard de LayoutStore
+- `setInterval` debug panel sin cleanup
+- `widgetObserver.disconnect()` faltante en reset
+- EventBus self-reference (TypedEventBus vs EventBus)
+- Tests de debug router adaptados a nuevos parámetros
+- Panel derecho visible por CSS Grid sin `minmax`
+- Audio 404 silenciado en AudioBus
+- Client logs 422 silenciado en Logger
+
+### 📦 Build
+
+- `app_mock.js`: **37 KB** (con code splitting)
+- `app.js` (JS prod): **70 KB**
+- Chunks: widgets (20 KB), streaming (52 KB), rendering (22 KB), debug (6 KB)
+- Total TS: **39 clases, 39 interfaces** — 100% Lego
+- TS Lines: **7,762** (sin tests)
+
+### 🧪 Tests
+
+- Backend: 67/68 tests pasan (1 pre-existing frozenset)
+- Frontend TS: 96/96 tests
+- Frontend JS: sin cambios
