@@ -4,12 +4,12 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response, UploadFile, File as FastAPIFile, Form
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Response, UploadFile, File as FastAPIFile, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.api.repos import MessageRecord, DebugInfo
-from src.api import llm_chat_stream, rebuild_history, get_default_model, get_repos
+from src.api.repos import MessageRecord, DebugInfo, get_repos
+from src.api import llm_chat_stream, rebuild_history, get_default_model
 from web.services.chat_stream import build_stream_generator
 from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.protocols import MessagePersisterProtocol, StreamGeneratorProtocol
@@ -65,6 +65,7 @@ def _build_message_with_attachments(message: str, attachments: list[dict]) -> st
 @router.post("/chat/{session_id}")
 async def chat(
     session_id: str,
+    request: Request,
     background_tasks: BackgroundTasks,
     message: str = Form(...),
     model: str | None = Query(None),
@@ -79,7 +80,7 @@ async def chat(
     attachments = _save_attachments(session_id, files)
     full_message = _build_message_with_attachments(message, attachments)
 
-    repos = get_repos()
+    repos = getattr(request.app.state, 'repos', None) or get_repos()
     await repos.sessions.ensure(session_id)
     try:
         history = await rebuild_history(session_id, model, messages_repo=repos.messages)
@@ -157,15 +158,15 @@ async def get_attachment(session_id: str, filename: str):
 
 
 @router.delete("/chat/{session_id}/messages/{message_id}")
-async def delete_message(session_id: str, message_id: int) -> Response:
-    repos = get_repos()
+async def delete_message(session_id: str, request: Request, message_id: int) -> Response:
+    repos = getattr(request.app.state, 'repos', None) or get_repos()
     success = await repos.messages.delete_message(message_id)
     if not success:
         raise HTTPException(status_code=404, detail="Message not found or already deleted")
 
     try:
-        from web.services.event_bus import get_event_bus
-        bus = get_event_bus()
+        from web.services.event_bus import get_event_bus, IEventBus
+        bus: IEventBus = getattr(request.app.state, 'event_bus', None) or get_event_bus()
         await bus.publish("message_deleted", {"session_id": session_id, "message_id": message_id})
     except Exception as e:
         logger.warning("Failed to publish message_deleted event: %s", e)
