@@ -126,6 +126,45 @@ Todos reseteables desde un solo punto: **`src/api/lifecycle.reset_runtime_state(
 
 ---
 
+## [2026-06-18] — Backend Migration Fase 3: Composition Root + DI completo
+
+### 🏗️ Composition Root unificado (`web/app_factory.py`)
+- **5 servicios core** creados en `lifespan()` y guardados en `app.state`: `TelemetryService`, `HistoryService`, `LLMService`, `ToolExecutionService`, `RetrievalService`.
+- **LLMContainer** creado y configurado vía `configure_container()`. Sub-servicios expuestos en `app.state`: `circuit_breaker`, `rate_limit_store`, `model_registry`.
+- **ConnectionPool** creado y configurado vía `configure_connection_pool()`, expuesto en `app.state`.
+- **Config** (`load_config()`) guardado en `app.state.config`.
+- **LogBus** guardado en `app.state.logbus` e inyectado a `TelemetryService` por constructor.
+- `chat_stream.py`: eliminada la creación inline de 4 servicios por request. Ahora recibe `OrchestratorDeps` ya armado (requerido, falla con `ValueError` si falta).
+
+### 🔌 Routers sin singletons
+- **`debug.py`**: `get_repos()` → `request.app.state.repos`.
+- **`ws_events.py`**: `get_event_bus()` → `websocket.app.state.event_bus`.
+- **`pages.py`**: helpers `_get_registry(request)` y `_get_rate_store(request)` prefieren `app.state`. `session_messages()` recibe `request` y usa `_request_repos()`.
+- **`logbus.py`**: helper `_get_logbus(request)` prefiere `app.state.logbus`.
+- **`debug.py`**: `model_availability()` lee `model_registry` y `rate_limit_store` de `app.state`.
+
+### 🧩 LLM layer con DI
+- **`client.py`**: `chat()` y `chat_stream()` aceptan `breaker`, `rate_store`, `default_model_fn` opcionales.
+- **`failover.py`**: `_resolve_registry()` prefiere container vía `get_container().get_model_registry()`.
+- **`model_registry.py`**: `get_model_registry()` prueba container antes de singleton.
+- **`get_default_model()`**: accesible vía parámetro `default_model_fn` en `_resolve_model()`.
+
+### 🧹 Curator cleanup
+- `gardener.py` y `tracer.py`: `_DEFAULT_CONFIG` (dict hardcodeado) reemplazado por `_default_config()` que llama a `load_config()`.
+
+### 🧪 Tests
+- **32 tests** de `test_chat_stream.py` actualizados para pasar `mock OrchestratorDeps`.
+- **7 tests** de `test_orchestrator.py` con `repos=MagicMock()` en `OrchestratorDeps`.
+- **Anti-regression**: `app_factory.py` excluido de la regla de imports directos (composition root necesita imports de dominio por diseño).
+- **34/34 anti-regression tests** pasando.
+
+### Integración
+- 10 commits en master desde v0.0.64
+- +320 líneas, −189 líneas
+- HEAD en `014d7ef`
+
+---
+
 ## [2026-06-17] - Estabilizacion local + logs al gateway
 
 ### Bugfixes
