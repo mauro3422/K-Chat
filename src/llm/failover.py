@@ -29,6 +29,16 @@ def _resolve_rate_store():
         return get_rate_limit_store()
 
 
+def _resolve_registry():
+    """Get model registry, preferring container if available."""
+    try:
+        from src.llm.container import get_container
+        return get_container().get_model_registry()
+    except Exception:
+        from src.llm.model_registry import get_model_registry
+        return get_model_registry()
+
+
 def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None = None) -> str:
     """Marks model as failed, refreshes verified list, and returns the alternative model.
 
@@ -68,8 +78,7 @@ def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None 
         elif "insufficient balance" in err_str.lower():
             # Go quota exhausted — mark registry so UI can show a warning
             try:
-                from src.llm.model_registry import get_model_registry
-                get_model_registry().mark_quota_exhausted()
+                _resolve_registry().mark_quota_exhausted()
                 logger.warning("Go quota exhausted detected for model %s", model)
             except Exception:
                 pass

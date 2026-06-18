@@ -255,6 +255,10 @@ async def test_web_never_imports_domain_directly() -> None:
     violations: list[str] = []
     for pyfile in sorted((PROJECT_ROOT / "web").rglob("*.py")):
         rel = pyfile.relative_to(PROJECT_ROOT)
+        # app_factory.py is the composition root — it's the one place where
+        # cross-layer wiring is intentional and necessary.
+        if rel.name == "app_factory.py":
+            continue
         for lineno, line in enumerate(pyfile.read_text("utf-8").splitlines(), 1):
             m = _IMPORT_RE.match(line)
             if not m:

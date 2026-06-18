@@ -283,13 +283,21 @@ def reset_model_registry() -> None:
 
 
 def get_model_registry(config: Any = None) -> ModelRegistry:
-    """Get or create the global model registry (lazy singleton)."""
+    """Get or create the global model registry (lazy singleton).
+
+    Prefers the DI container if available, falls back to module singleton.
+    """
     global _registry
-    if _registry is None:
-        with _lock:
-            if _registry is None:
-                _registry = ModelRegistry(config)
-    return _registry
+    if _registry is not None:
+        return _registry
+    try:
+        return get_model_registry_from_container(config=config)
+    except Exception:
+        if _registry is None:
+            with _lock:
+                if _registry is None:
+                    _registry = ModelRegistry(config)
+        return _registry
 
 
 async def ensure_registry_refreshed(config: Any = None) -> None:

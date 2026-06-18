@@ -35,13 +35,14 @@ def _get_sessions_db_path() -> str:
 
 # ── Configuration ──────────────────────────────────────────────────
 
-_DEFAULT_CONFIG: dict[str, Any] = {
-    "min_query_repeats": 3,          # A query repeated this many times is a pattern
-    "min_entity_cooccurrence": 3,    # Entities co-occurring this many times is significant
-    "lookback_days": 7,              # How many days back to analyze
-    "max_patterns": 5,               # Max patterns to report
-    "dry_run": False,
-}
+def _default_config() -> dict[str, Any]:
+    return {
+        "min_query_repeats": 3,
+        "min_entity_cooccurrence": 3,
+        "lookback_days": 7,
+        "max_patterns": 5,
+        "dry_run": False,
+    }
 
 
 # ── Pattern detectors ──────────────────────────────────────────────
@@ -194,7 +195,7 @@ async def trace(
     Returns:
         Dict with 'patterns' list and 'count' per type.
     """
-    cfg = {**_DEFAULT_CONFIG, **(config or {})}
+    cfg = {**_default_config(), **(config or {})}
     dry = cfg["dry_run"]
     
     logger.info("Tracer %s (lookback: %d days)", "DRY RUN" if dry else "RUNNING", cfg["lookback_days"])

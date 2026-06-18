@@ -8,9 +8,7 @@ import anyio
 import src.llm.model_state as models
 import src.llm.api_call as api_call
 from src._types import DebugInfo
-from src.llm.circuit_breaker import get_breaker
 from src.llm.failover import _mark_and_refresh
-from src.llm.selector import get_default_model
 from src.llm.retry import is_rate_limit_error
 
 logger = logging.getLogger(__name__)
@@ -22,10 +20,15 @@ async def _await_if_needed(value: Any) -> Any:
     return value
 
 
-def _mark_model_success(model: str) -> None:
-    from src.llm.rate_limit_state import get_rate_limit_store
-    get_rate_limit_store().mark_available(model)
-    get_breaker().record_success(model)
+def _mark_model_success(model: str, breaker=None, rate_store=None) -> None:
+    if rate_store is None:
+        from src.llm.rate_limit_state import get_rate_limit_store
+        rate_store = get_rate_limit_store()
+    if breaker is None:
+        from src.llm.circuit_breaker import get_breaker
+        breaker = get_breaker()
+    rate_store.mark_available(model)
+    breaker.record_success(model)
 
 
 def _update_system_prompt(messages: list[dict[str, Any]], model: str, build_prompt_fn: Callable | None = None) -> None:
@@ -33,9 +36,12 @@ def _update_system_prompt(messages: list[dict[str, Any]], model: str, build_prom
         messages[0] = build_prompt_fn(model)
 
 
-def _resolve_model(messages: list[dict[str, Any]], model: str | None, build_prompt_fn: Callable | None = None) -> str:
+def _resolve_model(messages: list[dict[str, Any]], model: str | None, build_prompt_fn: Callable | None = None, default_model_fn: Callable[[], str] | None = None) -> str:
     if model is None:
-        model = get_default_model()
+        if default_model_fn is None:
+            from src.llm.selector import get_default_model
+            default_model_fn = get_default_model
+        model = default_model_fn()
     if models.is_model_failed(model):
         model = models._switch_model(model)
         _update_system_prompt(messages, model, build_prompt_fn)
@@ -47,10 +53,12 @@ async def _with_fallback(
     messages: list[dict[str, Any]],
     build_prompt_fn: Callable | None,
     fn: Callable[[str], Any],
+    breaker=None,
+    rate_store=None,
 ) -> Any:
     try:
         res = await _await_if_needed(fn(model))
-        _mark_model_success(model)
+        _mark_model_success(model, breaker=breaker, rate_store=rate_store)
         return res
     except Exception as e:
         logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
@@ -64,6 +72,8 @@ async def _try_stream(
     model: str,
     messages: list[dict[str, Any]],
     build_prompt_fn: Callable | None = None,
+    breaker=None,
+    rate_store=None,
     **kwargs: Any,
 ) -> Any:
     if "stream_options" not in kwargs:
@@ -71,9 +81,7 @@ async def _try_stream(
     try:
         s = await api_call._api_call(model=model, messages=messages, stream=True, **kwargs)
         logger.info("Stream started successfully with model: %s", model)
-        # Mark model as available on stream start
-        from src.llm.rate_limit_state import get_rate_limit_store
-        _mark_model_success(model)
+        _mark_model_success(model, breaker=breaker, rate_store=rate_store)
         return s
     except Exception as e:
         logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)
@@ -133,10 +141,13 @@ def _update_debug_usage(chunk: Any, debug: DebugInfo | None) -> None:
         debug.total_tokens = usage.total_tokens
 
 
-async def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_fn: Callable | None = None, **kwargs: Any) -> Any:
+async def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_fn: Callable | None = None, breaker=None, rate_store=None, default_model_fn: Callable[[], str] | None = None, **kwargs: Any) -> Any:
     debug = kwargs.pop("debug", None)
     if model is None:
-        model = get_default_model()
+        if default_model_fn is None:
+            from src.llm.selector import get_default_model
+            default_model_fn = get_default_model
+        model = default_model_fn()
     if models.is_model_failed(model):
         model = models._switch_model(model)
         _update_system_prompt(messages, model, build_prompt_fn)
@@ -169,7 +180,7 @@ async def chat(messages: list[dict[str, Any]], model: str | None = None, build_p
             )
         return response.choices[0]
 
-    return await _with_fallback(model, messages, build_prompt_fn, _call)
+    return await _with_fallback(model, messages, build_prompt_fn, _call, breaker=breaker, rate_store=rate_store)
 
 
 
@@ -279,11 +290,14 @@ async def chat_stream(
     reasoning_output: list[str] | None = None,
     tagged: bool = False,
     tool_calls_output: list[Any] | None = None,
+    breaker=None,
+    rate_store=None,
+    default_model_fn: Callable[[], str] | None = None,
     **kwargs: Any
 ) -> AsyncGenerator[Any, None]:
     debug = kwargs.pop("debug", None)
-    model = _resolve_model(messages, model, build_prompt_fn)
-    stream = await _try_stream(model, messages, build_prompt_fn, **kwargs)
+    model = _resolve_model(messages, model, build_prompt_fn, default_model_fn=default_model_fn)
+    stream = await _try_stream(model, messages, build_prompt_fn, breaker=breaker, rate_store=rate_store, **kwargs)
 
     stats = SimpleNamespace(chunk_count=0, has_content=False, has_reasoning=False)
     async for item in _process_chunks(

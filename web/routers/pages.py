@@ -66,8 +66,8 @@ def _get_registry_go_models(request: Request | None = None) -> list[str]:
     return reg.get_go_models()
 
 
-def get_available_model_ids() -> list[str]:
-    reg = get_model_registry()
+def get_available_model_ids(request: Request | None = None) -> list[str]:
+    reg = _get_registry(request)
     all_registry = reg.get_all_models()
     verified = get_verified_models_safe()
     seen: set[str] = set()
@@ -98,7 +98,7 @@ def get_available_model_ids() -> list[str]:
     return models
 
 
-def get_available_models() -> list[dict[str, str]]:
+def get_available_models(request: Request | None = None) -> list[dict[str, str]]:
     """Return models grouped by tier for the UI selector.
 
     Fully dynamic — no hardcoded model names.
@@ -110,7 +110,7 @@ def get_available_models() -> list[dict[str, str]]:
         "go_premium": [], "go_standard": [], "go_economy": [],
         "free_ratelimited": [],
     }
-    for model_id in get_available_model_ids():
+    for model_id in get_available_model_ids(request=request):
         tier = _get_model_tier(model_id)
         if tier == "zen":
             continue  # Hide Zen-only models — paid per-use, not OpenCode
@@ -163,7 +163,7 @@ def home(request: Request, new: bool = False) -> HTMLResponse:
     resp = templates.TemplateResponse(request, "chat_ts.html", {
         "session_id": session_id,
         "model": FALLBACK_MODEL,
-        "models": get_available_models(),
+        "models": get_available_models(request=request),
         "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
@@ -177,7 +177,7 @@ def session_page(request: Request, session_id: str) -> HTMLResponse:
     resp = templates.TemplateResponse(request, "chat_ts.html", {
         "session_id": session_id,
         "model": FALLBACK_MODEL,
-        "models": get_available_models(),
+        "models": get_available_models(request=request),
         "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)

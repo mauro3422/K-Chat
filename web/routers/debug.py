@@ -59,7 +59,7 @@ async def model_availability(request: Request) -> dict:
     reg = getattr(request.app.state, "model_registry", None) or get_model_registry()
     result: dict[str, dict] = {}
 
-    for model_id in get_available_model_ids():
+    for model_id in get_available_model_ids(request=request):
         tier = _get_model_tier(model_id)
         if tier == "zen":
             continue  # hide Zen from UI

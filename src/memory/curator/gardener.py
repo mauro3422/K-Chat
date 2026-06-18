@@ -39,15 +39,16 @@ def _get_sessions_db_path() -> str:
 # ── Configuration ──────────────────────────────────────────────────
 
 # Thresholds (tunable via kwargs)
-_DEFAULT_CONFIG: dict[str, Any] = {
-    "low_relevance_threshold": 0.3,       # Entries below this score are candidates for pruning
-    "min_query_count": 1,                  # Entries with 0 queries AND low score are pruned
-    "max_age_days": 30,                    # Entries older than this AND low score are pruned
-    "min_cluster_exchanges": 2,            # Clusters with fewer exchanges are merged
-    "min_entity_weight": 2.0,              # Entity relations below this weight are removed
-    "vector_ttl_days": 90,                 # Delete vec_meta entries older than this (hard TTL)
-    "dry_run": False,
-}
+def _default_config() -> dict[str, Any]:
+    return {
+        "low_relevance_threshold": 0.3,
+        "min_query_count": 1,
+        "max_age_days": 30,
+        "min_cluster_exchanges": 2,
+        "min_entity_weight": 2.0,
+        "vector_ttl_days": 90,
+        "dry_run": False,
+    }
 
 
 # ── Gardener actions ───────────────────────────────────────────────
@@ -417,7 +418,7 @@ def garden(config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     Returns:
         List of action reports (dicts).
     """
-    cfg = {**_DEFAULT_CONFIG, **(config or {})}
+    cfg = {**_default_config(), **(config or {})}
     dry = cfg["dry_run"]
     
     logger.info("Gardener %s (config: %s)", "DRY RUN" if dry else "RUNNING", cfg)
