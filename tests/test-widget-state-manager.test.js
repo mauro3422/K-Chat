@@ -1,14 +1,12 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import './setup.js';
 
-const stateManagerPath = new URL('../web/static/modules/widgets/state-manager.js', import.meta.url).pathname;
-
 describe('WidgetStateManager', () => {
     let WidgetStateManager;
     let instance;
 
     beforeEach(async () => {
-        const mod = await import(`file://${stateManagerPath}?t=${Date.now()}`);
+        const mod = await import('../web/static/modules/widgets/state-manager.js');
         WidgetStateManager = mod.WidgetStateManager;
         instance = new WidgetStateManager();
     });
@@ -180,7 +178,7 @@ describe('WidgetStateManager', () => {
 
     describe('default export instance', () => {
         test('instance works via import', async () => {
-            const defaultInstance = (await import(`file://${stateManagerPath}?t=${Date.now()}`)).default;
+            const defaultInstance = (await import('../web/static/modules/widgets/state-manager.js')).default;
             expect(defaultInstance).toBeDefined();
             expect(typeof defaultInstance.getState).toBe('function');
             expect(typeof defaultInstance.setState).toBe('function');

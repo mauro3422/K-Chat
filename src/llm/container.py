@@ -61,10 +61,10 @@ class LLMContainer:
     def get_model_state(self) -> Any:
         if self._model_state is None:
             from src.llm.model_state import ModelState
-            from src.config_loader import DEFAULT_MODEL, SECONDARY_MODEL
+            from src.llm.model_state import PRIORITY, FALLBACK_MODEL
             self._model_state = ModelState(
-                priority=[DEFAULT_MODEL] + list(SECONDARY_MODEL or []),
-                fallback_model=DEFAULT_MODEL,
+                priority=PRIORITY,
+                fallback_model=FALLBACK_MODEL,
             )
         return self._model_state
 
@@ -106,6 +106,13 @@ _default_container: LLMContainer | None = None
 _default_lock = threading.Lock()
 
 
+def configure_container(container: LLMContainer | None) -> None:
+    """Set the default container explicitly, or clear it with None."""
+    global _default_container
+    with _default_lock:
+        _default_container = container
+
+
 def get_container(config: Config | None = None) -> LLMContainer:
     """Get the default container (creates if needed)."""
     global _default_container
@@ -118,6 +125,4 @@ def get_container(config: Config | None = None) -> LLMContainer:
 
 def reset_container() -> None:
     """Reset the default container (for testing)."""
-    global _default_container
-    with _default_lock:
-        _default_container = None
+    configure_container(None)

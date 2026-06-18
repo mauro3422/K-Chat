@@ -94,6 +94,18 @@ class Reranker:
 _reranker_instance: Reranker | None = None
 
 
+def configure_reranker(reranker: Reranker | None) -> None:
+    """Set the active reranker explicitly, or clear it with None."""
+    global _reranker_instance
+    with _reranker_lock:
+        _reranker_instance = reranker
+
+
+def reset_reranker() -> None:
+    """Clear the cached reranker and restore lazy creation."""
+    configure_reranker(None)
+
+
 def rerank(
     query: str, candidates: list[dict[str, Any]], top_k: int = 8
 ) -> list[dict[str, Any]]:

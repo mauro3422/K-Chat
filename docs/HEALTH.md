@@ -1,6 +1,6 @@
 > ⚠️ This document may lag behind the current version. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/MODULES.md](MODULES.md) for the latest.
 >
-> **Last updated:** 2026-06-14 — Documented: ServiceException (src/api/exceptions.py) replaces HTTPException in API layer; OrchestratorDeps split into 4 sub-dataclasses (LLMDeps/ToolDeps/StorageDeps/RequestStateDeps); MessageRecord canonical type lives in src/memory/types.py; DEFAULT_CONFIG → DI migration in tools and LLM.
+> **Last updated:** 2026-06-17 — Documented: ServiceException (src/api/exceptions.py) replaces HTTPException in API layer; OrchestratorDeps split into 4 sub-dataclasses (LLMDeps/ToolDeps/StorageDeps/RequestStateDeps); MessageRecord canonical type lives in src/memory/types.py; DEFAULT_CONFIG → DI migration in tools and LLM; logbus/model_registry/LLM container/model_state/circuit breaker/rate limit store/embedding cache/reranker/connection pools/event bus now expose explicit configure/reset helpers for cleaner shutdown and tests.
 
 # Code Health Analysis
 
@@ -10,7 +10,7 @@ This document analyzes the current codebase against SOLID principles and the pro
 
 | Grade | Area |
 |-------|------|
-| A | Tools auto-registry, widget system, memory schema, migrations, error classification, core orchestrator split, OrchestratorDeps → 4 sub-dataclasses (LLMDeps/ToolDeps/StorageDeps/RequestStateDeps), ServiceException in API layer, save_message_record() explicit contract, DebugInfo dataclass, direct API domain modules, LLMProvider protocol alignment |
+| A | Tools auto-registry, widget system, memory schema, migrations, error classification, core orchestrator split, OrchestratorDeps → 4 sub-dataclasses (LLMDeps/ToolDeps/StorageDeps/RequestStateDeps), ServiceException in API layer, save_message_record() explicit contract, DebugInfo dataclass, direct API domain modules, LLMProvider protocol alignment, configurable logbus/model registry/container/model_state/breaker/rate-limit/embedding/reranker/pools/event bus |
 | B | Frontend module system, context decoupling |
 | C | — |
 | D | — |
@@ -110,6 +110,8 @@ class DebugInfo:
 
 Tools (`web_search`, `fetch_url`) and LLM modules (`providers`, `discovery`, `retry`) now accept an optional `config` parameter. When provided, it overrides `DEFAULT_CONFIG`. When omitted, the global singleton is used as fallback. This allows tests and alternative configurations to inject custom settings without touching global state.
 
+The remaining module-level state is now easier to control because `config_loader`, `logbus`, `model_registry`, `llm.providers`, `container`, `model_state`, `context.runtime`, `context.crash_recovery`, `memory.engine_state`, `circuit_breaker`, `rate_limit_state`, `memory.keywords.extractor`, `memory.embeddings.service`, `memory.retrieval.reranker`, `connection_pool`, `memory_pool`, `web.services.file_logger`, the web app config cache, the SSE `event_bus`, the web app’s HTTP rate-limit store, and the process `gateway` state each expose explicit configure/reset helpers or app-state ownership. The legacy singleton entry points still exist for compatibility, but they are no longer the only way to control lifecycle.
+
 ### Issue: `src/compressor.py` imports `src.llm.chat` directly
 
 ~~It bypasses the `client.py` abstraction layer.~~ ✅ Fixed
@@ -149,11 +151,11 @@ All log messages, error strings, docstrings and code comments have been translat
 
 ## 7. Database Layer Health
 
-### Issue: No connection pool
+### Issue: Connection pools are process-local
 
-`get_conn()` creates a new connection per call. With WAL mode this is acceptable for SQLite, but each function opens/closes a connection.
+`get_conn()` uses a small in-process pool keyed by DB path, and `get_memory_conn()` uses a separate pool for memory.db. That is acceptable for SQLite, but the pools remain process-local state and should be reset at application shutdown. The app factory now does that explicitly.
 
-**Recommendation:** For now, acceptable. If concurrency increases, switch to a connection pool or a single persistent connection with proper locking.
+**Recommendation:** For now, acceptable. If concurrency increases, switch to a longer-lived pool with explicit lifecycle management or a single persistent connection with proper locking.
 
 ### Issue: Migration logic mixed with schema creation
 

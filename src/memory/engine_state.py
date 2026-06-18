@@ -28,13 +28,23 @@ class EngineState:
 _engine_state = EngineState()
 
 
+def configure_engine(engine: DatabaseEngine | None) -> None:
+    """Set the active database engine explicitly, or clear it with None."""
+    _engine_state.set(engine)
+
+
+def reset_engine() -> None:
+    """Clear the active database engine and restore lazy fallback behavior."""
+    _engine_state.clear()
+
+
 def get_engine() -> DatabaseEngine | None:
     return _engine_state.get()
 
 
 def set_engine(engine: DatabaseEngine | None) -> None:
-    _engine_state.set(engine)
+    configure_engine(engine)
 
 
 def clear_engine() -> None:
-    _engine_state.clear()
+    reset_engine()

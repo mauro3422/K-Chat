@@ -1,5 +1,111 @@
 # Changelog ??? K-Chat
 
+## [2026-06-18] - Lifecycle unificado + Singleton x Testing + Frontend Widget Runtime
+
+### 🔥 Bugs críticos corregidos
+
+- **Corrutinas sin consumir en LLM failover** (`failover.py`): `_mark_and_refresh()` llamaba a `discovery.get_verified_models()` (un `async def`) desde contexto sync sin await — la corrutina se descartaba y el refresh de modelos verificados NUNCA ocurría. Ahora se consume via `loop.create_task()` o `asyncio.run()`.
+- **Corrutina sin consumir en discovery** (`discovery.py`): `loop.create_task()` en `_ping_free_model_availability()` se llamaba sin verificar si había un event loop corriendo. Ahora con `try/except RuntimeError` guard.
+- **ModelState retornaba modelo fallido como "last resort"**: `switch_model()` devolvía un modelo ya fallido si todos los candidatos habían fallado, causando loops infinitos de failover. Ahora levanta `RuntimeError` limpio.
+- **SECONDARY_MODEL vacío**: `SECONDARY_MODEL = ""` inhabilitaba el failover a modelo secundario. Ahora es `"big-pickle"`.
+- **Rate limiter como global module-level**: compartido entre tests y requests, causando contaminación de estado en tests concurrentes. Movido a `app.state`.
+- **Gateway sin reset de estado**: `main()` no limpiaba `_services`, `_shutdown` entre ejecuciones. Ahora `reset_gateway_state()` al inicio.
+- **Placeholder k0-k19 en MEMORY.md**: 21 entradas basura del curador eliminadas.
+
+### 🧠 Singleton Elimination (18 módulos con `configure_*`/`reset_*`)
+
+Todos los módulos con estado module-level ahora exponen un par `configure_*`/`reset_*` para inyección explícita + `get_*` con prioridad: (1) instancia explícita, (2) DI container, (3) lazy singleton fallback.
+
+| Capa | Módulo | Funciones |
+|------|--------|-----------|
+| **LLM** | `circuit_breaker.py` | `configure_breaker()` / `reset_breaker()` |
+| **LLM** | `container.py` | `configure_container()` / `reset_container()` |
+| **LLM** | `model_registry.py` | `configure_model_registry()` / `reset_model_registry()` |
+| **LLM** | `model_state.py` | `configure_state()` / `reset_state()` |
+| **LLM** | `providers.py` | `configure_registry()` / `reset_registry()` |
+| **LLM** | `rate_limit_state.py` | `configure_rate_limit_store()` / `reset_rate_limit_store()` |
+| **Memory** | `connection_pool.py` | `configure_connection_pool()` / `reset_connection_pool()` |
+| **Memory** | `memory_pool.py` | `configure_memory_pool()` / `reset_memory_pool()` |
+| **Memory** | `engine_state.py` | `configure_engine()` / `reset_engine()` |
+| **Memory** | `embeddings/service.py` | `configure_model()` / `reset_model()` |
+| **Memory** | `keywords/extractor.py` | `configure_global_extractor()` / `reset_global_extractor()` |
+| **Memory** | `retrieval/reranker.py` | `configure_reranker()` / `reset_reranker()` |
+| **Infra** | `logbus/__init__.py` | `configure_logbus()` / `reset_logbus()` |
+| **Infra** | `config_loader.py` | `reset_dotenv_state()` |
+| **Web** | `services/file_logger.py` | `configure_log_dirs()` / `reset_log_dirs()` |
+| **Web** | `services/event_bus.py` | `reset_event_bus()` |
+| **Web** | `services/model_catalog.py` | `reset_model_cache()` |
+| **Entry** | `gateway.py` | `reset_gateway_state()` |
+
+Todos reseteables desde un solo punto: **`src/api/lifecycle.reset_runtime_state()`** que orquesta los 18 módulos.
+
+### 🏗️ DI Composition Root extendido
+
+- **SkillRegistry** ahora vive en `app.state` en lugar de module-level — los routers lo resuelven vía `request.app.state.skill_registry`.
+- **Rate limiter** movido de `_rate_limit_store = RateLimitStore()` global a `app.state.http_rate_limit_store`.
+- **`ToolRegistry.reset()`** y **`SkillRegistry.reset()`** añadidos — permiten rediscovery y test isolation.
+- **Log dirs dinámicos**: `web/routers/logs.py` ya no importa `SERVER_LOG_DIR`/`CLIENT_LOG_DIR` en módulo — llama a `get_server_log_dir()`/`get_client_log_dir()` en cada request.
+- **Provider injectable**: `api_call._resolve_provider()` y `_api_call()` aceptan `provider_fn: Any | None` — la vieja singleton `_get_provider()` quedó como wrapper compatible.
+
+### 🐍 LLM Layer: Async Safety + Código limpio
+
+- **`anyio.fail_after`** reemplaza `asyncio.wait_for` en `client.py` — mejor manejo de cancelación.
+- **`_await_if_needed()`**: helper que detecta corrutinas y las await automáticamente — protege contra sync/async mismatches.
+- **`_mark_model_success()`**: extraído 3 instancias de `mark_available` + `record_success` en `client.py`.
+- **`_resolve_config()`**: patrón "if config is None: load_config()" extraído de múltiples funciones en `discovery.py`.
+- **`_model_id()`**: extraído del patrón `model if isinstance(model, str) else getattr(model, "id", "")` (~6 usos).
+- **`_make_zen_provider()`**: construcción de Zen provider (~15 líneas) extraída de 3 ubicaciones en `discovery.py`.
+- **Selector con DI**: `_get_free_models_sync()` y `_get_default_model_candidates()` aceptan `free_models_fn`/`verified_models_fn` opcionales.
+- **`create_provider()`** simplificado: base URL como one-liner ternario, registry simplificado.
+- **ModelState.PRIORITY** filtra falsy: `[m for m in priority if m]` — evita modelos vacíos.
+
+### 🔧 Memory Layer: Upward coupling eliminado
+
+- **`src/memory/curator/curate.py`**: `_default_save_memory` (que importaba `src.tools.save_memory`) reemplazado por `_noop_save_memory`. Entry points (`.kairos/curator.py`, `.kairos/memory_backup.py`) inyectan `save_memory_fn`.
+- **`src/memory/operations/archive.py`**: `_archive()` ahora requiere `save_memory_fn: Callable` — ya no importa internamente. `manage_memory.py` lo inyecta vía lambda.
+- **Reranker**: 6 nuevos tests unitarios cubren `load_model` (éxito/fallo), fallback, empty candidates, sorting, error propagation, y unload.
+- **Embedding service**: `configure_model()`/`reset_model()` permiten inyectar modelo dummy sin red.
+
+### 🌐 Web Layer: Widget detection runtime + build CI
+
+- **Nuevo sistema frontend de widgets**: `stream-dispatcher.js` (pub/sub), `contract.js` (constantes), `state-manager.js` (estado en Map), `widget-detector.js` (scanner de bloques ` ```html-widget` y `[Widget:]` en streaming).
+- **CI refactorizado**: `npm install` → `npm ci`, se agregó `npm run build`, `npm run test:ts` + `npm run test:js`. Python tests reemplazados por smoke tests específicos (3 archivos).
+- **Docker**: `CMD` cambiado de uvicorn directo a `python -m src.gateway` (multi-service launcher). Removido `config.py` del build.
+- **Lifespan**: shutdown ahora llama a `reset_runtime_state()`, `reset_config_cache()`, `reset_event_bus()`, y `logbus.stop()` en el orden correcto.
+
+### 📦 Dependencias
+
+- **Agregado**: `anyio>=4.0.0,<5.0.0` (timeout handling robusto)
+- **Removidos**: `sentence-transformers` (reemplazado por fastembed), `hf_xet`, `huggingface-hub[hf_xet]`, `pytest-mock`, `trio`
+
+### 🧪 Tests (24 nuevos, ~40 modificados)
+
+- **8 tests singleton**: `test_circuit_breaker`, `test_container`, `test_rate_limit_state`, `test_model_registry_singleton`, `test_connection_pool`, `test_context_runtime_reset`, `test_gateway_state` — verifican `configure_*`/`reset_*` con finally cleanup.
+- **8 tests memory**: `test_connection_pool`, `test_embedding_service`, `test_engine_state`, `test_keyword_extractor`, `test_memory_pool`, `test_reranker`, `test_retrieval_service`, `test_vectorize_sessions`.
+- **4 tests web**: `test_app_factory_config`, `test_file_logger_reset`, `test_logbus`, `test_tool_registry_reset`.
+- **Test isolation**: `reset_shared_runtime_state` fixture (autouse=True) en `conftest.py` — limpia 18 singletons antes/después de cada test.
+- **Schema inline**: `conftest.py` ya no importa `src.memory.schema.init_db()` — define DDL propio para 10 tablas + 9 índices.
+- **`test_app_factory.py`**: `_mock_startup` fixture mockea 6 dependencias; `TestClient` envuelto en `with` context manager.
+- **`test_orchestrator.py`**: mocks envueltos en `RetrievalService(config=cfg, retrieval_service=mock)` real en lugar de mock directo.
+- **`test_anti_regression.py`**: 9 tests legacy JS eliminados, 8 renombrados a TS, 10 nuevos tests TS.
+- **`test_llm.py` y `test_models.py`**: nuevos patrones DI via `provider_fn` en lugar de `_get_provider()` mock.
+- **`pytest.ini`**: filtro `DeprecationWarning` para `aifc` (eliminado en Python 3.13).
+
+### 📚 Documentación actualizada
+
+- **`docs/MODULES.md`**: 10+ módulos nuevos documentados, campos `reset_*` agregados a módulos existentes.
+- **`docs/HEALTH.md`**: sección DIP expandida con ~20 módulos lifecycle-controlados; DB pool re-caracterizado de "no pool" a "process-local pools".
+- **`docs/llm_architecture.md`**: diagrama de `create_provider()` actualizado; 3 ítems de "lo que podría mejorar" eliminados.
+- **`MEMORY.md`**: 21 placeholders del curador eliminados.
+
+### Integración
+
+- HEAD en `1d33756` (v0.0.63)
+- 56 archivos modificados, 24 nuevos
+- +1089 líneas, −590 líneas
+
+---
+
 ## [2026-06-17] - Estabilizacion local + logs al gateway
 
 ### Bugfixes

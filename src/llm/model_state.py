@@ -18,7 +18,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 class ModelState:
     def __init__(self, priority=None, fallback_model=None):
         self._lock = threading.Lock()
-        self._priority = priority or [DEFAULT_MODEL, SECONDARY_MODEL]
+        self._priority = [m for m in (priority or [DEFAULT_MODEL, SECONDARY_MODEL]) if m]
         self._fallback_model = fallback_model or DEFAULT_MODEL
         self._failed_models: set[str] = set()
         self._cached_models: list[Any] | None = None
@@ -69,14 +69,22 @@ class ModelState:
             for m in candidates:
                 if m not in self._failed_models:
                     return m
-            # Last resort: even failed models (may get a different error)
-            if candidates:
-                return candidates[0]
         raise RuntimeError(f"All models have failed: {candidates}")
 
 
 # ── Lazy module-level state (not created at import time) ───────────────
 _state: ModelState | None = None
+
+
+def configure_state(state: ModelState | None) -> None:
+    """Set the active ModelState explicitly, or clear it with None."""
+    global _state
+    _state = state
+
+
+def reset_state() -> None:
+    """Clear the cached ModelState and restore lazy creation."""
+    configure_state(None)
 
 
 def _get_state(state: ModelState | None = None) -> ModelState:
@@ -135,6 +143,12 @@ def get_cached_models_safe(state: ModelState | None = None) -> Any:
     return _resolve_state(state).get_cached_models_safe()
 
 
+def get_verified_models_safe(state: ModelState | None = None) -> Any:
+    """Backward-compatible alias for the verified-model cache."""
+    from src.llm.model_registry import get_verified_models
+    return get_verified_models()
+
+
 def set_cached_models(value: Any, state: ModelState | None = None) -> None:
     _resolve_state(state).set_cached_models(value)
 
@@ -147,6 +161,6 @@ __all__ = [
     "ModelState",
     "PRIORITY", "FALLBACK_MODEL",
     "is_model_failed", "mark_model_failed", "clear_failed_models",
-    "get_cached_models_safe", "set_cached_models",
+    "get_cached_models_safe", "get_verified_models_safe", "set_cached_models",
     "_switch_model",
 ]

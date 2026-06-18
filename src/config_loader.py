@@ -5,6 +5,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 _dotenv_loaded = False
+
+
+def reset_dotenv_state() -> None:
+    """Allow dotenv loading to run again on the next config access."""
+    global _dotenv_loaded
+    _dotenv_loaded = False
+
+
 def _ensure_dotenv_loaded() -> None:
     global _dotenv_loaded
     if not _dotenv_loaded:
@@ -13,7 +21,7 @@ def _ensure_dotenv_loaded() -> None:
 
 # ── Model name constants ────────────────────────────────────────────────
 DEFAULT_MODEL: str = "deepseek-v4-flash"
-SECONDARY_MODEL: str = ""  # Not used; failover uses verified models from discovery
+SECONDARY_MODEL: str = "big-pickle"  # Secondary fallback used by selector/failover
 
 
 @dataclass

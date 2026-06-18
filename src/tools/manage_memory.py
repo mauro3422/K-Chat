@@ -32,6 +32,7 @@ from src.memory.operations.query import (
     _show_topics,
 )
 from src.memory.operations.archive import _archive
+from src.tools.save_memory import run as _save_run
 
 DEFINITION: dict[str, Any] = {
     "type": "function",
@@ -133,7 +134,13 @@ async def run(**kwargs) -> str:
             return "[ERROR] find requiere find_text."
         return await _find(find_text=find_text, repos=_repos)
     elif operation == "archive":
-        return await _archive(key_pattern=key_pattern, dry_run=dry_run, confirm=confirm, repos=_repos)
+        return await _archive(
+            key_pattern=key_pattern,
+            dry_run=dry_run,
+            confirm=confirm,
+            repos=_repos,
+            save_memory_fn=lambda k, v: _save_run(key=k, value=v, _repos=_repos),
+        )
     elif operation == "export":
         return await _export(fmt=fmt, repos=_repos)
     else:

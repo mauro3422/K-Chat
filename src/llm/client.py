@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 from collections.abc import Callable, AsyncGenerator, Generator
 from typing import Any
+import anyio
 import src.llm.model_state as models
 import src.llm.api_call as api_call
 from src._types import DebugInfo
@@ -13,6 +14,18 @@ from src.llm.selector import get_default_model
 from src.llm.retry import is_rate_limit_error
 
 logger = logging.getLogger(__name__)
+
+
+async def _await_if_needed(value: Any) -> Any:
+    if asyncio.iscoroutine(value):
+        return await value
+    return value
+
+
+def _mark_model_success(model: str) -> None:
+    from src.llm.rate_limit_state import get_rate_limit_store
+    get_rate_limit_store().mark_available(model)
+    get_breaker().record_success(model)
 
 
 def _update_system_prompt(messages: list[dict[str, Any]], model: str, build_prompt_fn: Callable | None = None) -> None:
@@ -36,23 +49,15 @@ async def _with_fallback(
     fn: Callable[[str], Any],
 ) -> Any:
     try:
-        res = fn(model)
-        if asyncio.iscoroutine(res):
-            res = await res
-        # Mark model as available on success
-        from src.llm.rate_limit_state import get_rate_limit_store
-        get_rate_limit_store().mark_available(model)
-        get_breaker().record_success(model)
+        res = await _await_if_needed(fn(model))
+        _mark_model_success(model)
         return res
     except Exception as e:
         logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
         next_model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e), error=e)
         _update_system_prompt(messages, next_model, build_prompt_fn)
         logger.info("Switching model to: %s", next_model)
-        res = fn(next_model)
-        if asyncio.iscoroutine(res):
-            return await res
-        return res
+        return await _await_if_needed(fn(next_model))
 
 
 async def _try_stream(
@@ -68,8 +73,7 @@ async def _try_stream(
         logger.info("Stream started successfully with model: %s", model)
         # Mark model as available on stream start
         from src.llm.rate_limit_state import get_rate_limit_store
-        get_rate_limit_store().mark_available(model)
-        get_breaker().record_success(model)
+        _mark_model_success(model)
         return s
     except Exception as e:
         logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)
@@ -172,7 +176,8 @@ async def chat(messages: list[dict[str, Any]], model: str | None = None, build_p
 async def _iter_with_timeout(stream: Any, timeout: float = 30.0) -> AsyncGenerator[Any, None]:
     while True:
         try:
-            chunk = await asyncio.wait_for(stream.__anext__(), timeout=timeout)
+            with anyio.fail_after(timeout):
+                chunk = await stream.__anext__()
             yield chunk
         except StopAsyncIteration:
             break

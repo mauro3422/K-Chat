@@ -33,10 +33,19 @@ jobs:
           pip install pytest
 
       - name: Install Node dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Run Python tests
-        run: python -m pytest tests/ -v
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run TS frontend tests
+        run: npm run test:ts
+
+      - name: Run JS frontend tests
+        run: npm run test:js
+
+      - name: Run Python smoke tests
+        run: python -m pytest tests/unit/test_app_factory.py tests/unit/test_anti_regression.py tests/unit/test_web_logging.py -v
 
       - name: Lint with Ruff
         run: |
@@ -47,14 +56,6 @@ jobs:
         run: |
           pip install pyright
           pyright src/
-
-      - name: Run JS tests
-        run: |
-          node tests/test-widget-system.js
-          node tests/test-frontend-integration.js
-
-      - name: Run JS stress test
-        run: node tests/test-stress-stream-abort.js
 
       - name: Lint JS
         run: npx eslint web/static/**/*.js

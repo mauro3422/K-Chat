@@ -139,16 +139,32 @@ _RATE_LIMIT_STORE: ModelRateLimitStore | None = None
 _lock = threading.Lock()
 
 
+def configure_rate_limit_store(store: ModelRateLimitStore) -> None:
+    """Set an explicit rate limit store for the process."""
+    global _RATE_LIMIT_STORE
+    with _lock:
+        _RATE_LIMIT_STORE = store
+
+
+def reset_rate_limit_store() -> None:
+    """Clear the explicit store and restore lazy construction."""
+    global _RATE_LIMIT_STORE
+    with _lock:
+        _RATE_LIMIT_STORE = None
+
+
 def get_rate_limit_store() -> ModelRateLimitStore:
     """Get the global ModelRateLimitStore singleton.
 
     Prefers the DI container if available, falls back to module singleton.
     """
+    global _RATE_LIMIT_STORE
+    if _RATE_LIMIT_STORE is not None:
+        return _RATE_LIMIT_STORE
     try:
         return get_rate_limit_store_from_container()
     except Exception:
         # Fallback to legacy singleton
-        global _RATE_LIMIT_STORE
         if _RATE_LIMIT_STORE is None:
             with _lock:
                 if _RATE_LIMIT_STORE is None:

@@ -267,6 +267,21 @@ _registry: ModelRegistry | None = None
 _lock = threading.Lock()
 
 
+def configure_model_registry(registry: ModelRegistry | None) -> None:
+    """Set the active registry explicitly.
+
+    Passing None restores lazy singleton behavior.
+    """
+    global _registry
+    with _lock:
+        _registry = registry
+
+
+def reset_model_registry() -> None:
+    """Reset the active model registry."""
+    configure_model_registry(None)
+
+
 def get_model_registry(config: Any = None) -> ModelRegistry:
     """Get or create the global model registry (lazy singleton)."""
     global _registry
@@ -284,24 +299,25 @@ async def ensure_registry_refreshed(config: Any = None) -> None:
         await reg.refresh()
 
 
-def add_verified_model(model_id: str) -> None:
-    get_model_registry().add_verified_model(model_id)
+def add_verified_model(model_id: str, registry: ModelRegistry | None = None) -> None:
+    (registry or get_model_registry()).add_verified_model(model_id)
 
 
-def remove_verified_model(model_id: str) -> None:
-    get_model_registry().remove_verified_model(model_id)
+def remove_verified_model(model_id: str, registry: ModelRegistry | None = None) -> None:
+    (registry or get_model_registry()).remove_verified_model(model_id)
 
 
-def set_verified_models(models: list[str] | None) -> None:
-    get_model_registry().set_verified_models(models)
+def set_verified_models(models: list[str] | None, registry: ModelRegistry | None = None) -> None:
+    (registry or get_model_registry()).set_verified_models(models)
 
 
-def get_verified_models() -> list[str]:
-    return get_model_registry().get_verified_models()
+def get_verified_models(registry: ModelRegistry | None = None) -> list[str]:
+    return (registry or get_model_registry()).get_verified_models()
 
 
 # Backward-compatible alias
-get_verified_models_safe = get_verified_models
+def get_verified_models_safe(registry: ModelRegistry | None = None) -> list[str]:
+    return get_verified_models(registry=registry)
 
 
 # ── Container-aware helpers ────────────────────────────────────────

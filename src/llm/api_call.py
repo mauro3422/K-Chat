@@ -8,16 +8,25 @@ from src.llm.protocol import LLMProvider, UnifiedRequest
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def _resolve_provider(provider: LLMProvider | None = None) -> LLMProvider:
+def _resolve_provider(
+    provider: LLMProvider | None = None,
+    provider_fn: Any | None = None,
+) -> LLMProvider:
     if provider is not None:
         return provider
-    from src.llm.providers import _get_provider
-    return _get_provider()
+    if provider_fn is not None:
+        return provider_fn()
+    from src.llm.providers import create_provider
+    return create_provider()
 
 
-async def _api_call(provider: LLMProvider | None = None, **kwargs: Any) -> Any:
+async def _api_call(
+    provider: LLMProvider | None = None,
+    provider_fn: Any | None = None,
+    **kwargs: Any,
+) -> Any:
     """Wrapper over provider with exponential backoff retry logic."""
-    prov = _resolve_provider(provider)
+    prov = _resolve_provider(provider, provider_fn)
     model_name = kwargs.get("model", "unknown-model")
     is_stream = kwargs.get("stream", False)
     req = UnifiedRequest(

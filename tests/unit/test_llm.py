@@ -47,17 +47,27 @@ async def test_fallback_switch_updates_system_prompt(mock_sleep):
         
 
 @pytest.mark.anyio
+@patch("src.llm.api_call.execute_with_retry")
 @patch("src.llm.retry.asyncio.sleep", new_callable=AsyncMock)
-async def test_api_call_retries_on_rate_limit(mock_sleep):
+async def test_api_call_retries_on_rate_limit(mock_sleep, mock_execute_with_retry):
     class DummyRateLimitError(Exception):
         status_code = 429
 
-    with patch("src.llm.api_call._get_provider") as mock_get_provider:
-        mock_provider = MagicMock()
-        mock_provider.chat = AsyncMock(side_effect=DummyRateLimitError("HTTP 429 Too Many Requests"))
-        mock_get_provider.return_value = mock_provider
+    mock_provider = MagicMock()
+    mock_provider.chat = AsyncMock(side_effect=DummyRateLimitError("HTTP 429 Too Many Requests"))
 
-        with pytest.raises(DummyRateLimitError):
-            await _api_call(model="big-pickle", messages=[])
+    async def fake_retry(fn, *args, **kwargs):
+        last_err = None
+        for _ in range(3):
+            try:
+                return await fn()
+            except Exception as err:
+                last_err = err
+        raise last_err
 
-        assert mock_provider.chat.call_count == 3
+    mock_execute_with_retry.side_effect = fake_retry
+
+    with pytest.raises(DummyRateLimitError):
+        await _api_call(provider_fn=lambda: mock_provider, model="big-pickle", messages=[])
+
+    assert mock_provider.chat.call_count == 3

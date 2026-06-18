@@ -1,4 +1,4 @@
-> **Last updated:** 2026-06-14 — Added: `src/api/exceptions.py` (ServiceException), `src/memory/types.py` (MessageRecord canonical type). Updated: `OrchestratorDeps` → 4 sub-dataclasses, `config` param DI in tools/LLM, llm layer map (providers.py deps).
+> **Last updated:** 2026-06-18 — Added: `src/config_loader.py` dotenv reset helper, `src/api/lifecycle.py` runtime reset helper, `src/llm/providers.py` explicit registry reset helper, `src/llm/container.py` explicit configure/reset helper, `web/services/event_bus.py` explicit reset helper, `web/routers/skills.py` app-state skill registry resolution, `src/gateway.py` reset_gateway_state helper. Updated: `OrchestratorDeps` → 4 sub-dataclasses, `config` param DI in tools/LLM, llm layer map (providers.py deps).
 
 # Module Guide
 
@@ -9,6 +9,7 @@ This document maps every module in the system with its single responsibility, it
 ```
 entry/
   cli.py              → CLI entry point (argparse, REPL loop)
+  gateway.py          → Multi-service launcher (process orchestration, status, signals)
   web/server.py       → FastAPI entry point (static files, middleware, exception handlers)
 
 api/
@@ -36,8 +37,11 @@ core/
 llm/
   protocol.py         → LLMProvider Protocol (runtime-checkable)
   adapters/openai_adapter.py  → OpenAI/OpenCode SDK provider implementation
-  model_state.py      → Thread-safe ModelState class (failed/verified/cached models)
-  providers.py        → Provider registry + singleton, accepts optional `config` for DI (fallback to DEFAULT_CONFIG)
+  model_state.py      → Thread-safe ModelState class (failed/verified/cached models, explicit reset helper)
+  container.py        → DI container for LLM services, explicit reset helper
+  circuit_breaker.py  → Per-model circuit breaker, explicit reset helper
+  rate_limit_state.py → Per-model rate-limit store, explicit reset helper
+  providers.py        → Provider registry + explicit reset helper, accepts optional `config` for DI (fallback to DEFAULT_CONFIG)
   api_call.py         → `_api_call()` wrapper with retry
   retry.py            → execute_with_retry() with exponential backoff, accepts optional `config` for DI
   client.py           → chat() and chat_stream() with fallback, tool delta processing
@@ -60,6 +64,9 @@ memory/
   db_path.py          → Resolves the memory DB path
   engine_state.py     → DatabaseEngine protocol + engine registry
   connection_pool.py  → Thread-local pooled connections and SQLite setup
+  memory_pool.py      → Pooled memory DB connections, explicit reset helper
+  embeddings/service.py → Lazy embedding model cache, explicit reset helper
+  retrieval/reranker.py → Lazy reranker cache, explicit reset helper
   schema.py           → init_db + schema_version bootstrap
   migration_runner.py → pending migration execution
   repos/              → 7 repos: Message, Session, ToolCall, WidgetState, Debug, SavedWidget, MemoryIndex
@@ -68,18 +75,22 @@ memory/
 context/
   __init__.py         → Re-exports load_context, build_system_prompt, _build_tools_md
   builder.py          → System prompt builder, context loader
+  crash_recovery.py   → Crash context ingestion and crash-loop guard
   files.py            → Markdown file loader/creator
   templates.py        → Default templates (SOUL, MEMORY, AGENTS)
   tools_docs.py       → TOOLS.md auto-generator (lazy)
-  runtime.py          → Runtime context injection
+  runtime.py          → Runtime context injection + explicit cache reset helper
 
-web/
+  web/
   app_factory.py      → FastAPI app factory, registers exception handlers (ServiceException → JSONResponse)
+                      → owns HTTP rate-limit store, config cache reset, event bus, skill registry in app.state
   dev_server.py       → Development server runner
   routers/chat.py     → Streaming POST endpoint (ChatPayload, NDJSON, error classification)
   routers/pages.py    → HTML pages, sidebar, message rendering, model selector
   routers/sessions.py → Rename, delete
   routers/widgets.py  → Widget API (WidgetStatePayload, SaveWidgetPayload)
+  routers/skills.py   → Skills catalog API (reads registry from app.state)
+  routers/logs.py     → Log query endpoints (dynamic log dirs via file_logger helpers)
   routers/debug.py    → Debug info + backend log buffer (_local_only guard)
   routers/health.py   → GET /health (DB, LLM status, uptime)
   routers/asr.py      → Audio/ASR endpoints (WebSocket live chunks + server-side transcription)
@@ -96,6 +107,8 @@ web/
                       → Detects infinite tool-call loops
   services/file_logger.py
                       → Persistent file logging
+  services/event_bus.py
+                      → SSE pub/sub bus with injectable instance + reset helper
   services/stream_retry_handler.py
                       → Coordinates stream retry logic
   services/asr_service.py
@@ -109,7 +122,7 @@ web/
   ui_utils.py         → HTML message rendering (phases, reasoning, tool pills)
   logging_handler.py  → BackendLogHandler (ring buffer on kairos.*)
 
-config_loader.py     → Config dataclass, load_config(), DEFAULT_CONFIG
+config_loader.py     → Config dataclass, load_config(), dotenv reset helper
 constants.py         → Shared policy constants (MAX_TOOL_TURNS, TOOL_OUTPUT_CHUNK_SIZE, LLM_MAX_RETRIES)
 compressor.py        → History compression when > 40 msgs / 6k tokens
 background_tasks.py  → Auto-rename session via LLM

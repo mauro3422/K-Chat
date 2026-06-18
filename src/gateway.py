@@ -335,8 +335,18 @@ def _heartbeat_loop(verbose: bool) -> None:
 verbose = False
 
 
+def reset_gateway_state() -> None:
+    """Reset module-level gateway runtime state."""
+    global _services, _shutdown, _start_time, verbose
+    _services = {}
+    _shutdown = False
+    _start_time = 0.0
+    verbose = False
+
+
 def main() -> None:
     global verbose, _start_time
+    reset_gateway_state()
     from src.config_loader import load_config
     cfg = load_config()
     _start_time = time.time()

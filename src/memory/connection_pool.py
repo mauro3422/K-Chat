@@ -46,6 +46,20 @@ class ConnectionPool:
 _pool = ConnectionPool()
 
 
+def configure_connection_pool(pool: ConnectionPool | None) -> None:
+    """Set the active connection pool explicitly.
+
+    Passing None restores the default module pool.
+    """
+    global _pool
+    _pool = pool or ConnectionPool()
+
+
+def reset_connection_pool() -> None:
+    """Reset the active connection pool to a fresh instance."""
+    configure_connection_pool(None)
+
+
 class PooledConnection:
     """Wraps a connection so .close() returns it to the pool."""
 

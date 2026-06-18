@@ -125,8 +125,9 @@ async def do_curate():
     """Ejecuta el curador de memoria."""
     try:
         from src.memory.curator.curate import curate_all as curator
+        from src.tools.save_memory import run as save_memory_run
         log.info("🧠 Curando memoria...")
-        r = await curator()
+        r = await curator(save_memory_fn=lambda k, v: save_memory_run(key=k, value=v))
         if r["saved"]:
             log.info(f"✅ {r['saved']} nuevas entradas guardadas en MEMORY.md")
         else:

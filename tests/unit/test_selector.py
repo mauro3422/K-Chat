@@ -102,3 +102,20 @@ async def test_get_default_model_candidates_returns_free_models_when_no_cache(
 
     assert result == ["model1-free", "model2-free"]
     assert verified_cache_used is False
+
+
+@pytest.mark.anyio
+async def test_get_default_model_candidates_accepts_injected_callables():
+    def verified_models_fn():
+        return ["cached-model"]
+
+    def free_models_fn():
+        raise AssertionError("should not be called")
+
+    result, verified_cache_used = _get_default_model_candidates(
+        verified_models_fn=verified_models_fn,
+        free_models_fn=free_models_fn,
+    )
+
+    assert result == ["cached-model"]
+    assert verified_cache_used is True

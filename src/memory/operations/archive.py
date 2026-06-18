@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from src.memory.operations._helpers import (
@@ -12,7 +13,13 @@ from src.memory.operations._helpers import (
 logger = logging.getLogger(__name__)
 
 
-async def _archive(key_pattern: str = "", dry_run: bool = False, confirm: bool = False, repos: Any = None) -> str:
+async def _archive(
+    key_pattern: str = "",
+    dry_run: bool = False,
+    confirm: bool = False,
+    repos: Any = None,
+    save_memory_fn: Callable[[str, str], Any] | None = None,
+) -> str:
     """Archive matching entries by renaming their key to _archived:<original>."""
     if not key_pattern:
         return "[ERROR] archive requires key_pattern."
@@ -35,13 +42,14 @@ async def _archive(key_pattern: str = "", dry_run: bool = False, confirm: bool =
     if not confirm:
         return "[!] Use confirm=True to proceed."
 
-    from src.tools.save_memory import run as save_run
+    if save_memory_fn is None:
+        return "[ERROR] save_memory_fn is required for archiving."
 
     count = 0
     for k, v in matching.items():
         new_k = f"_archived:{k}"
-        await save_run(key=k, value="", _repos=repos)
-        await save_run(key=new_k, value=v, _repos=repos)
+        await save_memory_fn(k, "")
+        await save_memory_fn(new_k, v)
         count += 1
 
     return f"Archived {count} entries. Renamed to _archived:<original_key>."

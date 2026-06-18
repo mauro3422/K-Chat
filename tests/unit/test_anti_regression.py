@@ -73,13 +73,14 @@ async def test_rate_limit_store_imported_in_failover() -> None:
 # 4. message-renderer.js: _isImageFile must declare 'ext' from filename
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_message_renderer_no_undefined_ext() -> None:
-    js = _read("web/static/modules/message-renderer.js")
-    match = re.search(r'function\s+_isImageFile\s*\([^)]*\)\s*\{([^}]+)\}', js, re.DOTALL)
-    assert match, "_isImageFile function not found in message-renderer.js!"
-    body = match.group(1)
-    assert ".split(" in body and ".pop()" in body, \
-        "_isImageFile must derive 'ext' from the filename, not reference a global!"
+async def test_message_renderer_uses_widget_registry_before_markdown() -> None:
+    content = _read("web/src_ts/rendering/DomRenderer.ts")
+    assert "widgetRegistry.extract(markdown)" in content, \
+        "DomRenderer must extract widget markers before markdown parsing."
+    assert "DOMPurify.sanitize" in content, \
+        "DomRenderer must still sanitize rendered HTML."
+    assert "data-widget-id" in content and "data-widget-key" in content, \
+        "DomRenderer must allow widget metadata through sanitization."
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -107,82 +108,57 @@ async def test_app_mock_ts_has_all_initializations() -> None:
 # 6. app.js must no longer import the legacy runtime modules
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_app_js_no_longer_uses_legacy_runtime() -> None:
-    app_js = _read("web/static/app.js")
-    for legacy in [
-        "session-page.js",
-        "chat-form.js",
-        "widgets/index.js",
-        "debug-panel.js",
-        "session-context.js",
-        "asr/contract.js",
-    ]:
-        assert legacy not in app_js, \
-            f"Legacy import {legacy} should not remain in app.js!"
+async def test_skills_ui_ts_exists() -> None:
+    content = _read("web/src_ts/widgets/SkillsUI.ts")
+    assert "export class SkillsUI" in content
+    assert "init(): void" in content
+    assert "fetchSkills()" in content
 
 
-async def test_skills_ui_legacy_module_is_bridge() -> None:
-    content = _read("web/static/modules/skills-ui.js")
-    assert "dist/assets/skills_ui.js" in content, \
-        "skills-ui.js should bridge to the TS bundle."
-    assert "fetch('/api/skills')" not in content, \
-        "skills-ui.js should not carry the old implementation anymore."
+async def test_chat_form_ts_exists() -> None:
+    content = _read("web/src_ts/core/ChatForm.ts")
+    assert "export * from './ui/ChatForm';" in content
+    ui_content = _read("web/src_ts/core/ui/ChatForm.ts")
+    assert "export class ChatForm" in ui_content
+    assert "handleSubmit()" in ui_content
+    assert "setStreamingState" in ui_content
 
 
-async def test_chat_form_legacy_module_is_bridge() -> None:
-    content = _read("web/static/modules/chat-form.js")
-    assert "dist/assets/chat_form.js" in content, \
-        "chat-form.js should bridge to the TS bundle."
-    assert "StreamOrchestrator" not in content, \
-        "chat-form.js should not carry the old implementation anymore."
+async def test_logger_ts_reexport_exists() -> None:
+    content = _read("web/src_ts/core/Logger.ts")
+    assert "export * from './infra/Logger';" in content
 
 
-async def test_logger_legacy_module_is_bridge() -> None:
-    content = _read("web/static/modules/logger.js")
-    assert "dist/assets/logger.js" in content, \
-        "logger.js should bridge to the TS bundle."
-    assert "ApiClient.sendClientLogs" not in content, \
-        "logger.js should not carry the old implementation anymore."
+async def test_api_client_ts_exposes_debug_and_asr_methods() -> None:
+    content = _read("web/src_ts/api/ApiClient.ts")
+    assert "sendClientLogs" in content
+    assert "transcribeAudio" in content
 
 
-async def test_api_client_legacy_module_is_bridge() -> None:
-    content = _read("web/static/modules/api-client.js")
-    assert "dist/assets/api_client.js" in content, \
-        "api-client.js should bridge to the TS bundle."
-    assert "transcribeAudio" not in content, \
-        "api-client.js should not carry the old implementation anymore."
+async def test_session_store_ts_reexport_exists() -> None:
+    content = _read("web/src_ts/core/SessionStore.ts")
+    assert "export * from './session/SessionStore';" in content
 
 
-async def test_session_context_legacy_module_is_bridge() -> None:
-    content = _read("web/static/modules/session-context.js")
-    assert "dist/assets/session_context.js" in content, \
-        "session-context.js should bridge to the TS bundle."
-    assert "createSessionUrlBuilder" not in content, \
-        "session-context.js should not carry the old implementation anymore."
+async def test_reasoning_handler_ts_exists() -> None:
+    content = _read("web/src_ts/streaming/reasoning-handler.ts")
+    assert "handleReasoning" in content
+    assert "handleMemory" in content
+    assert "details.open = true" in content
 
 
-async def test_reasoning_handler_legacy_module_is_bridge() -> None:
-    content = _read("web/static/modules/reasoning-handler.js")
-    assert "dist/assets/reasoning_handler.js" in content, \
-        "reasoning-handler.js should bridge to the TS bundle."
-    assert "StreamDispatcher.on" not in content, \
-        "reasoning-handler.js should not carry the old implementation anymore."
+async def test_stream_error_handler_ts_exists() -> None:
+    content = _read("web/src_ts/streaming/StreamErrorHandler.ts")
+    assert "createStreamErrorHandler" in content
+    assert "showRetryMessage" in content
+    assert "error-retry-btn" in content or "rate-limit-card" in content
 
 
-async def test_stream_error_handler_legacy_module_is_bridge() -> None:
-    content = _read("web/static/modules/stream-error-handler.js")
-    assert "dist/assets/stream_error_handler.js" in content, \
-        "stream-error-handler.js should bridge to the TS bundle."
-    assert "showRetryMessage" not in content or "export *" in content, \
-        "stream-error-handler.js should not carry the old implementation anymore."
-
-
-async def test_widget_container_renderer_legacy_module_is_bridge() -> None:
-    content = _read("web/static/modules/widget-container-renderer.js")
-    assert "dist/assets/widget_container_renderer.js" in content, \
-        "widget-container-renderer.js should bridge to the TS bundle."
-    assert "processWidgetContainers" not in content or "old JS modules" in content, \
-        "widget-container-renderer.js should not carry the old implementation anymore."
+async def test_widget_container_renderer_ts_exists() -> None:
+    content = _read("web/src_ts/rendering/WidgetContainerRenderer.ts")
+    assert "processWidgetContainers" in content
+    assert "C.WIDGET_CONTAINER" in content
+    assert "widgetMatches" in content
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 7. pages.py must NOT hardcode model names (regression: ALL_GO sets)
@@ -406,13 +382,14 @@ async def test_csp_includes_unsafe_inline_for_script_src() -> None:
 #     naturally. Escaping </script> â†’ <\/script> breaks the widget's JS.
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_build_iframe_src_does_not_escape_closing_script() -> None:
-    content = _read("web/static/modules/widgets/iframe-builder.js")
-    assert "code.replace" not in content or "/script" not in content[content.find("code.replace"):content.find("code.replace") + 100], \
-        "buildIframeSrc escapes </script> in widget code â€” widget script blocks won't close!"
-    # The widget code must be assigned directly, not transformed
-    assert "var safeCode = code;" in content or "var safeCode=code;" in content, \
-        "buildIframeSrc must use widget code as-is (no </script> escaping)!"
+async def test_iframe_builder_sanitizes_widget_code() -> None:
+    content = _read("web/src_ts/rendering/IframeBuilder.ts")
+    assert "const safeCode = this.sanitizeWidgetCode(code)" in content, \
+        "IframeBuilder must sanitize widget code before embedding it."
+    assert ".replace(/<animate\\b" in content and ".replace(/<set\\b" in content, \
+        "IframeBuilder must strip SVG animation tags that trigger feedback loops."
+    assert "stateStr = (initialState" in content and "replace(/<\\/script/gi" in content, \
+        "IframeBuilder must only escape closing script tags in the serialized state."
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -420,125 +397,111 @@ async def test_build_iframe_src_does_not_escape_closing_script() -> None:
 #     callback. Calling it outside (duplicate code) causes ReferenceError.
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_create_iframe_mount_iframe_only_in_then_scope() -> None:
-    content = _read("web/static/modules/widgets/iframe-builder.js")
-    # Find the .then() callback opening
-    then_start = content.find(".then(function(m)")
-    assert then_start >= 0, "Missing .then() callback in createIframe!"
-    
-    # mountIframe must be defined INSIDE the .then() callback
-    mount_def = content.find("function mountIframe(widgetCode)", then_start)
-    assert mount_def >= 0, "mountIframe function not defined in .then() callback!"
-    
-    # Count mountIframe calls BEFORE the .then() opening â€” should be 0
-    calls_before_then = content[:then_start].count("mountIframe(")
-    # Count mountIframe calls AFTER the .then() opening â€” should be all of them
-    calls_after_then = content[then_start:].count("mountIframe(")
-    calls_total = content.count("mountIframe(")
-    
-    assert calls_before_then == 0, \
-        f"mountIframe called {calls_before_then} time(s) BEFORE .then() scope â€” would be ReferenceError!"
-    assert calls_after_then == calls_total, \
-        f"mountIframe calls outside .then(): total={calls_total}, inside={calls_after_then}"
-    assert calls_total >= 1, \
-        "mountIframe never called â€” widget mounting broken!"
+async def test_iframe_builder_mounts_sandboxed_iframe() -> None:
+    content = _read("web/src_ts/rendering/IframeBuilder.ts")
+    assert "const mountIframe = (widgetCode: string)" in content, \
+        "IframeBuilder must keep iframe mounting inside the widget creation flow."
+    assert "iframe.setAttribute('sandbox', 'allow-scripts allow-modals')" in content, \
+        "IframeBuilder must sandbox widget iframes with script execution enabled."
+    assert "iframe.srcdoc = this.buildSrcDoc(id, widgetCode, parsedState);" in content, \
+        "IframeBuilder must keep widget HTML in srcdoc."
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 18. Iframe sandbox must include 'allow-scripts' (security baseline)
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_iframe_sandbox_has_allow_scripts() -> None:
-    content = _read("web/static/modules/widgets/iframe-builder.js")
-    assert "iframe.sandbox = 'allow-scripts'" in content or 'iframe.sandbox="allow-scripts"' in content, \
-        "Iframe missing sandbox='allow-scripts' â€” widget scripts won't execute!"
-    assert "allow-same-origin" not in content, \
-        "Iframe has allow-same-origin â€” sandbox bypass defeats widget isolation!"
+async def test_iframe_builder_handles_widget_postmessage_contract() -> None:
+    content = _read("web/src_ts/rendering/IframeBuilder.ts")
+    assert "window.saveState" in content
+    assert "resize-iframe" in content
+    assert "window.onerror" in content
+    assert "widget-error" in content
+    assert "if (event.origin !== 'null') return;" in content, \
+        "IframeBuilder must only accept messages from srcdoc/null-origin iframes."
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 19. buildIframeSrc must include auto-resize script (sendHeight, ResizeObserver)
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_build_iframe_src_has_resize_script() -> None:
-    content = _read("web/static/modules/widgets/iframe-builder.js")
+async def test_iframe_builder_has_resize_script() -> None:
+    content = _read("web/src_ts/rendering/IframeBuilder.ts")
     assert "sendHeight" in content, \
-        "Missing sendHeight in iframe builder â€” widgets won't auto-resize!"
+        "IframeBuilder must keep the resize bridge alive."
     assert "getDocHeight" in content, \
-        "Missing getDocHeight in iframe builder â€” height measurement missing!"
+        "IframeBuilder must measure height from the live document body."
     assert "ResizeObserver" in content, \
-        "Missing ResizeObserver in iframe builder â€” dynamic resize won't work!"
+        "IframeBuilder must debounce dynamic resize updates."
     assert "resize-iframe" in content, \
-        "Missing 'resize-iframe' postMessage â€” parent won't receive height updates!"
+        "IframeBuilder must notify the parent when iframe height changes."
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 20. buildIframeSrc must handle null origin for postMessage (srcdoc iframes)
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_postmessage_handles_null_origin() -> None:
-    content = _read("web/static/modules/widgets/iframe-builder.js")
-    assert 'window.location.origin==="null"?"*":' in content or 'window.location.origin==="null"?"*":' in content.replace(' ', ''), \
-        "Missing null origin fallback in postMessage â€” messages from srcdoc iframes blocked!"
+async def test_iframe_builder_has_null_origin_guard() -> None:
+    content = _read("web/src_ts/rendering/IframeBuilder.ts")
+    assert "if (event.origin !== 'null') return;" in content, \
+        "IframeBuilder must reject postMessage events from non-srcdoc origins."
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 21. buildIframeSrc must include window.onerror for error reporting
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_iframe_has_error_handler() -> None:
-    content = _read("web/static/modules/widgets/iframe-builder.js")
+async def test_iframe_builder_has_error_handler() -> None:
+    content = _read("web/src_ts/rendering/IframeBuilder.ts")
     assert "window.onerror" in content, \
-        "Missing window.onerror in iframe â€” widget errors silent!"
+        "IframeBuilder must surface widget errors."
     assert "widget-error" in content, \
-        "Missing 'widget-error' postMessage â€” errors not reported to parent!"
+        "IframeBuilder must report widget errors to the parent."
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 22. buildIframeSrc must expose saveState for widget state persistence
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_iframe_has_save_state() -> None:
-    content = _read("web/static/modules/widgets/iframe-builder.js")
+async def test_iframe_builder_has_save_state() -> None:
+    content = _read("web/src_ts/rendering/IframeBuilder.ts")
     assert "window.saveState" in content, \
-        "Missing window.saveState in iframe â€” widget state can't be persisted!"
+        "IframeBuilder must expose saveState for widget persistence."
     assert "save-widget-state" in content, \
-        "Missing 'save-widget-state' postMessage â€” widget state lost on reload!"
+        "IframeBuilder must post widget state changes back to the host."
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 23. messaging.js must handle resize-iframe messages
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_messaging_handles_resize() -> None:
-    content = _read("web/static/modules/widgets/messaging.js")
-    # The actual code uses single quotes: event.data.type === 'resize-iframe'
-    assert "'resize-iframe'" in content, \
-        "Missing resize-iframe handler in messaging.js â€” iframe height won't update!"
-    assert "iframe.style.height" in content, \
-        "Missing iframe.style.height assignment â€” resize messages ignored!"
+async def test_content_handler_keeps_widget_pipeline_intact() -> None:
+    content = _read("web/src_ts/streaming/ContentHandler.ts")
+    assert "ensureWidgetContainers" in content
+    assert "renderTextSegments" in content
+    assert "processWidgetContainers" in content
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 24. messaging.js must handle widget-error messages for debugging
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_messaging_handles_widget_error() -> None:
-    content = _read("web/static/modules/widgets/messaging.js")
-    assert "'widget-error'" in content, \
-        "Missing widget-error handler in messaging.js â€” widget errors invisible!"
+async def test_content_handler_keeps_error_renderer_wired() -> None:
+    content = _read("web/src_ts/streaming/ContentHandler.ts")
+    assert "ErrorRenderer" in content
+    assert "handleError" in content
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 25. core.js extract() must use the correct WIDGET_CONTAINER class
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async def test_widget_extract_uses_correct_container_class() -> None:
-    content = _read("web/static/modules/widgets/core.js")
+async def test_widget_container_renderer_uses_real_dom_contract() -> None:
+    content = _read("web/src_ts/rendering/WidgetContainerRenderer.ts")
     assert "C.WIDGET_CONTAINER" in content, \
-        "Widget extraction must use dom-contracts C.WIDGET_CONTAINER â€” class mismatch!"
-    assert "INLINE_WIDGET_BLOCK_RE" in content, \
-        "Missing INLINE_WIDGET_BLOCK_RE regex â€” widget code blocks not detected!"
-    assert "INLINE_WIDGET_TAG_RE" in content, \
-        "Missing INLINE_WIDGET_TAG_RE regex â€” [Widget: key] tags not detected!"
+        "WidgetContainerRenderer must use the shared DOM contract class."
+    assert "processWidgetContainers" in content, \
+        "WidgetContainerRenderer must remain the source of widget extraction."
+    assert "widgetMatches" in content, \
+        "WidgetContainerRenderer must preserve widget detection results."
 

@@ -247,6 +247,27 @@ for i, text in enumerate(_STARTUP_CORPUS):
 logger.info("TF-IDF extractor seeded with %d documents", len(_STARTUP_CORPUS))
 
 
+def configure_global_extractor(extractor: TfidfExtractor | None) -> None:
+    """Set the global extractor explicitly, or clear it with None.
+
+    Passing None restores a fresh extractor seeded with the startup corpus
+    on the next access.
+    """
+    global _global_extractor
+    with _global_extractor_lock:
+        if extractor is None:
+            _global_extractor = TfidfExtractor()
+            for i, text in enumerate(_STARTUP_CORPUS):
+                _global_extractor._add_document(f"seed_{i}", text)
+        else:
+            _global_extractor = extractor
+
+
+def reset_global_extractor() -> None:
+    """Restore the seeded global extractor."""
+    configure_global_extractor(None)
+
+
 def add_to_global_corpus(text: str) -> None:
     """Add a document to the global TF-IDF corpus to improve IDF values over time.
 

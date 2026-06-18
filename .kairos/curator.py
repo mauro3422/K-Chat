@@ -15,9 +15,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 async def main():
     from src.memory.curator.curate import curate_all
+    from src.tools.save_memory import run as save_memory_run
     
     print("🌙 K-Chat Memory Curator starting...")
-    result = await curate_all(dry=False)
+    result = await curate_all(dry=False, save_memory_fn=lambda k, v: save_memory_run(key=k, value=v))
     
     gardener = result.get("gardener", [])
     tracer = result.get("tracer", {})

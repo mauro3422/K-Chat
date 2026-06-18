@@ -10,11 +10,31 @@ import src.llm.verifier as verifier
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def _is_go_mode(config=None) -> bool:
+def _resolve_config(config=None):
     if config is None:
         from src._config import resolve_config
-        config = resolve_config()
-    return config.llm_mode == "go"
+        return resolve_config()
+    return config
+
+
+def _is_go_mode(config=None) -> bool:
+    return _resolve_config(config).llm_mode == "go"
+
+
+def _model_id(model: Any) -> str:
+    return model if isinstance(model, str) else getattr(model, "id", "")
+
+
+def _make_zen_provider(config=None):
+    cfg = _resolve_config(config)
+    import copy
+    fresh = copy.copy(cfg)
+    fresh.llm_mode = "zen"
+    from src.llm.providers import _get_registry
+    provider_cls = _get_registry().get(fresh.llm_provider)
+    if not provider_cls:
+        return None
+    return provider_cls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
 
 
 async def get_models(force_refresh: bool = False, config=None) -> list[Any]:
@@ -51,34 +71,21 @@ async def get_verified_models(force_refresh: bool = False, config=None) -> list[
     In Go mode: all models from the API are pre-verified by OpenCode, skip verification.
     In Zen mode: verify each free model with a test call.
     """
-    cached = registry.get_verified_models()
+    cached = models.get_verified_models_safe()
     if cached and not force_refresh:
         return cached
+    verified_models: list[str] = []
 
     if _is_go_mode(config=config):
         try:
             all_models = await get_models(force_refresh=force_refresh, config=config)
-            all_ids = [m if isinstance(m, str) else getattr(m, "id", "") for m in all_models]
-            all_ids = [mid for mid in all_ids if mid]
+            all_ids = [mid for mid in (_model_id(m) for m in all_models) if mid]
             # In Go mode, also fetch FREE models (cost=0, -free suffix) from Zen API
             try:
-                if config is None:
-                    from src._config import resolve_config
-                    config = resolve_config()
-                zen_cfg = config
-                import copy
-                fresh = copy.copy(zen_cfg)
-                fresh.llm_mode = "zen"
-                # Create a fresh Zen provider (bypass global singleton)
-                from src.llm.providers import _get_registry
-                provider_cls = _get_registry().get(fresh.llm_provider)
-                if provider_cls:
-                    zen_provider = provider_cls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
-                    zen_models = await zen_provider.list_models()
-                else:
-                    zen_models = []
+                zen_provider = _make_zen_provider(config=config)
+                zen_models = await zen_provider.list_models() if zen_provider else []
                 for m in zen_models:
-                    mid = m if isinstance(m, str) else getattr(m, "id", "")
+                    mid = _model_id(m)
                     if mid and mid.endswith("-free") and mid not in all_ids:
                         all_ids.append(mid)
                 logger.info("Go mode: discovered %d free models from Zen API", len([x for x in all_ids if x.endswith("-free")]))
@@ -86,43 +93,47 @@ async def get_verified_models(force_refresh: bool = False, config=None) -> list[
                 logger.warning("Could not fetch free models from Zen: %s", ze)
             registry.set_verified_models(all_ids)
             logger.info("Go mode: all %d models trusted as verified", len(all_ids))
+            verified_models = all_ids
         except Exception as e:
             logger.error("Error fetching Go models: %s", e)
             registry.set_verified_models([models.FALLBACK_MODEL])
+            verified_models = [models.FALLBACK_MODEL]
     else:
         try:
             free_models = await get_free_models(force_refresh=force_refresh, config=config)
             verified: list[str] = []
 
-            model_ids = [m if isinstance(m, str) else getattr(m, "id", "") for m in free_models]
-            model_ids = [mid for mid in model_ids if mid]
+            model_ids = [mid for mid in (_model_id(m) for m in free_models) if mid]
 
-            async def check(model_id: str) -> str | None:
-                if await verifier.verify_model(model_id):
-                    return model_id
-                return None
-
-            tasks = [check(mid) for mid in model_ids]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for res in results:
-                if isinstance(res, str):
-                    verified.append(res)
+            for mid in model_ids:
+                try:
+                    if await verifier.verify_model(mid):
+                        verified.append(mid)
+                except Exception as e:
+                    logger.warning("Model verification failed for %s: %s", mid, e)
             registry.set_verified_models(verified)
             logger.info("Zen mode: verified %d/%d free models", len(verified), len(model_ids))
+            verified_models = verified
         except Exception as e:
             logger.error("Error verifying Zen models: %s", e)
-            cached = registry.get_verified_models()
+            cached = models.get_verified_models_safe()
             if cached:
                 return cached
             registry.set_verified_models([models.FALLBACK_MODEL])
+            verified_models = []
 
     # Fire-and-forget availability ping for free models.
     # Runs in background so it doesn't block the caller (e.g. lifespan timeout=10s).
-    free_ids = [m for m in registry.get_verified_models() if m.endswith("-free")]
+    free_ids = [m for m in verified_models if m.endswith("-free")]
     if free_ids:
-        asyncio.create_task(_ping_free_model_availability(free_ids, config=config))
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None:
+            loop.create_task(_ping_free_model_availability(free_ids, config=config))
 
-    return registry.get_verified_models()
+    return verified_models
 
 
 async def _ping_free_model_availability(free_ids: list[str], config=None) -> None:
@@ -141,18 +152,9 @@ async def _ping_free_model_availability(free_ids: list[str], config=None) -> Non
     store = get_rate_limit_store()
 
     # Build Zen provider once
-    if config is None:
-        from src._config import resolve_config
-        config = resolve_config()
-    ping_cfg = config
-    import copy
-    fresh = copy.copy(ping_cfg)
-    fresh.llm_mode = "zen"
-    from src.llm.providers import _get_registry
-    pcls = _get_registry().get(fresh.llm_provider)
-    if not pcls:
+    zen_provider = _make_zen_provider(config=config)
+    if not zen_provider:
         return
-    zen_provider = pcls(api_key=fresh.opencode_zen_api_key, base_url=fresh.opencode_zen_base_url)
     from src.llm.protocol import UnifiedRequest
 
     sem = asyncio.Semaphore(3)

@@ -14,8 +14,16 @@ Usage:
 
 from src.logbus.core import LogBus, LogEvent
 
-# Singleton global — initialized lazily via init()
 _logbus: LogBus | None = None
+
+
+def configure_logbus(bus: LogBus | None) -> None:
+    """Set the active LogBus instance explicitly.
+
+    Passing None resets the module to lazy initialization behavior.
+    """
+    global _logbus
+    _logbus = bus
 
 
 def get_logbus() -> LogBus:
@@ -26,10 +34,15 @@ def get_logbus() -> LogBus:
     return _logbus
 
 
+def reset_logbus() -> None:
+    """Reset the active LogBus instance."""
+    configure_logbus(None)
+
+
 def emit(event: LogEvent) -> None:
     """Convenience: emit an event to the global LogBus."""
     bus = get_logbus()
     bus.emit(event)
 
 
-__all__ = ["LogBus", "LogEvent", "get_logbus", "emit"]
+__all__ = ["LogBus", "LogEvent", "configure_logbus", "get_logbus", "reset_logbus", "emit"]

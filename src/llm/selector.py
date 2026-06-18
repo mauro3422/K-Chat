@@ -10,9 +10,9 @@ from src.config_loader import SECONDARY_MODEL
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def _get_free_models_sync() -> list:
+def _get_free_models_sync(free_models_fn=None) -> list:
     """Get free models, handling both sync and async versions."""
-    result = discovery.get_free_models()
+    result = (free_models_fn or discovery.get_free_models)()
     if inspect.isawaitable(result):
         try:
             asyncio.get_running_loop()
@@ -25,11 +25,14 @@ def _get_free_models_sync() -> list:
     return result
 
 
-def _get_default_model_candidates() -> tuple[list[str], bool]:
-    cached_verified = registry.get_verified_models()
+def _get_default_model_candidates(
+    verified_models_fn=None,
+    free_models_fn=None,
+) -> tuple[list[str], bool]:
+    cached_verified = (verified_models_fn or registry.get_verified_models)()
     if cached_verified:
         return cached_verified, True
-    free_models = _get_free_models_sync()
+    free_models = _get_free_models_sync(free_models_fn=free_models_fn)
     return [m.id for m in free_models], False
 
 

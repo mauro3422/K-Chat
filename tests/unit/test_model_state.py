@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock
 """Tests for ModelState class - switch_model logic."""
 import pytest
-from src.llm.model_state import ModelState
+from src.llm.model_state import ModelState, configure_state, reset_state
 
 
 class TestModelStateSwitchModel:
@@ -46,3 +46,21 @@ class TestModelStateSwitchModel:
         prio = ms.priority
         prio.append("c")
         assert ms.priority == ["a", "b"]  # original unchanged
+
+    @pytest.mark.anyio
+    async def test_configure_state_sets_explicit_instance(self):
+        ms = ModelState(priority=["a"], fallback_model="a")
+        configure_state(ms)
+        try:
+            from src.llm.model_state import _resolve_state
+            assert _resolve_state() is ms
+        finally:
+            reset_state()
+
+    @pytest.mark.anyio
+    async def test_reset_state_clears_explicit_instance(self):
+        ms = ModelState(priority=["a"], fallback_model="a")
+        configure_state(ms)
+        reset_state()
+        from src.llm.model_state import _resolve_state
+        assert _resolve_state() is not ms

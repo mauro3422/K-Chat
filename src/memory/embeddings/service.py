@@ -29,6 +29,21 @@ DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 EMBEDDING_DIM = 384
 
 
+def configure_model(model: Optional[TextEmbedding]) -> None:
+    """Set the active embedding model explicitly, or clear it with None."""
+    global _embedding_model
+    with _embedding_lock:
+        _embedding_model = model
+        if model is not None:
+            global _last_used
+            _last_used = time.time()
+
+
+def reset_model() -> None:
+    """Clear the cached embedding model and restore lazy loading."""
+    configure_model(None)
+
+
 def get_model() -> Optional[TextEmbedding]:
     """Get or initialize the embedding model singleton.
     

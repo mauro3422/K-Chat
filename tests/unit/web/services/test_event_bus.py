@@ -3,7 +3,7 @@
 import asyncio
 import json
 import pytest
-from web.services.event_bus import EventBus, get_event_bus
+from web.services.event_bus import EventBus, get_event_bus, reset_event_bus, set_event_bus
 
 
 pytestmark = pytest.mark.asyncio
@@ -237,6 +237,12 @@ class TestGetEventBus:
 
     async def test_singleton_is_eventbus_instance(self):
         assert isinstance(get_event_bus(), EventBus)
+
+    async def test_reset_event_bus_restores_lazy_instance(self):
+        bus = EventBus()
+        set_event_bus(bus)
+        reset_event_bus()
+        assert get_event_bus() is not bus
 
 
 # ── 12. Cleanup on shutdown — unsubscribe called via stream ──────────────

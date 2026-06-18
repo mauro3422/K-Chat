@@ -1,10 +1,23 @@
 import pytest
 from unittest.mock import AsyncMock
 """Tests for app_factory.py"""
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 class TestAppFactory:
+    @pytest.fixture(autouse=True)
+    def _mock_startup(self):
+        fake_config = MagicMock(testing=True, log_level="INFO", http_rate_limit=10)
+        with (
+            patch("web.app_factory._get_config", return_value=fake_config),
+            patch("web.app_factory.init_db", new=AsyncMock()),
+            patch("web.app_factory.init_memory_db", new=AsyncMock()),
+            patch("web.app_factory.get_repos", return_value=MagicMock()),
+            patch("web.app_factory.deps.searxng_start", return_value=None),
+            patch("web.app_factory.deps.searxng_stop", return_value=None),
+        ):
+            yield
+
     @pytest.mark.anyio
     async def test_create_app_returns_app(self):
         from web.app_factory import create_app
@@ -48,44 +61,79 @@ class TestAppFactory:
         from web.app_factory import create_app
         from fastapi.testclient import TestClient
         app = create_app()
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/health")
-        assert response.status_code in (200, 503)
-        data = response.json()
-        assert "status" in data
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/health")
+            assert response.status_code in (200, 503)
+            data = response.json()
+            assert "status" in data
 
     @pytest.mark.anyio
     async def test_static_file_served(self):
         from web.app_factory import create_app
         from fastapi.testclient import TestClient
         app = create_app()
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/static/style.css")
-        assert response.status_code == 200
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/static/style.css")
+            assert response.status_code == 200
 
     @pytest.mark.anyio
     async def test_static_dist_asset_served(self):
         from web.app_factory import create_app
         from fastapi.testclient import TestClient
         app = create_app()
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/static/dist/assets/")
-        assert response.status_code in (200, 403, 404)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/static/dist/assets/")
+            assert response.status_code in (200, 403, 404)
 
     @pytest.mark.anyio
     async def test_csp_middleware_adds_header(self):
         from web.app_factory import create_app
         from fastapi.testclient import TestClient
         app = create_app()
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/static/style.css")
-        assert "Content-Security-Policy" in response.headers
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/static/style.css")
+            assert "Content-Security-Policy" in response.headers
 
     @pytest.mark.anyio
     async def test_root_endpoint(self):
         from web.app_factory import create_app
         from fastapi.testclient import TestClient
         app = create_app()
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/")
-        assert response.status_code in (200, 500)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/")
+            assert response.status_code in (200, 500)
+
+    @pytest.mark.anyio
+    async def test_logbus_lives_until_shutdown(self):
+        from fastapi import FastAPI
+        from web.app_factory import lifespan
+
+        fake_embeddings = MagicMock()
+        fake_embeddings.generate_embedding = MagicMock()
+        fake_embeddings.get_model = MagicMock(return_value=None)
+        fake_embeddings.unload_model = MagicMock()
+
+        fake_deleted_sessions_db = MagicMock()
+        fake_deleted_sessions_db.init_deleted_sessions_db = MagicMock()
+
+        fake_reranker = MagicMock()
+        fake_reranker.unload_model = MagicMock()
+
+        with (
+            patch("src.logbus.core.LogBus.start", new_callable=AsyncMock) as mock_start,
+            patch("src.logbus.core.LogBus.stop", new_callable=AsyncMock) as mock_stop,
+            patch("src.logbus.core.LogBus.add_writer") as mock_add_writer,
+            patch("web.app_factory.importlib.import_module", side_effect=lambda name: {
+                "src.memory.embeddings.service": fake_embeddings,
+                "src.memory.deleted_sessions_db": fake_deleted_sessions_db,
+                "src.memory.retrieval.reranker": fake_reranker,
+            }[name]),
+        ):
+            app = FastAPI()
+            async with lifespan(app):
+                mock_start.assert_awaited_once()
+                mock_stop.assert_not_awaited()
+                assert mock_add_writer.call_count >= 2
+                assert app.state.repos is not None
+
+        mock_stop.assert_awaited_once()

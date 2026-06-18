@@ -103,6 +103,13 @@ def set_event_bus(bus: IEventBus) -> None:
     _injected_bus = bus
 
 
+def reset_event_bus() -> None:
+    """Clear any injected bus and restore lazy singleton behavior."""
+    global _injected_bus, _bus
+    _injected_bus = None
+    _bus = None
+
+
 # Module-level singleton (lazy, created on first use)
 # DEPRECATED: inject EventBus instance instead via set_event_bus()
 _bus: EventBus | None = None

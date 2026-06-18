@@ -51,8 +51,6 @@ class RateLimitStore:
                       if v and now - v[-1] < self._window * 2}
 
 
-_rate_limit_store = RateLimitStore()
-
 _config = None  # Intentional cache: lazily loaded via _get_config()
 
 
@@ -63,17 +61,25 @@ def _get_config():
     return _config
 
 
+def reset_config_cache() -> None:
+    """Clear the cached web config so the next access reloads it."""
+    global _config
+    _config = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     cfg = _get_config()
     searxng_started = False
+    logbus = None
     # ── Precalentar modelo de embeddings ────────────────────────────
-    try:
-        generate_embedding = importlib.import_module("src.memory.embeddings.service").generate_embedding
-        asyncio.create_task(asyncio.to_thread(generate_embedding, "warmup"))
-        logger.info("Embedding model preload initiated")
-    except Exception:
-        pass
+    if not cfg.testing:
+        try:
+            generate_embedding = importlib.import_module("src.memory.embeddings.service").generate_embedding
+            asyncio.create_task(asyncio.to_thread(generate_embedding, "warmup"))
+            logger.info("Embedding model preload initiated")
+        except Exception:
+            pass
     if cfg.testing or os.environ.get("SEARXNG_AUTO_START", "false").lower() in ("1", "true"):
         err = deps.searxng_start()
         if err:
@@ -90,12 +96,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         from src.logbus import get_logbus
         from src.logbus.writers import JsonlWriter, ConsoleWriter, SqliteWriter
-        bus = get_logbus()
-        bus.add_writer(JsonlWriter())
-        bus.add_writer(SqliteWriter())
+        logbus = get_logbus()
+        logbus.add_writer(JsonlWriter())
+        logbus.add_writer(SqliteWriter())
         if os.environ.get("LOG_LEVEL", "").upper() == "DEBUG":
-            bus.add_writer(ConsoleWriter())
-        await bus.start()
+            logbus.add_writer(ConsoleWriter())
+        await logbus.start()
     except Exception:
         pass
     try:
@@ -127,11 +133,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 logger.warning("Embedding model not available at startup (will lazy-load)")
         except Exception as e:
             logger.warning("Embedding model preload failed (non-fatal): %s", e)
-    try:
-        from src.logbus import get_logbus
-        await get_logbus().stop()
-    except Exception:
-        pass
     yield
     if searxng_started:
         deps.searxng_stop()
@@ -146,17 +147,40 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         unload_reranker()
     except Exception:
         pass
+    try:
+        if logbus is not None:
+            await logbus.stop()
+    except Exception:
+        pass
+    try:
+        from src.api.lifecycle import reset_runtime_state
+        reset_runtime_state()
+    except Exception:
+        pass
+    try:
+        reset_config_cache()
+    except Exception:
+        pass
+    try:
+        from web.services.event_bus import reset_event_bus
+        reset_event_bus()
+    except Exception:
+        pass
     logger.info("ML models unloaded on shutdown")
 
 def register_middlewares(app: FastAPI) -> None:
     from src.logbus.middleware import LogBusMiddleware
     app.add_middleware(LogBusMiddleware)
+    if not hasattr(app.state, "http_rate_limit_store"):
+        app.state.http_rate_limit_store = RateLimitStore()
+
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
             return await call_next(request)
         client_ip = request.client.host if request.client else "unknown"
-        if not _rate_limit_store.check_and_record(client_ip, _get_config().http_rate_limit):
+        rate_limit_store = getattr(request.app.state, "http_rate_limit_store", None) or RateLimitStore()
+        if not rate_limit_store.check_and_record(client_ip, _get_config().http_rate_limit):
             return JSONResponse({"detail": "Rate limit exceeded. Try again later."}, status_code=429)
         return await call_next(request)
 
@@ -252,9 +276,11 @@ def create_app() -> FastAPI:
 
     # ── Composition Root: create & inject all Lego blocks ────────────
     from web.services.event_bus import EventBus, set_event_bus
+    from src.api import SkillRegistry
     event_bus = EventBus()
     set_event_bus(event_bus)
     app.state.event_bus = event_bus
+    app.state.skill_registry = SkillRegistry()
     logger.info("Composition root: EventBus created and injected")
 
     register_middlewares(app)

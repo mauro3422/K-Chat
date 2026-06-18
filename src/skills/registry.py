@@ -16,6 +16,12 @@ class SkillRegistry:
         self._skills: dict[str, dict[str, Any]] = {}
         self._built = False
 
+    def reset(self) -> "SkillRegistry":
+        """Clear discovered skills and allow discovery to run again."""
+        self._skills.clear()
+        self._built = False
+        return self
+
     def discover(self) -> "SkillRegistry":
         """Discovers all skills in the subdirectories of the skills folder."""
         if self._built:

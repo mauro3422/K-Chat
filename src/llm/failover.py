@@ -1,3 +1,5 @@
+import asyncio
+import inspect
 import logging
 
 import src.llm.model_state as models
@@ -35,7 +37,18 @@ def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None 
     """
     if refresh:
         try:
-            discovery.get_verified_models(force_refresh=True)
+            result = discovery.get_verified_models(force_refresh=True)
+            if inspect.isawaitable(result):
+                async def _consume() -> None:
+                    try:
+                        await result
+                    except Exception:
+                        logger.exception("Failed to refresh verified models")
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(_consume())
+                except RuntimeError:
+                    asyncio.run(_consume())
         except Exception:
             logger.exception("Failed to refresh verified models")
 

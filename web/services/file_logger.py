@@ -1,9 +1,8 @@
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from src.config_loader import load_config
 
@@ -71,29 +70,36 @@ def install_jsonl_handler(module: str = "app", config=None) -> JsonlHandler:
     return handler
 
 
+def configure_log_dirs(server_log_dir: Path | None = None, client_log_dir: Path | None = None) -> None:
+    """Set explicit shared log directories for the process."""
+    JsonlHandler._shared_server_log_dir = server_log_dir
+    JsonlHandler._shared_client_log_dir = client_log_dir
+
+
+def reset_log_dirs() -> None:
+    """Clear shared log directories and restore lazy initialization."""
+    configure_log_dirs(None, None)
+
+
 # Module-level accessors for log dirs (used by web/routers/logs.py)
-def _ensure_log_dirs():
+def _ensure_log_dirs(config=None):
     """Initialize shared log dirs if not yet created."""
     if JsonlHandler._shared_server_log_dir is None:
-        config = load_config()
+        if config is None:
+            config = load_config()
         JsonlHandler._shared_server_log_dir = Path(config.kairos_log_dir) / "server"
         JsonlHandler._shared_client_log_dir = Path(config.kairos_log_dir) / "client"
         JsonlHandler._shared_server_log_dir.mkdir(parents=True, exist_ok=True)
         JsonlHandler._shared_client_log_dir.mkdir(parents=True, exist_ok=True)
 
 
-def get_server_log_dir() -> Path:
+def get_server_log_dir(config=None) -> Path:
     """Get the server log directory path, initializing if needed."""
-    _ensure_log_dirs()
+    _ensure_log_dirs(config=config)
     return JsonlHandler._shared_server_log_dir  # type: ignore[return-value]
 
 
-def get_client_log_dir() -> Path:
+def get_client_log_dir(config=None) -> Path:
     """Get the client log directory path, initializing if needed."""
-    _ensure_log_dirs()
+    _ensure_log_dirs(config=config)
     return JsonlHandler._shared_client_log_dir  # type: ignore[return-value]
-
-
-# Backward-compat aliases for routers/logs.py
-SERVER_LOG_DIR = get_server_log_dir()
-CLIENT_LOG_DIR = get_client_log_dir()

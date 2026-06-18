@@ -23,3 +23,12 @@ async def test_skill_registry_discover_tools():
     run_fn, definition = tools["db_query"]
     assert callable(run_fn)
     assert definition["function"]["name"] == "db_query"
+
+
+@pytest.mark.anyio
+async def test_skill_registry_reset_allows_rediscovery():
+    registry = SkillRegistry()
+    registry.discover()
+    assert registry._built
+    registry.reset()
+    assert not registry._built

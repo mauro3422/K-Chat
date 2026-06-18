@@ -72,13 +72,10 @@ async def _default_llm_call(system: str, user: str) -> str:
     return str(r)
 
 
-async def _default_save_memory(key: str, value: str) -> str:
-    """Default save_memory using the public tool run().
-
-    Only called when no save_memory_fn is injected (standalone mode).
-    """
-    from src.tools.save_memory import run
-    return await run(key=key, value=value)
+async def _noop_save_memory(key: str, value: str) -> str:
+    """No-op fallback when no save_memory_fn is injected."""
+    logger.debug("save_memory not injected — would save: %s = %s", key, value[:80])
+    return "[NOOP] save_memory_fn not injected"
 
 
 def _get_memory_db_path() -> str:
@@ -352,7 +349,7 @@ async def curate_all(
         dict with all results.
     """
     if save_memory_fn is None:
-        save_memory_fn = _default_save_memory
+        save_memory_fn = _noop_save_memory
     if llm_call_fn is None:
         llm_call_fn = _default_llm_call
 
@@ -457,8 +454,8 @@ async def curate_all(
 async def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     dry = "--dry" in sys.argv
-    print(f"{'DRY' if dry else 'CURATING'}...")
-    r = await curate_all(dry=dry)
+    from src.tools.save_memory import run as save_memory_run
+    r = await curate_all(dry=dry, save_memory_fn=lambda k, v: save_memory_run(key=k, value=v))
 
     print("\n=== Gardener ===")
     for gr in r.get("gardener", []):

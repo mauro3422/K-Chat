@@ -97,3 +97,8 @@ def invalidate_context_cache() -> None:
         _CONTEXT_CACHE = None
         _CACHE_TIMESTAMP = 0.0
         _TOOLS_MD_CACHE = None
+
+
+def reset_context_cache() -> None:
+    """Alias for invalidate_context_cache() to match other lifecycle helpers."""
+    invalidate_context_cache()

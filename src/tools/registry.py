@@ -43,6 +43,15 @@ class ToolRegistry:
             return self
         self._package = package
         return self
+
+    def reset(self) -> "ToolRegistry":
+        """Clear discovered tools and allow discovery to run again."""
+        self._tool_map.clear()
+        self._definitions.clear()
+        self._built = False
+        self._package = "src.tools"
+        self._skill_registry = None
+        return self
     
     def register(self, name: str, run_fn: Callable[..., str], definition: dict[str, Any]) -> "ToolRegistry":
         """Manually register a tool. Returns self for chaining."""

@@ -13,7 +13,6 @@ COPY src/ ./src/
 COPY web/ ./web/
 COPY skills/ ./skills/
 COPY dependencies/ ./dependencies/
-COPY config.py .
 RUN addgroup --system kchat && \
     adduser --system --ingroup kchat --no-create-home kchat && \
     chown -R kchat:kchat /app
@@ -21,4 +20,4 @@ USER kchat
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
   CMD curl -f http://localhost:8000/health || exit 1
-CMD ["python", "-m", "uvicorn", "web.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "src.gateway"]

@@ -85,7 +85,22 @@ def get_breaker_from_container() -> CircuitBreaker:
 
 
 # Global singleton for convenience (will be migrated to DI)
-_breaker = CircuitBreaker()
+_breaker: CircuitBreaker | None = None
+_breaker_lock = threading.Lock()
+
+
+def configure_breaker(breaker: CircuitBreaker) -> None:
+    """Set an explicit circuit breaker instance for the process."""
+    global _breaker
+    with _breaker_lock:
+        _breaker = breaker
+
+
+def reset_breaker() -> None:
+    """Clear the explicit breaker and restore lazy construction."""
+    global _breaker
+    with _breaker_lock:
+        _breaker = None
 
 
 def get_breaker() -> CircuitBreaker:
@@ -93,7 +108,14 @@ def get_breaker() -> CircuitBreaker:
 
     Prefers the DI container if available, falls back to module singleton.
     """
+    global _breaker
+    if _breaker is not None:
+        return _breaker
     try:
         return get_breaker_from_container()
     except Exception:
+        if _breaker is None:
+            with _breaker_lock:
+                if _breaker is None:
+                    _breaker = CircuitBreaker()
         return _breaker

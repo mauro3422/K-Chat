@@ -17,6 +17,17 @@ from src.memory.connection_pool import ConnectionPool
 _memory_pool = ConnectionPool(max_connections=5)
 
 
+def configure_memory_pool(pool: ConnectionPool | None) -> None:
+    """Set the active memory connection pool explicitly."""
+    global _memory_pool
+    _memory_pool = pool or ConnectionPool(max_connections=5)
+
+
+def reset_memory_pool() -> None:
+    """Reset the active memory pool to a fresh instance."""
+    configure_memory_pool(None)
+
+
 async def get_memory_raw_conn(db_path: str) -> aiosqlite.Connection:
     """Create a raw connection to the given memory.db path."""
     os.makedirs(os.path.dirname(db_path), exist_ok=True)

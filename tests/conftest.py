@@ -1,5 +1,6 @@
 import os
 import sys
+import sqlite3
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -20,7 +21,112 @@ from unittest.mock import MagicMock
 import pytest
 import pytest_asyncio
 
-from src.memory.schema import init_db
+_SESSIONS_SCHEMA_STATEMENTS = [
+    """CREATE TABLE IF NOT EXISTS sessions (
+        session_id TEXT PRIMARY KEY,
+        name TEXT DEFAULT '',
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(session_id),
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        model TEXT,
+        reasoning TEXT DEFAULT '',
+        phases TEXT DEFAULT '[]',
+        tool_calls TEXT,
+        tool_call_id TEXT,
+        prompt_tokens INTEGER DEFAULT 0,
+        completion_tokens INTEGER DEFAULT 0,
+        total_tokens INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS tool_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(session_id),
+        tool_name TEXT NOT NULL,
+        input TEXT NOT NULL,
+        status TEXT NOT NULL,
+        turn INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS debug_info (
+        session_id TEXT PRIMARY KEY REFERENCES sessions(session_id),
+        model TEXT,
+        reasoning TEXT,
+        system_prompt TEXT,
+        tool_calls TEXT,
+        history_before TEXT,
+        asr_telemetry TEXT,
+        updated_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS widget_states (
+        session_id TEXT NOT NULL REFERENCES sessions(session_id),
+        widget_id TEXT NOT NULL,
+        state TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (session_id, widget_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS saved_widgets (
+        widget_id TEXT PRIMARY KEY,
+        code TEXT NOT NULL,
+        version INTEGER DEFAULT 1,
+        description TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        session_id TEXT REFERENCES sessions(session_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS widget_versions (
+        widget_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        code TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        session_id TEXT REFERENCES sessions(session_id),
+        PRIMARY KEY (widget_id, version)
+    )""",
+    """CREATE TABLE IF NOT EXISTS memory_index (
+        session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (session_id, key)
+    )""",
+    """CREATE TABLE IF NOT EXISTS gateway_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL DEFAULT (datetime('now')),
+        level TEXT NOT NULL,
+        service TEXT NOT NULL,
+        event TEXT NOT NULL,
+        detail TEXT DEFAULT '',
+        pid INTEGER,
+        meta TEXT DEFAULT '{}'
+    )""",
+    """CREATE TABLE IF NOT EXISTS chat_journal (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL DEFAULT (datetime('now')),
+        session_id TEXT NOT NULL,
+        user_msg TEXT DEFAULT '',
+        assistant_msg TEXT DEFAULT '',
+        tools_used TEXT DEFAULT '[]',
+        model TEXT DEFAULT '',
+        duration_ms INTEGER DEFAULT 0,
+        token_count INTEGER DEFAULT 0,
+        error TEXT DEFAULT ''
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages (session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls (session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_saved_widgets_session_id ON saved_widgets (session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_widget_versions_session_id ON widget_versions (session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_memory_index_key ON memory_index (key)",
+    "CREATE INDEX IF NOT EXISTS idx_tool_calls_session_created ON tool_calls (session_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_gateway_log_ts ON gateway_log (ts DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_gateway_log_service ON gateway_log (service, ts DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_chat_journal_session ON chat_journal (session_id, ts DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_chat_journal_ts ON chat_journal (ts DESC)",
+]
 
 
 @pytest.fixture
@@ -67,7 +173,14 @@ async def setup_test_db(monkeypatch):
     monkeypatch.setenv("SESSIONS_DB_PATH", sessions_db_path)
     monkeypatch.setenv("KAIROS_MEMORY_DB_PATH", memory_db_path)
 
-    await init_db()
+    conn = sqlite3.connect(sessions_db_path)
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+        for statement in _SESSIONS_SCHEMA_STATEMENTS:
+            conn.execute(statement)
+        conn.commit()
+    finally:
+        conn.close()
 
     yield sessions_db_path
 
@@ -76,5 +189,35 @@ async def setup_test_db(monkeypatch):
             if os.path.exists(path):
                 os.remove(path)
         os.rmdir(temp_dir)
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def reset_shared_runtime_state():
+    """Keep process-local singletons isolated between tests."""
+    try:
+        from src.api.lifecycle import reset_runtime_state
+        reset_runtime_state()
+    except Exception:
+        pass
+
+    try:
+        from web.services.event_bus import reset_event_bus
+        reset_event_bus()
+    except Exception:
+        pass
+
+    yield
+
+    try:
+        from src.api.lifecycle import reset_runtime_state
+        reset_runtime_state()
+    except Exception:
+        pass
+
+    try:
+        from web.services.event_bus import reset_event_bus
+        reset_event_bus()
     except Exception:
         pass

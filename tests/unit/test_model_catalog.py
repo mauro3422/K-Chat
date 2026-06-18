@@ -1,5 +1,6 @@
-import pytest
 import json
+
+import pytest
 
 from web.services import model_catalog
 
@@ -40,3 +41,14 @@ async def test_format_model_label_uses_registry(tmp_path, monkeypatch):
 
     label = model_catalog.format_model_label("sample-model")
     assert label == "Sample Model · ctx 1M · out 128k · img+video · razonamiento · tools"
+
+
+@pytest.mark.anyio
+async def test_reset_model_cache_clears_lru_cache(tmp_path, monkeypatch):
+    registry = tmp_path / "model_registry.json"
+    registry.write_text(json.dumps({"models": []}), encoding="utf-8")
+    monkeypatch.setenv("KAIROS_MODEL_REGISTRY", str(registry))
+    model_catalog._load_registry.cache_clear()
+    assert model_catalog.get_model_metadata("missing") is None
+    model_catalog.reset_model_cache()
+    assert model_catalog.get_model_metadata("missing") is None

@@ -89,6 +89,11 @@ def invalidate_model_cache() -> None:
     _load_registry.cache_clear()
 
 
+def reset_model_cache() -> None:
+    """Alias for invalidate_model_cache() to match lifecycle helpers."""
+    invalidate_model_cache()
+
+
 def format_model_label(model_id: str) -> str:
     meta = get_model_metadata(model_id)
     if not meta:

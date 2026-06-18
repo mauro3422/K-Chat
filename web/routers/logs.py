@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from web.services.file_logger import SERVER_LOG_DIR, CLIENT_LOG_DIR
+from web.services.file_logger import get_server_log_dir, get_client_log_dir
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def query_logs(
 
     Returns matching entries sorted by timestamp (newest first).
     """
-    path = _resolve_log_path(SERVER_LOG_DIR, date)
+    path = _resolve_log_path(get_server_log_dir(), date)
     if not path or not path.exists():
         return {"entries": [], "total": 0}
 
@@ -59,7 +59,7 @@ def query_client_logs(
     offset: int = Query(0, ge=0),
 ):
     """Query client-submitted logs (sent from browser)."""
-    path = _resolve_log_path(CLIENT_LOG_DIR, date)
+    path = _resolve_log_path(get_client_log_dir(), date)
     if not path or not path.exists():
         return {"entries": [], "total": 0}
 
@@ -73,9 +73,9 @@ def query_client_logs(
 @router.post("/api/logs/client")
 def ingest_client_logs(entries: list[ClientLogEntry]):
     """Persist client-submitted log entries to a JSONL file."""
-    CLIENT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    get_client_log_dir().mkdir(parents=True, exist_ok=True)
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-    path = CLIENT_LOG_DIR / f"{date_str}.jsonl"
+    path = get_client_log_dir() / f"{date_str}.jsonl"
 
     count = 0
     with open(path, "a") as f:
@@ -99,18 +99,18 @@ def tail_logs(
     path: Optional[Path] = None
     entries: list[dict] = []
     if source == "server":
-        log_dir = SERVER_LOG_DIR
+        log_dir = get_server_log_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
         path = _latest_log_path(log_dir)
         entries = _tail_file(path, lines) if path else []
     elif source == "client":
-        log_dir = CLIENT_LOG_DIR
+        log_dir = get_client_log_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
         path = _latest_log_path(log_dir)
         entries = _tail_file(path, lines) if path else []
     else:
-        server_path = _latest_log_path(SERVER_LOG_DIR)
-        client_path = _latest_log_path(CLIENT_LOG_DIR)
+        server_path = _latest_log_path(get_server_log_dir())
+        client_path = _latest_log_path(get_client_log_dir())
         entries = []
         if server_path:
             entries.extend(_tail_file(server_path, lines))
