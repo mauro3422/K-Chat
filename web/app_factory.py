@@ -93,6 +93,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     repos = get_repos()
     app.state.repos = repos
     logger.info("Composition root: Repositories created and injected")
+    # ── Composition Root: Core Services ──────────────────────────
+    from src.core.services.telemetry_service import TelemetryService
+    from src.core.services.history_service import HistoryService
+    from src.core.services.llm_service import LLMService
+    from src.core.services.tool_execution_service import ToolExecutionService
+    from src.core.services.retrieval_service import RetrievalService
+
+    telemetry_service = TelemetryService()
+    app.state.telemetry_service = telemetry_service
+    app.state.history_service = HistoryService(repos=repos)
+    app.state.llm_service = LLMService(telemetry_service=telemetry_service)
+    app.state.tool_service = ToolExecutionService()
+    app.state.retrieval_service = RetrievalService(config=cfg)
+    logger.info("Composition root: Core services created and injected")
     try:
         from src.logbus import get_logbus
         from src.logbus.writers import JsonlWriter, ConsoleWriter, SqliteWriter

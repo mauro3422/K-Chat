@@ -10,14 +10,7 @@ from fastapi import BackgroundTasks
 from src.api import (
     chat_stream,
     OrchestratorDeps,
-    get_repos,
     auto_rename_session,
-)
-from src.api.orchestrator import (
-    HistoryService,
-    LLMService,
-    ToolExecutionService,
-    TelemetryService,
 )
 from src.api.repos import DebugInfo
 from web.services.loop_detector import LoopDetector
@@ -88,24 +81,15 @@ def build_stream_generator(
         last_save_time = time.monotonic()
         save_interval = 30
 
-        # Prepare orchestrator dependencies (injected or built inline)
+        # Prepare orchestrator dependencies (injected from composition root)
         if orchestrator_deps is None:
-            repos = get_repos()
-            telemetry_service = TelemetryService()
-            _orch_deps = OrchestratorDeps(
-                repos=repos,
-                history_service=HistoryService(repos=repos),
-                telemetry_service=telemetry_service,
-                llm_service=LLMService(telemetry_service=telemetry_service),
-                tool_service=ToolExecutionService(),
-                session_id=session_id,
-                tagged=True,
-                debug=debug_info,
-                phases_output=phases_output,
-                background_tasks=background_tasks
+            raise ValueError(
+                "orchestrator_deps is required. Pass OrchestratorDeps from "
+                "the composition root (request.app.state)."
             )
-        else:
-            _orch_deps = orchestrator_deps
+        _orch_deps = orchestrator_deps
+        _orch_deps.debug = debug_info
+        _orch_deps.phases_output = phases_output
 
         try:
             async for tipo, token in _chat_stream(message, history, model, deps=_orch_deps):

@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.api.repos import MessageRecord, DebugInfo, get_repos
-from src.api import llm_chat_stream, rebuild_history, get_default_model
+from src.api import llm_chat_stream, rebuild_history, get_default_model, OrchestratorDeps
 from web.services.chat_stream import build_stream_generator
 from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.protocols import MessagePersisterProtocol, StreamGeneratorProtocol
@@ -81,6 +81,17 @@ async def chat(
     full_message = _build_message_with_attachments(message, attachments)
 
     repos = getattr(request.app.state, 'repos', None) or get_repos()
+    orchestrator_deps = OrchestratorDeps(
+        repos=repos,
+        history_service=request.app.state.history_service,
+        telemetry_service=request.app.state.telemetry_service,
+        llm_service=request.app.state.llm_service,
+        tool_service=request.app.state.tool_service,
+        retrieval_service=request.app.state.retrieval_service,
+        session_id=session_id,
+        tagged=True,
+        background_tasks=background_tasks,
+    )
     await repos.sessions.ensure(session_id)
     try:
         history = await rebuild_history(session_id, model, messages_repo=repos.messages)
@@ -126,6 +137,7 @@ async def chat(
             retry_handler=StreamRetryHandler(max_retries=2, llm_chat_stream_fn=llm_chat_stream),
             save_fn=_wrapped_save,
         ),
+        orchestrator_deps=orchestrator_deps,
     )
     return StreamingResponse(generate(), media_type="application/x-ndjson")
 
