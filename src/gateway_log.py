@@ -37,9 +37,10 @@ def log_event(
     detail: str = "",
     pid: int | None = None,
     meta: dict[str, Any] | None = None,
+    logbus=None,
 ) -> None:
     try:
-        bus = get_logbus()
+        bus = logbus if logbus is not None else get_logbus()
         bus.emit(LogEvent(
             level=level,
             module=f"gateway.{service}",

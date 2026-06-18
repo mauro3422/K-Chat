@@ -190,5 +190,5 @@ async def sidebar(request: Request) -> HTMLResponse:
 
 
 @router.get("/sessions/{session_id}/messages")
-async def session_messages(session_id: str) -> dict:
-    return await render_session_messages(session_id, deps=MessageRenderDeps(repos=get_repos()))
+async def session_messages(request: Request, session_id: str) -> dict:
+    return await render_session_messages(session_id, deps=MessageRenderDeps(repos=_request_repos(request)))

@@ -58,7 +58,7 @@ async def test_sidebar(mock_tpl, mock_get_repos):
 @pytest.mark.anyio
 async def test_session_messages_empty():
     from web.routers.pages import session_messages
-    resp = await session_messages("test-session-abc")
+    resp = await session_messages(_request("/sessions/test-session-abc"), "test-session-abc")
     assert isinstance(resp, dict)
     assert resp["messages"] == []
 
@@ -121,6 +121,8 @@ async def test_debug_info_empty():
     from web.routers.debug import debug_info
     await ensure_session("test-session-abc")
 
-    response = await debug_info("test-session-abc")
+    req = MagicMock()
+    req.app.state.repos = None
+    response = await debug_info("test-session-abc", req)
     assert isinstance(response, JSONResponse)
     assert response.body == b"{}"

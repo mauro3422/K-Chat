@@ -9,8 +9,9 @@ from src.core.services.protocols import TelemetryServiceProtocol
 class TelemetryService(TelemetryServiceProtocol):
     """Service to track system metrics and log them in a structured JSON format."""
     
-    def __init__(self, log_file: str = "logs/telemetry.json"):
+    def __init__(self, log_file: str = "logs/telemetry.json", logbus=None):
         # Ensure the logs directory exists relative to the current working directory
+        self._logbus = logbus
         self.log_file = Path(log_file)
         try:
             self.log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -36,6 +37,11 @@ class TelemetryService(TelemetryServiceProtocol):
                 self.logger.addHandler(stream_handler)
                 self.logger.error(f"Failed to initialize telemetry file handler: {e}")
 
+    @staticmethod
+    def _get_logbus():
+        from src.logbus import get_logbus
+        return get_logbus()
+
     def log_event(self, event_type: str, data: dict[str, Any]):
         """Logs a generic event with a timestamp and type."""
         event = {
@@ -48,8 +54,8 @@ class TelemetryService(TelemetryServiceProtocol):
     def track_llm_usage(self, model: str, tokens: int, latency: float):
         """Specific method to track LLM metrics."""
         try:
-            from src.logbus import LogEvent, get_logbus
-            bus = get_logbus()
+            from src.logbus import LogEvent
+            bus = self._logbus if self._logbus is not None else self._get_logbus()
             bus.emit(LogEvent(
                 level="INFO",
                 module="telemetry",
@@ -68,8 +74,8 @@ class TelemetryService(TelemetryServiceProtocol):
     def track_tool_execution(self, tool_name: str, success: bool, duration: float):
         """Specific method to track tool execution metrics."""
         try:
-            from src.logbus import LogEvent, get_logbus
-            bus = get_logbus()
+            from src.logbus import LogEvent
+            bus = self._logbus if self._logbus is not None else self._get_logbus()
             bus.emit(LogEvent(
                 level="INFO",
                 module="telemetry",

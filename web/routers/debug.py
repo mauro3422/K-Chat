@@ -99,8 +99,8 @@ def _local_only(request: Request) -> None:
 
 
 @router.get("/sessions/{session_id}/debug", dependencies=[Depends(_local_only)])
-async def debug_info(session_id: str) -> JSONResponse:
-    repos = get_repos()
+async def debug_info(session_id: str, request: Request) -> JSONResponse:
+    repos = getattr(request.app.state, 'repos', None) or get_repos()
     try:
         await repos.sessions.require_session(session_id)
     except ValueError:

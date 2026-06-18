@@ -35,7 +35,7 @@ async def ws_event_stream(websocket: WebSocket) -> None:
     Each message is published to the EventBus and fanned out to all SSE clients.
     """
     await websocket.accept()
-    bus = get_event_bus()
+    bus = getattr(websocket.app.state, 'event_bus', None) or get_event_bus()
     logger.info("WS bot connected")
     try:
         while True:

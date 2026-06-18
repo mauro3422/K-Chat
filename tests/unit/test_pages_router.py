@@ -99,7 +99,7 @@ class TestPageEndpoints:
     async def test_session_messages_returns_dict(self, mock_render):
         from web.routers.pages import session_messages
         mock_render.return_value = {"messages": [], "widget_states": {}}
-        resp = await session_messages("sid-1")
+        resp = await session_messages(MagicMock(), "sid-1")
         assert isinstance(resp, dict)
         assert "messages" in resp
 

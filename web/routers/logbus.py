@@ -12,6 +12,14 @@ from starlette.requests import Request
 router = APIRouter(prefix="/api/logbus", tags=["logbus"])
 
 
+def _get_logbus(request: Request):
+    bus = getattr(request.app.state, "logbus", None)
+    if bus is not None:
+        return bus
+    from src.logbus import get_logbus
+    return get_logbus()
+
+
 @router.get("")
 async def query_logs(
     request: Request,
@@ -25,8 +33,7 @@ async def query_logs(
 ):
     """Query LogBus events with filters."""
     try:
-        from src.logbus import get_logbus
-        bus = get_logbus()
+        bus = _get_logbus(request)
     except Exception:
         return {"entries": [], "total": 0, "error": "LogBus not available"}
 
@@ -47,13 +54,13 @@ async def query_logs(
 
 @router.get("/tail")
 async def tail_logs(
+    request: Request,
     lines: int = Query(50, ge=1, le=500, description="Number of recent lines"),
     level: str | None = Query(None, description="Filter by level"),
 ):
     """Tail recent log events (most recent first)."""
     try:
-        from src.logbus import get_logbus
-        bus = get_logbus()
+        bus = _get_logbus(request)
     except Exception:
         return {"entries": [], "source": "logbus"}
 
@@ -66,14 +73,14 @@ async def tail_logs(
 
 @router.get("/sessions/{session_id}")
 async def session_logs(
+    request: Request,
     session_id: str,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
     """Get all LogBus events for a specific session."""
     try:
-        from src.logbus import get_logbus
-        bus = get_logbus()
+        bus = _get_logbus(request)
     except Exception:
         return {"session_id": session_id, "entries": [], "total": 0}
 
