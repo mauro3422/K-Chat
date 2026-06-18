@@ -17,8 +17,10 @@ class HistoryService(HistoryServiceProtocol):
 
     async def rebuild(self, session_id: str, model: str) -> list[dict[str, Any]]:
         if self.repos is None:
-             from src.memory.repos import get_repos
-             self.repos = get_repos()
+            raise ValueError(
+                "HistoryService requires repos. "
+                "Inject via HistoryService(repos=repos) from the composition root."
+            )
         return await rebuild_history(session_id, model, self.repos.messages)
 
     def get_system_prompt(self, model: str, tool_definitions: dict[str, Any] | None = None, memory_results: str | None = None) -> dict[str, Any]:

@@ -123,6 +123,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.tool_service = ToolExecutionService()
     app.state.retrieval_service = RetrievalService(config=cfg)
     logger.info("Composition root: Core services created and injected")
+    # ── Composition Root: LLM Container ──────────────────────────
+    from src.llm.container import LLMContainer, configure_container
+    llm_container = LLMContainer(config=cfg)
+    app.state.llm_container = llm_container
+    configure_container(llm_container)
+    logger.info("Composition root: LLM Container created and injected")
+
+    # Wire LLM sub-services into app.state for easy access
+    app.state.circuit_breaker = llm_container.get_circuit_breaker()
+    app.state.rate_limit_store = llm_container.get_rate_limit_store()
+    app.state.model_registry = llm_container.get_model_registry()
     try:
         from src.api import SkillRegistry
         SkillRegistry().generate_index_md()

@@ -11,7 +11,7 @@ from src.context import build_system_prompt
 from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
 from src.memory.types import DebugInfo
-from src.memory.repos import Repositories, get_repos
+from src.memory.repos import Repositories
 from src.core.orchestrator_contract import (
     OrchestratorDeps, LLMDeps, ToolDeps, StorageDeps, RequestStateDeps,
 )
@@ -112,7 +112,10 @@ async def chat_stream(
 
     # Initialize services if not provided
     if _deps.repos is None:
-        _deps.repos = get_repos()
+        raise ValueError(
+            "OrchestratorDeps.repos is required. "
+            "Inject repos via OrchestratorDeps(repos=...) from the composition root."
+        )
 
     if _deps.history_service is None:
         _deps.history_service = HistoryService(repos=_deps.repos)

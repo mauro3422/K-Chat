@@ -202,7 +202,12 @@ async def _vectorize_session(session_id: str, orchestrator_deps: OrchestratorDep
     lock = _vectorize_locks[session_id]
     async with lock:
         try:
-            from src.api.repos import get_repos
+            if not orchestrator_deps or not orchestrator_deps.repos:
+                raise ValueError(
+                    "_vectorize_session requires orchestrator_deps.repos. "
+                    "Inject via the composition root."
+                )
+            repos = orchestrator_deps.repos
             _vs = importlib.import_module("src.memory.vectorize_sessions").vectorize_session
             heuristic_mod = importlib.import_module("src.memory.clustering.heuristic")
             relations_mod = importlib.import_module("src.memory.clustering.relations")
@@ -216,8 +221,6 @@ async def _vectorize_session(session_id: str, orchestrator_deps: OrchestratorDep
             flush_entities_to_db = linker_mod.flush_entities_to_db
             flush_entity_relations_to_db = linker_mod.flush_relations_to_db
             flush_entity_mentions_to_db = linker_mod.flush_entity_mentions_to_db
-
-            repos = orchestrator_deps.repos if orchestrator_deps and orchestrator_deps.repos else get_repos()
             db_path = resolve_memory_db_path()
             clusterer = HeuristicClusterer()
             linker = EntityLinker()

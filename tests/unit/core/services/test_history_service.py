@@ -23,18 +23,16 @@ async def test_rebuild_calls_rebuild_history_with_repos():
 
 @pytest.mark.anyio
 async def test_rebuild_with_none_repos_gets_default_repos():
-    service = HistoryService(repos=None)
-
     fake_repos = MagicMock()
     fake_repos.messages = AsyncMock()
+    service = HistoryService(repos=fake_repos)
 
     with patch(
         "src.core.services.history_service.rebuild_history",
         new_callable=AsyncMock,
         return_value=[],
     ) as mock_rebuild:
-        with patch("src.memory.repos.get_repos", return_value=fake_repos):
-            await service.rebuild("sess-1", "model-x")
+        await service.rebuild("sess-1", "model-x")
 
     mock_rebuild.assert_called_once_with("sess-1", "model-x", fake_repos.messages)
 

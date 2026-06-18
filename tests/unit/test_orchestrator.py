@@ -6,7 +6,10 @@ import pytest
 
 from src.core.debug_info import DebugInfo
 from src.core.history_contract import HistoryMessage
+from src.core.orchestrator_contract import OrchestratorDeps
 from src.memory.retrieval.hybrid_retriever import HybridResult
+
+_default_deps = OrchestratorDeps(repos=MagicMock())
 
 async def async_iter(items):
     for item in items:
@@ -125,7 +128,7 @@ async def test_chat_stream_content_only(
 
     history = [{"role": "system", "content": "test"}]
     tokens = []
-    async for t in chat_stream("hello", history, model="test-model", tagged=True, streaming=True):
+    async for t in chat_stream("hello", history, model="test-model", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         tokens.append(t)
         
     types = [t[0] for t in tokens]
@@ -156,7 +159,7 @@ async def test_chat_stream_untagged(
     from src.core.orchestrator import chat_stream
     history = [{"role": "system", "content": "test"}]
     tokens = []
-    async for t in chat_stream("hi", history, model="m", tagged=False, streaming=True):
+    async for t in chat_stream("hi", history, model="m", tagged=False, streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         tokens.append(t)
     assert tokens == ["raw content"]
 
@@ -174,7 +177,7 @@ async def test_chat_stream_default_model(
     mock_get_model.return_value = "default-model"
     mock_execute.return_value = async_iter([])
     from src.core.orchestrator import chat_stream
-    async for _ in chat_stream("hi", [{"role": "system", "content": "test"}], streaming=True):
+    async for _ in chat_stream("hi", [{"role": "system", "content": "test"}], streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         pass
     mock_get_model.assert_called_once()
     assert mock_execute.call_args[0][1] == "default-model"
@@ -194,7 +197,7 @@ async def test_chat_stream_empty_history(
     mock_execute.return_value = async_iter([])
     from src.core.orchestrator import chat_stream
     history = []
-    async for _ in chat_stream("hi", history, model="m", streaming=True):
+    async for _ in chat_stream("hi", history, model="m", streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         pass
     assert history[0].role == "system"
     assert history[0].content == "sys prompt"
@@ -219,7 +222,7 @@ async def test_chat_stream_debug_setup(
     debug = DebugInfo()
     history = [HistoryMessage(role="system", content="test", created_at="2024-01-01T00:00:00")]
     async for _ in chat_stream("hi", history, model="m", session_id="sess-1",
-                                debug=debug, tagged=True, streaming=True):
+                                debug=debug, tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         pass
     assert debug.model == "m"
     assert debug.session_id == "sess-1"
@@ -245,7 +248,7 @@ async def test_chat_stream_phases_output_cleared(
     from src.core.orchestrator import chat_stream
     async for _ in chat_stream("hi", [{"role": "system", "content": "t"}],
                                 model="m", debug=DebugInfo(), phases_output=phases,
-                                tagged=True, streaming=True):
+                                tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         pass
     assert phases == []
 
@@ -264,7 +267,7 @@ async def test_chat_stream_sync_path(
     from src.core.orchestrator import chat_stream
     history = [{"role": "system", "content": "test"}]
     tokens = []
-    async for t in chat_stream("hi", history, model="m", tagged=True, streaming=False):
+    async for t in chat_stream("hi", history, model="m", tagged=True, streaming=False, deps=OrchestratorDeps(repos=MagicMock())):
         tokens.append(t)
     mock_execute.assert_called_once()
     assert any(t == ("content", "sync result") for t in tokens)
@@ -290,7 +293,7 @@ async def test_chat_stream_tool_calls(
     from src.core.orchestrator import chat_stream
     history = [{"role": "system", "content": "test"}]
     tokens = []
-    async for t in chat_stream("search", history, model="m", tagged=True, streaming=True):
+    async for t in chat_stream("search", history, model="m", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         tokens.append(t)
     types = [t[0] for t in tokens]
     assert "tool_call" in types
@@ -313,7 +316,7 @@ async def test_chat_stream_loop_error_propagates(
     mock_execute.side_effect = RuntimeError("stream failure")
     from src.core.orchestrator import chat_stream
     with pytest.raises(RuntimeError, match="stream failure"):
-        async for _ in chat_stream("hi", [{"role": "system", "content": "t"}], model="m", streaming=True):
+        async for _ in chat_stream("hi", [{"role": "system", "content": "t"}], model="m", streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
             pass
     mock_save_debug.assert_not_called()
     # Pre-compression se ejecuta ANTES del error (antes del tool loop)
@@ -369,7 +372,7 @@ async def test_chat_stream_pre_compression_trims_large_history(
 
     from src.core.orchestrator import chat_stream
     tokens = []
-    async for t in chat_stream("último mensaje", history, model="m", tagged=True, streaming=True):
+    async for t in chat_stream("último mensaje", history, model="m", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         tokens.append(t)
 
     # Verificar que compress_if_needed fue llamado (pre-compression)
@@ -405,7 +408,7 @@ async def test_auto_retrieval_disabled_by_config(
     from src.core.orchestrator import chat_stream
 
     history = [{"role": "system", "content": "test"}]
-    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-1", tagged=True, streaming=True):
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-1", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         pass
 
 
@@ -427,7 +430,7 @@ async def test_auto_retrieval_empty_message(
     from src.core.orchestrator import chat_stream
 
     history = [{"role": "system", "content": "test"}]
-    async for _ in chat_stream("", history, model="m", session_id="test-ar-2", tagged=True, streaming=True):
+    async for _ in chat_stream("", history, model="m", session_id="test-ar-2", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         pass
 
 
@@ -449,7 +452,7 @@ async def test_auto_retrieval_short_message(
     from src.core.orchestrator import chat_stream
 
     history = [{"role": "system", "content": "test"}]
-    async for _ in chat_stream("ab", history, model="m", session_id="test-ar-3", tagged=True, streaming=True):
+    async for _ in chat_stream("ab", history, model="m", session_id="test-ar-3", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock())):
         pass
 
 
@@ -482,7 +485,7 @@ async def test_auto_retrieval_first_message_passes(
     from src.core.orchestrator_contract import OrchestratorDeps
 
     history = [{"role": "system", "content": "test"}]
-    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-4", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=svc)):
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-4", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock(), retrieval_service=svc)):
         pass
 
     retriever_mock.search.assert_awaited_once_with("hello", top_k=8, apply_budget=True, source_filter='session', session_id='test-ar-4')
@@ -519,7 +522,7 @@ async def test_auto_retrieval_throttle_second_message(
     sid = "test-ar-5"
     history = [{"role": "system", "content": "test"}]
 
-    deps = OrchestratorDeps(retrieval_service=svc)
+    deps = OrchestratorDeps(repos=MagicMock(), retrieval_service=svc)
 
     # First call → turn 1 → retrieval happens
     async for _ in chat_stream("hello", history, model="m", session_id=sid, tagged=True, streaming=True, deps=deps):
@@ -562,7 +565,7 @@ async def test_auto_retrieval_close_on_success(
     from src.core.orchestrator_contract import OrchestratorDeps
 
     history = [{"role": "system", "content": "test"}]
-    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-6", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=svc)):
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-6", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock(), retrieval_service=svc)):
         pass
 
     retriever_mock.close.assert_called_once()
@@ -597,7 +600,7 @@ async def test_auto_retrieval_close_on_exception(
     from src.core.orchestrator_contract import OrchestratorDeps
 
     history = [{"role": "system", "content": "test"}]
-    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-7", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=svc)):
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-7", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock(), retrieval_service=svc)):
         pass
 
     retriever_mock.close.assert_called_once()
@@ -633,7 +636,7 @@ async def test_auto_retrieval_memory_block_injected(
     from src.core.orchestrator_contract import OrchestratorDeps
 
     history = []
-    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-8", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=svc)):
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-8", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock(), retrieval_service=svc)):
         pass
 
     mock_get_sp.assert_called_once()
@@ -669,7 +672,7 @@ async def test_auto_retrieval_no_memory_block_when_no_results(
     from src.core.orchestrator_contract import OrchestratorDeps
 
     history = []
-    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-9", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=svc)):
+    async for _ in chat_stream("hello", history, model="m", session_id="test-ar-9", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock(), retrieval_service=svc)):
         pass
 
     mock_get_sp.assert_called_once()
@@ -708,7 +711,7 @@ async def test_auto_retrieval_yields_memory_event(
 
     history = [{"role": "system", "content": "test"}]
     tokens = []
-    async for t in chat_stream("hello", history, model="m", session_id="test-ar-10", tagged=True, streaming=True, deps=OrchestratorDeps(retrieval_service=svc)):
+    async for t in chat_stream("hello", history, model="m", session_id="test-ar-10", tagged=True, streaming=True, deps=OrchestratorDeps(repos=MagicMock(), retrieval_service=svc)):
         tokens.append(t)
 
     memory_events = [t for t in tokens if t[0] == "memory"]
