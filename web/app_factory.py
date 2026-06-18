@@ -93,6 +93,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # ── Composition Root: Repositories ─────────────────────────
     repos = get_repos()
     app.state.repos = repos
+    # ── Composition Root: Connection Pool ─────────────────────
+    from src.memory.connection_pool import ConnectionPool, configure_connection_pool
+    pool = ConnectionPool(max_connections=5)
+    configure_connection_pool(pool)
+    app.state.connection_pool = pool
+    logger.info("Composition root: Connection pool created and injected")
     logger.info("Composition root: Repositories created and injected")
     # ── Composition Root: LogBus ─────────────────────────────────
     logbus = None

@@ -28,24 +28,41 @@ def _request_repos(request: Request):
     repos = getattr(state, "repos", None) if state is not None else None
     return repos or get_repos()
 
+
+def _get_registry(request: Request | None = None):
+    if request is not None:
+        reg = getattr(request.app.state, "model_registry", None)
+        if reg is not None:
+            return reg
+    return get_model_registry()
+
+
+def _get_rate_store(request: Request | None = None):
+    if request is not None:
+        store = getattr(request.app.state, "rate_limit_store", None)
+        if store is not None:
+            return store
+    return get_rate_limit_store()
+
+
 # ── NO HARDCODED MODEL NAMES ──────────────────────────────────────────
 # Model discovery is fully dynamic via ModelRegistry (src/llm/model_registry.py).
 # Models come from the Go and Zen APIs, tiers are inferred heuristically.
 # See _infer_tier() in model_registry.py for the naming heuristics.
 
 
-def _get_model_tier(model_id: str) -> str:
+def _get_model_tier(model_id: str, request: Request | None = None) -> str:
     """Classify a model into a tier using the dynamic ModelRegistry.
 
     No hardcoded model names — everything comes from the API.
     """
-    reg = get_model_registry()
+    reg = _get_registry(request)
     return reg.get_tier(model_id)
 
 
-def _get_registry_go_models() -> list[str]:
+def _get_registry_go_models(request: Request | None = None) -> list[str]:
     """Get Go models from the dynamic registry (not hardcoded)."""
-    reg = get_model_registry()
+    reg = _get_registry(request)
     return reg.get_go_models()
 
 

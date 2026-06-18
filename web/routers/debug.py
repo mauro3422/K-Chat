@@ -55,8 +55,8 @@ async def model_availability(request: Request) -> dict:
     from src.api import get_rate_limit_store, get_model_registry
     from web.routers.pages import get_available_model_ids, _get_model_tier, get_available_models
 
-    rl = get_rate_limit_store()
-    reg = get_model_registry()
+    rl = getattr(request.app.state, "rate_limit_store", None) or get_rate_limit_store()
+    reg = getattr(request.app.state, "model_registry", None) or get_model_registry()
     result: dict[str, dict] = {}
 
     for model_id in get_available_model_ids():
