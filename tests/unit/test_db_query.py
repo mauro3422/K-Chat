@@ -132,46 +132,46 @@ class TestDbQuery:
     @pytest.mark.anyio
     async def test_query_messages_table(self):
         """Test querying messages table returns expected data."""
-        result = db_query.run(table="messages")
+        result = await db_query.run(table="messages")
         assert "messages" in result.lower() or "📊" in result
         assert "Hello world" in result or "user" in result
     
     @pytest.mark.anyio
     async def test_query_sessions_table(self):
         """Test querying sessions table returns expected data."""
-        result = db_query.run(table="sessions")
+        result = await db_query.run(table="sessions")
         assert "sessions" in result.lower() or "📊" in result
         assert "test-session-1" in result or "Test Session" in result
     
     @pytest.mark.anyio
     async def test_query_with_session_id_filter(self):
         """Test filtering by session_id."""
-        result = db_query.run(table="messages", session_id="test-session-1")
+        result = await db_query.run(table="messages", session_id="test-session-1")
         assert "Hello world" in result
         assert "Another message" not in result
     
     @pytest.mark.anyio
     async def test_invalid_table_name(self):
         """Test querying invalid table returns error."""
-        result = db_query.run(table="nonexistent_table")
+        result = await db_query.run(table="nonexistent_table")
         assert "[ERROR]" in result
         assert "no permitida" in result
     
     @pytest.mark.anyio
     async def test_empty_result(self):
         """Test query that returns no results."""
-        result = db_query.run(table="messages", session_id="nonexistent-session")
+        result = await db_query.run(table="messages", session_id="nonexistent-session")
         assert "Sin resultados" in result
     
     @pytest.mark.anyio
     async def test_limit_parameter(self):
         """Test limit parameter works."""
-        result = db_query.run(table="messages", limit=1)
+        result = await db_query.run(table="messages", limit=1)
         # Should show only 1 row
         assert "1 filas" in result
     
     @pytest.mark.anyio
     async def test_invalid_table_injection(self):
         """Test SQL injection attempt in table name."""
-        result = db_query.run(table="messages; DROP TABLE sessions;--")
+        result = await db_query.run(table="messages; DROP TABLE sessions;--")
         assert "[ERROR]" in result

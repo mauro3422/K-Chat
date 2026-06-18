@@ -33,7 +33,7 @@ async def test_rebuild_with_none_repos_gets_default_repos():
         new_callable=AsyncMock,
         return_value=[],
     ) as mock_rebuild:
-        with patch("src.core.services.history_service.get_repos", return_value=fake_repos):
+        with patch("src.memory.repos.get_repos", return_value=fake_repos):
             await service.rebuild("sess-1", "model-x")
 
     mock_rebuild.assert_called_once_with("sess-1", "model-x", fake_repos.messages)
@@ -45,7 +45,7 @@ async def test_get_system_prompt_calls_build_system_prompt():
     service = HistoryService(context_builder=mock_builder)
     result = service.get_system_prompt("gpt-4", tool_definitions={"t1": "v1"})
 
-    mock_builder.assert_called_once_with("gpt-4", tool_definitions={"t1": "v1"})
+    mock_builder.assert_called_once_with("gpt-4", tool_definitions={"t1": "v1"}, memory_results=None)
     assert result == {"role": "system", "content": "custom"}
 
 
@@ -55,7 +55,7 @@ async def test_get_system_prompt_without_tool_defs():
     service = HistoryService(context_builder=mock_builder)
     result = service.get_system_prompt("gpt-4")
 
-    mock_builder.assert_called_once_with("gpt-4", tool_definitions=None)
+    mock_builder.assert_called_once_with("gpt-4", tool_definitions=None, memory_results=None)
     assert result == {"role": "system", "content": "sys"}
 
 

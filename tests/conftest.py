@@ -59,6 +59,7 @@ _SESSIONS_SCHEMA_STATEMENTS = [
         tool_calls TEXT,
         history_before TEXT,
         asr_telemetry TEXT,
+        auto_memories TEXT NOT NULL DEFAULT '',
         updated_at TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS widget_states (

@@ -79,7 +79,9 @@ async def test_chat_streaming(_mock_default, _mock_history, mock_builder):
         '{"t":"content","d":"Hello from mocked LLM"}\n',
     ])
 
-    response = await chat("test-session-abc", BackgroundTasks(), message="hello", model="test-model")
+    req = MagicMock()
+    req.app.state.repos = None
+    response = await chat("test-session-abc", req, BackgroundTasks(), message="hello", model="test-model")
     assert isinstance(response, StreamingResponse)
     assert response.media_type == "application/x-ndjson"
 
@@ -91,7 +93,9 @@ async def test_rename_session():
     from web.routers.sessions import rename
     await ensure_session("test-session-abc")
 
-    response = await rename("test-session-abc", name="New Chat Name")
+    req = MagicMock()
+    req.app.state.repos = None
+    response = await rename("test-session-abc", req, name="New Chat Name")
     assert isinstance(response, JSONResponse)
     assert b"ok" in response.body
 
@@ -103,7 +107,9 @@ async def test_delete_session():
     from web.routers.sessions import delete
     await ensure_session("test-session-abc")
 
-    response = await delete("test-session-abc")
+    req = MagicMock()
+    req.app.state.repos = None
+    response = await delete("test-session-abc", req)
     assert isinstance(response, JSONResponse)
     assert b"ok" in response.body
 
