@@ -89,7 +89,7 @@
                 <line x1="19" y1="14" x2="21" y2="15"/>
               </svg>
             </span>
-            <select id="model-select" class="model-select">
+            <select id="model-select" class="model-select" aria-label="Seleccionar modelo de lenguaje">
               {% for group_name, group_models in models.items() %}
                 {% if group_models %}
                   {% set group_labels = {"go_premium": "🚀 GO Premium", "go_standard": "⚡ GO Standard", "go_economy": "💰 GO Económico", "free_ratelimited": "⚠️ Free (Rate Limited)", "zen": "🔵 Zen"} %}

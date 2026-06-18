@@ -63,7 +63,7 @@
       quotaWarning.remove();
     }
 
-    // Refresh every 30s
-    setTimeout(arguments.callee, 30000);
-  } catch(e) { /* silently retry */ setTimeout(arguments.callee, 60000); }
+    // Refresh every 60s (purely in-memory, no token cost)
+    setTimeout(arguments.callee, 60000);
+  } catch(e) { /* silently retry */ setTimeout(arguments.callee, 120000); }
 })();
