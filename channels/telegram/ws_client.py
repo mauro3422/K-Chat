@@ -78,17 +78,12 @@ class BotWSClient:
                     except Exception:
                         pass
 
-        # Fallback: HTTP notify (same as new_message path)
+        # Fallback: HTTP notify to ALL configured URLs
         try:
-            import httpx
-            url = _get_ws_url() \
-                .replace("/api/ws/events", "/api/events/notify") \
-                .replace("ws://", "http://") \
-                .replace("wss://", "https://")
-            async with httpx.AsyncClient() as client:
-                await client.post(url, json={"type": event_type, "data": data}, timeout=3)
+            from channels.telegram.adapter import _notify_all
+            await _notify_all(event_type, data)
         except Exception:
-            logger.warning("HTTP notify fallback also failed: %s", event_type)
+            logger.warning("HTTP notify fallback failed: %s", event_type)
 
     async def disconnect(self) -> None:
         """Close the WebSocket connection."""

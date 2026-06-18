@@ -30,16 +30,38 @@ from channels.telegram.ws_client import get_ws_client
 
 logger = logging.getLogger(__name__)
 
-# ─── SSE notify URL ───────────────────────────────────────────────────
-_SSE_NOTIFY_URL: str | None = None
+# ─── SSE notify URLs (multi-device) ──────────────────────────────────
+_SSE_NOTIFY_URLS: list[str] | None = None
 
-def _get_sse_notify_url() -> str:
-    """Get the SSE notify URL, configurable via env KAIROS_WEB_URL."""
-    global _SSE_NOTIFY_URL
-    if _SSE_NOTIFY_URL is None:
-        base = os.environ.get("KAIROS_WEB_URL", "http://127.0.0.1:8000")
-        _SSE_NOTIFY_URL = base.rstrip("/") + "/api/events/notify"
-    return _SSE_NOTIFY_URL
+def _get_sse_notify_urls() -> list[str]:
+    """Get ALL SSE notify URLs from env KAIROS_WEB_URL (comma-separated).
+
+    Each base URL gets ``/api/events/notify`` appended.
+    Default: ``http://127.0.0.1:8000``
+    Example::
+        KAIROS_WEB_URL="http://192.168.1.100:8000,http://192.168.1.101:8000"
+    """
+    global _SSE_NOTIFY_URLS
+    if _SSE_NOTIFY_URLS is None:
+        raw = os.environ.get("KAIROS_WEB_URL", "http://127.0.0.1:8000")
+        bases = [b.strip() for b in raw.split(",") if b.strip()]
+        _SSE_NOTIFY_URLS = [b.rstrip("/") + "/api/events/notify" for b in bases]
+    return _SSE_NOTIFY_URLS
+
+
+async def _notify_all(event_type: str, data: dict) -> None:
+    """POST an event to ALL configured SSE notify URLs.
+
+    Failures are logged as warnings; one bad URL never blocks the others.
+    """
+    import httpx
+    payload = {"type": event_type, "data": data}
+    for url in _get_sse_notify_urls():
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(url, json=payload, timeout=3)
+        except Exception:
+            logger.debug("SSE notify failed for %s: %s", url, event_type)
 
 
 # ─── Channel marker ────────────────────────────────────────────────────
@@ -132,16 +154,7 @@ async def process_message(
         except Exception:
             pass
         # Notify web UI so sidebar refreshes
-        try:
-            import httpx
-            async with httpx.AsyncClient() as sse_client:
-                await sse_client.post(
-                    _get_sse_notify_url(),
-                    json={"type": "session_deleted", "data": {"session_id": session_id}},
-                    timeout=3,
-                )
-        except Exception:
-            logger.debug("SSE notify failed (delete session): %s", _get_sse_notify_url())
+        await _notify_all("session_deleted", {"session_id": session_id})
         yield "__content__:🗑 Sesión eliminada."
         return
 
@@ -167,24 +180,12 @@ async def process_message(
         phases="[]",
     ))
     # Notify web UI via SSE so user message appears in real-time
-    try:
-        import httpx
-        async with httpx.AsyncClient() as sse_client:
-            await sse_client.post(
-                _get_sse_notify_url(),
-                json={
-                    "type": "new_message",
-                    "data": {
-                        "session_id": session_id,
-                        "role": "user",
-                        "content": text,
-                        "ts": int(time.time()),
-                    },
-                },
-                timeout=3,
-            )
-    except Exception:
-        logger.warning("SSE notify failed (user msg): %s", _get_sse_notify_url())
+    await _notify_all("new_message", {
+        "session_id": session_id,
+        "role": "user",
+        "content": text,
+        "ts": int(time.time()),
+    })
 
     # ── Stream processing ───────────────────────────────────────────────
     logger.info("TG[%d] processing: %.60s", chat_id, text)
@@ -598,26 +599,14 @@ async def _persist_conversation(
     ))
     logger.info("Persisted TG conversation to session %s", session_id)
     # Notify web UI via SSE (non-critical — failure is just a warning)
-    try:
-        import httpx
-        async with httpx.AsyncClient() as sse_client:
-            await sse_client.post(
-                _get_sse_notify_url(),
-                json={
-                    "type": "new_message",
-                    "data": {
-                        "session_id": session_id,
-                        "role": "assistant",
-                        "content": assistant_text,
-                        "reasoning": reasoning,
-                        "phases": phases,
-                        "ts": int(time.time()),
-                    },
-                },
-                timeout=3,
-            )
-    except Exception:
-        logger.warning("SSE notify failed (assistant msg): %s", _get_sse_notify_url())
+    await _notify_all("new_message", {
+        "session_id": session_id,
+        "role": "assistant",
+        "content": assistant_text,
+        "reasoning": reasoning,
+        "phases": phases,
+        "ts": int(time.time()),
+    })
 
 
 # ─── Lazy imports helper ───────────────────────────────────────────────
