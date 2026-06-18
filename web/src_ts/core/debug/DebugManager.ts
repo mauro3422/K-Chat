@@ -1,24 +1,18 @@
-/**
- * DebugManager — full debug panel with event logs, DOM tree, and state.
- *
- * Matches the production debug-panel.js structure:
- *  - Stream Log: all NDJSON events with timestamps
- *  - UI Log: user actions, session changes, system events
- *  - Widget Log: widget lifecycle events
- *  - DOM Tree: live DOM snapshot of active message
- *  - Stream State: phase index, firstToken, reasoning/content texts
- *  - Copy All: exports everything as text
- *
- * Delegates DOM tree serialization to DomTreeSerializer.
- */
 import { DomTreeSerializer } from './DomTreeSerializer';
 import { IDebugManager } from '../../types/debug';
+import { ApiClient } from '../../api/ApiClient';
 
 type LogEntry = {
   id: number;
-  at: string;       // HH:MM:SS.mmm timestamp
-  t: string;         // event type
-  d: string;         // detail/data
+  at: string;
+  t: string;
+  d: string;
+};
+
+type BackendLogEntry = {
+  ts: number;
+  level: string;
+  message: string;
 };
 
 export class DebugManager implements IDebugManager {
@@ -28,24 +22,56 @@ export class DebugManager implements IDebugManager {
   private uiLog: LogEntry[] = [];
   private widgetLog: LogEntry[] = [];
 
+  private backendLogs: BackendLogEntry[] = [];
+  private debugInfo: Record<string, unknown> | null = null;
+  private sessionId: string = '';
+
   private nextId = 1;
   private maxEntries = 100;
   private panelEl: HTMLElement | null = null;
 
-  /** Track the active message DOM element for tree view */
   private activeMsgEl: HTMLElement | null = null;
   private activeState: Record<string, unknown> | null = null;
 
   private treeSerializer = new DomTreeSerializer();
+  private apiClient = new ApiClient();
+
+  private refreshQueued = false;
 
   init(): void {
     this.contentEl = document.getElementById('debug-content');
     this.panelEl = document.getElementById('debug-panel');
+    if (this.contentEl) {
+      this.contentEl.addEventListener('click', (e) => this.handleCopyClick(e));
+    }
   }
 
-  // ── Log Methods ─────────────────────────────────────
+  setSessionId(sessionId: string): void {
+    this.sessionId = sessionId;
+  }
 
-  /** Log a stream event (reasoning, content, tool_call, memory, error) */
+  async loadDebugInfo(sessionId: string): Promise<void> {
+    try {
+      const resp = await this.apiClient.loadDebugInfo(sessionId);
+      const data = await resp.json();
+      this.debugInfo = data as Record<string, unknown>;
+    } catch {
+      this.debugInfo = { error: 'Failed to load debug info' };
+    }
+    this.refresh();
+  }
+
+  async loadBackendLogs(): Promise<void> {
+    try {
+      const resp = await this.apiClient.loadBackendLogs();
+      const data = await resp.json();
+      this.backendLogs = (data.logs || []) as BackendLogEntry[];
+    } catch {
+      this.backendLogs = [];
+    }
+    this.refresh();
+  }
+
   logStream(type: string, detail: string): void {
     const entry = this.makeEntry(type, detail);
     this.streamLog.push(entry);
@@ -53,7 +79,6 @@ export class DebugManager implements IDebugManager {
     this.scheduleRefresh();
   }
 
-  /** Log a UI event (send message, session change, etc.) */
   logUI(label: string, detail: string): void {
     const entry = this.makeEntry(label, detail);
     this.uiLog.push(entry);
@@ -61,7 +86,6 @@ export class DebugManager implements IDebugManager {
     this.scheduleRefresh();
   }
 
-  /** Log a widget lifecycle event */
   logWidget(detail: string): void {
     const entry = this.makeEntry('widget', detail);
     this.widgetLog.push(entry);
@@ -69,26 +93,32 @@ export class DebugManager implements IDebugManager {
     this.scheduleRefresh();
   }
 
-  /** Set the active message DOM element for tree view */
   setActiveMessage(el: HTMLElement | null, state: Record<string, unknown> | null): void {
     this.activeMsgEl = el;
     this.activeState = state;
   }
 
-  // ── Full Render ─────────────────────────────────────
-
-  /** Full refresh — rebuilds the entire debug panel content */
   refresh(): void {
     if (!this.contentEl) return;
 
     let html = '';
+    const durations = this.calcStreamDurations();
 
-    // ── Copy All button ──
     html += '<div style="text-align:right;margin-bottom:8px">';
     html += '<button class="db-copy" data-copy-action="all" style="float:none;font-size:11px">📋 Copy All Debug</button>';
     html += '</div>';
 
-    // ── Stream State ──
+    if (this.debugInfo) {
+      html += this.renderDebugInfoSection();
+    }
+
+    if (durations.length > 0) {
+      html += '<div class="db-section"><strong>⏱️ Stream Durations</strong></div>';
+      for (const d of durations) {
+        html += this.row(d.label, d.duration);
+      }
+    }
+
     html += '<div class="db-section"><strong>⚙️ Stream State</strong></div>';
     if (this.activeState) {
       html += this.row('Phase', this.activeState.phaseIndex);
@@ -99,16 +129,12 @@ export class DebugManager implements IDebugManager {
       html += '<div class="dbg-muted">⏸️ idle</div>';
     }
 
-    // ── Stream Log ──
-    html += this.renderLogSection('📥 Stream Log', this.streamLog, 30);
+    html += this.renderLogSection('📥 Stream Log', this.streamLog, 30, 'stream');
+    html += this.renderLogSection('🖱️ UI Log', this.uiLog, 30, 'ui');
+    html += this.renderLogSection('🧩 Widget Log', this.widgetLog, 20, 'widgets');
+    html += this.renderWidgetDomSection();
+    html += this.renderBackendLogsSection();
 
-    // ── UI Log ──
-    html += this.renderLogSection('🖱️ UI Log', this.uiLog, 30);
-
-    // ── Widget Log ──
-    html += this.renderLogSection('🧩 Widget Log', this.widgetLog, 20);
-
-    // ── DOM Tree ──
     html += `<details class="db-section" open>
       <summary><strong>📄 DOM Tree</strong></summary>
       <div class="dbg-dom" id="dom-tree">`;
@@ -120,17 +146,38 @@ export class DebugManager implements IDebugManager {
     html += `</div></details>`;
 
     this.contentEl.innerHTML = html;
-
-    // Bind copy all button
-    const copyBtn = this.contentEl.querySelector('[data-copy-action="all"]');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', () => this.copyAll(copyBtn as HTMLElement));
-    }
   }
 
-  /** Get all debug data as text for copy */
   getAllText(): string {
     const parts: string[] = [];
+
+    if (this.debugInfo) {
+      parts.push('=== DEBUG INFO ===');
+      const d = this.debugInfo;
+      if (d.model) parts.push(`Model: ${d.model}`);
+      if (d.reasoning) parts.push(`Reasoning:\n${d.reasoning}`);
+      if (d.auto_memories) parts.push(`Auto Memories:\n${d.auto_memories}`);
+      if (d.phases) {
+        try {
+          parts.push(`Phases:\n${JSON.stringify(JSON.parse(d.phases as string), null, 2)}`);
+        } catch {
+          parts.push(`Phases: ${d.phases}`);
+        }
+      }
+      if (d.tool_calls) parts.push(`Tool Calls:\n${JSON.stringify(d.tool_calls, null, 2)}`);
+      if (d.system_prompt) parts.push(`System Prompt:\n${(d.system_prompt as string).substring(0, 2000)}`);
+      if (d.history_before) parts.push(`History:\n${JSON.stringify(d.history_before, null, 2)}`);
+      parts.push('');
+    }
+
+    const durations = this.calcStreamDurations();
+    if (durations.length > 0) {
+      parts.push('=== STREAM DURATIONS ===');
+      for (const d of durations) {
+        parts.push(`${d.label}: ${d.duration}`);
+      }
+      parts.push('');
+    }
 
     parts.push('=== STREAM STATE ===');
     if (this.activeState) {
@@ -148,7 +195,7 @@ export class DebugManager implements IDebugManager {
       parts.push('(none)');
     } else {
       for (const e of this.streamLog) {
-        parts.push(`${e.at} ${e.t} ${e.d}`);
+        parts.push(`${e.id} ${e.at} ${e.t} ${e.d}`);
       }
     }
 
@@ -158,7 +205,7 @@ export class DebugManager implements IDebugManager {
       parts.push('(none)');
     } else {
       for (const e of this.uiLog) {
-        parts.push(`${e.at} ${e.t} ${e.d}`);
+        parts.push(`${e.id} ${e.at} ${e.t} ${e.d}`);
       }
     }
 
@@ -173,6 +220,31 @@ export class DebugManager implements IDebugManager {
     }
 
     parts.push('');
+    parts.push('=== WIDGET DOM ===');
+    const widgetContainers = document.querySelectorAll('[data-widget-id]');
+    if (widgetContainers.length === 0) {
+      parts.push('(none)');
+    } else {
+      for (const container of widgetContainers) {
+        const wid = container.getAttribute('data-widget-id') || '?';
+        const iframe = container.querySelector('iframe');
+        parts.push(`--- ${wid} ---`);
+        parts.push(`iframe=${iframe ? iframe.offsetHeight + 'px' : '-'}`);
+      }
+    }
+
+    parts.push('');
+    parts.push('=== BACKEND LOGS ===');
+    if (this.backendLogs.length === 0) {
+      parts.push('(none)');
+    } else {
+      for (const log of this.backendLogs) {
+        const ts = new Date(log.ts * 1000).toISOString().slice(11, 23);
+        parts.push(`${ts} ${log.level} ${log.message}`);
+      }
+    }
+
+    parts.push('');
     parts.push('=== DOM TREE ===');
     if (this.activeMsgEl) {
       parts.push(this.treeSerializer.renderTreeText(this.activeMsgEl, 0));
@@ -183,12 +255,15 @@ export class DebugManager implements IDebugManager {
     return parts.join('\n');
   }
 
-  // ── Private ─────────────────────────────────────────
+  // ── Private: Render ─────────────────────────────────
 
-  /** Render a log section as an HTML details/summary */
-  private renderLogSection(title: string, entries: LogEntry[], limit: number): string {
+  private renderLogSection(title: string, entries: LogEntry[], limit: number, copyAction?: string): string {
     let html = `<details class="db-section" open>
-      <summary><strong>${title} (${entries.length})</strong></summary>
+      <summary><strong>${title} (${entries.length})</strong>`;
+    if (copyAction) {
+      html += ` <button class="db-copy" data-copy-action="${copyAction}" style="float:right;font-size:11px">📋 Copy</button>`;
+    }
+    html += `</summary>
       <div class="sl-container">`;
     if (entries.length === 0) {
       html += '<div class="sl-item" style="color:var(--text-muted);font-style:italic">(no events yet)</div>';
@@ -205,19 +280,194 @@ export class DebugManager implements IDebugManager {
     return html;
   }
 
-  /** Copy all debug data to clipboard */
+  private renderDebugInfoSection(): string {
+    let html = '';
+    const d = this.debugInfo!;
+
+    if (d.model) html += this.row('Model', d.model);
+    html += this.renderPreSection('🧠 Reasoning', (d.reasoning as string) || '(none)');
+    html += this.renderPreSection('💾 Auto Memories', (d.auto_memories as string) || '(none)');
+
+    const rawPhases = (d.phases as string) || '[]';
+    let phasesStr: string;
+    try {
+      phasesStr = JSON.stringify(JSON.parse(rawPhases), null, 2);
+    } catch {
+      phasesStr = rawPhases;
+    }
+    html += this.renderDetailsPreSection('⚙️ Phases', phasesStr, true);
+    html += this.renderPreSection('🔧 Tool Calls', JSON.stringify(d.tool_calls || [], null, 2));
+    html += this.renderPreSection('📝 System Prompt', ((d.system_prompt as string) || '').substring(0, 2000));
+
+    const history = (d.history_before as unknown[]) || [];
+    html += this.renderDetailsPreSection(`📜 History (${history.length})`, JSON.stringify(history, null, 2), false);
+
+    return html;
+  }
+
+  private renderPreSection(title: string, text: string): string {
+    return `<div class="db-section"><strong>${title}</strong>` +
+      `<button class="db-copy" data-copy-action="text" style="float:right;font-size:11px">📋 Copy</button>` +
+      `<pre class="db-pre">${this.esc(text)}</pre></div>`;
+  }
+
+  private renderDetailsPreSection(title: string, text: string, open: boolean): string {
+    return `<details class="db-section"${open ? ' open' : ''}>
+      <summary><strong>${title}</strong>` +
+      `<button class="db-copy" data-copy-action="text" style="float:right;font-size:11px">📋 Copy</button>` +
+      `</summary><pre class="db-pre">${this.esc(text)}</pre></details>`;
+  }
+
+  private renderWidgetDomSection(): string {
+    const containers = document.querySelectorAll('[data-widget-id]');
+    let html = `<details class="db-section" open>
+      <summary><strong>🖼️ Widget DOM (${containers.length})</strong>
+      <button class="db-copy" data-copy-action="text" style="float:right;font-size:11px">📋 Copy</button>
+      </summary>`;
+    if (containers.length === 0) {
+      html += '<div class="dbg-muted">(no widget containers found)</div>';
+    } else {
+      html += '<pre class="db-pre">';
+      for (const c of containers) {
+        const wid = c.getAttribute('data-widget-id') || '?';
+        const iframe = c.querySelector('iframe');
+        html += `--- ${this.esc(wid)} ---\n`;
+        html += `iframe=${iframe ? iframe.offsetHeight + 'px' : '-'}\n`;
+        const events = this.widgetLog.filter(e => e.d.includes(wid));
+        for (const e of events.slice(-10)) {
+          html += `${e.at} ${this.esc(e.t)} ${this.esc(e.d.substring(0, 120))}\n`;
+        }
+      }
+      html += '</pre>';
+    }
+    html += '</details>';
+    return html;
+  }
+
+  private renderBackendLogsSection(): string {
+    let html = `<details class="db-section" open>
+      <summary><strong>🖥️ Backend Logs (${this.backendLogs.length})</strong>
+      <button class="db-copy" data-copy-action="backend" style="float:right;font-size:11px">📋 Copy</button>
+      </summary>
+      <div class="sl-container">`;
+    if (this.backendLogs.length === 0) {
+      html += '<div class="sl-item" style="color:var(--text-muted);font-style:italic">(no logs loaded)</div>';
+    } else {
+      for (const log of this.backendLogs.slice(-50)) {
+        const ts = new Date(log.ts * 1000).toISOString().slice(11, 23);
+        let levelClass = 'sl-info';
+        if (log.level === 'ERROR') levelClass = 'sl-error';
+        else if (log.level === 'WARNING') levelClass = 'sl-warning';
+        html += `<div class="sl-item ${levelClass}">`;
+        html += `<span class="sl-ts">${ts}</span>`;
+        html += `<span class="sl-tag">${this.esc(log.level)}</span>`;
+        html += `<span class="sl-data">${this.esc(log.message.substring(0, 300))}</span>`;
+        html += `</div>`;
+      }
+    }
+    html += `</div></details>`;
+    return html;
+  }
+
+  // ── Private: Duration ────────────────────────────────
+
+  private calcStreamDurations(): Array<{ label: string; duration: string }> {
+    const starts: Record<number, { at: string; label: string }> = {};
+    const results: Array<{ label: string; duration: string }> = [];
+
+    for (const e of this.uiLog) {
+      if (e.t === 'stream_start') {
+        starts[e.id] = { at: e.at, label: e.d.substring(0, 60) };
+      }
+    }
+
+    for (const e of this.uiLog) {
+      if (e.t === 'stream_complete') {
+        for (const sid of Object.keys(starts)) {
+          const s = starts[Number(sid)];
+          const startMs = this.timeToMs(s.at);
+          const endMs = this.timeToMs(e.at);
+          if (startMs !== null && endMs !== null && endMs > startMs) {
+            const dur = ((endMs - startMs) / 1000).toFixed(1);
+            results.push({ label: `${s.at} → ${e.at}`, duration: `${dur}s "${s.label}"` });
+            delete starts[Number(sid)];
+            break;
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+
+  private timeToMs(t: string): number | null {
+    if (!t) return null;
+    const p = t.split(':');
+    if (p.length !== 3) return null;
+    return (parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60 + parseFloat(p[2])) * 1000;
+  }
+
+  // ── Private: Copy ────────────────────────────────────
+
+  private handleCopyClick(e: Event): void {
+    const target = e.target as HTMLElement;
+    const btn = target.closest('.db-copy') as HTMLElement | null;
+    if (!btn) return;
+    const action = btn.getAttribute('data-copy-action');
+    if (action === 'all') this.copyAll(btn);
+    else if (action === 'stream') this.copyStreamSection(btn);
+    else if (action === 'ui') this.copyUISection(btn);
+    else if (action === 'widgets') this.copyWidgetSection(btn);
+    else if (action === 'backend') this.copyBackendSection(btn);
+    else if (action === 'text') this.copyPreText(btn);
+  }
+
   private copyAll(btnEl: HTMLElement): void {
     const text = this.getAllText();
+    this.copyText(text, btnEl);
+  }
+
+  private copyStreamSection(btn: HTMLElement): void {
+    const text = this.streamLog.map(e => `${e.id} ${e.at} ${e.t} ${e.d}`).join('\n');
+    this.copyText(text, btn);
+  }
+
+  private copyUISection(btn: HTMLElement): void {
+    const text = this.uiLog.map(e => `${e.id} ${e.at} ${e.t} ${e.d}`).join('\n');
+    this.copyText(text, btn);
+  }
+
+  private copyWidgetSection(btn: HTMLElement): void {
+    const text = this.widgetLog.map(e => `${e.at} ${e.t} ${e.d}`).join('\n');
+    this.copyText(text, btn);
+  }
+
+  private copyBackendSection(btn: HTMLElement): void {
+    const text = this.backendLogs.map(log => {
+      const ts = new Date(log.ts * 1000).toISOString().slice(11, 23);
+      return `${ts} ${log.level} ${log.message}`;
+    }).join('\n');
+    this.copyText(text, btn);
+  }
+
+  private copyPreText(btn: HTMLElement): void {
+    const section = btn.closest('.db-section');
+    const pre = section?.querySelector('pre');
+    if (!pre) { btn.textContent = '[]'; return; }
+    this.copyText(pre.textContent || '', btn);
+  }
+
+  private copyText(text: string, btn: HTMLElement): void {
     navigator.clipboard.writeText(text).then(() => {
-      const orig = btnEl.textContent;
-      btnEl.textContent = '✅ Copied!';
-      setTimeout(() => { btnEl.textContent = orig; }, 1500);
+      const orig = btn.textContent;
+      btn.textContent = '✅ Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
     }).catch(() => {
-      btnEl.textContent = '❌ Error';
+      btn.textContent = '❌ Error';
     });
   }
 
-  private refreshQueued = false;
+  // ── Private: Util ────────────────────────────────────
 
   private scheduleRefresh(): void {
     if (this.refreshQueued) return;

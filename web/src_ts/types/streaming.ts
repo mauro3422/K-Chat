@@ -6,6 +6,7 @@ export const STREAM_EVENT_TYPES = {
   TOOL_CALL: 'tool_call',
   ERROR: 'error',
   MEMORY: 'memory',
+  NOTIFICATION: 'notification',
 } as const;
 
 export type StreamEventType = (typeof STREAM_EVENT_TYPES)[keyof typeof STREAM_EVENT_TYPES];

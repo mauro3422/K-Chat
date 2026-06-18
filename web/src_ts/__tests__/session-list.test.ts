@@ -67,7 +67,7 @@ describe('SessionList DOM contract', () => {
     sessionList.renderSessions(sessions, 'sess_001');
     const item = sidebarEl.querySelector('.session-item[data-sid="sess_001"]');
     const meta = item!.querySelector('.session-meta');
-    expect(meta!.textContent).toContain('5 msgs');
+    expect(meta!.textContent).toContain('5 exchanges');
   });
 
   it('has rename and delete buttons', () => {

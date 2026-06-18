@@ -38,6 +38,7 @@ import { GridController } from './core/ui/GridController';
 import { CanvasOverlay } from './widgets/CanvasOverlay';
 import { getLogger } from './core/LoggerFactory';
 import { SystemLogPanel } from './core/debug/SystemLogPanel';
+import { BrowserDomRenderer } from './rendering/DomRenderer';
 
 document.addEventListener('DOMContentLoaded', async () => {
 
@@ -57,7 +58,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const cardManager = new CanvasCardManager(iframeBuilder, widgetRegistry, eventBus, debug);
 
   const fileUploader = new FileUploader();
-  const messageView = new MessageView(undefined, iframeBuilder, containerRenderer);
+  const domRenderer = new BrowserDomRenderer(undefined, undefined, widgetRegistry);
+  const messageView = new MessageView(domRenderer, iframeBuilder, containerRenderer);
   const chatForm = new ChatForm(eventBus, fileUploader);
   const sessionList = new SessionList(eventBus);
   const streamSimulator = new StreamSimulator();
@@ -98,7 +100,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   messageView.init();
   chatForm.init();
   sessionList.init();
-  await sessionStore.init(eventBus);
+  const appEl = document.getElementById('app');
+  const initialSessionId = appEl?.dataset.sessionId;
+  await sessionStore.init(eventBus, initialSessionId);
   gridController.init();
   canvasOverlay.init();
   audioBus.init();
@@ -128,6 +132,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     sessionList.renderSessions(sessionStore.sessions, sessionStore.activeSessionId);
     messageView.clearContainer();
     sessionStore.activeHistory.forEach((msg) => messageView.appendMessage(msg));
+    // Scroll to the last assistant message after loading a session
+    const msgsEl = document.getElementById('messages');
+    if (msgsEl) {
+      const lastAssistant = msgsEl.querySelector('.msg.assistant:last-child') as HTMLElement | null;
+      if (lastAssistant) {
+        msgsEl.scrollTop = lastAssistant.offsetTop;
+      } else {
+        msgsEl.scrollTop = msgsEl.scrollHeight;
+      }
+    }
   };
   refreshUI();
 
@@ -139,11 +153,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   eventBus.on('history:updated', () => {
-    // Full refresh only when not streaming (stream updates DOM directly)
-    if (!streamOrchestrator.isStreaming) {
-      messageView.clearContainer();
-      sessionStore.activeHistory.forEach((msg) => messageView.appendMessage(msg));
-    }
+    // Stream adds messages to DOM directly. This handler only needed for
+    // session switching (handled by session:selected → refreshUI).
+    // Full re-render here would destroy scroll position.
   });
 
   eventBus.on<{ id: string }>('session:selected', (data) => {
@@ -177,11 +189,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     iframeBuilder.reset();
     canvasWorkspace.reset();
     canvasWorkspace.init(data.id);
+    refreshUI();
+    // Ensure empty state for new session
+    const msgsEl = document.getElementById('messages');
+    if (msgsEl && msgsEl.children.length === 0) {
+      msgsEl.innerHTML = '<div class="empty-state">Envía un mensaje para empezar</div>';
+    }
   });
 
   // ── 5. New Session button ────────────────────────────
+  let _creatingSession = false;
   document.getElementById('btn-new-session')?.addEventListener('click', async () => {
+    if (_creatingSession) return;
+    _creatingSession = true;
     const id = await sessionStore.createSession();
+    _creatingSession = false;
     if (id) logger.info('session_created', id);
   });
 
@@ -217,14 +239,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── 7. SSE Event Handling ─────────────────────────────
   eventBus.on<{ id: string }>('sse:session-deleted', (data) => {
-    sessionStore.deleteSession(data.id);
+    // Guard: only delete if session still exists (breaks SSE echo loop)
+    if (sessionStore.sessions.some(s => s.id === data.id)) {
+      sessionStore.deleteSession(data.id);
+    }
   });
 
   eventBus.on<{ sessionId: string; messageId: number }>('sse:message-deleted', () => {
     // Handled by SSEClient's DOM removal; store update via session mutation if needed
   });
 
-  eventBus.on<{ sessionId: string; message: import('./rendering/MessageView').MessageData; isCurrentSession: boolean }>('sse:new-message', (data) => {
+  eventBus.on<{ sessionId: string; message: import('./types/messages').MessageData; isCurrentSession: boolean }>('sse:new-message', (data) => {
     if (data.isCurrentSession) {
       sessionStore.addMessage(data.sessionId, data.message);
     } else {
@@ -236,7 +261,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     sessionList.clearUnread(data.sessionId);
   });
 
-  // ── 8. Sidebar Toggle ────────────────────────────────
+  // ── 8. Browser History Navigation (back/forward) ─────
+  window.addEventListener('popstate', (event) => {
+    const state = event.state as { sessionId?: string } | null;
+    if (state?.sessionId && sessionStore.sessions.some(s => s.id === state.sessionId)) {
+      sessionStore.selectSession(state.sessionId);
+    }
+  });
+
+  // ── 9. Sidebar Toggle ────────────────────────────────
   const sidebarToggle = document.getElementById('sidebar-toggle');
   const sidebarEl = document.getElementById('sidebar');
 
@@ -249,14 +282,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // ── 9. Theme Toggle ──────────────────────────────────
+  // ── 10. Theme Toggle ─────────────────────────────────
   document.getElementById('theme-toggle')?.addEventListener('click', () => {
     const isLight = document.body.classList.toggle('light-theme');
     document.documentElement.classList.toggle('light-theme', isLight);
     localStorage.setItem('selected_theme', isLight ? 'light' : 'dark');
   });
 
-  // ── 10. Debug Panel ──────────────────────────────────
+  // ── 11. Debug Panel ──────────────────────────────────
   const debugToggle = document.getElementById('debug-toggle');
   const debugPanel = document.getElementById('debug-panel');
   const debugClose = document.getElementById('debug-close');
@@ -307,9 +340,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }, 400);
   window.addEventListener('beforeunload', () => {
     clearInterval(debugIntervalId);
+    streamOrchestrator.abort();
+    ndjsonClient.abort();
+    sseClient.disconnect();
     notificationBell?.dispose();
     sessionStore?.dispose();
     canvasWorkspace?.dispose();
+    widgetRegistry.reset();
     eventBus.removeAllListeners();
   });
 

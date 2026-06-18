@@ -36,6 +36,8 @@ export class SystemLogPanel {
     this.showTab('debug');
   }
 
+  private _lastEntriesJson = '';
+
   refresh(): void {
     if (this.activeTab !== 'logs' || !this.logsContentEl) return;
     if (this.refreshQueued) return;
@@ -44,7 +46,14 @@ export class SystemLogPanel {
       .then((resp) => resp.json())
       .then((data) => {
         const entries = Array.isArray(data.entries) ? data.entries as SystemLogEntry[] : [];
+        const json = JSON.stringify(entries);
+        if (json === this._lastEntriesJson) return; // no changes, skip render
+        this._lastEntriesJson = json;
+        // Save scroll position
+        const scrollTop = this.logsContentEl!.scrollTop;
         this.render(entries);
+        // Restore scroll position
+        this.logsContentEl!.scrollTop = scrollTop;
       })
       .catch((err: unknown) => {
         this.logger.warn('refresh failed', err);
@@ -75,7 +84,10 @@ export class SystemLogPanel {
   private render(entries: SystemLogEntry[]): void {
     if (!this.logsContentEl) return;
     const html: string[] = [];
-    html.push('<div class="db-section"><strong>Logs del sistema</strong></div>');
+    html.push('<div class="db-section" style="display:flex;justify-content:space-between;align-items:center">');
+    html.push('<strong>Logs del sistema</strong>');
+    html.push(`<button class="db-copy" data-copy-action="system-logs" style="font-size:11px;padding:2px 8px">📋 Copy All</button>`);
+    html.push('</div>');
     html.push(`<div class="dbg-muted">Entradas: ${entries.length}</div>`);
     if (entries.length === 0) {
       html.push('<div class="dbg-muted">(sin logs todavía)</div>');
@@ -98,6 +110,36 @@ export class SystemLogPanel {
       html.push('</div>');
     }
     this.logsContentEl.innerHTML = html.join('');
+
+    // Bind Copy All button
+    const copyBtn = this.logsContentEl.querySelector('[data-copy-action="system-logs"]');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => this.copyAll(copyBtn as HTMLElement));
+    }
+  }
+
+  private copyAll(btn: HTMLElement): void {
+    const entriesText = this.getAllText();
+    navigator.clipboard.writeText(entriesText).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✅ Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    }).catch(() => {
+      btn.textContent = '❌ Error';
+    });
+  }
+
+  private getAllText(): string {
+    if (!this.logsContentEl) return '';
+    const lines: string[] = [];
+    const items = this.logsContentEl.querySelectorAll('.sl-item');
+    items.forEach((item) => {
+      const ts = (item.querySelector('.sl-ts') as HTMLElement)?.textContent || '';
+      const level = (item.querySelector('.sl-tag') as HTMLElement)?.textContent || '';
+      const data = (item.querySelector('.sl-data') as HTMLElement)?.textContent || '';
+      lines.push(`${ts} [${level}] ${data}`);
+    });
+    return lines.join('\n');
   }
 
   private formatTs(raw: string): string {

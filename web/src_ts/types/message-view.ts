@@ -1,4 +1,4 @@
-import { MessageData } from '../rendering/MessageView';
+import type { MessageData } from './messages';
 
 export interface IMessageView {
   init(): void;

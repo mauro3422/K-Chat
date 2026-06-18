@@ -5,12 +5,33 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from src.api import get_repos, get_rate_limit_store, get_model_registry
-# BackendLogHandler deprecated — LogBus replaces it
-# Keep import lazy for backward compat
-try:
-    from web.logging_handler import get_backend_logs
-except ImportError:
-    get_backend_logs = lambda: []
+from pathlib import Path
+import json
+
+def get_backend_logs(limit: int = 100) -> list[dict]:
+    """Read recent logs from the JSONL server log files."""
+    log_dir = Path(__file__).parent.parent.parent / "logs" / "server"
+    if not log_dir.exists():
+        return []
+    log_files = sorted(log_dir.glob("*.jsonl"), reverse=True)
+    if not log_files:
+        return []
+    logs = []
+    for lf in log_files:
+        try:
+            with open(lf, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            logs.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            pass
+        except (OSError, IOError):
+            pass
+        if len(logs) >= limit:
+            break
+    return logs[-limit:]
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

@@ -5,6 +5,9 @@ import { IEventBus } from '../types/events';
 import { getLogger } from '../core/LoggerFactory';
 import { ILogger } from '../core/Logger';
 
+/** Pre-built set of valid stream event types — avoid `new Set()` on every parse */
+const VALID_EVENT_TYPES = new Set(Object.values(STREAM_EVENT_TYPES));
+
 export interface StreamParams {
   sessionId: string;
   message: string;
@@ -33,8 +36,7 @@ function parseStreamEvent(raw: string): StreamEvent | null {
   }
   if (!msg || typeof msg !== 'object') return null;
   if (typeof msg.t !== 'string') return null;
-  const validTypes = new Set(Object.values(STREAM_EVENT_TYPES));
-  if (!validTypes.has(msg.t as StreamEventType)) return null;
+  if (!VALID_EVENT_TYPES.has(msg.t as StreamEventType)) return null;
   return { t: msg.t as StreamEventType, d: String(msg.d ?? '') };
 }
 

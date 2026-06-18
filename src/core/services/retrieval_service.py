@@ -63,9 +63,14 @@ class RetrievalService:
         session_id: str | None = None,
         db_path: str | None = None,
         top_k: int = 8,
-    ) -> str | None:
-        """Run auto-retrieval and return formatted memory block, or None."""
+    ) -> tuple[str | None, bool]:
+        """Run auto-retrieval and return (memory_block, degraded) tuple.
+
+        Returns:
+            Tuple of (formatted memory block or None, whether the reranker was degraded).
+        """
         retriever = None
+        degraded = False
         try:
             if self._retrieval_service is not None:
                 retriever = self._retrieval_service
@@ -78,18 +83,29 @@ class RetrievalService:
                 retriever = HybridRetriever(resolve_memory_db_path())
 
             if retriever is None:
-                return None
+                return None, False
 
-            results = await retriever.search(message_user[:1000], top_k=top_k, apply_budget=True)
+            results = await retriever.search(
+                message_user[:1000],
+                top_k=top_k,
+                apply_budget=True,
+                source_filter='session',     # skip source='memory' (already in MEMORY.md)
+                session_id=session_id or '', # exclude current session's own exchanges
+            )
+
+            if hasattr(retriever, 'was_reranker_degraded') and retriever.was_reranker_degraded:
+                degraded = True
+
             logger.info("Auto-retrieval: %d results for session %s", len(results), (session_id or "default")[:12])
 
             if results:
                 dicts = [r.to_dict() for r in results]
                 memory_block = format_memories_for_prompt(dicts, query=message_user[:1000])
                 logger.info("Auto-retrieval: memory block %d chars", len(memory_block))
-                return memory_block
+                return memory_block, degraded
         except Exception as e:
             logger.info("Auto-retrieval failed (non-fatal): %s", e)
+            degraded = True
         finally:
             if retriever is not None and hasattr(retriever, 'close'):
                 try:
@@ -97,7 +113,7 @@ class RetrievalService:
                 except Exception:
                     pass
 
-        return None
+        return None, degraded
 
     async def retrieve_if_allowed(
         self,
@@ -105,8 +121,12 @@ class RetrievalService:
         session_id: str | None = None,
         config: Any | None = None,
         db_path: str | None = None,
-    ) -> str | None:
-        """Check config + throttle, then retrieve if allowed."""
+    ) -> tuple[str | None, bool]:
+        """Check config + throttle, then retrieve if allowed.
+
+        Returns:
+            Tuple of (memory_block or None, whether reranker was degraded).
+        """
         if config is None:
             if self._config is not None:
                 config = self._config
@@ -116,9 +136,9 @@ class RetrievalService:
 
         if hasattr(config, 'auto_retrieval_enabled') and not config.auto_retrieval_enabled:
             logger.info("Auto-retrieval disabled via config")
-            return None
+            return None, False
 
         if not self._check_throttle(session_id or "default", message_user):
-            return None
+            return None, False
 
         return await self.retrieve(message_user, session_id, db_path)

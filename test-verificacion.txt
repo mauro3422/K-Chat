@@ -1,1 +1,0 @@
-Esto es una prueba de que write_file funciona y el contenido se persiste.

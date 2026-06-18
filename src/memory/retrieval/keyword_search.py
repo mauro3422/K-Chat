@@ -13,6 +13,7 @@ def keyword_search(
     db_path: str,
     top_k: int = 20,
     source_filter: str | None = None,
+    exclude_source_key: str | None = None,
 ) -> list[tuple[int, float]]:
     """Search for exchanges matching query keywords.
     
@@ -24,6 +25,7 @@ def keyword_search(
         db_path: Path to memory.db.
         top_k: Maximum results to return.
         source_filter: Optional 'memory' or 'session' to filter by source.
+        exclude_source_key: If set, exclude entries with this source_key.
     
     Returns:
         [(rowid, kw_score), ...] sorted by score descending.
@@ -46,6 +48,11 @@ def keyword_search(
         source_join = "JOIN vec_meta m ON m.rowid = vk.rowid"
         source_where = "AND m.source = ?"
         params.append(source_filter)
+    if exclude_source_key:
+        if not source_join:
+            source_join = "JOIN vec_meta m ON m.rowid = vk.rowid"
+        source_where += " AND m.source_key != ?"
+        params.append(exclude_source_key)
     
     conn = sqlite3.connect(db_path)
     try:

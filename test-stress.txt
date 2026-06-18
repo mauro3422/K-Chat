@@ -1,4 +1,0 @@
-2026-06-09 02:57 - Prueba de estrés: write_file funciona correctamente.
-- Timestamps preservados: ✅
-- Sin duplicación: ✅
-- Sin pills rotas: ✅

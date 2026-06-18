@@ -18,7 +18,7 @@ class ClientLogEntry(BaseModel):
     l: str
     m: str
     msg: str
-    d: Optional[dict] = None
+    d: Optional[dict | str | list] = None
 
 
 @router.get("/api/logs")

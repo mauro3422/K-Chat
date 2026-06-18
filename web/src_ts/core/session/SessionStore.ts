@@ -1,5 +1,5 @@
 import { IEventBus, EventCallback } from '../../types/events';
-import { MessageData } from '../../rendering/MessageView';
+import type { MessageData } from '../../types/messages';
 import { ApiClient } from '../../api/ApiClient';
 import { getLogger } from '../infra/LoggerFactory';
 import { ILogger } from '../infra/Logger';
@@ -9,7 +9,7 @@ export interface ISessionStore {
   readonly activeSessionId: string;
   readonly activeHistory: MessageData[];
 
-  init(eventBus: IEventBus): Promise<void>;
+  init(eventBus: IEventBus, initialSessionId?: string): Promise<void>;
   createSession(name?: string): Promise<string>;
   deleteSession(id: string): Promise<void>;
   renameSession(id: string, name: string): Promise<void>;
@@ -22,6 +22,7 @@ export class SessionStore implements ISessionStore {
   private _sessions: Array<{ id: string; name: string; count: number; last_str: string }> = [];
   private _histories: Record<string, MessageData[]> = {};
   private _activeSessionId = '';
+  private _initialSessionId = '';
   private _eventBus: IEventBus | null = null;
   private _apiClient: ApiClient;
   private _logger: ILogger;
@@ -37,8 +38,9 @@ export class SessionStore implements ISessionStore {
   get activeSessionId() { return this._activeSessionId; }
   get activeHistory() { return this.getHistory(this._activeSessionId); }
 
-  async init(eventBus: IEventBus): Promise<void> {
+  async init(eventBus: IEventBus, initialSessionId?: string): Promise<void> {
     this._eventBus = eventBus;
+    this._initialSessionId = initialSessionId || '';
 
     const selectCb = (data: { sessionId: string }) => {
       this.selectSession(data.sessionId);
@@ -60,6 +62,13 @@ export class SessionStore implements ISessionStore {
 
     // Load sessions from backend
     await this.loadSessions();
+
+    // Prefer initialSessionId from DOM (page refresh / direct URL) over data[0].id
+    if (this._initialSessionId && this._sessions.some(s => s.id === this._initialSessionId)) {
+      this._activeSessionId = this._initialSessionId;
+      await this.loadHistory(this._initialSessionId);
+      this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
+    }
   }
 
   dispose(): void {
@@ -82,6 +91,8 @@ export class SessionStore implements ISessionStore {
       });
       this._histories[id] = [];
       this._activeSessionId = id;
+      // Push new history entry so back button works after creating a session
+      window.history.pushState({ sessionId: id }, '', `/sessions/${id}`);
       this._emit('session:created', { id });
       this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
       this._emit('history:updated', { sessionId: id, history: [] });
@@ -106,6 +117,11 @@ export class SessionStore implements ISessionStore {
     delete this._histories[id];
     if (this._activeSessionId === id) {
       this._activeSessionId = this._sessions.length > 0 ? this._sessions[0].id : '';
+      if (this._activeSessionId) {
+        window.history.replaceState({ sessionId: this._activeSessionId }, '', `/sessions/${this._activeSessionId}`);
+      } else {
+        window.history.replaceState({}, '', '/');
+      }
     }
     // Notify UI to cleanup widgets, canvas, messages
     this._emit('session:deleted', { id });
@@ -134,6 +150,8 @@ export class SessionStore implements ISessionStore {
   selectSession(id: string): void {
     if (this._activeSessionId !== id && this._sessions.some(s => s.id === id)) {
       this._activeSessionId = id;
+      // Sync URL to session path (without triggering navigation)
+      window.history.replaceState({ sessionId: id }, '', `/sessions/${id}`);
       this._emit('session:selected', { id });
       // Load history for selected session
       this.loadHistory(id);
@@ -147,7 +165,9 @@ export class SessionStore implements ISessionStore {
     this._histories[sessionId].push(msg);
     const session = this._sessions.find(s => s.id === sessionId);
     if (session) {
-      session.count = (session.count || 0) + 1;
+      if (msg.role === 'user') {
+        session.count = (session.count || 0) + 1;
+      }
       session.last_str = new Date().toISOString().substring(0, 10);
     }
     this._emit('history:updated', { sessionId, history: this.getHistory(sessionId) });

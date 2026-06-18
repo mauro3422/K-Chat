@@ -1,6 +1,7 @@
 import { IDebugManager } from '../types/debug';
 import { WidgetMatch, ProcessResult, IWidgetContainerRenderer } from '../types/widget-renderer';
 import { IframeBuilder } from './IframeBuilder';
+import { C } from '../core/DomContracts';
 
 /**
  * WidgetContainerRenderer — production-matching widget detection.
@@ -11,7 +12,6 @@ import { IframeBuilder } from './IframeBuilder';
  * Mirrors: web/static/modules/widget-container-renderer.js
  */
 export class WidgetContainerRenderer implements IWidgetContainerRenderer {
-  private readonly MAX_WIDGETS = 10;
   private debug?: IDebugManager;
   private iframeBuilder: IframeBuilder;
 
@@ -134,22 +134,11 @@ export class WidgetContainerRenderer implements IWidgetContainerRenderer {
 
   destroyAll(container: HTMLElement): void {
     const widgetContainers = container.querySelectorAll(
-      '.widget-container, .interactive-widget-container'
+      '.' + C.WIDGET_CONTAINER
     );
     widgetContainers.forEach((con) => {
       this.iframeBuilder.destroyContainer(con as HTMLElement);
     });
-  }
-
-  private _enforceWidgetLimit(): void {
-    const allWidgets = document.querySelectorAll(
-      '.widget-container, .interactive-widget-container'
-    );
-    if (allWidgets.length >= this.MAX_WIDGETS) {
-      const oldest = allWidgets[0] as HTMLElement;
-      this.iframeBuilder.destroyContainer(oldest);
-      oldest.remove();
-    }
   }
 
   reset(): void {

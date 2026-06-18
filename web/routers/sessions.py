@@ -47,8 +47,8 @@ async def list_sessions(request: Request) -> JSONResponse:
     raw = await repos.sessions.get_all(50)
     sessions = []
     for s in raw:
-        sid, first, last, count, user_count, name = s[0], s[1], s[2], s[3], s[4], s[5]
-        is_favorite = bool(s[7]) if len(s) > 7 else False
+        sid, first, last, count, name = s[0], s[1], s[2], s[3], s[4]
+        is_favorite = bool(s[6]) if len(s) > 6 else False
         sessions.append({
             "id": sid,
             "name": name or sid[:8],

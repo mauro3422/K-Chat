@@ -156,7 +156,8 @@ class VectorStore:
 
     def search(self, query_embedding: list[float], k: int = 10,
                source_filter: Optional[str] = None,
-               min_relevance: float = 0.0) -> list[SearchResult]:
+               min_relevance: float = 0.0,
+               exclude_source_key: Optional[str] = None) -> list[SearchResult]:
         """Search for the k nearest neighbors.
 
         Args:
@@ -164,6 +165,8 @@ class VectorStore:
             k: Number of results (default 10, max 50).
             source_filter: Optional filter by source ('memory' or 'session').
             min_relevance: Minimum relevance_score filter (0.0 = no filter).
+            exclude_source_key: If set, exclude entries with this source_key
+                (e.g. current session_id to avoid self-retrieval).
 
         Returns:
             List of SearchResult ordered by similarity (closest first).
@@ -173,42 +176,34 @@ class VectorStore:
             vec_array = f"[{','.join(str(v) for v in query_embedding)}]"
             k = min(k, 50)
 
-            # sqlite-vec KNN with MATCH clause, then join metadata
+            where_clauses = ["m.relevance_score >= ?"]
+            params: list = [vec_array, k, min_relevance]
+
             if source_filter:
-                rows = conn.execute(
-                    """
-                    SELECT v.rowid, v.distance, m.source, m.source_key,
-                           m.exchange_idx, m.text, m.metadata, m.created_at
-                    FROM (
-                        SELECT rowid, distance
-                        FROM vec_entries
-                        WHERE embedding MATCH ?
-                        AND k = ?
-                    ) v
-                    JOIN vec_meta m ON v.rowid = m.rowid
-                    WHERE m.source = ?
-                    AND m.relevance_score >= ?
-                    ORDER BY v.distance
-                    """,
-                    [vec_array, k, source_filter, min_relevance]
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT v.rowid, v.distance, m.source, m.source_key,
-                           m.exchange_idx, m.text, m.metadata, m.created_at
-                    FROM (
-                        SELECT rowid, distance
-                        FROM vec_entries
-                        WHERE embedding MATCH ?
-                        AND k = ?
-                    ) v
-                    JOIN vec_meta m ON v.rowid = m.rowid
-                    WHERE m.relevance_score >= ?
-                    ORDER BY v.distance
-                    """,
-                    [vec_array, k, min_relevance]
-                ).fetchall()
+                where_clauses.append("m.source = ?")
+                params.append(source_filter)
+            if exclude_source_key:
+                where_clauses.append("m.source_key != ?")
+                params.append(exclude_source_key)
+
+            where_sql = " AND ".join(where_clauses)
+
+            rows = conn.execute(
+                f"""
+                SELECT v.rowid, v.distance, m.source, m.source_key,
+                       m.exchange_idx, m.text, m.metadata, m.created_at
+                FROM (
+                    SELECT rowid, distance
+                    FROM vec_entries
+                    WHERE embedding MATCH ?
+                    AND k = ?
+                ) v
+                JOIN vec_meta m ON v.rowid = m.rowid
+                WHERE {where_sql}
+                ORDER BY v.distance
+                """,
+                params
+            ).fetchall()
 
             results = []
             for row in rows:
@@ -223,6 +218,16 @@ class VectorStore:
                 )
                 distance = row[1] if row[1] is not None else 1.0
                 results.append(SearchResult(entry=entry, distance=distance, score=1.0 - distance))
+
+            if results:
+                now = datetime.now().isoformat(timespec="seconds")
+                rowids = [r.entry.id for r in results]
+                placeholders = ",".join("?" for _ in rowids)
+                conn.execute(
+                    f"UPDATE vec_meta SET query_count = query_count + 1, last_accessed = ? WHERE rowid IN ({placeholders})",
+                    [now, *rowids]
+                )
+                conn.commit()
 
             return results
 

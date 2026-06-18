@@ -88,23 +88,36 @@ export class ContentHandler {
     };
   }
 
+  /** Get or create a phase-specific body div — each content phase has its own body.
+   *  This matches the old JS behavior where each phase had a separate body div,
+   *  preventing widget iframe destruction on phase transitions. */
   private ensureBody(ctx: StreamHandlerContext): HTMLElement {
-    if (!ctx.bodyEl) {
-      const existing = ctx.msgEl.querySelector('.' + C.MSG_BODY) as HTMLElement | null;
-      if (existing) ctx.bodyEl = existing;
-      else {
-        ctx.bodyEl = document.createElement('div');
-        ctx.bodyEl.className = C.MSG_BODY;
-        ctx.msgEl.appendChild(ctx.bodyEl);
-      }
+    const phaseIdx = ctx.phaseIndex;
+    // Remove stale placeholder body (created by beginStreaming, has no data-phase)
+    const staleBody = ctx.msgEl.querySelector('.' + C.MSG_BODY + ':not([data-phase])') as HTMLElement | null;
+    if (staleBody) staleBody.remove();
+    const selector = '.' + C.MSG_BODY + '[data-phase="' + phaseIdx + '"]';
+    let bodyEl = ctx.msgEl.querySelector(selector) as HTMLElement | null;
+    if (!bodyEl) {
+      bodyEl = document.createElement('div');
+      bodyEl.className = C.MSG_BODY;
+      bodyEl.setAttribute('data-phase', String(phaseIdx));
+      ctx.msgEl.appendChild(bodyEl);
     }
-    return ctx.bodyEl;
+    ctx.bodyEl = bodyEl;
+    return bodyEl;
   }
 
   private insertBeforeBody(ctx: StreamHandlerContext, el: HTMLElement): void {
-    const body = ctx.bodyEl || ctx.msgEl.querySelector('.' + C.MSG_BODY);
-    if (body) ctx.msgEl.insertBefore(el, body);
-    else ctx.msgEl.appendChild(el);
+    const phase = parseInt(el.getAttribute('data-phase') || String(ctx.phaseIndex), 10);
+    for (let p = phase; p <= ctx.phaseIndex + 1; p++) {
+      const body = ctx.msgEl.querySelector(`.${C.MSG_BODY}[data-phase="${p}"]`);
+      if (body) {
+        ctx.msgEl.insertBefore(el, body);
+        return;
+      }
+    }
+    ctx.msgEl.appendChild(el);
   }
 
   private static setSegmentContent(targetSeg: HTMLElement, html: string, incompleteTail?: string): void {
@@ -132,22 +145,16 @@ export class ContentHandler {
     }
   }
 
-  /** Build a lookup of current containers by key and by id */
-  private buildContainerLookup(bodyDiv: HTMLElement): {
-    containerByKey: Record<string, HTMLElement>;
-    containerById: Record<string, HTMLElement>;
-  } {
+  /** Build a lookup of current containers by key */
+  private buildContainerLookup(bodyDiv: HTMLElement): Record<string, HTMLElement> {
     const currentContainers = bodyDiv.querySelectorAll('.' + C.WIDGET_CONTAINER);
     const containerByKey: Record<string, HTMLElement> = {};
-    const containerById: Record<string, HTMLElement> = {};
     for (let ci = 0; ci < currentContainers.length; ci++) {
       const con = currentContainers[ci] as HTMLElement;
       const key = con.getAttribute('data-widget-key');
       if (key) containerByKey[key] = con;
-      const id = con.getAttribute('data-widget-id');
-      if (id && !con.getAttribute('data-widget-key')) containerById[id] = con;
     }
-    return { containerByKey, containerById };
+    return containerByKey;
   }
 
   /** Ensure DOM has the correct number of widget containers, adding missing ones */
@@ -187,10 +194,10 @@ export class ContentHandler {
 
   /** Remove excess containers if widget count decreased */
   private removeExcessContainers(bodyDiv: HTMLElement, expectedCount: number): void {
-    const allContainers = bodyDiv.querySelectorAll('.' + C.WIDGET_CONTAINER);
-    while (allContainers.length > expectedCount) {
-      const last = allContainers[allContainers.length - 1];
-      if (last && last.parentNode) last.parentNode.removeChild(last);
+    const containers = Array.from(bodyDiv.querySelectorAll('.' + C.WIDGET_CONTAINER));
+    while (containers.length > expectedCount) {
+      const last = containers.pop()!;
+      if (last.parentNode) last.parentNode.removeChild(last);
     }
   }
 
@@ -255,13 +262,10 @@ export class ContentHandler {
     const bodyEl = this.ensureBody(ctx);
     bodyEl.classList.add('msg-body', 'md-content');
 
-    const isNewPhase = !ctx.contentTexts[ctx.phaseIndex];
-    if (isNewPhase) {
-      bodyEl.innerHTML = '';
+    if (!ctx.contentTexts[ctx.phaseIndex]) {
+      ctx.contentTexts[ctx.phaseIndex] = '';
       this.lastRenderedLength = 0;
     }
-
-    if (!ctx.contentTexts[ctx.phaseIndex]) ctx.contentTexts[ctx.phaseIndex] = '';
     ctx.contentTexts[ctx.phaseIndex] += data;
     const fullText = ctx.contentTexts[ctx.phaseIndex];
     const bodyDiv = bodyEl;
@@ -272,9 +276,9 @@ export class ContentHandler {
 
     // ── Incremental path: only update last text segment if no new widget boundaries ──
     const delta = fullText.slice(this.lastRenderedLength);
-    const hasNewWidgetBoundary = delta ? /```html-widget|~~~widget-(?:start|end)/.test(delta) : false;
+    const hasNewWidgetBoundary = delta ? /```html-widget|~~~widget-(?:start|end)|\[Widget\s*:\s*[\w\-]+\]/.test(delta) : false;
 
-    if (!isNewPhase && !hasNewWidgetBoundary) {
+    if (this.lastRenderedLength > 0 && !hasNewWidgetBoundary && widgetMatches.length === 0) {
       const textSegments = bodyDiv.querySelectorAll(':scope > .' + C.MSG_TEXT_SEGMENT);
       if (textSegments.length > 0) {
         const lastSeg = textSegments[textSegments.length - 1] as HTMLElement;
@@ -299,7 +303,7 @@ export class ContentHandler {
     // ── Full regeneration ──
     this.removeTextSegments(bodyDiv);
 
-    const { containerByKey } = this.buildContainerLookup(bodyDiv);
+    const containerByKey = this.buildContainerLookup(bodyDiv);
     this.ensureWidgetContainers(bodyDiv, widgetMatches, containerByKey);
     this.removeExcessContainers(bodyDiv, widgetMatches.length);
 
@@ -313,14 +317,29 @@ export class ContentHandler {
     this.autoScroll(ctx.msgEl);
   }
 
-  /** Scroll messages container to bottom unless user manually scrolled up */
+  private _scrollRafId = 0;
+  /** First event of a new stream gets an unconditional scroll */
+  private _firstScroll = true;
+
+  /** Scroll messages container to bottom when new content arrives.
+   *  First event of a new stream always scrolls (to show the response starting).
+   *  After that, only scrolls if user is near the bottom (within 300px).
+   *  Throttled via requestAnimationFrame. */
   private autoScroll(msgEl: HTMLElement): void {
-    requestAnimationFrame(() => {
+    if (this._scrollRafId) return;
+    this._scrollRafId = requestAnimationFrame(() => {
+      this._scrollRafId = 0;
       const container = document.getElementById('messages') as HTMLElement | null;
       if (!container) return;
 
+      if (this._firstScroll) {
+        this._firstScroll = false;
+        container.scrollTop = container.scrollHeight;
+        return;
+      }
+
       const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distFromBottom > 100) return;
+      if (distFromBottom > 300) return;
 
       container.scrollTop = container.scrollHeight;
     });

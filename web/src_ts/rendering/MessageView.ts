@@ -6,23 +6,7 @@ import { IWidgetContainerRenderer } from '../types/widget-renderer';
 import { C } from '../core/DomContracts';
 import { getLogger } from '../core/LoggerFactory';
 import { ILogger } from '../core/Logger';
-import { MessageWindowing } from './MessageWindowing';
-
-interface PhaseData {
-  memory?: string;
-  reasoning?: string;
-  content?: string;
-}
-
-export interface MessageData {
-  id?: string | number;
-  role: 'user' | 'assistant';
-  content: string;
-  reasoning?: string;
-  ts?: number | string;
-  phases?: PhaseData[];
-  matched_tools?: Array<{ tool_name: string; status: 'ok' | 'error' | string; turn?: number }>;
-}
+import type { MessageData } from '../types/messages';
 
 /**
  * MessageView — renders message bubbles and manages the messages container.
@@ -37,7 +21,6 @@ export class MessageView implements IMessageView {
   private containerEl: HTMLElement | null = null;
   private renderer: IDomRenderer;
   private iframeBuilder?: IIframeBuilder;
-  private windowing: MessageWindowing;
 
   constructor(
     renderer: IDomRenderer = new BrowserDomRenderer(),
@@ -46,7 +29,6 @@ export class MessageView implements IMessageView {
   ) {
     this.renderer = renderer;
     this.iframeBuilder = iframeBuilder;
-    this.windowing = new MessageWindowing();
   }
 
   init(): void {
@@ -55,9 +37,6 @@ export class MessageView implements IMessageView {
       console.warn('[MessageView] #messages container not found');
       return;
     }
-    this.containerEl.addEventListener('msg:restore', ((e: Event) => {
-      this._handleMsgRestore(e as CustomEvent);
-    }) as EventListener);
   }
 
   /** Append a fully-formed message (from history) */
@@ -77,14 +56,11 @@ export class MessageView implements IMessageView {
     this._renderMessageContent(msgEl, msg);
 
     this.containerEl.appendChild(msgEl);
-    // Only auto-scroll if near bottom (user isn't reading history)
-    const dist = this.containerEl.scrollHeight - this.containerEl.scrollTop - this.containerEl.clientHeight;
-    if (dist <= 100) this.containerEl.scrollTop = this.containerEl.scrollHeight;
 
-    // Windowing
-    const msgId = msg.id !== undefined ? String(msg.id) : `msg-${Date.now()}-${Math.random()}`;
-    msgEl.dataset.msgId = msgId;
-    this.windowing.observeMessage(msgEl, msg);
+    // Always scroll to show the user's own message
+    if (msg.role === 'user') {
+      this.containerEl.scrollTop = this.containerEl.scrollHeight;
+    }
 
     return msgEl;
   }
@@ -114,20 +90,16 @@ export class MessageView implements IMessageView {
     }
 
     this.containerEl.appendChild(msgEl);
-    // Only auto-scroll if near bottom
-    const dist = this.containerEl.scrollHeight - this.containerEl.scrollTop - this.containerEl.clientHeight;
-    if (dist <= 100) this.containerEl.scrollTop = this.containerEl.scrollHeight;
-
-    // Windowing: mark as live so it's never virtualized
+    // Scroll to show response starts (unconditional — user sent message, expects to see it)
+    this.containerEl.scrollTop = this.containerEl.scrollHeight;
     msgEl.dataset.msgId = 'live';
-    this.windowing.setLiveMsgId('live');
 
     return msgEl;
   }
 
-  /** Called when streaming ends — live message becomes eligible for windowing */
+  /** Called when streaming ends — live message is finalized */
   endStreaming(): void {
-    this.windowing.setLiveMsgId(null);
+    // Windowing disabled
   }
 
   /** Clear all messages */
@@ -136,7 +108,6 @@ export class MessageView implements IMessageView {
       if (this.widgetContainerRenderer) {
         this.widgetContainerRenderer.destroyAll(this.containerEl);
       }
-      this.windowing.clear();
       this.containerEl.innerHTML = '';
       this.logger.info('clear_container');
     }
@@ -184,20 +155,18 @@ export class MessageView implements IMessageView {
       const hasAnyContent = phases.some((p) => p.content);
 
       phases.forEach((phase, idx) => {
-        // Memory block
+        // Memory block (collapsed in history — expanded during live streaming)
         if (phase.memory) {
           const details = document.createElement('details');
           details.className = C.REASONING_MEMORIES;
-          details.open = true;
           details.innerHTML = `<summary>📖 Memorias</summary><div class="${C.MEMORY_CONTENT}">${this.escapeHtml(phase.memory)}</div>`;
           el.appendChild(details);
         }
 
-        // Reasoning block
+        // Reasoning block (collapsed in history — expanded during live streaming)
         if (phase.reasoning) {
           const details = document.createElement('details');
           details.className = C.REASONING;
-          details.open = true;
           details.innerHTML = `<summary>Razonamiento (Fase ${idx + 1})</summary><div class="${C.RT}">${this.escapeHtml(phase.reasoning)}</div>`;
           el.appendChild(details);
         }
@@ -237,7 +206,6 @@ export class MessageView implements IMessageView {
       if (reasoning) {
         const details = document.createElement('details');
         details.className = C.REASONING;
-        details.open = true;
         details.innerHTML = `<summary>Razonamiento</summary><div class="${C.RT}">${this.escapeHtml(reasoning)}</div>`;
         el.appendChild(details);
       }
@@ -270,29 +238,13 @@ export class MessageView implements IMessageView {
     }
   }
 
-  /** Restore a virtualized message when it scrolls back into view */
-  private _handleMsgRestore(e: CustomEvent): void {
-    const el = e.target as HTMLElement;
-    if (!el || !el.classList.contains('msg')) return;
-    const data = e.detail?.data as MessageData;
-    if (!data) return;
-
-    // Preserve dataset attributes that were set on the original element
-    const tsAttr = el.dataset.ts;
-    const idAttr = el.dataset.id;
-    const msgIdAttr = el.dataset.msgId;
-
-    el.innerHTML = '';
-
-    // Restore dataset
-    if (tsAttr) el.dataset.ts = tsAttr;
-    if (idAttr) el.dataset.id = idAttr;
-    if (msgIdAttr) el.dataset.msgId = msgIdAttr;
-
-    this._renderMessageContent(el, data);
-  }
+  // Windowing disabled (caused duplicate renders + scroll jank)
 
   private renderWithWidgets(container: HTMLElement, content: string): void {
+    // Guard: skip if this container already has this content rendered
+    if (container.dataset.contentHash === content) return;
+    container.dataset.contentHash = content;
+
     this.logger.debug('render_with_widgets', `content_length=${content.length}`);
     this.renderer.renderMessage(container, content, true);
 

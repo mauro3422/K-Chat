@@ -10,7 +10,7 @@ from web.services.stream_contract import (
 
 @pytest.mark.anyio
 async def test_stream_event_types_include_expected_entries():
-    assert STREAM_EVENT_TYPES == {"heartbeat", "content", "reasoning", "tool_call", "error"}
+    assert STREAM_EVENT_TYPES == {"heartbeat", "content", "reasoning", "tool_call", "error", "memory", "notification"}
 
 
 @pytest.mark.anyio

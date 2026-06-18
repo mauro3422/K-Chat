@@ -10,6 +10,10 @@ const RENAME_ICON = `<svg viewBox="0 0 24 24" width="18" height="18" fill="curre
 
 const DELETE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
 
+const CHECK_ICON = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+
+const CANCEL_ICON = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
+
 export class SessionList {
   private sidebarEl: HTMLElement | null = null;
   private eventBus: IEventBus;
@@ -59,7 +63,7 @@ export class SessionList {
       const label = s.name || s.id.substring(0, 8);
       const msgCount = s.count !== undefined ? s.count : 0;
       const lastStr = s.last_str ? s.last_str.substring(0, 10) : new Date().toISOString().substring(0, 10);
-      const meta = `${msgCount} msgs - ${lastStr}`;
+      const meta = `${msgCount} exchanges - ${lastStr}`;
       
       const itemEl = document.createElement('div');
       itemEl.className = `session-item ${s.id === activeId ? 'active' : ''}`;
@@ -100,7 +104,6 @@ export class SessionList {
         e.stopPropagation();
         this.logger.info('rename_prompt', `sessionId=${s.id} currentLabel=${label}`);
 
-        // Inline rename: replace label content with input field
         const nameSpan = itemEl.querySelector('.session-label') as HTMLElement;
         if (!nameSpan) return;
         const input = document.createElement('input');
@@ -114,6 +117,19 @@ export class SessionList {
         input.focus();
         input.select();
 
+        // Hide normal actions, show confirm/cancel
+        actionsEl.innerHTML = '';
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'act-confirm';
+        confirmBtn.title = 'Confirmar';
+        confirmBtn.insertAdjacentHTML('beforeend', CHECK_ICON);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'act-cancel';
+        cancelBtn.title = 'Cancelar';
+        cancelBtn.insertAdjacentHTML('beforeend', CANCEL_ICON);
+
         const submitRename = () => {
           const newName = input.value.trim();
           if (newName && newName !== label) {
@@ -124,11 +140,34 @@ export class SessionList {
           }
         };
 
+        const cancelRename = () => {
+          nameSpan.textContent = label;
+          // Restore normal actions
+          restoreActions();
+        };
+
+        const restoreActions = () => {
+          actionsEl.innerHTML = '';
+          actionsEl.appendChild(renameBtn);
+          actionsEl.appendChild(deleteBtn);
+        };
+
+        confirmBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          submitRename();
+        });
+        cancelBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          cancelRename();
+        });
+
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
-          if (e.key === 'Escape') { e.preventDefault(); nameSpan.textContent = label; }
+          if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
         });
-        input.addEventListener('blur', submitRename);
+
+        actionsEl.appendChild(confirmBtn);
+        actionsEl.appendChild(cancelBtn);
       });
 
       const deleteBtn = document.createElement('button');
@@ -138,8 +177,36 @@ export class SessionList {
 
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.logger.info('delete_confirm', `sessionId=${s.id} label=${label}`);
-        this.eventBus.emit('session:delete', { sessionId: s.id });
+        this.logger.info('delete_prompt', `sessionId=${s.id} label=${label}`);
+
+        // Replace actions with confirm/cancel
+        actionsEl.innerHTML = '';
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'act-confirm';
+        confirmBtn.title = 'Confirmar eliminación';
+        confirmBtn.insertAdjacentHTML('beforeend', CHECK_ICON);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'act-cancel';
+        cancelBtn.title = 'Cancelar';
+        cancelBtn.insertAdjacentHTML('beforeend', CANCEL_ICON);
+
+        confirmBtn.addEventListener('click', (e2) => {
+          e2.stopPropagation();
+          this.logger.info('delete_confirm', `sessionId=${s.id} label=${label}`);
+          this.eventBus.emit('session:delete', { sessionId: s.id });
+        });
+        cancelBtn.addEventListener('click', (e2) => {
+          e2.stopPropagation();
+          // Restore normal actions
+          actionsEl.innerHTML = '';
+          actionsEl.appendChild(renameBtn);
+          actionsEl.appendChild(deleteBtn);
+        });
+
+        actionsEl.appendChild(confirmBtn);
+        actionsEl.appendChild(cancelBtn);
       });
 
       actionsEl.appendChild(renameBtn);

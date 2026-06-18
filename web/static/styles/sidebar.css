@@ -201,6 +201,10 @@
   color: var(--accent-success);
 }
 
+.session-actions .act-cancel:hover {
+  color: var(--accent-red);
+}
+
 .session-item .si {
   background: var(--bg-primary);
   border: 1px solid var(--border-accent);

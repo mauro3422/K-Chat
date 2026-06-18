@@ -147,15 +147,16 @@ async def chat_stream(
 
     # ── Auto-retrieve memories from last user message ────────────────
     memory_block = None
+    reranker_degraded = False
     if _deps.retrieval_service is not None:
-        memory_block = await _deps.retrieval_service.retrieve_if_allowed(
+        memory_block, reranker_degraded = await _deps.retrieval_service.retrieve_if_allowed(
             message_user=message_user,
             session_id=_deps.session_id,
         )
     else:
         from src.core.services.retrieval_service import RetrievalService
         svc = RetrievalService()
-        memory_block = await svc.retrieve_if_allowed(
+        memory_block, reranker_degraded = await svc.retrieve_if_allowed(
             message_user=message_user,
             session_id=_deps.session_id,
         )
@@ -214,6 +215,14 @@ async def chat_stream(
     # Emit auto-retrieved memories as a stream event (for frontend display)
     if memory_block and _deps.streaming:
         yield ("memory", memory_block)
+
+    # Emit notification if reranker was degraded
+    if reranker_degraded and _deps.streaming:
+        yield ("notification", {
+            "type": "warning",
+            "message": "Reranker de memorias no disponible. La búsqueda se realizó sin re-rank.",
+            "duration": 8000,
+        })
 
     # Execute tool loop via ToolExecutionService
     async for event in _deps.tool_service.execute(

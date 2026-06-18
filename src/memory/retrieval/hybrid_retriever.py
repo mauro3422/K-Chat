@@ -75,6 +75,11 @@ class HybridRetriever:
         self._db_path = db_path
         self._fusion_config = fusion_config or FusionConfig()
         self._token_budget = token_budget or TokenBudgetConfig()
+        self._reranker_degraded = False
+
+    @property
+    def was_reranker_degraded(self) -> bool:
+        return self._reranker_degraded
 
     async def search(
         self,
@@ -95,17 +100,21 @@ class HybridRetriever:
         Returns:
             List of HybridResult sorted by fusion score descending.
         """
+        self._reranker_degraded = False  # Reset per search
+
         prefetch_k = max(top_k * 3, 30)  # Fetch more candidates, then fuse and cut
+
+        exclude_key = session_id or None  # None = no exclusion
 
         # Run all 3 searches in parallel via shared thread pool
         vec_task = run_in_thread(
-            self._vector_search, query, prefetch_k, source_filter
+            self._vector_search, query, prefetch_k, source_filter, exclude_key
         )
         kw_task = run_in_thread(
-            keyword_search, query, self._db_path, prefetch_k, source_filter
+            keyword_search, query, self._db_path, prefetch_k, source_filter, exclude_key
         )
         ent_task = run_in_thread(
-            entity_search, query, self._db_path, prefetch_k, source_filter
+            entity_search, query, self._db_path, prefetch_k, source_filter, exclude_key
         )
 
         vec_results, kw_results, ent_results = await asyncio.gather(
@@ -196,6 +205,7 @@ class HybridRetriever:
                 results.sort(key=lambda x: x.fusion_score, reverse=True)
             except Exception as e:
                 logger.warning("Reranker failed (non-fatal), using original results: %s", e)
+                self._reranker_degraded = True
                 # Fall through with original results
 
         # Apply token budget if requested
@@ -223,6 +233,7 @@ class HybridRetriever:
         query: str,
         top_k: int,
         source_filter: Optional[str] = None,
+        exclude_source_key: Optional[str] = None,
     ) -> list[tuple[int, float]]:
         """Vector search using a local VectorStore (thread-safe).
 
@@ -239,7 +250,10 @@ class HybridRetriever:
         local_store = VectorStore(self._db_path)
         try:
             sf = source_filter if source_filter else None
-            results = local_store.search(vec, k=top_k, source_filter=sf)
+            results = local_store.search(
+                vec, k=top_k, source_filter=sf,
+                exclude_source_key=exclude_source_key
+            )
             return [(r.entry.id, 1.0 - r.distance) for r in results]
         finally:
             local_store.close()

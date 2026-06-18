@@ -1,19 +1,9 @@
 .interactive-widget-container {
   margin: 12px 0;
   width: 100%;
+  overflow: hidden;
+  contain: layout;
   animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.interactive-widget-iframe {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border) !important;
-  box-shadow: 0 4px 12px var(--alpha-black-15);
-  transition: box-shadow 0.3s ease, border-color 0.3s ease;
-}
-
-.interactive-widget-iframe:hover {
-  border-color: var(--accent-link) !important;
-  box-shadow: 0 6px 16px var(--alpha-black-10);
 }
 
 .widget-placeholder {
@@ -165,9 +155,16 @@
   width: 100%;
   height: 0;
   min-height: 60px;
-  border: none;
-  background: #161b22;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-secondary);
   border-radius: 0 0 8px 8px;
   display: block;
   overflow: hidden;
+  box-shadow: 0 4px 12px var(--alpha-black-15);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.widget-iframe:hover {
+  border-color: var(--accent-link) !important;
+  box-shadow: 0 6px 16px var(--alpha-black-10);
 }

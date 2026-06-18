@@ -91,6 +91,7 @@ export class IframeBuilder implements IIframeBuilder {
    */
   private sanitizeWidgetCode(code: string): string {
     return code
+      // Strip SVG animation tags that cause infinite growth
       .replace(/<animate\b[^>]*\/>/gi, '')
       .replace(/<animate\b[^>]*>[\s\S]*?<\/animate>/gi, '')
       .replace(/<animateTransform\b[^>]*\/>/gi, '')
@@ -107,9 +108,9 @@ export class IframeBuilder implements IIframeBuilder {
    * Widget code is sanitized to remove SVG animations that cause infinite growth.
    */
   buildSrcDoc(id: string, code: string, initialState?: Record<string, unknown>): string {
-    const stateStr = initialState
+    const stateStr = (initialState
       ? JSON.stringify(initialState)
-      : '{}';
+      : '{}').replace(/<\/script/gi, '<\\/script');
     const safeCode = this.sanitizeWidgetCode(code);
 
     return `<!DOCTYPE html>
@@ -132,12 +133,12 @@ export class IframeBuilder implements IIframeBuilder {
   input, button, select, textarea { font-family: inherit; color-scheme: dark; }
   /* Safety buffer: prevent content clipping if getDocHeight is slightly off */
   .w-root { margin-bottom: 16px; }
-</style>
-</head>
+<\/style>
+<\/head>
 <body>
-${safeCode}
 <script>
-  // ── State API ──────────────────────────────────────
+  // ── Infra API (defined BEFORE widget code so widgets can use them) ──
+  window.parent.postMessage({ type: "widget-lifecycle", id: "${id}", phase: "infra-ready" }, "*");
   window.initialState = ${stateStr};
 
   window.saveState = function(stateObj) {
@@ -148,16 +149,42 @@ ${safeCode}
     }, "*");
   };
 
-  // ── Error Handler ──────────────────────────────────
-  window.onerror = function(msg, url, line, col, err) {
-    window.parent.postMessage({
-      type: "widget-error",
-      id: "${id}",
-      message: msg,
-      line: line,
-      col: col
-    }, "*");
-  };
+  // ── Clipboard proxy (sandboxed iframes lack secure context) ──
+  // Widgets using navigator.clipboard.writeText() fail silently in null-origin
+  // iframes. This proxy routes clipboard ops to the parent via postMessage.
+  if (typeof navigator !== 'undefined' && navigator.clipboard) {
+    var _origWrite = navigator.clipboard.writeText;
+    navigator.clipboard.writeText = function(text) {
+      return new Promise(function(resolve, reject) {
+        try {
+          window.parent.postMessage({
+            type: "clipboard-write",
+            id: "${id}",
+            text: text
+          }, "*");
+          resolve();
+        } catch(e) { reject(e); }
+      });
+    };
+  }
+
+  // ── Canvas roundRect polyfill (not in older browsers) ──
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+      if (r === undefined) r = 0;
+      this.moveTo(x + r, y);
+      this.lineTo(x + w - r, y);
+      this.quadraticCurveTo(x + w, y, x + w, y + r);
+      this.lineTo(x + w, y + h - r);
+      this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      this.lineTo(x + r, y + h);
+      this.quadraticCurveTo(x, y + h, x, y + h - r);
+      this.lineTo(x, y + r);
+      this.quadraticCurveTo(x, y, x + r, y);
+      this.closePath();
+      return this;
+    };
+  }
 
   // ── Resize API ────────────────────────────────────
   function getDocHeight() {
@@ -209,9 +236,37 @@ ${safeCode}
   // No setInterval — caused infinite growth feedback loop.
   // ResizeObserver + the setTimeout calls above cover all cases, including
   // accordion expand/collapse (which fires setTimeout(sendHeight, 50) in the widget).
+
+  // ── Widget lifecycle signal ──
+  // After a brief delay, report whether the widget code executed.
+  // Tracks errors between infra-ready and this signal.
+  var _widgetHadError = false;
+  var _origOnError = window.onerror;
+  window.onerror = function(msg, url, line, col, err) {
+    _widgetHadError = true;
+    if (_origOnError) _origOnError(msg, url, line, col, err);
+    else {
+      window.parent.postMessage({
+        type: "widget-error",
+        id: "${id}",
+        message: msg,
+        line: line,
+        col: col
+      }, "*");
+    }
+  };
+  setTimeout(function() {
+    window.parent.postMessage({
+      type: "widget-lifecycle",
+      id: "${id}",
+      phase: "widget-code-done",
+      hadError: _widgetHadError
+    }, "*");
+  }, 500);
 <\/script>
-</body>
-</html>`;
+${safeCode}
+<\/body>
+<\/html>`;
   }
 
   /**
@@ -282,7 +337,7 @@ ${safeCode}
       }
       const iframe = document.createElement('iframe');
       iframe.className = C.WIDGET_IFRAME;
-      iframe.setAttribute('sandbox', 'allow-scripts');
+      iframe.setAttribute('sandbox', 'allow-scripts allow-modals');
       iframe.setAttribute('scrolling', 'no');
       iframe.style.width = '100%';
       iframe.style.height = '0';
@@ -343,12 +398,15 @@ ${safeCode}
         if (iframe) {
           iframe.style.height = data.height + 'px';
           this.registry.log(data.id, 'altura', `${data.height}px`);
-          // Auto-scroll on widget expansion — debounced to coalesce rapid sequential resizes
+          // Auto-scroll on widget expansion only if user is near bottom
           if (!this._widgetScrollDebounce) {
             this._widgetScrollDebounce = requestAnimationFrame(() => {
               this._widgetScrollDebounce = 0;
               const msgs = document.getElementById('messages');
-              if (msgs) msgs.scrollTop = msgs.scrollHeight;
+              if (!msgs) return;
+              const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
+              if (distFromBottom > 300) return;
+              msgs.scrollTop = msgs.scrollHeight;
             });
           }
         }
@@ -362,7 +420,22 @@ ${safeCode}
       }
 
       case 'widget-error': {
-        console.error(`[Widget ${data.id}] ${data.message} (line ${data.line}:${data.col})`);
+        const errMsg = `[Widget ${data.id}] ${data.message} (line ${data.line}:${data.col})`;
+        console.error(errMsg);
+        this.debug?.logWidget(`error ${data.id} msg=${data.message} line=${data.line}`);
+        break;
+      }
+
+      case 'clipboard-write': {
+        // Proxy clipboard writes from sandboxed iframes (null origin can't use navigator.clipboard)
+        if (data.text && navigator.clipboard) {
+          navigator.clipboard.writeText(data.text).catch(() => {});
+        }
+        break;
+      }
+
+      case 'widget-lifecycle': {
+        this.debug?.logWidget(`lifecycle id=${data.id} phase=${data.phase} hadError=${data.hadError}`);
         break;
       }
     }
@@ -382,7 +455,7 @@ ${safeCode}
     const iframe = document.createElement('iframe');
     iframe.className = C.WIDGET_IFRAME;
     iframe.setAttribute('data-widget-id', id);
-    iframe.setAttribute('sandbox', 'allow-scripts');
+    iframe.setAttribute('sandbox', 'allow-scripts allow-modals');
     iframe.setAttribute('scrolling', 'no');
     iframe.style.width = '100%';
     iframe.style.height = '0';

@@ -11,14 +11,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         app_mock: resolve(__dirname, 'web/src_ts/app_mock.ts'),
-        skills_ui: resolve(__dirname, 'web/static/modules/skills-ui.ts'),
-        chat_form: resolve(__dirname, 'web/src_ts/core/ui/ChatForm.ts'),
-        logger: resolve(__dirname, 'web/static/modules/logger.ts'),
-        api_client: resolve(__dirname, 'web/static/modules/api-client.ts'),
-        session_context: resolve(__dirname, 'web/static/modules/session-context.ts'),
-        reasoning_handler: resolve(__dirname, 'web/static/modules/reasoning-handler.ts'),
-        widget_container_renderer: resolve(__dirname, 'web/static/modules/widget-container-renderer.ts'),
-        stream_error_handler: resolve(__dirname, 'web/static/modules/stream-error-handler.ts'),
       },
       output: {
         entryFileNames: 'assets/[name].js',

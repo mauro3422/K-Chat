@@ -3,11 +3,11 @@ import { IWidgetRegistry } from '../types/widgets';
 import { IIframeBuilder } from '../types/iframe';
 import { IWidgetContainerRenderer } from '../types/widget-renderer';
 import { IDebugManager } from '../types/debug';
-import { SSEEvent, SSENewMessage, SSEStreamReasoning, SSEStreamContent, SSEStreamTool, SSEStreamMemory, SSEStreamError } from '../types/sse';
+import { SSEEvent, SSENewMessage, SSEStreamReasoning, SSEStreamContent, SSEStreamTool, SSEStreamMemory, SSEStreamError, SSEStreamNotification } from '../types/sse';
 import { StreamDispatcher } from './StreamDispatcher';
 import { ContentHandler, StreamHandlerContext } from './ContentHandler';
 import { IMessageView } from '../types/message-view';
-import { MessageData } from '../rendering/MessageView';
+import type { MessageData } from '../types/messages';
 import { getLogger } from '../core/LoggerFactory';
 import { ILogger } from '../core/Logger';
 
@@ -101,6 +101,9 @@ export class SSEClient implements ISSEClient {
       case 'stream:error':
         this.handleStreamError(event.data);
         break;
+      case 'stream:notification':
+        this.handleStreamNotification(event.data);
+        break;
       case 'new_message':
         this.handleNewMessage(event.data);
         break;
@@ -154,6 +157,17 @@ export class SSEClient implements ISSEClient {
     this.liveDispatcher?.emit('error', payload, this.liveContext!);
   }
 
+  private handleStreamNotification(data: SSEStreamNotification): void {
+    if (data.session_id !== this.currentSessionId) return;
+    const id = 'notif-' + Date.now();
+    this.eventBus.emit('notification:show', {
+      id,
+      type: data.type,
+      message: data.message,
+      duration: data.duration ?? 5000,
+    });
+  }
+
   /**
    * Ensure a live message element exists for the given session.
    * Creates a new one if none exists or if the session changed.
@@ -191,6 +205,7 @@ export class SSEClient implements ISSEClient {
   private clearLiveMessage(): void {
     if (this.liveMsgEl) {
       this.liveMsgEl.classList.remove('streaming', 'live-msg');
+      this.messageView.endStreaming();
     }
     this.liveMsgEl = null;
     this.liveDispatcher = null;

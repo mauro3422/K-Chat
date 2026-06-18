@@ -143,7 +143,7 @@ def home(request: Request, new: bool = False) -> HTMLResponse:
         session_id = request.cookies.get("kchat_session_id")
         if not session_id:
             session_id = str(uuid.uuid4())
-    resp = templates.TemplateResponse(request, "chat.html", {
+    resp = templates.TemplateResponse(request, "chat_ts.html", {
         "session_id": session_id,
         "model": FALLBACK_MODEL,
         "models": get_available_models(),
@@ -157,7 +157,7 @@ def home(request: Request, new: bool = False) -> HTMLResponse:
 
 @router.get("/sessions/{session_id}", response_class=HTMLResponse)
 def session_page(request: Request, session_id: str) -> HTMLResponse:
-    resp = templates.TemplateResponse(request, "chat.html", {
+    resp = templates.TemplateResponse(request, "chat_ts.html", {
         "session_id": session_id,
         "model": FALLBACK_MODEL,
         "models": get_available_models(),
@@ -174,14 +174,13 @@ async def sidebar(request: Request) -> HTMLResponse:
     current = request.query_params.get("current", "")
     sessions = []
     for s in raw:
-        sid, first, last, count, user_count, name = s[0], s[1], s[2], s[3], s[4], s[5]
-        is_favorite = bool(s[7]) if len(s) > 7 else False
+        sid, first, last, count, name = s[0], s[1], s[2], s[3], s[4]
+        is_favorite = bool(s[6]) if len(s) > 6 else False
         sessions.append({
             "sid": sid,
             "first_str": str(first),
             "last_str": str(last),
             "count": count,
-            "user_count": user_count,
             "name": name,
             "is_favorite": is_favorite,
         })

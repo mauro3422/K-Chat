@@ -13,6 +13,7 @@ def entity_search(
     db_path: str,
     top_k: int = 20,
     source_filter: str | None = None,
+    exclude_source_key: str | None = None,
 ) -> list[tuple[int, float]]:
     """Search for exchanges linked to entities mentioned in the query.
     
@@ -24,6 +25,7 @@ def entity_search(
         db_path: Path to memory.db.
         top_k: Maximum results to return.
         source_filter: Optional 'memory' or 'session' to filter by source.
+        exclude_source_key: If set, exclude entries with this source_key.
     
     Returns:
         [(rowid, entity_score), ...] sorted by score descending.
@@ -49,9 +51,16 @@ def entity_search(
         
         source_join = ""
         source_where = ""
+        source_params: list[Any] = []
         if source_filter:
             source_join = "JOIN vec_meta m ON m.rowid = em.exchange_rowid"
             source_where = "AND m.source = ?"
+            source_params.append(source_filter)
+        if exclude_source_key:
+            if not source_join:
+                source_join = "JOIN vec_meta m ON m.rowid = em.exchange_rowid"
+            source_where += " AND m.source_key != ?"
+            source_params.append(exclude_source_key)
         
         # 1. Direct entity matches (original logic)
         rows = conn.execute(
@@ -65,7 +74,7 @@ def entity_search(
             ORDER BY score DESC
             LIMIT ?
             """,
-            [*name_params, *(source_filter if source_filter else []), top_k]
+            [*name_params, *source_params, top_k]
         ).fetchall()
         
         result_map: dict[int, float] = {}
@@ -94,8 +103,7 @@ def entity_search(
                   {source_where}
                 GROUP BY em.exchange_rowid
                 """,
-                [*entity_ids, *entity_ids, *entity_ids,
-                 *(source_filter if source_filter else [])]
+                [*entity_ids, *entity_ids, *entity_ids, *source_params]
             ).fetchall()
             
             for rowid, score in related_rows:

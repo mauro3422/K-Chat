@@ -1,10 +1,9 @@
 """Cross-encoder reranker for memory retrieval.
 
-Takes a query + candidate texts and re-ranks them using a BERT cross-encoder.
-More accurate than cosine similarity because it evaluates the actual semantic
-relationship between query and text.
+Takes a query + candidate texts and re-ranks them using a BERT cross-encoder
+via fastembed (ONNX runtime, no PyTorch needed).
 
-Model: cross-encoder/ms-marco-MiniLM-L-6-v2 (~80MB, CPU-friendly)
+Model: Xenova/ms-marco-MiniLM-L-6-v2
 """
 
 from __future__ import annotations
@@ -28,14 +27,18 @@ class Reranker:
     def __init__(self):
         self._model = None
         self._ready = False
-        # Model is NOT loaded here — loaded lazily on first rerank()
 
     def _load_model(self):
-        from sentence_transformers import CrossEncoder
-        logger.info("Loading cross-encoder model: cross-encoder/ms-marco-MiniLM-L-6-v2")
-        self._model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-        logger.info("Cross-encoder model loaded successfully")
-        self._ready = True
+        try:
+            from fastembed.rerank.cross_encoder import TextCrossEncoder
+
+            logger.info("Loading cross-encoder model: Xenova/ms-marco-MiniLM-L-6-v2")
+            self._model = TextCrossEncoder("Xenova/ms-marco-MiniLM-L-6-v2")
+            logger.info("Cross-encoder model loaded successfully")
+            self._ready = True
+        except Exception as e:
+            logger.warning("[Notification] Reranker unavailable: %s", e)
+            raise
 
     def rerank(
         self, query: str, candidates: list[dict[str, Any]], top_k: int = 8
@@ -54,8 +57,7 @@ class Reranker:
         if not self._ready:
             try:
                 self._load_model()
-            except Exception as e:
-                logger.warning("Reranker unavailable, returning candidates unchanged: %s", e)
+            except Exception:
                 return candidates[:top_k]
 
         if not candidates:
@@ -65,7 +67,7 @@ class Reranker:
         pairs = [(query, t[:512]) for t in texts]
 
         try:
-            scores = self._model.predict(pairs)
+            scores = list(self._model.rerank_pairs(pairs))
         except Exception as e:
             logger.warning("Cross-encoder predict failed: %s. Using original scores.", e)
             return candidates[:top_k]

@@ -25,6 +25,13 @@ export interface SSEStreamError {
   error: string;
 }
 
+export interface SSEStreamNotification {
+  session_id: string;
+  type: 'info' | 'warning' | 'error' | 'success';
+  message: string;
+  duration?: number;
+}
+
 export interface SSENewMessage {
   session_id: string;
   role: 'user' | 'assistant';
@@ -50,6 +57,7 @@ export type SSEEvent =
   | { type: 'stream:tool'; data: SSEStreamTool }
   | { type: 'stream:memory'; data: SSEStreamMemory }
   | { type: 'stream:error'; data: SSEStreamError }
+  | { type: 'stream:notification'; data: SSEStreamNotification }
   | { type: 'new_message'; data: SSENewMessage }
   | { type: 'session_deleted'; data: SSESessionDeleted }
   | { type: 'message_deleted'; data: SSEMessageDeleted };

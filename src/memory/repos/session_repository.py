@@ -241,9 +241,8 @@ class SessionRepository(_BaseRepository):
                 SELECT m.session_id,
                        MIN(m.created_at),
                        MAX(m.created_at),
-                       COUNT(*),
                        SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END),
-                       COALESCE(s.name, ''),
+               COALESCE(s.name, ''),
                        s.telegram_chat_id,
                        COALESCE(s.is_favorite, 0)
                 FROM messages m

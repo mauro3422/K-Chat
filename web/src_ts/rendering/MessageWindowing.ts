@@ -5,7 +5,10 @@ export class MessageWindowing {
   private estimatedHeights: Map<string, number> = new Map()
   private liveMsgId: string | null = null
   private readonly DEFAULT_HEIGHT = 80
-  private readonly OVERS_CAN = 200
+  // Effectively disabled — huge rootMargin keeps all messages "visible"
+  // avoiding virtualize-out/restore cycles that cause duplicate renders.
+  // Re-enable with a smaller value when windowing is stable.
+  private readonly OVERS_CAN = 99999
 
   constructor() {
     this.observer = new IntersectionObserver(

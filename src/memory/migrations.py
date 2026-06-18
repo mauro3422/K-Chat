@@ -376,6 +376,19 @@ async def _migration_022_add_session_favorite(conn: Any, engine: Any) -> None:
         pass
 
 
+async def _migration_023_memory_index_unique(conn: Any, engine: Any) -> None:
+    """Add UNIQUE index on (session_id, key) for memory_index upsert to work.
+
+    Older databases may have been created before _migration_010_memory_index
+    added PRIMARY KEY (session_id, key). A unique index is safer than
+    altering table constraints for existing production data.
+    """
+    await engine.execute(conn, """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_index_session_key
+        ON memory_index (session_id, key)
+    """)
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -399,4 +412,5 @@ MIGRATIONS = (
     _migration_020_chat_journal_fk,
     _migration_021_messages_session_created_index,
     _migration_022_add_session_favorite,
+    _migration_023_memory_index_unique,
 )

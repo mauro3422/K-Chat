@@ -72,3 +72,6 @@ playwright-report/
 dependencies/searxng/
 logs/
 logs/
+
+tmp_*
+

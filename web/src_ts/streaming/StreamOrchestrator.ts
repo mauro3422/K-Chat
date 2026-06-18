@@ -2,7 +2,7 @@ import { StreamDispatcher } from './StreamDispatcher';
 import { ContentHandler, StreamHandlerContext } from './ContentHandler';
 import { StreamSimulator } from './StreamSimulator';
 import { NDJSONStreamClient } from './NDJSONStreamClient';
-import { MessageData } from '../rendering/MessageView';
+import type { MessageData } from '../types/messages';
 import { IMessageView } from '../types/message-view';
 import { IChatForm } from '../types/chat-form';
 import { RateLimitCooldown } from '../core/RateLimitCooldown';
@@ -42,6 +42,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   private currentUserText: string | null = null;
   private currentModel: string | null = null;
   private contentHandler: ContentHandler | null = null;
+  private _isRetry = false;
   private logger: ILogger;
 
   constructor(
@@ -103,9 +104,24 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     this.currentUserText = text;
     this.currentModel = model || null;
 
-    const userMsg: MessageData = { role: 'user', content: text, ts: new Date().toISOString() };
-    this.messageView.appendMessage(userMsg);
-    this.sessionStore.addMessage(this.sessionStore.activeSessionId, userMsg);
+    // Ensure there's an active session before sending
+    if (!this.sessionStore.activeSessionId) {
+      const newId = await this.sessionStore.createSession();
+      if (!newId) {
+        this._streamGuard = false;
+        this.chatForm.setStreamingState(false);
+        this.debug?.logUI('send_error', 'failed to create session');
+        return;
+      }
+      this.debug?.logUI('session_created', newId);
+      this.sessionStore.renameSession(newId, text.substring(0, 60));
+    }
+
+    if (!this._isRetry) {
+      const userMsg: MessageData = { role: 'user', content: text, ts: new Date().toISOString() };
+      this.messageView.appendMessage(userMsg);
+      this.sessionStore.addMessage(this.sessionStore.activeSessionId, userMsg);
+    }
     this.chatForm.setStreamingState(true);
 
     const assistantEl = this.messageView.beginStreaming('assistant');
@@ -137,6 +153,19 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       this._resetTimeout();
     });
     dispatcher.on('memory', () => this._resetTimeout());
+    dispatcher.on('notification', (data) => {
+      try {
+        const parsed = JSON.parse(data);
+        const id = 'notif-' + Date.now();
+        this.eventBus?.emit('notification:show', {
+          id,
+          type: parsed.type || 'info',
+          message: parsed.message || '',
+          duration: parsed.duration ?? 5000,
+        });
+      } catch { /* ignore malformed notification */ }
+      this._resetTimeout();
+    });
     dispatcher.on('error', (data) => {
       try {
         const parsed = JSON.parse(data);
@@ -283,7 +312,10 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   handleRetry(text: string, model?: string): void {
     this.abort();
     this.chatForm.setStreamingState(false);
+    this.ndjsonClient?.abort();
+    this._isRetry = true;
     this.handleChatSend(text, undefined, model || (this.currentModel ?? undefined));
+    this._isRetry = false;
   }
 
   private _relabelReasoning(assistantEl: HTMLElement): void {
@@ -333,13 +365,13 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     if (this.retryController?.shouldRetry(false) && this.currentUserText) {
       const text = this.currentUserText;
       this.debug?.logUI('stream_error_retry', `${type}: ${message} — attempt ${this.retryController.count + 1}/${this.retryController.maxRetries}`);
-      this.retryController.scheduleRetry({
-        assistantEl: this.lastAssistantMsgEl!,
-        userText: text,
-        reason: message,
-        onRetry: () => this.handleChatSend(text, undefined, this.currentModel ?? undefined),
-      });
-      this._finalizeStream();
+        this.retryController.scheduleRetry({
+          assistantEl: this.lastAssistantMsgEl!,
+          userText: text,
+          reason: message,
+          onRetry: () => this.handleRetry(text, this.currentModel ?? undefined),
+        });
+        this._finalizeStream();
       return;
     }
 
@@ -367,7 +399,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         assistantEl: this.lastAssistantMsgEl!,
         userText: text,
         reason: error.message,
-        onRetry: () => this.handleChatSend(text, undefined, this.currentModel ?? undefined),
+        onRetry: () => this.handleRetry(text, this.currentModel ?? undefined),
       });
       this._finalizeStream();
       return;
@@ -459,7 +491,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         assistantEl,
         userText: retryText,
         reason: 'empty response',
-        onRetry: () => this.handleChatSend(retryText, undefined, this.currentModel ?? undefined),
+        onRetry: () => this.handleRetry(retryText, this.currentModel ?? undefined),
       });
       this._finalizeStream();
     } else {

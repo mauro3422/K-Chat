@@ -17,9 +17,9 @@ export class ReasoningHandler {
 
   handleReasoning(data: string, ctx: StreamHandlerContext): void {
     this.debug?.logStream('reasoning', data);
-    this.logger.debug('reasoning', { len: data.length });
     let details = ctx.msgEl.querySelector(`details.${C.REASONING}[data-phase="${ctx.phaseIndex}"]`) as HTMLDetailsElement | null;
     if (!details) {
+      this.logger.debug('reasoning', { len: data.length, phase: ctx.phaseIndex });
       details = document.createElement('details');
       details.className = C.REASONING;
       details.dataset.phase = String(ctx.phaseIndex);

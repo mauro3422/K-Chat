@@ -16,6 +16,7 @@ const SOUND_FILES: Record<SoundName, string> = {
 export class AudioBus implements IAudioBus {
   private logger: ILogger;
   private audioCache = new Map<string, HTMLAudioElement>();
+  private brokenSounds = new Set<string>();
   private volume = 0.5;
   private muted = false;
   private eventBus?: IEventBus;
@@ -50,18 +51,25 @@ export class AudioBus implements IAudioBus {
 
   play(sound: SoundName): void {
     if (this.muted) return;
+    if (this.brokenSounds.has(sound)) return; // Don't retry permanently broken files
     const src = SOUND_FILES[sound];
     if (!src) return;
 
     let audio = this.audioCache.get(sound);
     if (!audio) {
+      if (typeof Audio === 'undefined') return;
       audio = new Audio(src);
       audio.volume = this.volume;
-      audio.onerror = () => {};
+      audio.onerror = () => {
+        this.audioCache.delete(sound);
+        this.brokenSounds.add(sound); // Permanently mark as broken
+      };
       this.audioCache.set(sound, audio);
     }
     audio.currentTime = 0;
-    audio.play().catch(() => {});
+    audio.play().catch(() => {
+      this.brokenSounds.add(sound); // Play failed too → mark broken
+    });
   }
 
   setVolume(vol: number): void {
