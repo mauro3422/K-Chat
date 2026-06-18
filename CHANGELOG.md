@@ -106,6 +106,26 @@ Todos reseteables desde un solo punto: **`src/api/lifecycle.reset_runtime_state(
 
 ---
 
+### Multi-Device SSE
+- **`KAIROS_WEB_URL` ahora acepta múltiples URLs separadas por coma**: el bot de Telegram notifica a TODOS los web UIs simultáneamente.
+  - `adapter.py`: `_get_sse_notify_url()` reemplazado por `_get_sse_notify_urls()` que devuelve lista.
+  - Nuevo helper `_notify_all()` — POSTea el evento a todas las URLs configuradas.
+  - `ws_client.py`: el fallback HTTP de `send_event()` también usa `_notify_all()`.
+  - Cada fallo individual se loggea sin bloquear a los demás.
+  - Uso: `KAIROS_WEB_URL="http://127.0.0.1:8000,http://192.168.1.100:8000"é
+
+### Accesibilidad
+- `<select id="model-select">` ahora tiene `aria-label="Seleccionar modelo de lenguaje"é (DevTools AI audit).
+- Polling de `/models/availability` reducido de 30s a 60s (success) / 120s (error). El endpoint es puramente en memoria, no consume tokens.
+
+### Fixes de tests post-refactor
+- `conftest.py`: columna `auto_memories` agregada al schema de `debug_info`.
+- `test_web_server.py`: `request: Request` y `BackgroundTasks` pasados correctamente a routers con DI.
+- `test_db_query.py`: todas las llamadas a `db_query.run()` ahora tienen `await`.
+- `test_history_service.py`: asserts actualizados con `memory_results=None`.
+
+---
+
 ## [2026-06-17] - Estabilizacion local + logs al gateway
 
 ### Bugfixes
