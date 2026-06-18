@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -333,7 +334,7 @@ async def run(**kwargs: Any) -> str:
 
     # 4. Ejecutar en sandbox
     logger.info("Ejecutando código Python (timeout=%ds, chars=%d)", timeout, len(code))
-    result = await asyncio.to_thread(_execute_code, code, timeout)
+    result = await run_in_thread(_execute_code, code, timeout)
 
     # 5. Armar respuesta estructurada
     is_error = result["exit_code"] != 0

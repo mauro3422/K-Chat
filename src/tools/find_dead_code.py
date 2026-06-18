@@ -12,6 +12,7 @@ from typing import Any
 from pathlib import Path
 
 from src.tools._path_helpers import resolve_and_validate_path
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -367,4 +368,4 @@ async def run(**kwargs: Any) -> str:
     quick = kwargs.get("quick", False)
     if not path:
         return "[ERROR] Proporciona una ruta (archivo o directorio)."
-    return await asyncio.to_thread(_sync_find_dead_code, path, dead_imports, exclude_tests, quick)
+    return await run_in_thread(_sync_find_dead_code, path, dead_imports, exclude_tests, quick)

@@ -1,8 +1,8 @@
-import asyncio
 import logging
 import os
 from typing import Any
 import httpx
+from src.utils.async_utils import sleep
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +118,7 @@ async def _search_with_retry(
             except Exception:
                 logger.exception("Search attempt %d/%d failed", attempt + 1, _retries + 1)
                 if attempt < _retries:
-                    import asyncio
-                    await asyncio.sleep(1.5 * (attempt + 1))
+                    await sleep(1.5 * (attempt + 1))
                 else:
                     return None, f"Search error (after {_retries + 1} attempts)."
     return None, "Search error (unreachable)"

@@ -11,6 +11,7 @@ from typing import Any
 from src.tools._path_helpers import resolve_and_validate_path
 from src.tools._validators import validate_file
 from src.tools._validators import validate_file
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -176,4 +177,4 @@ async def run(**kwargs: Any) -> str:
     pattern: str = kwargs.get("pattern", "")
     arch_check: bool = kwargs.get("architecture", False)
 
-    return await asyncio.to_thread(_sync_validate, files, directory, pattern, arch_check)
+    return await run_in_thread(_sync_validate, files, directory, pattern, arch_check)

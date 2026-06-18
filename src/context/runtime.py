@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from src.context.files import _ensure_file, _read_file
-from src.context.templates import TEMPLATES
+from src.context.templates import get_templates
 from src.context.tools_docs import _build_rules_files, _build_tools_md
 from src.paths import CONTEXT_DIR
 
@@ -62,9 +62,10 @@ def build_context_snapshot(force: bool = False, tool_definitions: dict[str, Any]
             _CONTEXT_CACHE = None
 
     segments: list[str] = []
+    templates = get_templates()
     for filename in ["SOUL.md", "MEMORY.md", "AGENTS.md"]:
         filepath = os.path.join(CONTEXT_DIR, filename)
-        _ensure_file(filepath, TEMPLATES[filename])
+        _ensure_file(filepath, templates[filename])
         content = _read_file(filepath)
         if content:
             segments.append(content)

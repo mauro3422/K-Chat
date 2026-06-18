@@ -1,4 +1,3 @@
-import asyncio
 import ipaddress
 import logging
 import os
@@ -9,6 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 import httpx
 from httpx import ConnectError, HTTPStatusError, RequestError, TimeoutException
+from src.utils.async_utils import sleep
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) Kairos/1.0"
@@ -180,7 +180,7 @@ async def _fetch_with_retry(url: str, max_chars: int, _retries: int, config=None
         except TimeoutException:
             logger.warning("Timeout fetching %s", url)
             if attempt < _retries:
-                await asyncio.sleep(1)
+                await sleep(1)
             else:
                 return f"[ERROR] Timeout while trying to access {url}."
         except HTTPStatusError as e:
@@ -192,7 +192,7 @@ async def _fetch_with_retry(url: str, max_chars: int, _retries: int, config=None
         except Exception as e:
             logger.warning("Error fetching %s: %s", url, e)
             if attempt < _retries:
-                await asyncio.sleep(1)
+                await sleep(1)
                 return f"[ERROR] Error processing {url}."
 
 

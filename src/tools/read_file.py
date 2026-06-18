@@ -1,8 +1,8 @@
 import os
-import asyncio
 from typing import Any
 from typing import Any
 from src.tools._path_helpers import resolve_and_validate_path
+from src.utils.async_utils import run_in_thread
 
 DEFINITION: dict[str, Any] = {
     "type": "function",
@@ -84,10 +84,10 @@ async def run(**kwargs) -> str:
         return err
 
 
-    if not await asyncio.to_thread(os.path.exists, resolved):
+    if not await run_in_thread(os.path.exists, resolved):
         return f"[ERROR] The file '{path}' does not exist."
 
-    if await asyncio.to_thread(os.path.isdir, resolved):
+    if await run_in_thread(os.path.isdir, resolved):
         return f"[ERROR] '{path}' is a directory, not a file."
 
     try:
@@ -95,7 +95,7 @@ async def run(**kwargs) -> str:
             with open(resolved, "r", encoding="utf-8", errors="replace") as f:
                 return f.readlines()
         
-        lines = await asyncio.to_thread(_read_sync)
+        lines = await run_in_thread(_read_sync)
 
         return _paginate_and_format(path, lines, start_line, end_line, max_lines)
     except Exception:

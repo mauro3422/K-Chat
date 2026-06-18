@@ -9,6 +9,7 @@ import src.llm.model_state as models
 import src.llm.api_call as api_call
 from src._types import DebugInfo
 from src.llm.failover import _mark_and_refresh
+from src.llm.selector import get_default_model
 from src.llm.retry import is_rate_limit_error
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,6 @@ def _update_system_prompt(messages: list[dict[str, Any]], model: str, build_prom
 def _resolve_model(messages: list[dict[str, Any]], model: str | None, build_prompt_fn: Callable | None = None, default_model_fn: Callable[[], str] | None = None) -> str:
     if model is None:
         if default_model_fn is None:
-            from src.llm.selector import get_default_model
             default_model_fn = get_default_model
         model = default_model_fn()
     if models.is_model_failed(model):
@@ -145,7 +145,6 @@ async def chat(messages: list[dict[str, Any]], model: str | None = None, build_p
     debug = kwargs.pop("debug", None)
     if model is None:
         if default_model_fn is None:
-            from src.llm.selector import get_default_model
             default_model_fn = get_default_model
         model = default_model_fn()
     if models.is_model_failed(model):

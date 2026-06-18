@@ -11,6 +11,7 @@ from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
 from src.tools._analyzers import detect_language, icon
+from src.utils.async_utils import run_in_thread
 DEFINITION = {
     "type": "function",
     "function": {
@@ -541,4 +542,4 @@ async def run(**kwargs: Any) -> str:
     path, err = resolve_and_validate_path(path)
     if err:
         return err
-    return await asyncio.to_thread(_sync_analyze, path, func_name, find_dups, cross_ref)
+    return await run_in_thread(_sync_analyze, path, func_name, find_dups, cross_ref)

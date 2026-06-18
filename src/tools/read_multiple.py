@@ -4,11 +4,11 @@ Soporta rangos de líneas por archivo (ej: 'file.py:10-30').
 Sigue el patrón Lego: DEFINITION + run().
 """
 import os
-import asyncio
 import re
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
+from src.utils.async_utils import run_in_thread
 
 MAX_LINES_PER_FILE = 250
 MAX_FILES = 10
@@ -105,7 +105,7 @@ async def run(**kwargs: Any) -> str:
     if len(files) > MAX_FILES:
         return f"[ERROR] Maximo {MAX_FILES} archivos por llamada (pediste {len(files)})."
     # Ejecutar lecturas en paralelo con to_thread
-    tasks = [asyncio.to_thread(_read_single, *(_parse_file_spec(str(spec))), max_lines)
+    tasks = [run_in_thread(_read_single, *(_parse_file_spec(str(spec))), max_lines)
              for spec in files]
     results = await asyncio.gather(*tasks)
 

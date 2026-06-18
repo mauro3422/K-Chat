@@ -5,7 +5,6 @@ funciones/clases (vía AST para Python), y stats. Similar a grep pero
 formateado para lectura rápida.
 """
 import ast
-import asyncio
 import logging
 import os
 import re
@@ -13,6 +12,7 @@ from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
 from src.tools._analyzers import find_function_at_line, matches_file_pattern
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +292,7 @@ async def run(**kwargs: Any) -> str:
         return err
 
 
-    if not await asyncio.to_thread(os.path.isdir, path):
+    if not await run_in_thread(os.path.isdir, path):
         return f"[ERROR] El directorio '{path}' no existe."
 
     # Output header
@@ -300,7 +300,7 @@ async def run(**kwargs: Any) -> str:
     file_str = f" en {file_pattern}" if file_pattern else ""
     output = f"🔍 Buscando \"{pattern}\"{file_str} en {path}{flags_str}"
 
-    results, total_files, total_matches = await asyncio.to_thread(
+    results, total_files, total_matches = await run_in_thread(
         _walk_and_search,
         path, pattern, file_pattern,
         context_lines, max_results, case_sensitive,

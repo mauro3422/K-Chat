@@ -2,8 +2,26 @@ import logging
 import asyncio
 from typing import Any, Callable, Awaitable
 from openai import RateLimitError
+import anyio
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+async def _sleep(delay: float) -> None:
+    try:
+        await asyncio.sleep(delay)
+    except RuntimeError:
+        await anyio.sleep(delay)
+
+
+async def _await_with_optional_timeout(value: Awaitable[Any], timeout: float | None) -> Any:
+    if timeout is None:
+        return await value
+    try:
+        return await asyncio.wait_for(value, timeout=timeout)
+    except RuntimeError:
+        with anyio.fail_after(timeout):
+            return await value
 
 
 def is_rate_limit_error(error: Exception) -> bool:
@@ -29,9 +47,7 @@ async def execute_with_retry(fn: Callable[[], Awaitable[Any] | Any], model_name:
         try:
             res = fn()
             if asyncio.iscoroutine(res):
-                if timeout is not None:
-                    return await asyncio.wait_for(res, timeout=timeout)
-                return await res
+                return await _await_with_optional_timeout(res, timeout)
             return res
         except Exception as e:
             last_error = e
@@ -40,7 +56,7 @@ async def execute_with_retry(fn: Callable[[], Awaitable[Any] | Any], model_name:
                 if attempt < max_retries - 1:
                     delay = retry_delay * (2 ** attempt)
                     logger.info("Rate limit detected. Retrying %d/%d in %.1fs...", attempt + 1, max_retries, delay)
-                    await asyncio.sleep(delay)
+                    await _sleep(delay)
                     continue
                 raise
             raise e

@@ -1,8 +1,8 @@
 import os
 import logging
-import asyncio
 from typing import Any
 from src.tools._path_helpers import resolve_and_validate_path
+from src.utils.async_utils import run_in_thread
 DEFINITION: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -62,7 +62,7 @@ async def run(**kwargs) -> str:
             with open(resolved, "w", encoding="utf-8") as f:
                 f.write(content)
 
-        await asyncio.to_thread(_write_sync)
+        await run_in_thread(_write_sync)
 
         # Post-flight validation
         pf = postflight_check(resolved, content)

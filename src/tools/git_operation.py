@@ -1,8 +1,8 @@
 import logging
 import os
 import subprocess
-import asyncio
 from typing import Any
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ async def run(**kwargs: Any) -> str:
     logger.info("Git operation: %s (cwd=%s)", cmd_str, resolved_cwd)
 
     try:
-        result = await asyncio.to_thread(
+        result = await run_in_thread(
             subprocess.run, cmd_parts,
             capture_output=True, text=True,
             timeout=TIMEOUT, cwd=resolved_cwd,

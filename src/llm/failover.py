@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import logging
+import threading
 
 import src.llm.model_state as models
 import src.llm.discovery as discovery
@@ -9,6 +10,19 @@ from src.llm.rate_limit_state import get_rate_limit_store
 from src.llm.retry import is_rate_limit_error
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+def _refresh_verified_models_background(result) -> None:
+    async def _consume() -> None:
+        try:
+            await result
+        except Exception:
+            logger.exception("Failed to refresh verified models")
+
+    try:
+        asyncio.run(_consume())
+    except Exception:
+        logger.exception("Failed to refresh verified models")
 
 
 def _resolve_breaker():
@@ -49,16 +63,7 @@ def _mark_and_refresh(model: str, refresh: bool = True, error: Exception | None 
         try:
             result = discovery.get_verified_models(force_refresh=True)
             if inspect.isawaitable(result):
-                async def _consume() -> None:
-                    try:
-                        await result
-                    except Exception:
-                        logger.exception("Failed to refresh verified models")
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(_consume())
-                except RuntimeError:
-                    asyncio.run(_consume())
+                threading.Thread(target=_refresh_verified_models_background, args=(result,), daemon=True).start()
         except Exception:
             logger.exception("Failed to refresh verified models")
 

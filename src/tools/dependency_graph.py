@@ -12,6 +12,7 @@ from typing import Any
 from pathlib import Path
 
 from src.tools._path_helpers import resolve_and_validate_path
+from src.utils.async_utils import run_in_thread
 
 from src.tools._arch_checker import check_file, Violation, Rule, DEFAULT_RULES
 
@@ -331,4 +332,4 @@ async def run(**kwargs: Any) -> str:
     verbose = kwargs.get("verbose", False)
     if not path:
         return "[ERROR] Proporciona un path (ej: 'src/')"
-    return await asyncio.to_thread(_sync_dependency_graph, path, target_file, verbose)
+    return await run_in_thread(_sync_dependency_graph, path, target_file, verbose)

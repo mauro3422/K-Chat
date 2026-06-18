@@ -6,7 +6,7 @@ from typing import Any, Protocol, runtime_checkable
 from src.context.crash_recovery import load_error_context, reset_crash_counter
 from src.context.files import _ensure_file, _read_file
 from src.context.runtime import build_context_snapshot
-from src.context.templates import TEMPLATES
+from src.context.templates import get_templates
 from src.paths import CONTEXT_DIR
 
 logger = logging.getLogger(__name__)
@@ -29,9 +29,10 @@ def load_context() -> str:
     Kept for backward compatibility. Will be removed in v0.0.61.
     """
     segments = []
+    templates = get_templates()
     for filename in ["SOUL.md", "MEMORY.md", "AGENTS.md"]:
         filepath = os.path.join(CONTEXT_DIR, filename)
-        _ensure_file(filepath, TEMPLATES[filename])
+        _ensure_file(filepath, templates[filename])
         content = _read_file(filepath)
         if content:
             segments.append(content)

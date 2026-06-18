@@ -6,10 +6,10 @@ Sigue el patrón Lego: DEFINITION + run().
 
 import os
 import shutil
-import asyncio
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
+from src.utils.async_utils import run_in_thread
 
 logger: Any = __import__('logging').getLogger(__name__)
 
@@ -99,4 +99,4 @@ async def run(**kwargs: Any) -> str:
     if operation not in ("move", "copy"):
         return "[ERROR] Operacion no valida. Usa 'move' o 'copy'."
 
-    return await asyncio.to_thread(_sync_move_file, operation, source, dest)
+    return await run_in_thread(_sync_move_file, operation, source, dest)

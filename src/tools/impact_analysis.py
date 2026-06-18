@@ -12,6 +12,7 @@ from typing import Any
 from pathlib import Path
 
 from src.tools._path_helpers import resolve_and_validate_path
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +261,7 @@ async def run(**kwargs: Any) -> str:
         return "[ERROR] Proporciona el nombre de la función o clase a analizar."
     if not path:
         return "[ERROR] Proporciona el path del archivo donde está definida."
-    return await asyncio.to_thread(_sync_impact, name, path, include_internal)
+    return await run_in_thread(_sync_impact, name, path, include_internal)
     if err:
         return err
 

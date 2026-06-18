@@ -7,7 +7,6 @@ import fnmatch
 import logging
 import os
 import sys
-import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +21,7 @@ from src.tools._analyzers import (
     analyze_html,
     analyze_css,
 )
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 DEFINITION = {
@@ -256,10 +256,10 @@ async def run(**kwargs: Any) -> str:
 
 
 
-    if not await asyncio.to_thread(os.path.exists, resolved_path):
+    if not await run_in_thread(os.path.exists, resolved_path):
         return f"[ERROR] El path '{path}' no existe."
 
-    output, count = await asyncio.to_thread(_walk_directory, resolved_path, depth, pattern, show_imports)
+    output, count = await run_in_thread(_walk_directory, resolved_path, depth, pattern, show_imports)
 
     # Limitar output total
     if len(output) > 30000:

@@ -15,6 +15,7 @@ import os
 import tempfile
 import asyncio
 from typing import Any
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -285,7 +286,7 @@ async def run(**kwargs: Any) -> str:
             return "No se especificaron archivos para extraer."
         if len(files) > 10:
             files = files[:10]
-        return await asyncio.to_thread(_sync_extract_text, files)
+        return await run_in_thread(_sync_extract_text, files)
     except Exception as e:
         logger.exception("Error inesperado en extract_text.run(): %s", e)
         return f"[ERROR in extract_text]: Error interno: {e}"

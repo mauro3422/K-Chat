@@ -1,7 +1,6 @@
 import logging
 import os
 import subprocess
-import asyncio
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
@@ -63,7 +62,7 @@ def _is_dangerous(cmd: str) -> tuple[bool, str]:
     return False, ""
 
 
-async def run(**kwargs: Any) -> str:
+def run(**kwargs: Any) -> str:
     command = kwargs.get("command", "").strip()
     timeout = min(int(kwargs.get("timeout", DEFAULT_TIMEOUT)), MAX_TIMEOUT)
     cwd = kwargs.get("cwd", "~/proyectos")
@@ -90,10 +89,13 @@ async def run(**kwargs: Any) -> str:
     logger.info("Executing (shell mode): %s (cwd=%s, timeout=%ds)", command[:200], cwd, timeout)
 
     try:
-        result = await asyncio.to_thread(
-            subprocess.run, command,
-            shell=True, capture_output=True, text=True,
-            timeout=timeout, cwd=resolved_cwd,
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=resolved_cwd,
         )
 
         output = ""

@@ -314,6 +314,31 @@ Todos reseteables desde un solo punto: **`src/api/lifecycle.reset_runtime_state(
 
 ---
 
+## [2026-06-18] — Estabilización de backend, tools y lifecycle
+
+### Backend y estabilidad
+
+- `src/llm/client.py`: fallback de stream y manejo de éxito compatibles con `asyncio`/`trio`.
+- `src/llm/retry.py`: reintentos y timeouts con fallback backend-agnostic.
+- `src/llm/discovery.py` y `src/llm/failover.py`: refresco y ping de modelos sin depender del loop activo.
+- `src/memory/retrieval/hydrator.py`: hidratación compatible con esquemas viejos de `vec_meta`.
+
+### Tools e I/O
+
+- `src/tools/runner.py`: acepta tools sync o async sin romper el contrato.
+- `src/tools/edit_file.py`: mantiene compatibilidad como tool de edición directa.
+- `src/tools/*`: migración de I/O/reintentos fuera de `asyncio.to_thread` hacia helper compartido.
+
+### Lifecycle y runtime
+
+- `src/api/lifecycle.py`: reinicios explícitos de estado compartido al apagar.
+- `src/context/templates.py`, `src/context/runtime.py`, `src/context/builder.py`: plantillas y contexto reconstruibles.
+- `src/utils/async_utils.py`: pool compartido y helper de sleep/run-in-thread con fallback.
+
+### Verificación
+
+- Baterías enfocadas completadas sobre client, retry, discovery, failover, tools, memoria y lifecycle.
+
 ## [2026-06-16] — Sistema Lego de estilos + Backend Composition Root
 
 ### 🧱 Frontend: Sistema de Layout Lego (5 nuevos bloques)

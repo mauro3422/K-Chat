@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from typing import Any
 
 import src.llm.model_state as models
@@ -8,6 +9,19 @@ from src.llm.providers import _get_provider
 import src.llm.verifier as verifier
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+def _start_background_ping(free_ids: list[str], config=None) -> None:
+    if not free_ids:
+        return
+
+    def _run() -> None:
+        try:
+            asyncio.run(_ping_free_model_availability(free_ids, config=config))
+        except Exception:
+            logger.exception("Free model availability ping failed")
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _resolve_config(config=None):
@@ -125,13 +139,7 @@ async def get_verified_models(force_refresh: bool = False, config=None) -> list[
     # Fire-and-forget availability ping for free models.
     # Runs in background so it doesn't block the caller (e.g. lifespan timeout=10s).
     free_ids = [m for m in verified_models if m.endswith("-free")]
-    if free_ids:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop is not None:
-            loop.create_task(_ping_free_model_availability(free_ids, config=config))
+    _start_background_ping(free_ids, config=config)
 
     return verified_models
 

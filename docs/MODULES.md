@@ -1,4 +1,4 @@
-> **Last updated:** 2026-06-18 — Added: `src/config_loader.py` dotenv reset helper, `src/api/lifecycle.py` runtime reset helper, `src/llm/providers.py` explicit registry reset helper, `src/llm/container.py` explicit configure/reset helper, `web/services/event_bus.py` explicit reset helper, `web/routers/skills.py` app-state skill registry resolution, `src/gateway.py` reset_gateway_state helper. Updated: `OrchestratorDeps` → 4 sub-dataclasses, `config` param DI in tools/LLM, llm layer map (providers.py deps).
+> **Last updated:** 2026-06-18 — Added: `src/config_loader.py` dotenv reset helper, `src/api/lifecycle.py` runtime reset helper, `src/context/templates.py` template cache refresh helper, `src/utils/async_utils.py` thread-pool reset/shutdown helper, `src/memory/retrieval/hydrator.py` schema-compatible hydration fallback, `src/llm/providers.py` explicit registry reset helper, `src/llm/container.py` explicit configure/reset helper, `web/services/event_bus.py` explicit reset helper, `web/routers/skills.py` app-state skill registry resolution, `src/gateway.py` reset_gateway_state helper, `src/tools/runner.py` sync/async tool coercion. Updated: `OrchestratorDeps` → 4 sub-dataclasses, `config` param DI in tools/LLM, llm layer map (providers.py deps), tool I/O helpers moved off `asyncio.to_thread`.
 
 # Module Guide
 
@@ -77,7 +77,7 @@ context/
   builder.py          → System prompt builder, context loader
   crash_recovery.py   → Crash context ingestion and crash-loop guard
   files.py            → Markdown file loader/creator
-  templates.py        → Default templates (SOUL, MEMORY, AGENTS)
+  templates.py        → Default templates (SOUL, MEMORY, AGENTS), exported cache refresh helper
   tools_docs.py       → TOOLS.md auto-generator (lazy)
   runtime.py          → Runtime context injection + explicit cache reset helper
 
@@ -128,6 +128,7 @@ compressor.py        → History compression when > 40 msgs / 6k tokens
 background_tasks.py  → Auto-rename session via LLM
 handler_cli.py       → CLI commands (/model, /clear, /help)
 paths.py             → Path constants (DATA_DIR, DB_PATH, STATIC_DIR, etc.)
+utils/async_utils.py → Shared thread pool helper with explicit reset/shutdown helpers
 ```
 
 ---

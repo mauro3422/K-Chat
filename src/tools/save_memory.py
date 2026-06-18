@@ -6,6 +6,7 @@ import threading
 from typing import Any
 
 from src.paths import CONTEXT_DIR
+from src.utils.async_utils import sleep
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -180,7 +181,7 @@ async def run(**kwargs) -> str:
         with _save_lock:
             return _sync_read_and_write(filepath, key, value)
 
-    err, action_msg, backup_lines = await asyncio.to_thread(_synced_op)
+    err, action_msg, backup_lines = await run_in_thread(_synced_op)
     if err:
         logger.warning("MEMORY.md write failed (non-fatal): %s", err)
         action_msg = err
@@ -240,7 +241,7 @@ async def _retry_upsert(memory_index: Any, key: str, value: str, max_retries: in
             return True
         except Exception as e:
             if attempt < max_retries - 1:
-                await asyncio.sleep(0.1 * (attempt + 1))
+                await sleep(0.1 * (attempt + 1))
                 continue
             logger.error("memory.db upsert failed after %d retries (key=%s, value_len=%d): %s", max_retries, key, len(value), e)
     return False
@@ -256,7 +257,7 @@ async def _retry_delete(memory_index: Any, key: str, max_retries: int = 3) -> bo
             return True
         except Exception as e:
             if attempt < max_retries - 1:
-                await asyncio.sleep(0.1 * (attempt + 1))
+                await sleep(0.1 * (attempt + 1))
                 continue
             logger.error("memory.db delete failed after %d retries (key=%s): %s", max_retries, key, e)
     return False
@@ -270,7 +271,7 @@ async def _retry_embed(key: str, value: str, store: Any, max_retries: int = 3) -
             return
         except Exception as e:
             if attempt < max_retries - 1:
-                await asyncio.sleep(0.1 * (attempt + 1))
+                await sleep(0.1 * (attempt + 1))
                 continue
             logger.error("embedding store failed after %d retries (key=%s, value_len=%d): %s", max_retries, key, len(value), e)
 
@@ -285,7 +286,7 @@ async def _retry_delete_embedding(key: str, store: Any, max_retries: int = 3) ->
             return
         except Exception as e:
             if attempt < max_retries - 1:
-                await asyncio.sleep(0.1 * (attempt + 1))
+                await sleep(0.1 * (attempt + 1))
                 continue
             logger.error("embedding delete failed after %d retries (key=%s): %s", max_retries, key, e)
 
@@ -299,7 +300,7 @@ async def _embed_and_store(key: str, value: str, store: Any) -> None:
     from src.memory.embeddings.service import generate_embedding
     from src.memory.keywords.extractor import extract_keywords
 
-    vec = await asyncio.to_thread(generate_embedding, value)
+    vec = await run_in_thread(generate_embedding, value)
     if all(v == 0.0 for v in vec):
         logger.warning(
             "Embedding for key '%s' is all zeros — model unavailable, "

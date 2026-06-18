@@ -35,6 +35,12 @@ def reset_runtime_state() -> None:
         pass
 
     try:
+        from src.context.templates import reset_templates_cache
+        reset_templates_cache()
+    except Exception:
+        pass
+
+    try:
         from src.config_loader import reset_dotenv_state
         reset_dotenv_state()
     except Exception:
@@ -87,5 +93,11 @@ def reset_runtime_state() -> None:
         reset_embedding_model()
         reset_reranker()
         reset_global_extractor()
+    except Exception:
+        pass
+
+    try:
+        from src.utils.async_utils import reset_thread_pool
+        reset_thread_pool()
     except Exception:
         pass

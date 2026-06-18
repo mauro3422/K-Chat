@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import asyncio
+import inspect
 from datetime import datetime
 from collections.abc import AsyncGenerator
 from typing import Any, Protocol, runtime_checkable, TYPE_CHECKING
@@ -16,6 +17,12 @@ if TYPE_CHECKING:
     from src.memory.repos import Repositories
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+async def _await_if_needed(value: Any) -> Any:
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 @runtime_checkable
@@ -41,7 +48,7 @@ class ToolRunnerProtocol(Protocol):
 async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: 'Repositories', skill_registry: Any | None = None, invalidate_cache_fn: Any | None = None) -> AsyncGenerator[Any, None]:
     async def wrap_tool(tc, name, args):
         try:
-            tool_result = await tool_map[name](**args, _session_id=session_id, _repos=repos, _skill_registry=skill_registry, _invalidate_cache_fn=invalidate_cache_fn)
+            tool_result = await _await_if_needed(tool_map[name](**args, _session_id=session_id, _repos=repos, _skill_registry=skill_registry, _invalidate_cache_fn=invalidate_cache_fn))
             status = "error" if tool_result and tool_result.startswith("[ERROR]") else "ok"
         except asyncio.TimeoutError:
             logger.warning("Tool execution timed out for '%s'", name)

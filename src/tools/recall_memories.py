@@ -5,6 +5,7 @@ Uses 3 signals fused: vector similarity + keyword matching + entity graph.
 
 import logging
 from typing import Any
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ async def _fallback_vector_search(query: str, limit: int, source: str, min_score
     from src.memory.memory_db_path import resolve_memory_db_path
     from src.memory.vector.store import VectorStore
 
-    query_vec = await asyncio.to_thread(generate_embedding, query)
+    query_vec = await run_in_thread(generate_embedding, query)
     db_path = resolve_memory_db_path()
     store = VectorStore(db_path)
     try:

@@ -2,6 +2,8 @@ import os
 import logging
 import shutil
 import asyncio
+import threading
+from queue import Queue
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
@@ -10,6 +12,32 @@ from src.tools._preflight import preflight_check, create_backup, postflight_chec
 logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
+
+
+class AwaitableText(str):
+    def __new__(cls, value: str):
+        return super().__new__(cls, value)
+
+    def __await__(self):
+        async def _wrap():
+            return str(self)
+        return _wrap().__await__()
+
+
+def _run_impact_analysis(def_name: str, path: str) -> str | None:
+    result: Queue[str | None] = Queue(maxsize=1)
+
+    def _worker() -> None:
+        try:
+            from src.tools.impact_analysis import run as impact_run
+            result.put(asyncio.run(impact_run(name=def_name, path=path)))
+        except Exception:
+            result.put(None)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    thread.join()
+    return result.get() if not result.empty() else None
 
 DEFINITION = {
     "type": "function",
@@ -162,18 +190,17 @@ def _edit_file_sync(path: str, start_line: int, end_line: int | None, new_conten
 
     if modo == "eliminar" and deleted_defs:
         try:
-            from src.tools.impact_analysis import run as impact_run
             for def_name in deleted_defs:
-                impact_result = impact_run(name=def_name, path=path)
-                if "Sin dependencias" not in impact_result:
+                impact_result = _run_impact_analysis(def_name, path)
+                if impact_result and "Sin dependencias" not in impact_result:
                     summary += f"\n{impact_result}"
         except Exception:
             pass
 
-    return summary
+    return AwaitableText(summary)
 
 
-async def run(**kwargs: Any) -> str:
+def run(**kwargs: Any) -> str:
     path = kwargs.get("path", "").strip()
     start_line = int(kwargs.get("start_line", 0))
     end_line = kwargs.get("end_line")
@@ -189,9 +216,9 @@ async def run(**kwargs: Any) -> str:
     if err:
         return err
 
-    summary = await asyncio.to_thread(_edit_file_sync, path, start_line, end_line, new_content)
+    summary = _edit_file_sync(path, start_line, end_line, new_content)
     if not summary.startswith("✅"):
-        return summary
+        return AwaitableText(summary)
 
     # ── ARCH CHECK (post-hook, async doble check) ─────────────────────
     if arch_check:
