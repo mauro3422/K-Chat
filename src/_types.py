@@ -2,7 +2,7 @@
 
 Canonical location for cross-layer types. Leaf layers import from here
 instead of from each other. Original locations (src.memory.types, etc.)
-re-export from this module for backward compatibility.
+re-export from this module so older imports keep working during the transition.
 """
 
 from __future__ import annotations

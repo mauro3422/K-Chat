@@ -77,21 +77,21 @@ class TestAnalyzeCode:
     @pytest.mark.anyio
     async def test_analyze_python_file(self, python_test_file):
         """Test analyzing a Python file."""
-        result = analyze_code.run(path=python_test_file)
+        result = await analyze_code.run(path=python_test_file)
         assert "ANALISIS PROFUNDO" in result or "hello_world" in result
         assert "Python" in result or "snake" in result
     
     @pytest.mark.anyio
     async def test_analyze_js_file(self, js_test_file):
         """Test analyzing a JavaScript file returns info about limited support."""
-        result = analyze_code.run(path=js_test_file)
+        result = await analyze_code.run(path=js_test_file)
         # analyze_code currently only supports Python
         assert "soporta Python" in result or "INFO" in result
     
     @pytest.mark.anyio
     async def test_analyze_nonexistent_file(self):
         """Test analyzing a file that doesn't exist."""
-        result = analyze_code.run(path="/tmp/nonexistent_file_12345.py")
+        result = await analyze_code.run(path="/tmp/nonexistent_file_12345.py")
         assert "[ERROR]" in result
         assert "no existe" in result
     
@@ -100,23 +100,23 @@ class TestAnalyzeCode:
         """Test analyze with find_duplicates flag."""
         # Note: find_duplicates triggers cross_analyzer which has a bug in current code
         # This test verifies the basic functionality without the buggy cross-analyzer
-        result = analyze_code.run(path=python_test_file)
+        result = await analyze_code.run(path=python_test_file)
         assert "ANALISIS PROFUNDO" in result or "hello_world" in result
     
     @pytest.mark.anyio
     async def test_analyze_specific_function(self, python_test_file):
         """Test analyzing a specific function."""
-        result = analyze_code.run(path=python_test_file, function="hello_world")
+        result = await analyze_code.run(path=python_test_file, function="hello_world")
         assert "hello_world" in result or "fn hello_world" in result
     
     @pytest.mark.anyio
     async def test_analyze_empty_path(self):
         """Test analyzing with empty path."""
-        result = analyze_code.run(path="")
+        result = await analyze_code.run(path="")
         assert "[ERROR]" in result
     
     @pytest.mark.anyio
     async def test_analyze_no_path(self):
         """Test analyzing without providing path."""
-        result = analyze_code.run()
+        result = await analyze_code.run()
         assert "[ERROR]" in result

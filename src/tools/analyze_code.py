@@ -190,16 +190,6 @@ def _complexity_label(cc: int) -> str:
         return f"🔴 {cc} (muy alta — refactorizar)"
 
 
-def _iter_func_nodes(tree: ast.Module) -> list[tuple[ast.FunctionDef, bool]]:
-    """Itera sobre funciones y async functions en el AST."""
-    funcs = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            funcs.append((node, False))
-        elif isinstance(node, ast.AsyncFunctionDef):
-            funcs.append((node, True))
-    return funcs
-
 def _iter_class_nodes(tree: ast.Module) -> list[ast.ClassDef]:
     return [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
 

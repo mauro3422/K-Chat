@@ -1,10 +1,12 @@
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from web.routers.debug import router, _local_only, debug_info, backend_logs
+from web.routers.debug import model_availability
 
 
 @pytest.mark.anyio
@@ -69,25 +71,24 @@ class TestLocalOnly:
 @pytest.mark.anyio
 @patch("web.routers.debug.get_repos")
 async def test_debug_info_missing_session_returns_404(mock_get_repos):
-    mock_repos = MagicMock()
-    mock_repos.sessions = AsyncMock()
-    mock_repos.sessions.require_session = AsyncMock(side_effect=ValueError("Session not found"))
+    mock_repos = SimpleNamespace(sessions=SimpleNamespace(require_session=AsyncMock(side_effect=ValueError("Session not found"))))
     mock_get_repos.return_value = mock_repos
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
     with pytest.raises(HTTPException) as exc:
-        await debug_info("nonexistent")
+        await debug_info("nonexistent", request)
     assert exc.value.status_code == 404
 
 
 @pytest.mark.anyio
 @patch("web.routers.debug.get_repos")
 async def test_debug_info_returns_json(mock_get_repos):
-    mock_repos = MagicMock()
-    mock_repos.sessions = AsyncMock()
-    mock_repos.debug = MagicMock()
-    mock_repos.debug.get_info = AsyncMock()
-    mock_repos.debug.get_info.return_value = {"key": "val"}
+    mock_repos = SimpleNamespace(
+        sessions=SimpleNamespace(require_session=AsyncMock(return_value=None)),
+        debug=SimpleNamespace(get_info=AsyncMock(return_value={"key": "val"})),
+    )
     mock_get_repos.return_value = mock_repos
-    result = await debug_info("sid-1")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    result = await debug_info("sid-1", request)
     assert isinstance(result, JSONResponse)
     import json
     body = json.loads(result.body.decode())
@@ -103,3 +104,44 @@ async def test_backend_logs_returns_json(mock_logs):
     import json
     body = json.loads(result.body.decode())
     assert body == {"logs": [{"message": "log1"}, {"message": "log2"}]}
+
+
+@pytest.mark.anyio
+async def test_model_availability_uses_request_state(monkeypatch):
+    monkeypatch.setenv("TESTING", "true")
+
+    class FakeRateStore:
+        def get_cooldown_remaining(self, model_id):
+            return 5 if model_id == "alpha-free" else None
+
+        def is_available(self, model_id):
+            return model_id == "beta-go"
+
+        def is_unavailable(self, model_id):
+            return False
+
+        def summary(self):
+            return {"limited_count": 1}
+
+    class FakeRegistry:
+        def summary(self):
+            return {"total_models": 2, "tier_counts": {"free_ratelimited": 1, "go_standard": 1}}
+
+        def is_quota_exhausted(self):
+            return False
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(
+            rate_limit_store=FakeRateStore(),
+            model_registry=FakeRegistry(),
+        )),
+        client=SimpleNamespace(host="127.0.0.1"),
+    )
+
+    with patch("web.routers.pages.get_available_model_ids", return_value=["alpha-free", "beta-go"]), \
+         patch("web.routers.pages._get_model_tier", side_effect=["free_ratelimited", "go_standard"]):
+        result = await model_availability(request)
+
+    assert result["models"]["alpha-free"]["tier"] == "free_ratelimited"
+    assert result["models"]["alpha-free"]["status"] == "rate_limited"
+    assert result["models"]["beta-go"]["status"] == "available"

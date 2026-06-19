@@ -1,10 +1,12 @@
 import json
-import time
+import logging
 from typing import Any
 
-from src.api.repos import DebugInfo, MessageRecord, Repositories
-from src.api import get_repos
+from src.api.journal import log_turn
+from src.api.repos import DebugInfo, MessageRecord, Repositories, get_repos
 from web.services.message_persister_contract import MessagePersisterDeps
+
+logger = logging.getLogger(__name__)
 
 
 def _dedup_phases(phases: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -29,8 +31,10 @@ async def save_assistant_message(
     phases_output: list[dict[str, Any]],
     debug_info: DebugInfo,
     model: str,
+    user_msg: str = "",
     repos: Repositories | None = None,
     deps: MessagePersisterDeps | None = None,
+    logbus: Any | None = None,
 ) -> None:
     """Persists the assistant message and debug info to the database."""
     _deps = _resolve_persister_deps(deps)
@@ -66,16 +70,16 @@ async def save_assistant_message(
         await repos.debug.save_info(session_id, debug_info.to_dict())
 
     try:
-        from src.api import log_turn
         log_turn(
             session_id=session_id,
-            user_msg="",
+            user_msg=user_msg,
             assistant_msg=full_content,
             tools_used=[],
             model=model,
             duration_ms=0,
             token_count=tt,
             error="",
+            logbus=logbus,
         )
     except Exception:
         logger.exception("log_turn failed in save_assistant_message")

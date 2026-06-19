@@ -5,20 +5,17 @@ from typing import Any
 
 import anyio
 
-from src.api import (
+from src.api.llm_client import get_default_model
+from src.api.orchestrator import (
+    OrchestratorDeps,
     chat_stream,
     generate_session_id,
-    get_default_model,
-    OrchestratorDeps,
-    get_repos,
-)
-from src.api.orchestrator import (
     HistoryService,
     LLMService,
     ToolExecutionService,
     TelemetryService,
 )
-from src.api.repos import init_db, MessageRecord
+from src.api.repos import get_repos, init_db, MessageRecord
 from src.cli_commands import handle_command
 
 logger: logging.Logger = logging.getLogger(__name__)

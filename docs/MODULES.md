@@ -1,4 +1,4 @@
-> **Last updated:** 2026-06-18 — Added: `src/config_loader.py` dotenv reset helper, `src/api/lifecycle.py` runtime reset helper, `src/context/templates.py` template cache refresh helper, `src/utils/async_utils.py` thread-pool reset/shutdown helper, `src/memory/retrieval/hydrator.py` schema-compatible hydration fallback, `src/llm/providers.py` explicit registry reset helper, `src/llm/container.py` explicit configure/reset helper, `web/services/event_bus.py` explicit reset helper, `web/routers/skills.py` app-state skill registry resolution, `src/gateway.py` reset_gateway_state helper, `src/tools/runner.py` sync/async tool coercion. Updated: `OrchestratorDeps` → 4 sub-dataclasses, `config` param DI in tools/LLM, llm layer map (providers.py deps), tool I/O helpers moved off `asyncio.to_thread`.
+> **Last updated:** 2026-06-19 — Added: `src/config_loader.py` dotenv reset helper, `src/api/lifecycle.py` runtime reset helper, `src/context/templates.py` template cache refresh helper, `src/utils/async_utils.py` thread-pool reset/shutdown helper, `src/memory/retrieval/hydrator.py` schema-compatible hydration fallback, `src/llm/providers.py` explicit registry reset helper, `src/llm/container.py` explicit configure/reset helper, `web/services/event_bus.py` explicit reset helper, `web/routers/skills.py` app-state skill registry resolution, `web/app_factory.py` skills registry wired from `src.skills`, `src/gateway.py` reset_gateway_state helper, `src/tools/runner.py` sync/async tool coercion. Updated: `OrchestratorDeps` → 4 sub-dataclasses, `config` param DI in tools/LLM, llm layer map (providers.py deps), tool I/O helpers moved off `asyncio.to_thread`.
 
 # Module Guide
 
@@ -320,8 +320,8 @@ deps.llm        # → LLMDeps
 deps.tools      # → ToolDeps
 deps.storage    # → StorageDeps
 deps.state      # → RequestStateDeps
-deps.repos      # → StorageDeps.repos (legacy access)
-deps.session_id # → RequestStateDeps.session_id (legacy access)
+deps.repos      # → StorageDeps.repos (bridge access)
+deps.session_id # → RequestStateDeps.session_id (bridge access)
 ```
 
 **Depends on:** stdlib only
@@ -471,7 +471,7 @@ deps.session_id # → RequestStateDeps.session_id (legacy access)
 
 **Depends on:** stdlib only
 
-**Note:** Re-exported from `src.memory.repos` for backward compatibility; new code should import from `src.memory.types` directly.
+**Note:** Re-exported from `src.memory.repos` for transition support; new code should import from `src.memory.types` directly.
 
 ---
 

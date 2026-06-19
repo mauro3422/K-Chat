@@ -1,10 +1,15 @@
 import logging
+from contextvars import ContextVar
 from typing import Any
 
 from src.llm.adapters import ADAPTERS
 from src.llm.protocol import LLMProvider
 
 logger: logging.Logger = logging.getLogger(__name__)
+_current_registry: ContextVar[Any | None] = ContextVar(
+    "kairos_provider_registry",
+    default=None,
+)
 
 
 class ProviderRegistry:
@@ -20,29 +25,28 @@ class ProviderRegistry:
         return self._adapters.get(name)
 
 
-_registry: ProviderRegistry | None = None
-
-
 def configure_registry(registry: ProviderRegistry | None) -> None:
-    """Set the active provider registry explicitly, or clear it with None."""
-    global _registry
-    _registry = registry
+    """Set the active provider registry for the current context."""
+    _current_registry.set(registry)
 
 
 def reset_registry() -> None:
-    """Clear the cached provider registry and restore lazy construction."""
+    """Clear the current-context provider registry."""
     configure_registry(None)
 
 
 def _get_registry(registry: ProviderRegistry | None = None) -> ProviderRegistry:
     if registry is not None:
         return registry
-    global _registry
-    if _registry is None:
-        _registry = ProviderRegistry()
-        for name, cls in ADAPTERS.items():
-            _registry.register(name, cls)
-    return _registry
+    current = _current_registry.get()
+    if current is not None:
+        return current
+
+    current = ProviderRegistry()
+    for name, cls in ADAPTERS.items():
+        current.register(name, cls)
+    _current_registry.set(current)
+    return current
 
 
 def register_provider(name: str, cls: type[LLMProvider]) -> None:

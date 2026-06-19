@@ -8,10 +8,9 @@ issues with aiosqlite's background worker threads.
 """
 
 import logging
-import os
 from typing import Any
 
-from src.memory.memory_db_path import resolve_memory_db_path
+from src.memory.repos_memory.sqlite_helper import create_memory_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +35,7 @@ class EntityRepository:
 
     async def _create_conn(self) -> Any:
         """Create a fresh aiosqlite connection to memory.db."""
-        import aiosqlite
-        db_path = resolve_memory_db_path()
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        conn = await aiosqlite.connect(db_path)
-        conn.row_factory = aiosqlite.Row
-        await conn.execute("PRAGMA journal_mode=WAL")
-        await conn.execute("PRAGMA busy_timeout=5000")
-        await conn.execute("PRAGMA foreign_keys=ON")
-        return conn
+        return await create_memory_db_connection()
 
     async def _ensure_table(self, conn: Any) -> None:
         """Ensure the entities table exists (lazy init)."""

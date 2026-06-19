@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock
 
@@ -6,6 +7,7 @@ from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, FileResponse
 
 from web.routers.pages import router, get_available_model_ids
+from web.routers.pages import get_available_models
 
 
 @pytest.mark.anyio
@@ -61,8 +63,9 @@ class TestPageEndpoints:
 
     @patch("web.routers.pages.get_available_model_ids", return_value=["m1", "m2"])
     @patch("web.routers.pages.templates.TemplateResponse")
+    @patch("web.routers.pages.get_available_models", return_value={"go_standard": [{"id": "m1", "label": "m1", "tier": "go_standard"}]})
     @pytest.mark.anyio
-    async def test_home_returns_html(self, mock_tpl, mock_models):
+    async def test_home_returns_html(self, mock_models_full, mock_tpl, mock_models):
         request = MagicMock()
         mock_tpl.return_value = HTMLResponse("<html></html>")
         from web.routers.pages import home
@@ -71,8 +74,9 @@ class TestPageEndpoints:
 
     @patch("web.routers.pages.get_available_model_ids", return_value=["m1"])
     @patch("web.routers.pages.templates.TemplateResponse")
+    @patch("web.routers.pages.get_available_models", return_value={"go_standard": [{"id": "m1", "label": "m1", "tier": "go_standard"}]})
     @pytest.mark.anyio
-    async def test_session_page_returns_html(self, mock_tpl, mock_models):
+    async def test_session_page_returns_html(self, mock_models_full, mock_tpl, mock_models):
         request = MagicMock()
         mock_tpl.return_value = HTMLResponse("<html></html>")
         from web.routers.pages import session_page
@@ -102,6 +106,29 @@ class TestPageEndpoints:
         resp = await session_messages(MagicMock(), "sid-1")
         assert isinstance(resp, dict)
         assert "messages" in resp
+
+    @pytest.mark.anyio
+    def test_get_available_models_uses_request_state(self):
+        class FakeRegistry:
+            def get_all_models(self):
+                return ["alpha-free", "beta-go"]
+
+            def get_tier(self, model_id):
+                return "free_ratelimited" if model_id.endswith("-free") else "go_standard"
+
+        class FakeRateStore:
+            def get_cooldown_remaining(self, model_id):
+                return 12 if model_id == "alpha-free" else None
+
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+            model_registry=FakeRegistry(),
+            rate_limit_store=FakeRateStore(),
+        )))
+        with patch("web.routers.pages.PRIORITY", []), patch("web.routers.pages.get_verified_models_safe", return_value=["alpha-free", "beta-go"]):
+            models = get_available_models(request=request)
+        assert models["free_ratelimited"][0]["id"] == "alpha-free"
+        assert "12s" in models["free_ratelimited"][0]["label"]
+        assert models["go_standard"][0]["id"] == "beta-go"
 
 
     @pytest.mark.anyio

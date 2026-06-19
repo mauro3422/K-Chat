@@ -51,7 +51,7 @@
 │    • debug_info    → información de debug                         │
 │    • gateway_log   → log del gateway                              │
 │    • chat_journal  → resumen de turns                             │
-│    • memory_index  → (viejo, session-scoped, legacy)              │
+│    • memory_index  → (histórico, session-scoped, transition)      │
 │                                                                    │
 │  📝 Se escribe con: cada mensaje, tool call, widget save          │
 │  📖 Se consulta con: db_query(), get_tool_history()               │

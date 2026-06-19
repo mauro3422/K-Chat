@@ -20,6 +20,13 @@ from src.logbus import LogEvent, get_logbus
 from src.memory.db_path import resolve_db_path
 
 logger = logging.getLogger("gateway.db")
+_logbus = None
+
+
+def configure_logbus(bus: Any | None) -> None:
+    """Set the default LogBus for gateway events."""
+    global _logbus
+    _logbus = bus
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -40,7 +47,7 @@ def log_event(
     logbus=None,
 ) -> None:
     try:
-        bus = logbus if logbus is not None else get_logbus()
+        bus = logbus if logbus is not None else (_logbus or get_logbus())
         bus.emit(LogEvent(
             level=level,
             module=f"gateway.{service}",

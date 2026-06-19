@@ -1,12 +1,13 @@
-"""Model failure state tracking.
+﻿"""Model failure state tracking.
 
 This module ONLY tracks which models have failed and manages model switching.
 Model discovery and verification are in model_registry.py.
 
-Do NOT add verified model tracking here — use model_registry instead.
+Do NOT add verified model tracking here â€” use model_registry instead.
 """
 
 import logging
+from contextvars import ContextVar
 import threading
 from typing import Any
 
@@ -71,29 +72,28 @@ class ModelState:
                     return m
         raise RuntimeError(f"All models have failed: {candidates}")
 
+_current_state: ContextVar[ModelState | None] = ContextVar(
+    "kairos_model_state",
+    default=None,
+)
 
-# ── Lazy module-level state (not created at import time) ───────────────
-_state: ModelState | None = None
+
+def _get_default_state() -> ModelState:
+    state = _current_state.get()
+    if state is None:
+        state = ModelState()
+        _current_state.set(state)
+    return state
 
 
 def configure_state(state: ModelState | None) -> None:
-    """Set the active ModelState explicitly, or clear it with None."""
-    global _state
-    _state = state
+    """Set the active ModelState for the current context."""
+    _current_state.set(state)
 
 
 def reset_state() -> None:
     """Clear the cached ModelState and restore lazy creation."""
-    configure_state(None)
-
-
-def _get_state(state: ModelState | None = None) -> ModelState:
-    if state is not None:
-        return state
-    global _state
-    if _state is None:
-        _state = ModelState()
-    return _state
+    _current_state.set(None)
 
 
 # Static constants (no dependency on ModelState instance)
@@ -101,32 +101,14 @@ PRIORITY = [m for m in [DEFAULT_MODEL, SECONDARY_MODEL] if m]
 FALLBACK_MODEL = DEFAULT_MODEL
 
 
-def _get_state_from_container() -> ModelState:
-    """Get ModelState from the default DI container."""
-    from src.llm.container import get_container
-    return get_container().get_model_state()
-
-
 def _resolve_state(state: ModelState | None = None) -> ModelState:
-    """Resolve ModelState: explicit param > legacy singleton > container.
-    
-    Legacy singleton is preferred over container for now to maintain
-    backward compatibility with existing tests that mock module-level
-    functions and state. The container path is used only when the
-    legacy singleton fails.
-    """
+    """Resolve ModelState: explicit param, then container."""
     if state is not None:
         return state
-    try:
-        return _get_state()
-    except Exception:
-        try:
-            return _get_state_from_container()
-        except Exception:
-            return _get_state()
+    return _get_default_state()
 
 
-# Convenience wrappers — accept optional state param for DI
+# Convenience wrappers â€” accept optional state param for DI
 def is_model_failed(model: str, state: ModelState | None = None) -> bool:
     return _resolve_state(state).is_model_failed(model)
 
@@ -164,3 +146,5 @@ __all__ = [
     "get_cached_models_safe", "get_verified_models_safe", "set_cached_models",
     "_switch_model",
 ]
+
+

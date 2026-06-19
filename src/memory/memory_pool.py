@@ -7,6 +7,7 @@ independent and allow syncing memory.db across devices.
 import os
 import asyncio
 import aiosqlite
+from contextvars import ContextVar
 from typing import Any
 
 from src.memory.memory_db_path import resolve_memory_db_path
@@ -14,18 +15,28 @@ from src.memory.lifecycle import is_initialized
 from src.memory.connection_pool import ConnectionPool
 
 
-_memory_pool = ConnectionPool(max_connections=5)
+_current_memory_pool: ContextVar[ConnectionPool | None] = ContextVar(
+    "kairos_memory_pool",
+    default=None,
+)
+
+
+def get_memory_pool() -> ConnectionPool:
+    pool = _current_memory_pool.get()
+    if pool is None:
+        pool = ConnectionPool(max_connections=5)
+        _current_memory_pool.set(pool)
+    return pool
 
 
 def configure_memory_pool(pool: ConnectionPool | None) -> None:
-    """Set the active memory connection pool explicitly."""
-    global _memory_pool
-    _memory_pool = pool or ConnectionPool(max_connections=5)
+    """Set the active memory connection pool explicitly, or clear it with None."""
+    _current_memory_pool.set(pool or ConnectionPool(max_connections=5))
 
 
 def reset_memory_pool() -> None:
-    """Reset the active memory pool to a fresh instance."""
-    configure_memory_pool(None)
+    """Reset the active memory pool for the current context."""
+    _current_memory_pool.set(ConnectionPool(max_connections=5))
 
 
 async def get_memory_raw_conn(db_path: str) -> aiosqlite.Connection:
@@ -43,7 +54,7 @@ async def get_memory_conn() -> aiosqlite.Connection:
     """Get a connection to memory.db from the per-process pool."""
     db_path = resolve_memory_db_path()
 
-    raw = await _memory_pool.acquire(db_path)
+    raw = await get_memory_pool().acquire(db_path)
     if raw is None:
         if not is_initialized(db_path):
             from src.memory.memory_schema import init_memory_db
@@ -57,9 +68,9 @@ async def get_memory_conn() -> aiosqlite.Connection:
 async def return_memory_conn(conn: Any) -> None:
     """Return a memory.db connection to the pool."""
     db_path = resolve_memory_db_path()
-    await _memory_pool.release(db_path, conn)
+    await get_memory_pool().release(db_path, conn)
 
 
 async def close_memory_all() -> None:
     """Close all connections in the memory pool."""
-    await _memory_pool.close_all()
+    await get_memory_pool().close_all()

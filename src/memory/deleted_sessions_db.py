@@ -38,7 +38,7 @@ def resolve_deleted_db_path() -> str:
 # ── Schema version tracking (sync engine) ──────────────────────────────────
 
 class _SyncEngine:
-    """Minimal sync engine wrapper for legacy migration runner compatibility."""
+    """Minimal sync engine wrapper for migration runner support."""
     def execute(self, c, sql, params=()):
         return c.execute(sql, params)
     def commit(self, c):

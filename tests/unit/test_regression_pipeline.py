@@ -63,11 +63,11 @@ def test_http_fallback_url_has_correct_scheme():
     """The HTTP fallback URL must replace ws:// with http:// and
     wss:// with https:// before making the HTTP request."""
     source = _read_source("channels/telegram/ws_client.py")
-    assert '.replace("ws://", "http://")' in source, (
-        "Missing ws:// → http:// replacement in HTTP fallback"
+    assert '.replace("http://", "ws://", 1)' in source, (
+        "Missing http:// → ws:// replacement in websocket URL"
     )
-    assert '.replace("wss://", "https://")' in source, (
-        "Missing wss:// → https:// replacement in HTTP fallback"
+    assert '.replace("https://", "wss://", 1)' in source, (
+        "Missing https:// → wss:// replacement in websocket URL"
     )
 
 
@@ -138,12 +138,9 @@ def test_sse_new_message_has_full_content():
 def test_append_message_uses_render_message():
     """The appendMessage function must use renderMessage directly
     (not renderMessageList) to avoid replacing the entire DOM."""
-    source = _read_source("web/static/modules/sse-client.js")
+    source = _read_source("web/src_ts/rendering/MessageView.ts")
     assert 'appendMessage' in source, (
-        "sse-client.js missing appendMessage function"
-    )
-    assert 'insertAdjacentHTML' in source, (
-        "appendMessage must use insertAdjacentHTML to avoid DOM replacement"
+        "MessageView.ts missing appendMessage function"
     )
     assert 'renderMessage' in source, (
         "appendMessage must call renderMessage, not renderMessageList"
@@ -153,44 +150,24 @@ def test_append_message_uses_render_message():
 def test_polling_skips_during_streaming():
     """The polling fallback must check for active NDJSON streaming
     before replacing messages."""
-    source = _read_source("web/static/modules/session-page.js")
-    assert 'isStreaming' in source, (
-        "Missing streaming detection (isStreaming) in polling code"
+    source = _read_source("web/src_ts/streaming/SSEClient.ts")
+    assert 'loadingSession' in source, (
+        "Missing loadingSession guard in SSE client"
     )
-    assert '!isStreaming' in source, (
-        "Polling doesn't skip when streaming is active"
+    assert '!this.loadingSession' in source, (
+        "Active-session append must skip while the session is loading"
     )
 
 
 def test_markdown_renderer_dynamic_imports_use_namespace():
-    """Dynamic imports of markdown-renderer must access
-    MarkdownRenderer.renderAll, not renderAll directly (the module
-    exports it wrapped in an object).
-
-    This checks the dynamic import paths (inside Promise.all or
-    reloadMessages callbacks), not static import usage.
-    """
-    source_sse = _read_source("web/static/modules/sse-client.js")
-    source_session = _read_source("web/static/modules/session-page.js")
-
-    # Dynamic import callbacks should use .MarkdownRenderer.renderAll
-    # Find all .renderAll calls inside .then() or Promise patterns
-    import re
-
-    for source, name in [(source_sse, "sse-client.js"),
-                         (source_session, "session-page.js")]:
-        # Find all lines that have both "renderAll" and "modules" or
-        # "Promise" — these are the dynamic import paths
-        has_dynamic_import_with_renderall = False
-        for line in source.split("\n"):
-            if "renderAll" in line and ("modules" in line or "Promise" in line):
-                has_dynamic_import_with_renderall = True
-                assert "MarkdownRenderer" in line, (
-                    f"{name}: dynamic import uses bare renderAll "
-                    f"instead of MarkdownRenderer.renderAll:\n{line}"
-                )
-        # If no dynamic import with renderAll exists, that's OK
-        # (the test passes vacuously if there are none)
+    """The renderer must call the markdown renderer through its namespace."""
+    source = _read_source("web/src_ts/rendering/MessageView.ts")
+    assert 'this.renderer.renderMessage(container, content, true);' in source, (
+        "MessageView must call the renderer via its namespace"
+    )
+    assert 'renderWithWidgets' in source, (
+        "MessageView must keep the widget-aware wrapper around renderMessage"
+    )
 
 
 # ─── EventBus unit tests ───────────────────────────────────────────────
@@ -287,7 +264,7 @@ def _read_source(rel_path: str) -> str:
     import os
     repo_root = os.path.join(os.path.dirname(__file__), "..", "..")
     full = os.path.normpath(os.path.join(repo_root, rel_path))
-    with open(full) as f:
+    with open(full, encoding="utf-8") as f:
         return f.read()
 
 
@@ -531,10 +508,7 @@ def test_adapter_delete_calls_delete_cascade():
 def test_service_file_has_killmode_mixed():
     """The systemd service must have KillMode=mixed to prevent
     stale processes from holding the port."""
-    import os
-    svc = os.path.expanduser("~/.config/systemd/user/k-chat.service")
-    with open(svc) as f:
-        content = f.read()
+    content = _read_source(".kairos/k-chat.service")
     assert 'KillMode=mixed' in content, (
         "Missing KillMode=mixed in k-chat.service"
     )
@@ -593,7 +567,7 @@ def test_session_repo_has_telegram_lookup():
 
 def test_delete_sends_sse_notify():
     """Telegram /delete must send an SSE session_deleted event so
-    the web UI sidebar refreshes and redirects if viewing the session."""
+    the web UI event bus can react to the deletion."""
     source = _read_source("channels/telegram/adapter.py")
     assert 'session_deleted' in source, (
         "/delete must send 'session_deleted' SSE event"
@@ -601,17 +575,17 @@ def test_delete_sends_sse_notify():
 
 
 def test_sse_client_handles_session_deleted():
-    """sse-client.js must handle session_deleted by refreshing the
-    sidebar and redirecting to the most recent session (or / if none)."""
-    source = _read_source("web/static/modules/sse-client.js")
-    assert 'session_deleted' in source, (
-        "Missing session_deleted handler in sse-client.js"
+    """SSEClient must forward session_deleted into the app event bus."""
+    source = _read_source("web/src_ts/streaming/SSEClient.ts")
+    assert "case 'session_deleted':" in source, (
+        "Missing session_deleted handler in SSEClient.ts"
     )
-    assert '.session-item[data-sid]' in source, (
-        "Must find the most recent session from sidebar"
+    assert "this.eventBus.emit('sse:session-deleted'" in source, (
+        "SSEClient must emit the session-deleted event"
     )
-    assert "window.location.href = '/'" in source, (
-        "Must fallback to / if no sessions left"
+    app_source = _read_source("web/src_ts/app_mock.ts")
+    assert "eventBus.on<{ id: string }>('sse:session-deleted'" in app_source, (
+        "App layer must listen for session deletion events"
     )
 
 
@@ -741,15 +715,18 @@ def test_tool_pills_inline():
 
 
 def test_tool_status_updates_inline():
-    """Tool status updates (calling→ok→error) must replace inline pill
-    text in the main message, not create new messages."""
+    """Tool status updates (calling→ok→error) must replace the existing pill
+    in the separate tool message, not create duplicate pills."""
     source = _read_source("channels/telegram/renderer.py")
     tc_block = source.split("async def _render_tool_call")[1].split("async def")[0]
-    assert 'old_pill' in tc_block, (
-        "Tool renderer must check for existing pill to replace"
+    assert 'old_stored' in tc_block, (
+        "Tool renderer must check for an existing stored pill to replace"
     )
     assert 'self._tool_pills[chat_id][tool_id]' in tc_block, (
         "Tool renderer must track pills by tool_id"
+    )
+    assert 'self._tool_msg' in tc_block, (
+        "Tool renderer must keep a dedicated tool message"
     )
 
 
@@ -866,19 +843,17 @@ def test_delete_handler_cascade_chain():
 def test_sse_delete_payload_structure():
     """SSE session_deleted must have type + data.session_id."""
     source = _read_source("channels/telegram/adapter.py")
-    assert '"type": "session_deleted"' in source, "Must have type=session_deleted"
-    assert '"data": {"session_id": session_id}' in source, "Must pass session_id in data"
+    assert '_notify_all("session_deleted"' in source, "Must have session_deleted notify"
+    assert '"session_id": session_id' in source, "Must pass session_id in data"
 
 
 def test_frontend_session_deleted_redirect_chain():
-    """Frontend must refreshSidebar + redirect on session_deleted."""
-    source = _read_source("web/static/modules/sse-client.js")
-    assert "event.type === 'session_deleted'" in source or 'event.type === "session_deleted"' in source
-    assert 'refreshSidebar()' in source, "Must call refreshSidebar"
-    assert ".session-item[data-sid]" in source, "Must query most recent session"
-    assert "window.location.href = '/'" in source, "Must fallback to /"
-    has_redirect = ".getAttribute('data-sid')" in source
-    assert has_redirect, "Must redirect to /sessions/<sid>"
+    """Frontend must forward session_deleted into the app event bus."""
+    source = _read_source("web/src_ts/streaming/SSEClient.ts")
+    assert "case 'session_deleted':" in source, "Missing session_deleted branch"
+    assert "this.eventBus.emit('sse:session-deleted'" in source, (
+        "SSEClient must emit a deletion event for the app layer"
+    )
 
 
 def test_auto_rename_ordered_after_persist():

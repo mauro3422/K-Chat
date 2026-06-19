@@ -17,7 +17,7 @@ export class ToolCallRenderer {
     const status: string = payload.status || 'calling';
     const toolName = payload.name || 'unknown';
 
-    // Ignore _stream_args partial events (same as production JS)
+    // Ignore _stream_args partial events emitted during streaming assembly
     if (payload.name === '_stream_args' || payload.status === 'partial') return;
 
     // Determine which phase this tool belongs to:

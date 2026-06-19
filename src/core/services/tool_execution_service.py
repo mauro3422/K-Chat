@@ -54,6 +54,6 @@ class ToolExecutionService(ToolExecutionServiceProtocol):
             llm_chat_fn=llm_chat_fn,
             llm_chat_stream_fn=llm_chat_stream_fn,
             tool_defs=self.tool_registry.tools_openai,
-            skill_registry=self.tool_registry._skill_registry,
+            skill_registry=self.tool_registry.skill_registry,
         ):
             yield event

@@ -22,7 +22,7 @@ All P1–P3 items completed. The codebase has been refactored with:
 
 ### Bug fixes applied post-analysis
 
-- **Messages disappearing during streaming**: Fixed three root causes — (1) frontend `AbortController` unconditionally removed assistant divs even with content, (2) frontend catch block retried on any JS error destroying already-rendered messages, (3) backend generator did not persist assistant messages when the client aborted the fetch (GeneratorExit before save). Added structured `try...except...finally` save in `web/services/chat_stream.py` and guard conditions in `web/static/modules/chat-form.js`.
+- **Messages disappearing during streaming**: Fixed three root causes — (1) frontend `AbortController` unconditionally removed assistant divs even with content, (2) frontend catch block retried on any JS error destroying already-rendered messages, (3) backend generator did not persist assistant messages when the client aborted the fetch (GeneratorExit before save). Added structured `try...except...finally` save in `web/services/chat_stream.py` and guard conditions in `web/src_ts/core/ChatForm.ts`.
 - **Stress test coverage**: Added `tests/test_stream_abort_persistence.py` (5 cases covering GeneratorExit, empty response, partial reasoning, and consecutive streams) and `tests/test-stress-stream-abort.js` (8 assertions simulating full frontend abort scenario). All tests pass.
 
 ---
@@ -110,7 +110,7 @@ class DebugInfo:
 
 Tools (`web_search`, `fetch_url`) and LLM modules (`providers`, `discovery`, `retry`) now accept an optional `config` parameter. When provided, it overrides `DEFAULT_CONFIG`. When omitted, the global singleton is used as fallback. This allows tests and alternative configurations to inject custom settings without touching global state.
 
-The remaining module-level state is now easier to control because `config_loader`, `logbus`, `model_registry`, `llm.providers`, `container`, `model_state`, `context.runtime`, `context.templates`, `context.crash_recovery`, `memory.engine_state`, `circuit_breaker`, `rate_limit_state`, `memory.keywords.extractor`, `memory.embeddings.service`, `memory.retrieval.reranker`, `connection_pool`, `memory_pool`, `utils.async_utils`, `web.services.file_logger`, the web app config cache, the SSE `event_bus`, the web app’s HTTP rate-limit store, and the process `gateway` state each expose explicit configure/reset helpers or app-state ownership. The legacy singleton entry points still exist for compatibility, but they are no longer the only way to control lifecycle. `src/tools` now uses a shared thread helper to avoid tying tool retries and file I/O to a single async backend.
+The remaining module-level state is now easier to control because `config_loader`, `logbus`, `model_registry`, `llm.providers`, `container`, `model_state`, `context.runtime`, `context.templates`, `context.crash_recovery`, `memory.engine_state`, `circuit_breaker`, `rate_limit_state`, `memory.keywords.extractor`, `memory.embeddings.service`, `memory.retrieval.reranker`, `connection_pool`, `memory_pool`, `utils.async_utils`, `web.services.file_logger`, the web app config cache, the SSE `event_bus`, the web app’s HTTP rate-limit store, and the process `gateway` state each expose explicit configure/reset helpers or app-state ownership. The remaining singleton entry points are transition helpers, not the only way to control lifecycle. `src/tools` now uses a shared thread helper to avoid tying tool retries and file I/O to a single async backend.
 
 ### Issue: `src/compressor.py` imports `src.llm.chat` directly
 
@@ -215,7 +215,7 @@ Both `src/core/__init__.py` and `src/llm/__init__.py` are package markers only. 
 6. **Extract error classification** to `web/services/chat_stream.py`
 7. **Extract `StreamBuilder`** from `web/routers/chat.py` to `web/services/chat_stream.py`
 8. **Extract message renderer** from `web/routers/pages.py` to `web/services/message_renderer.py`
-9. **Split `widget-system.js`** into `web/static/modules/widgets/` folder
+9. **Split `widget-system.js`** into the widgets folder that existed at that stage of the refactor
 10. **Auto-discover web routers** — scan `web/routers/*.py` instead of manual imports in `server.py`
 11. **Remove `web/routers/__init__.py`** — replaced by auto-discovery
 12. **Remove any `src/llm/models.py` compatibility references**

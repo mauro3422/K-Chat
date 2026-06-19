@@ -1,4 +1,4 @@
-"""Circuit breaker for LLM failover — prevents infinite retry loops.
+﻿"""Circuit breaker for LLM failover â€” prevents infinite retry loops.
 
 Tracks failures per model and opens the circuit after N consecutive failures
 within a time window, with automatic half-open after cooldown.
@@ -6,6 +6,7 @@ within a time window, with automatic half-open after cooldown.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 import threading
 import time
 from typing import Any
@@ -75,47 +76,32 @@ class CircuitBreaker:
         """Manually reset circuit for a model."""
         self.record_success(model)
 
-
-# ── Container-aware helpers (migration to DI) ──────────────────────
-
-def get_breaker_from_container() -> CircuitBreaker:
-    """Get circuit breaker from the default DI container."""
-    from src.llm.container import get_container
-    return get_container().get_circuit_breaker()
+_current_breaker: ContextVar[CircuitBreaker | None] = ContextVar(
+    "kairos_circuit_breaker",
+    default=None,
+)
 
 
-# Global singleton for convenience (will be migrated to DI)
-_breaker: CircuitBreaker | None = None
-_breaker_lock = threading.Lock()
+def _get_default_breaker() -> CircuitBreaker:
+    breaker = _current_breaker.get()
+    if breaker is None:
+        breaker = CircuitBreaker()
+        _current_breaker.set(breaker)
+    return breaker
 
 
 def configure_breaker(breaker: CircuitBreaker) -> None:
-    """Set an explicit circuit breaker instance for the process."""
-    global _breaker
-    with _breaker_lock:
-        _breaker = breaker
+    """Set the active circuit breaker instance for the current context."""
+    _current_breaker.set(breaker)
 
 
 def reset_breaker() -> None:
-    """Clear the explicit breaker and restore lazy construction."""
-    global _breaker
-    with _breaker_lock:
-        _breaker = None
+    """Clear the active breaker and restore lazy construction."""
+    _current_breaker.set(None)
 
 
 def get_breaker() -> CircuitBreaker:
-    """Get the global CircuitBreaker singleton.
+    """Get the active CircuitBreaker."""
+    return _get_default_breaker()
 
-    Prefers the DI container if available, falls back to module singleton.
-    """
-    global _breaker
-    if _breaker is not None:
-        return _breaker
-    try:
-        return get_breaker_from_container()
-    except Exception:
-        if _breaker is None:
-            with _breaker_lock:
-                if _breaker is None:
-                    _breaker = CircuitBreaker()
-        return _breaker
+

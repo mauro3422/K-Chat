@@ -2,7 +2,7 @@ import { WidgetMarker } from '../../types/streaming';
 import { IWidgetRegistry } from '../../types/widgets';
 
 /**
- * WidgetDetector — port of contract.js + widget-detector.js
+ * WidgetDetector — shared widget contract and detection logic.
  *
  * Detects ```html-widget blocks and [Widget:key] tags in streamed text.
  * NOW INSTANCE-BASED: receives IWidgetRegistry via constructor.

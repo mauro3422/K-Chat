@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from src.memory.retrieval.reranker import (
     Reranker,
     configure_reranker,
+    get_reranker,
     reset_reranker,
     rerank,
     unload_model,
@@ -102,25 +103,23 @@ class TestModuleLevelFunctions:
     """Tests for module-level rerank() and unload_model()."""
 
     def test_rerank_empty_candidates(self):
-        with patch("src.memory.retrieval.reranker._reranker_instance", None), \
-             patch("src.memory.retrieval.reranker.Reranker") as mock_rr_cls:
-            mock_instance = MagicMock()
-            mock_instance.rerank.return_value = []
-            mock_rr_cls.return_value = mock_instance
-
+        reranker = Reranker()
+        configure_reranker(reranker)
+        try:
+            assert get_reranker() is reranker
             result = rerank("query", [], top_k=8)
-
             assert result == []
+        finally:
+            reset_reranker()
 
     def test_unload_model_does_not_raise(self):
-        with patch("src.memory.retrieval.reranker._reranker_instance", None):
-            unload_model()
+        unload_model()
 
     def test_reset_reranker_restores_lazy_instance(self):
         reranker = Reranker()
         configure_reranker(reranker)
         try:
-            assert rerank.__globals__["_reranker_instance"] is reranker
+            assert get_reranker() is reranker
         finally:
             reset_reranker()
-        assert rerank.__globals__["_reranker_instance"] is None
+        assert get_reranker() is not reranker

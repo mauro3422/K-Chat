@@ -16,8 +16,7 @@ def _get_logbus(request: Request):
     bus = getattr(request.app.state, "logbus", None)
     if bus is not None:
         return bus
-    from src.logbus import get_logbus
-    return get_logbus()
+    raise HTTPException(status_code=500, detail="LogBus not initialized")
 
 
 @router.get("")

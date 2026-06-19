@@ -17,11 +17,13 @@ logger = logging.getLogger(__name__)
 def _get_ws_url() -> str:
     """Get the WebSocket URL, configurable via env KAIROS_WEB_URL."""
     base = os.environ.get("KAIROS_WEB_URL", "http://127.0.0.1:8000")
-    # Replace http/https with ws/wss
-    if base.startswith("https"):
-        ws_base = base.replace("https", "wss", 1)
+    # Normalize both HTTP(S) and WS(S) inputs to a websocket URL.
+    if base.startswith("wss://") or base.startswith("https://"):
+        ws_base = base.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+    elif base.startswith("ws://") or base.startswith("http://"):
+        ws_base = base.replace("http://", "ws://", 1)
     else:
-        ws_base = base.replace("http", "ws", 1)
+        ws_base = "ws://" + base.lstrip("/")
     return ws_base.rstrip("/") + "/api/ws/events"
 
 

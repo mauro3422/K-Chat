@@ -2,7 +2,6 @@ import { IStreamDispatcher } from '../types/dispatcher';
 import { IWidgetRegistry } from '../types/widgets';
 import { IIframeBuilder } from '../types/iframe';
 import { IWidgetContainerRenderer } from '../types/widget-renderer';
-import { renderMarkdown } from '../rendering/DomRenderer';
 import { IDebugManager } from '../types/debug';
 import { getLogger } from '../core/LoggerFactory';
 import { ILogger } from '../core/Logger';
@@ -35,6 +34,7 @@ export class ContentHandler {
   private iframeBuilder: IIframeBuilder;
   private containerRenderer: IWidgetContainerRenderer;
   private registry: IWidgetRegistry;
+  private renderMarkdown: (markdown: string) => string;
   private debug?: IDebugManager;
   private logger: ILogger;
   private reasoningHandler: ReasoningHandler;
@@ -47,12 +47,14 @@ export class ContentHandler {
     iframeBuilder: IIframeBuilder,
     containerRenderer: IWidgetContainerRenderer,
     registry: IWidgetRegistry,
+    renderMarkdown: (markdown: string) => string,
     debug?: IDebugManager,
   ) {
     this.dispatcher = dispatcher;
     this.iframeBuilder = iframeBuilder;
     this.containerRenderer = containerRenderer;
     this.registry = registry;
+    this.renderMarkdown = renderMarkdown;
     this.debug = debug;
     this.logger = getLogger('stream');
     this.reasoningHandler = new ReasoningHandler(
@@ -250,7 +252,7 @@ export class ContentHandler {
       if (targetSeg.dataset.rawText === cacheKey) continue;
       targetSeg.dataset.rawText = cacheKey;
 
-      const html = renderMarkdown(segText);
+      const html = this.renderMarkdown(segText);
       ContentHandler.setSegmentContent(targetSeg, html, i === widgetMatches.length ? incompleteTail : '');
     }
   }
@@ -286,13 +288,13 @@ export class ContentHandler {
         const start = lastSegIdx === 0 ? 0 : widgetMatches[lastSegIdx - 1].end;
         const end = lastSegIdx === widgetMatches.length ? textToRender.length : widgetMatches[lastSegIdx].index;
         const segText = textToRender.substring(start, end);
-        const html = renderMarkdown(segText);
+        const html = this.renderMarkdown(segText);
         ContentHandler.setSegmentContent(lastSeg, html, lastSegIdx === widgetMatches.length ? incompleteTail : '');
       } else {
         const seg = document.createElement('div');
         seg.className = C.MSG_TEXT_SEGMENT;
         bodyDiv.appendChild(seg);
-        const html = renderMarkdown(textToRender);
+        const html = this.renderMarkdown(textToRender);
         ContentHandler.setSegmentContent(seg, html, incompleteTail);
       }
       this.lastRenderedLength = fullText.length;

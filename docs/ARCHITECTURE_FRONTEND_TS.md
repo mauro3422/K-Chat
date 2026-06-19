@@ -505,7 +505,7 @@ Renderiza pills de herramientas:
 - `calling` → ⚡ nombre (spinner)
 - `ok` → ✓ nombre
 - `error` → ✘ nombre
-- `partial` → ignorado (igual que JS production)
+- `partial` → ignorado (igual que el frontend JS)
 - `_stream_args` → ignorado (argumentos parciales del backend)
 
 ### ErrorRenderer
@@ -533,6 +533,9 @@ Widget ── sandbox="allow-scripts" ── iframe ── postMessage
   │                                              │  widget-error
   └──────────────────────────────────────────────┘
 ```
+
+El iframe también expone un bridge interno namespaced en `window.__KAIROS_WIDGET_BRIDGE__`
+para `initialState` y `saveState`; eso reemplazó el uso directo de globals sueltas.
 
 **Contratos de postMessage:**
 

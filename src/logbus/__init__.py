@@ -12,30 +12,29 @@ Usage:
     ))
 """
 
+from contextvars import ContextVar
+
 from src.logbus.core import LogBus, LogEvent
 
-_logbus: LogBus | None = None
+_current_bus: ContextVar[LogBus | None] = ContextVar("kairos_logbus", default=None)
 
 
 def configure_logbus(bus: LogBus | None) -> None:
-    """Set the active LogBus instance explicitly.
-
-    Passing None resets the module to lazy initialization behavior.
-    """
-    global _logbus
-    _logbus = bus
+    """Set the active LogBus instance for the current context."""
+    _current_bus.set(bus)
 
 
 def get_logbus() -> LogBus:
-    """Get the global LogBus singleton, creating it if needed."""
-    global _logbus
-    if _logbus is None:
-        _logbus = LogBus()
-    return _logbus
+    """Get or create the LogBus for the current context."""
+    bus = _current_bus.get()
+    if bus is None:
+        bus = LogBus()
+        _current_bus.set(bus)
+    return bus
 
 
 def reset_logbus() -> None:
-    """Reset the active LogBus instance."""
+    """Reset the active LogBus instance for the current context."""
     configure_logbus(None)
 
 

@@ -1,5 +1,5 @@
-/**
- * K-Chat TS Prototype — Orchestrator
+﻿/**
+ * K-Chat TS Prototype â€” Orchestrator
  *
  * All pieces wired together via dependency injection (Lego blocks).
  * Uses StreamSimulator to generate realistic NDJSON events dynamically.
@@ -41,8 +41,22 @@ import { SystemLogPanel } from './core/debug/SystemLogPanel';
 import { BrowserDomRenderer } from './rendering/DomRenderer';
 
 document.addEventListener('DOMContentLoaded', async () => {
-
-  // ── 1. Init Lego Blocks ──────────────────────────────
+  const markedGlobal = (window as Window & { marked?: { parse?: (text: string, opts?: Record<string, unknown>) => string } | ((text: string) => string) }).marked;
+  if (!markedGlobal) {
+    throw new Error('marked.js is required before booting the UI');
+  }
+  const domPurifyGlobal = (window as Window & { DOMPurify?: { sanitize: (html: string, config?: Record<string, unknown>) => string } }).DOMPurify;
+  if (!domPurifyGlobal) {
+    throw new Error('DOMPurify is required before booting the UI');
+  }
+  const markedFn = (text: string): string => {
+    if (typeof markedGlobal === 'function') {
+      return markedGlobal(text);
+    }
+    return markedGlobal.parse ? markedGlobal.parse(text, { breaks: true, gfm: true }) : text;
+  };
+  const dompurifyFn = domPurifyGlobal;
+  // â”€â”€ 1. Init Lego Blocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const eventBus = new TypedEventBus();
   const debug = new DebugManager();
   const widgetRegistry = new WidgetRegistry();
@@ -58,7 +72,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const cardManager = new CanvasCardManager(iframeBuilder, widgetRegistry, eventBus, debug);
 
   const fileUploader = new FileUploader();
-  const domRenderer = new BrowserDomRenderer(undefined, undefined, widgetRegistry);
+  const domRenderer = new BrowserDomRenderer(markedFn, dompurifyFn, widgetRegistry);
+  const renderMarkdownFn = domRenderer.renderMarkdown.bind(domRenderer);
   const messageView = new MessageView(domRenderer, iframeBuilder, containerRenderer);
   const chatForm = new ChatForm(eventBus, fileUploader);
   const sessionList = new SessionList(eventBus);
@@ -66,7 +81,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sessionStore = new SessionStore(apiClient);
   const ndjsonClient = new NDJSONStreamClient(apiClient, eventBus);
 
-  const sseClient = new SSEClient(eventBus, messageView, iframeBuilder, containerRenderer, widgetRegistry, debug);
+  const sseClient = new SSEClient(eventBus, messageView, iframeBuilder, containerRenderer, widgetRegistry, renderMarkdownFn, debug);
   sseClient.connect();
   sseClient.setCurrentSessionId(sessionStore.activeSessionId);
 
@@ -78,13 +93,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const notificationBell = new NotificationBell(eventBus);
   notificationBell.init();
 
-  // Wire rate-limit:detected (from SSEClient) → RateLimitCooldown
+  // Wire rate-limit:detected (from SSEClient) â†’ RateLimitCooldown
   eventBus.on<{ duration: number }>('rate-limit:detected', (data) => {
     rateLimitCooldown.start(data.duration);
-    notificationService.show('warning', '⏳ Límite de tasa alcanzado. Esperá al countdown.', 8000);
+    notificationService.show('warning', 'â³ LÃ­mite de tasa alcanzado. EsperÃ¡ al countdown.', 8000);
   });
 
-  const skillsUI = new SkillsUI(eventBus);
+  const skillsUI = new SkillsUI(eventBus, renderMarkdownFn, window.fetch.bind(window));
   const systemLogPanel = new SystemLogPanel(apiClient);
   skillsUI.init();
   systemLogPanel.init();
@@ -117,17 +132,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     iframeBuilder.handleMessage(event);
   });
 
-  // ── 2. Stream Orchestrator ────────────────────────────
+  // â”€â”€ 2. Stream Orchestrator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const retryController = new RetryController(debug);
   const streamOrchestrator = new StreamOrchestrator(
     messageView, streamSimulator, sessionStore, chatForm,
-    iframeBuilder, containerRenderer, widgetRegistry,
+    iframeBuilder, containerRenderer, widgetRegistry, renderMarkdownFn,
     rateLimitCooldown, debug, retryController,
     ndjsonClient, // IA real conectada
     eventBus,
   );
 
-  // ── 3. UI Refresh ────────────────────────────────────
+  // â”€â”€ 3. UI Refresh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const refreshUI = () => {
     sessionList.renderSessions(sessionStore.sessions, sessionStore.activeSessionId);
     messageView.clearContainer();
@@ -145,7 +160,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
   refreshUI();
 
-  // ── 4. SessionStore Events → UI ──────────────────────
+  // â”€â”€ 4. SessionStore Events â†’ UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // SessionStore handles data mutations; we only update UI + debug logs.
 
   eventBus.on('sessions:updated', () => {
@@ -154,7 +169,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   eventBus.on('history:updated', () => {
     // Stream adds messages to DOM directly. This handler only needed for
-    // session switching (handled by session:selected → refreshUI).
+    // session switching (handled by session:selected â†’ refreshUI).
     // Full re-render here would destroy scroll position.
   });
 
@@ -169,7 +184,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   eventBus.on<{ id: string; name: string }>('session:renamed', (data) => {
-    debug.logUI('rename_session', `${data.id} → ${data.name}`);
+    debug.logUI('rename_session', `${data.id} â†’ ${data.name}`);
   });
 
   eventBus.on<{ id: string }>('session:deleted', (data) => {
@@ -193,11 +208,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Ensure empty state for new session
     const msgsEl = document.getElementById('messages');
     if (msgsEl && msgsEl.children.length === 0) {
-      msgsEl.innerHTML = '<div class="empty-state">Envía un mensaje para empezar</div>';
+      msgsEl.innerHTML = '<div class="empty-state">EnvÃ­a un mensaje para empezar</div>';
     }
   });
 
-  // ── 5. New Session button ────────────────────────────
+  // â”€â”€ 5. New Session button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let _creatingSession = false;
   document.getElementById('btn-new-session')?.addEventListener('click', async () => {
     if (_creatingSession) return;
@@ -207,7 +222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (id) logger.info('session_created', id);
   });
 
-  // ── 6. Event Bus Bindings ────────────────────────────
+  // â”€â”€ 6. Event Bus Bindings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   // Chat: send message
   eventBus.on<{ text: string; files?: File[]; model?: string }>('chat:send', (data) => {
@@ -225,7 +240,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (userText) {
           const retryCount = parseInt(msgEl?.dataset.retryCount || '0', 10);
           msgEl!.dataset.retryCount = String(retryCount + 1);
-          debug.logUI('retry', `intento ${retryCount + 1} — "${userText.substring(0, 40)}"`);
+          debug.logUI('retry', `intento ${retryCount + 1} â€” "${userText.substring(0, 40)}"`);
           streamOrchestrator.handleRetry(userText);
         }
       }
@@ -237,7 +252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     streamOrchestrator.abort();
   });
 
-  // ── 7. SSE Event Handling ─────────────────────────────
+  // â”€â”€ 7. SSE Event Handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   eventBus.on<{ id: string }>('sse:session-deleted', (data) => {
     // Guard: only delete if session still exists (breaks SSE echo loop)
     if (sessionStore.sessions.some(s => s.id === data.id)) {
@@ -259,37 +274,38 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   eventBus.on<{ sessionId: string }>('session:select', (data) => {
     sessionList.clearUnread(data.sessionId);
+    void sessionStore.selectSession(data.sessionId);
   });
 
-  // ── 8. Browser History Navigation (back/forward) ─────
+  // â”€â”€ 8. Browser History Navigation (back/forward) â”€â”€â”€â”€â”€
   window.addEventListener('popstate', (event) => {
     const state = event.state as { sessionId?: string } | null;
     if (state?.sessionId && sessionStore.sessions.some(s => s.id === state.sessionId)) {
-      sessionStore.selectSession(state.sessionId);
+      void sessionStore.selectSession(state.sessionId);
     }
   });
 
-  // ── 9. Sidebar Toggle ────────────────────────────────
+  // â”€â”€ 9. Sidebar Toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const sidebarToggle = document.getElementById('sidebar-toggle');
   const sidebarEl = document.getElementById('sidebar');
 
   if (sidebarToggle && sidebarEl) {
     sidebarToggle.addEventListener('click', () => {
       sidebarEl.classList.toggle('collapsed');
-      sidebarToggle.textContent = sidebarEl.classList.contains('collapsed') ? '▶' : '◀';
+      sidebarToggle.textContent = sidebarEl.classList.contains('collapsed') ? 'â–¶' : 'â—€';
       sidebarToggle.title = sidebarEl.classList.contains('collapsed') ? 'Mostrar panel' : 'Ocultar panel';
       if (debugPanel && debugPanel.classList.contains('open')) debug.refresh();
     });
   }
 
-  // ── 10. Theme Toggle ─────────────────────────────────
+  // â”€â”€ 10. Theme Toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   document.getElementById('theme-toggle')?.addEventListener('click', () => {
     const isLight = document.body.classList.toggle('light-theme');
     document.documentElement.classList.toggle('light-theme', isLight);
     localStorage.setItem('selected_theme', isLight ? 'light' : 'dark');
   });
 
-  // ── 11. Debug Panel ──────────────────────────────────
+  // â”€â”€ 11. Debug Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const debugToggle = document.getElementById('debug-toggle');
   const debugPanel = document.getElementById('debug-panel');
   const debugClose = document.getElementById('debug-close');
@@ -317,7 +333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Periodic refresh — store ID for cleanup
+  // Periodic refresh â€” store ID for cleanup
   const debugIntervalId = setInterval(() => {
     if (debugPanel && debugPanel.classList.contains('open')) {
       const activeCtx = streamOrchestrator.debugActiveContext;
@@ -359,6 +375,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     eventBus,
   };
 
-  logger.info('TS ready — Lego layout blocks initialized');
+  logger.info('TS ready â€” Lego layout blocks initialized');
   logger.info('Try: __k.canvasOverlay.startEffect("rain")');
 });

@@ -1,4 +1,4 @@
-"""Thread-safe tracker for per-model rate limit state.
+﻿"""Thread-safe tracker for per-model rate limit state.
 
 Lego block: independent, no framework imports, pure Python.
 Can be used by any layer that needs to know which models are
@@ -7,6 +7,7 @@ currently rate limited and when they'll recover.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 import threading
 import time
 from typing import Any
@@ -125,48 +126,32 @@ class ModelRateLimitStore:
             "limited_models": limited,
         }
 
-
-# ── Container-aware helpers (migration to DI) ──────────────────────
-
-def get_rate_limit_store_from_container() -> ModelRateLimitStore:
-    """Get rate limit store from the default DI container."""
-    from src.llm.container import get_container
-    return get_container().get_rate_limit_store()
+_current_rate_limit_store: ContextVar[ModelRateLimitStore | None] = ContextVar(
+    "kairos_rate_limit_store",
+    default=None,
+)
 
 
-# --- Global singleton (for convenience, can be injected) --------------
-_RATE_LIMIT_STORE: ModelRateLimitStore | None = None
-_lock = threading.Lock()
+def _get_default_rate_limit_store() -> ModelRateLimitStore:
+    store = _current_rate_limit_store.get()
+    if store is None:
+        store = ModelRateLimitStore()
+        _current_rate_limit_store.set(store)
+    return store
 
 
 def configure_rate_limit_store(store: ModelRateLimitStore) -> None:
-    """Set an explicit rate limit store for the process."""
-    global _RATE_LIMIT_STORE
-    with _lock:
-        _RATE_LIMIT_STORE = store
+    """Set the active rate limit store for the current context."""
+    _current_rate_limit_store.set(store)
 
 
 def reset_rate_limit_store() -> None:
-    """Clear the explicit store and restore lazy construction."""
-    global _RATE_LIMIT_STORE
-    with _lock:
-        _RATE_LIMIT_STORE = None
+    """Clear the active store and restore lazy construction."""
+    _current_rate_limit_store.set(None)
 
 
 def get_rate_limit_store() -> ModelRateLimitStore:
-    """Get the global ModelRateLimitStore singleton.
+    """Get the active ModelRateLimitStore."""
+    return _get_default_rate_limit_store()
 
-    Prefers the DI container if available, falls back to module singleton.
-    """
-    global _RATE_LIMIT_STORE
-    if _RATE_LIMIT_STORE is not None:
-        return _RATE_LIMIT_STORE
-    try:
-        return get_rate_limit_store_from_container()
-    except Exception:
-        # Fallback to legacy singleton
-        if _RATE_LIMIT_STORE is None:
-            with _lock:
-                if _RATE_LIMIT_STORE is None:
-                    _RATE_LIMIT_STORE = ModelRateLimitStore()
-        return _RATE_LIMIT_STORE
+

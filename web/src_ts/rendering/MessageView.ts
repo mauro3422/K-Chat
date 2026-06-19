@@ -1,5 +1,4 @@
 import { IDomRenderer } from '../types/rendering';
-import { BrowserDomRenderer } from './DomRenderer';
 import { IIframeBuilder } from '../types/iframe';
 import { IMessageView } from '../types/message-view';
 import { IWidgetContainerRenderer } from '../types/widget-renderer';
@@ -14,7 +13,7 @@ import type { MessageData } from '../types/messages';
  * For streaming, it only provides the container (beginStreaming).
  * The ContentHandler fills the details (reasoning, tools, content, widgets).
  * For historical messages, markdown is rendered via DomRenderer which
- * internally calls registry.extract() before marked.parse().
+ * calls registry.extract() before the injected markdown parser.
  */
 export class MessageView implements IMessageView {
   private logger: ILogger = getLogger('message-view');
@@ -23,7 +22,7 @@ export class MessageView implements IMessageView {
   private iframeBuilder?: IIframeBuilder;
 
   constructor(
-    renderer: IDomRenderer = new BrowserDomRenderer(),
+    renderer: IDomRenderer,
     iframeBuilder?: IIframeBuilder,
     private widgetContainerRenderer?: IWidgetContainerRenderer,
   ) {

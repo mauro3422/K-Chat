@@ -173,8 +173,8 @@ TEMPLATES = get_templates()
 def reset_templates_cache(config=None) -> None:
     """Refresh the exported template cache.
 
-    This keeps compatibility for callers that still import TEMPLATES while
-    allowing lifecycle code to rebuild the cached mapping after config resets.
+    This keeps callers that still import TEMPLATES working while
+    lifecycle code rebuilds the cached mapping after config resets.
     """
     global TEMPLATES
     TEMPLATES = get_templates(config=config)

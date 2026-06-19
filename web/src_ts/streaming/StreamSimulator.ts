@@ -86,7 +86,7 @@ export class StreamSimulator {
     search_files: [
       'Encontrados 12 archivos relevantes en el proyecto.',
       'Se identificaron 5 módulos principales que coinciden con el patrón de búsqueda.',
-      'Hallados 8 resultados. Los más relevantes están en web/src_ts/ y web/static/modules/.',
+      'Hallados 8 resultados. Los más relevantes están en web/src_ts/ y en la capa servida por el frontend compilado.',
     ],
     read_file: [
       'Archivo leído correctamente. Contenido cargado en memoria para análisis.',

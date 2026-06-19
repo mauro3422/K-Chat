@@ -1,15 +1,11 @@
 import os
 import logging
 import shutil
-import asyncio
-import threading
-from queue import Queue
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
 from src.tools._preflight import preflight_check, create_backup, postflight_check
-
-logger = logging.getLogger(__name__)
+from src.utils.async_utils import run_awaitable_sync
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +21,11 @@ class AwaitableText(str):
 
 
 def _run_impact_analysis(def_name: str, path: str) -> str | None:
-    result: Queue[str | None] = Queue(maxsize=1)
-
-    def _worker() -> None:
-        try:
-            from src.tools.impact_analysis import run as impact_run
-            result.put(asyncio.run(impact_run(name=def_name, path=path)))
-        except Exception:
-            result.put(None)
-
-    thread = threading.Thread(target=_worker, daemon=True)
-    thread.start()
-    thread.join()
-    return result.get() if not result.empty() else None
+    try:
+        from src.tools.impact_analysis import run as impact_run
+        return run_awaitable_sync(impact_run(name=def_name, path=path), label="impact analysis")
+    except Exception:
+        return None
 
 DEFINITION = {
     "type": "function",

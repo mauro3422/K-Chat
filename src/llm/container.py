@@ -1,7 +1,6 @@
 """LLMContainer — dependency injection container for the LLM layer.
 
 Centralizes creation and resolution of all LLM dependencies.
-Replaces module-level singletons gradually.
 
 Usage:
     container = LLMContainer(config)
@@ -22,7 +21,7 @@ class LLMContainer:
 
     def __init__(self, config: Config | None = None):
         self._config = config
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         # Lazy-init services
         self._circuit_breaker: Any = None
@@ -32,97 +31,104 @@ class LLMContainer:
         self._provider_registry: Any = None
         self._model_registry: Any = None
 
+    def _get_or_create(self, attr: str, factory: Any) -> Any:
+        with self._lock:
+            value = getattr(self, attr)
+            if value is None:
+                value = factory()
+                setattr(self, attr, value)
+            return value
+
     # ── Config ────────────────────────────────────────────────────
 
     def get_config(self) -> Config:
         from src._config import resolve_config
-        if self._config is None:
-            self._config = resolve_config()
-        return self._config
+        with self._lock:
+            if self._config is None:
+                self._config = resolve_config()
+            return self._config
 
     # ── Circuit Breaker ───────────────────────────────────────────
 
     def get_circuit_breaker(self) -> Any:
-        if self._circuit_breaker is None:
+        def factory() -> Any:
             from src.llm.circuit_breaker import CircuitBreaker
-            self._circuit_breaker = CircuitBreaker()
-        return self._circuit_breaker
+            return CircuitBreaker()
+        return self._get_or_create("_circuit_breaker", factory)
+
+    def set_circuit_breaker(self, breaker: Any | None) -> None:
+        with self._lock:
+            self._circuit_breaker = breaker
 
     # ── Rate Limit Store ─────────────────────────────────────────
 
     def get_rate_limit_store(self) -> Any:
-        if self._rate_limit_store is None:
+        def factory() -> Any:
             from src.llm.rate_limit_state import ModelRateLimitStore
-            self._rate_limit_store = ModelRateLimitStore()
-        return self._rate_limit_store
+            return ModelRateLimitStore()
+        return self._get_or_create("_rate_limit_store", factory)
+
+    def set_rate_limit_store(self, store: Any | None) -> None:
+        with self._lock:
+            self._rate_limit_store = store
 
     # ── Model State ───────────────────────────────────────────────
 
     def get_model_state(self) -> Any:
-        if self._model_state is None:
+        def factory() -> Any:
             from src.llm.model_state import ModelState
             from src.llm.model_state import PRIORITY, FALLBACK_MODEL
-            self._model_state = ModelState(
+            return ModelState(
                 priority=PRIORITY,
                 fallback_model=FALLBACK_MODEL,
             )
-        return self._model_state
+        return self._get_or_create("_model_state", factory)
+
+    def set_model_state(self, state: Any | None) -> None:
+        with self._lock:
+            self._model_state = state
 
     # ── Providers ─────────────────────────────────────────────────
 
     def get_provider_registry(self) -> Any:
-        if self._provider_registry is None:
+        def factory() -> Any:
             from src.llm.providers import ProviderRegistry
             from src.llm.adapters import ADAPTERS
-            self._provider_registry = ProviderRegistry()
+            provider_registry = ProviderRegistry()
             for name, adapter_cls in ADAPTERS.items():
-                self._provider_registry.register(name, adapter_cls)
-        return self._provider_registry
+                provider_registry.register(name, adapter_cls)
+            return provider_registry
+        return self._get_or_create("_provider_registry", factory)
+
+    def set_provider_registry(self, registry: Any | None) -> None:
+        with self._lock:
+            self._provider_registry = registry
 
     def get_provider(self) -> Any:
-        if self._provider is None:
+        def factory() -> Any:
             from src.llm.providers import create_provider
-            self._provider = create_provider(
+            return create_provider(
                 config=self.get_config(),
                 registry=self.get_provider_registry(),
             )
-        return self._provider
+        return self._get_or_create("_provider", factory)
 
     # ── Model Registry ────────────────────────────────────────────
 
     def get_model_registry(self) -> Any:
-        if self._model_registry is None:
+        def factory() -> Any:
             from src.llm.model_registry import ModelRegistry
-            self._model_registry = ModelRegistry(
+            return ModelRegistry(
                 config=self.get_config(),
                 provider_registry=self.get_provider_registry(),
                 provider_fn=self.get_provider,
             )
-        return self._model_registry
+        return self._get_or_create("_model_registry", factory)
 
-
-# Default global container (backward compat while migration is in progress)
-_default_container: LLMContainer | None = None
-_default_lock = threading.Lock()
-
-
-def configure_container(container: LLMContainer | None) -> None:
-    """Set the default container explicitly, or clear it with None."""
-    global _default_container
-    with _default_lock:
-        _default_container = container
-
+    def set_model_registry(self, registry: Any | None) -> None:
+        with self._lock:
+            self._model_registry = registry
 
 def get_container(config: Config | None = None) -> LLMContainer:
-    """Get the default container (creates if needed)."""
-    global _default_container
-    if _default_container is None:
-        with _default_lock:
-            if _default_container is None:
-                _default_container = LLMContainer(config=config)
-    return _default_container
-
-
-def reset_container() -> None:
-    """Reset the default container (for testing)."""
-    configure_container(None)
+    """Create a new container instance."""
+    return LLMContainer(config=config)

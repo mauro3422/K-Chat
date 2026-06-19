@@ -13,6 +13,7 @@ import logging
 import math
 import re
 import threading
+from contextvars import ContextVar
 from collections import Counter
 from typing import Optional
 
@@ -213,9 +214,6 @@ class TfidfExtractor:
 
 # ── Convenience function for one-off extraction ────────────────────
 
-_global_extractor = TfidfExtractor()
-_global_extractor_lock = threading.Lock()
-
 logger = logging.getLogger(__name__)
 
 # Seed with a startup corpus so IDF is meaningful
@@ -241,51 +239,68 @@ _STARTUP_CORPUS = [
     "command line cli terminal shell",
     "configuration environment variables dotenv",
 ]
-for i, text in enumerate(_STARTUP_CORPUS):
-    _global_extractor._add_document(f"seed_{i}", text)
+
+
+class KeywordExtractorService:
+    """Context-local TF-IDF extractor service."""
+
+    def __init__(self, extractor: TfidfExtractor | None = None) -> None:
+        self._lock = threading.Lock()
+        self._extractor = extractor or self._seeded_extractor()
+
+    @staticmethod
+    def _seeded_extractor() -> TfidfExtractor:
+        extractor = TfidfExtractor()
+        for i, text in enumerate(_STARTUP_CORPUS):
+            extractor._add_document(f"seed_{i}", text)
+        return extractor
+
+    def configure(self, extractor: TfidfExtractor | None) -> None:
+        with self._lock:
+            self._extractor = extractor or self._seeded_extractor()
+
+    def add_to_corpus(self, text: str) -> None:
+        with self._lock:
+            self._extractor.add_document(text)
+
+    def extract_keywords(self, text: str, top_k: int = _DEFAULT_TOP_K) -> list[tuple[str, float]]:
+        with self._lock:
+            return self._extractor.extract_from_text(text, top_k=top_k)
+
+
+_current_service: ContextVar[KeywordExtractorService | None] = ContextVar(
+    "kairos_keyword_extractor_service",
+    default=None,
+)
+
+
+def get_service() -> KeywordExtractorService:
+    """Get the context-local keyword extractor service."""
+    service = _current_service.get()
+    if service is None:
+        service = KeywordExtractorService()
+        _current_service.set(service)
+    return service
+
 
 logger.info("TF-IDF extractor seeded with %d documents", len(_STARTUP_CORPUS))
 
 
 def configure_global_extractor(extractor: TfidfExtractor | None) -> None:
-    """Set the global extractor explicitly, or clear it with None.
-
-    Passing None restores a fresh extractor seeded with the startup corpus
-    on the next access.
-    """
-    global _global_extractor
-    with _global_extractor_lock:
-        if extractor is None:
-            _global_extractor = TfidfExtractor()
-            for i, text in enumerate(_STARTUP_CORPUS):
-                _global_extractor._add_document(f"seed_{i}", text)
-        else:
-            _global_extractor = extractor
+    """Set the active extractor explicitly, or clear it with None."""
+    get_service().configure(extractor)
 
 
 def reset_global_extractor() -> None:
-    """Restore the seeded global extractor."""
-    configure_global_extractor(None)
+    """Restore the seeded extractor for the current context."""
+    _current_service.set(KeywordExtractorService())
 
 
 def add_to_global_corpus(text: str) -> None:
-    """Add a document to the global TF-IDF corpus to improve IDF values over time.
-
-    Call this for every non-noise exchange to make keyword extraction
-    increasingly accurate as the system ingests real conversations.
-    """
-    with _global_extractor_lock:
-        _global_extractor.add_document(text)
+    """Add a document to the active TF-IDF corpus to improve IDF values over time."""
+    get_service().add_to_corpus(text)
 
 
 def extract_keywords(text: str, top_k: int = _DEFAULT_TOP_K) -> list[tuple[str, float]]:
-    """Extract keywords from text using a global TF-IDF corpus.
-
-    Note: for best results, use a persistent TfidfExtractor instance
-    and keep adding documents to build up IDF values.
-    """
-    with _global_extractor_lock:
-        return _global_extractor.extract_from_text(text, top_k=top_k)
-
-
-
+    """Extract keywords from text using the active TF-IDF corpus."""
+    return get_service().extract_keywords(text, top_k=top_k)

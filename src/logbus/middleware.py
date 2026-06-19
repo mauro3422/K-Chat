@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from src.logbus import LogEvent, get_logbus
+from src.logbus import LogEvent
 
 
 class LogBusMiddleware(BaseHTTPMiddleware):
@@ -24,7 +24,9 @@ class LogBusMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         duration_ms = (time.time() - start) * 1000
-        bus = get_logbus()
+        bus = getattr(request.app.state, "logbus", None)
+        if bus is None:
+            raise RuntimeError("LogBus not initialized")
         bus.emit(LogEvent(
             level="INFO" if response.status_code < 500 else "ERROR",
             module="web.http",

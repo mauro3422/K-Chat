@@ -25,6 +25,8 @@ Restart=always
 RestartSec=5
 RestartSteps=5
 RestartMaxDelaySec=30
+KillMode=mixed
+TimeoutStopSec=30
 
 # ── Security ───────────────────────────────────────────────────────
 User=%u

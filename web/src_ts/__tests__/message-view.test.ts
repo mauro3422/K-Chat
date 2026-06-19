@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MessageView } from '../rendering/MessageView';
 import { C } from '../core/infra/DomContracts';
+const renderer = {
+  renderMessage: (container: HTMLElement, content: string, isMarkdown: boolean) => {
+    container.innerHTML = isMarkdown ? content : content;
+  },
+  renderReasoning: () => {},
+  renderToolCall: () => {},
+  clearThinking: () => {},
+};
 
 describe('MessageView DOM contract', () => {
   let messageView: MessageView;
@@ -12,7 +20,7 @@ describe('MessageView DOM contract', () => {
     container.id = 'messages';
     document.body.appendChild(container);
 
-    messageView = new MessageView();
+    messageView = new MessageView(renderer, undefined, undefined);
     messageView.init();
   });
 

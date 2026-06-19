@@ -4,6 +4,7 @@ import logging
 import sqlite3
 from contextlib import contextmanager
 from typing import Any
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +39,64 @@ def _parse_memory_md(path: str) -> dict[str, str]:
             key_end = rest.index("**: ")
             current_key = rest[:key_end].strip()
             current_lines = [rest[key_end + 4:].strip()]
-        elif line.startswith("- **") and "**:\n" in line.replace("\\n", "\n"):
-            if current_key:
-                memories[current_key] = "\n".join(current_lines).strip()
-            current_key = line[4:line.index("**:")].strip()
-            current_lines = [line[line.index("**:") + 3:].strip()]
-        elif current_key:
-            current_lines.append(line)
+        elif line.startswith("#") or line.startswith("User:") or line.startswith("System:"):
+            continue
+        elif current_key is not None:
+            memories[current_key] = "\n".join(current_lines).strip()
+            current_key = None
+            current_lines = []
     if current_key:
         memories[current_key] = "\n".join(current_lines).strip()
     return memories
+
+
+def _read_memory_header(path: str) -> tuple[str, str]:
+    user = ""
+    system = ""
+    try:
+        with open(path, encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if line.startswith("User:"):
+                    user = line.split(":", 1)[1].strip()
+                elif line.startswith("System:"):
+                    system = line.split(":", 1)[1].strip()
+                elif line.startswith("## Memories"):
+                    break
+    except FileNotFoundError:
+        pass
+    return user, system
+
+
+def _write_memory_md(path: str, memories: dict[str, str]) -> None:
+    """Write MEMORY.md from a {key: value} mapping."""
+    user, system = _read_memory_header(path)
+    lines: list[str] = [
+        "# MEMORY.md\n",
+        "\n",
+        f"User: {user}\n",
+        f"System: {system}\n",
+        "\n",
+        "## Memories\n",
+    ]
+
+    regular = {k: v for k, v in sorted(memories.items()) if not k.startswith("_archived:")}
+    archived = {k: v for k, v in sorted(memories.items()) if k.startswith("_archived:")}
+
+    for key, value in regular.items():
+        lines.append(f"- **{key}**: {value}\n")
+
+    if archived:
+        lines.append("\n")
+        lines.append("## Archived Memories\n")
+        for key, value in archived.items():
+            lines.append(f"- **{key}**: {value}\n")
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    os.replace(tmp, path)
 
 
 def _match_key_pattern(key: str, pattern: str) -> bool:

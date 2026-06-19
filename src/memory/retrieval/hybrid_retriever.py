@@ -40,7 +40,7 @@ class HybridResult:
 
     @property
     def score(self) -> float:
-        """Alias for fusion_score for backward compatibility."""
+        """Alias for fusion_score to keep the public shape stable."""
         return self.fusion_score
 
     @score.setter

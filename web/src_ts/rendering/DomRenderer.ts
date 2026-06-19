@@ -4,11 +4,10 @@ import { defaultWidgetRegistry } from '../core/WidgetRegistry';
 import { C } from '../core/DomContracts';
 
 /**
- * BrowserDomRenderer — renders Markdown → HTML using injectable `marked` and `DOMPurify`.
+ * BrowserDomRenderer — renders Markdown → HTML using injected `marked` and `DOMPurify`.
  *
- * Falls back to `window.marked.parse()` and `window.DOMPurify` when no injectables
- * are provided. Calls registry.extract() BEFORE parsing to handle widget
- * code blocks and [Widget: key] tags.
+ * Calls registry.extract() BEFORE parsing to handle widget code blocks and
+ * [Widget: key] tags.
  */
 interface MarkedLib {
   parse: (text: string, opts?: Record<string, unknown>) => string;
@@ -18,11 +17,10 @@ interface DOMPurifyLib {
   sanitize: (html: string, config?: Record<string, unknown>) => string;
 }
 
-declare global {
-  interface Window {
-    marked?: MarkedLib | ((text: string) => string);
-    DOMPurify?: DOMPurifyLib;
-  }
+export interface MarkdownRendererDeps {
+  markedFn: ((text: string) => string) | MarkedLib;
+  dompurifyFn: DOMPurifyLib;
+  widgetRegistry?: IWidgetRegistry;
 }
 
 export class BrowserDomRenderer implements IDomRenderer {
@@ -31,18 +29,17 @@ export class BrowserDomRenderer implements IDomRenderer {
   private widgetRegistry: IWidgetRegistry;
 
   constructor(
-    markedFn?: (text: string) => string,
-    dompurifyFn?: { sanitize: (html: string, config?: Record<string, unknown>) => string },
+    markedFn: ((text: string) => string) | MarkedLib,
+    dompurifyFn: DOMPurifyLib,
     widgetRegistry?: IWidgetRegistry,
   ) {
-    this.markedFn = markedFn || ((text: string) => {
-      const m = window.marked;
-      if (m && typeof m === 'object' && 'parse' in m && typeof m.parse === 'function') {
-        return m.parse(text, { breaks: true, gfm: true });
+    this.markedFn = (text: string) => {
+      if (typeof markedFn === 'function') {
+        return markedFn(text);
       }
-      return typeof m === 'function' ? m(text) : text;
-    });
-    this.dompurifyFn = dompurifyFn || window.DOMPurify || { sanitize: (html: string) => html };
+      return markedFn.parse(text, { breaks: true, gfm: true });
+    };
+    this.dompurifyFn = dompurifyFn;
     this.widgetRegistry = widgetRegistry || defaultWidgetRegistry;
   }
 
@@ -96,7 +93,7 @@ export class BrowserDomRenderer implements IDomRenderer {
   }
 }
 
-/** Standalone function for backward-compatible static-style usage */
-export function renderMarkdown(text: string): string {
-  return new BrowserDomRenderer().renderMarkdown(text);
+/** Standalone function for explicit markdown rendering with injected deps. */
+export function renderMarkdown(text: string, deps: MarkdownRendererDeps): string {
+  return new BrowserDomRenderer(deps.markedFn, deps.dompurifyFn, deps.widgetRegistry).renderMarkdown(text);
 }

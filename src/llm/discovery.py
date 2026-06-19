@@ -1,12 +1,12 @@
 import asyncio
 import logging
-import threading
 from typing import Any
 
 import src.llm.model_state as models
 import src.llm.model_registry as registry
 from src.llm.providers import _get_provider
 import src.llm.verifier as verifier
+from src.utils.async_utils import schedule_background_awaitable
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -14,14 +14,10 @@ logger: logging.Logger = logging.getLogger(__name__)
 def _start_background_ping(free_ids: list[str], config=None) -> None:
     if not free_ids:
         return
-
-    def _run() -> None:
-        try:
-            asyncio.run(_ping_free_model_availability(free_ids, config=config))
-        except Exception:
-            logger.exception("Free model availability ping failed")
-
-    threading.Thread(target=_run, daemon=True).start()
+    schedule_background_awaitable(
+        _ping_free_model_availability(free_ids, config=config),
+        label="free model availability ping",
+    )
 
 
 def _resolve_config(config=None):

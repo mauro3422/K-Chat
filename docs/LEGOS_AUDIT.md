@@ -1,6 +1,6 @@
 # K-Chat Legos Audit
 
-This is the current architecture audit for the repo. It is intentionally blunt: the goal is to separate what is already decoupled from what is only "working through compatibility."
+This is the current architecture audit for the repo. It is intentionally blunt: the goal is to separate what is already decoupled from what is still in transition.
 
 ## What "repos" means here
 
@@ -46,21 +46,21 @@ These are the seams I would keep:
 
 These are already close to the "lego" ideal because they have clear owners and fairly stable boundaries.
 
-## What is still compatibility-first
+## What is still transition-heavy
 
-These modules are still mostly there to keep old callers alive:
+These modules still carry historical callers or bridge behavior:
 
 - `api modules for session and db were split`
 - `src/api/*` transitional modules
 - `web/static/app.js`
-- ~~`web/static/modules/widgets/bootstrap.js`~~ ✅ deleted
-- ~~`web/static/modules/stream-bootstrap.js`~~ ✅ deleted
-- ~~`web/static/modules/chat-form-bootstrap.js`~~ ✅ deleted
-- `web/static/modules/session-page.js`
-- `web/static/modules/debug-panel.js`
-- `web/static/modules/stream-orchestrator.js`
+- ~~`widgets/bootstrap.js`~~ ✅ deleted
+- ~~`stream-bootstrap.js`~~ ✅ deleted
+- ~~`chat-form-bootstrap.js`~~ ✅ deleted
+- `web/src_ts/core/session/SessionList.ts`
+- `web/src_ts/core/DebugManager.ts`
+- `web/src_ts/streaming/StreamOrchestrator.ts`
 
-Compatibility is not bad, but it should be obvious in the code and docs that these are transition surfaces, not the model for new work.
+That is fine for now, but it should be obvious in the code and docs that these are transition surfaces, not the model for new work.
 
 ## Remaining coupling, by area
 
@@ -120,17 +120,17 @@ This is one of the few places where further decomposition still looks valuable.
 Current state:
 - `window` is still used intentionally in a few places
 - `app.js` is the actual bundle entry and keeps the assembly logic only
-- `session-page.js`, `debug-panel.js`, and the stream modules now own the browser entry flow
-- the remaining legacy surface is narrower than before and is concentrated in transition modules
+- `core/SessionList.ts`, `core/DebugManager.ts`, and the stream modules now own the browser entry flow
+- the remaining historical surface is narrower than before and is concentrated in transition modules
 
 What still bothers me:
 - `window.*` is still more common than it should be
-- a few legacy globals still exist for transition surfaces
+- a few historical globals still exist for transition surfaces
 - compatibility globals are isolated in the bootstraps now, not in `app.js`
 
 Best next cut:
-- keep globals only where legacy entrypoints truly need them
-- continue removing globals from the bootstraps only if the legacy surface is no longer needed
+- keep globals only where historical entrypoints truly need them
+- continue removing globals from the bootstraps only if the historical surface is no longer needed
 
 ### 5. Documentation drift
 
@@ -158,47 +158,47 @@ Best next cut:
 - `src/llm/api_call.py`, `src/llm/discovery.py`, `src/llm/verifier.py`, `src/llm/selector.py`, `src/llm/failover.py` are the concrete LLM modules now.
 - `src/llm/providers.py` owns `_PROVIDER_REGISTRY` and `register_provider()`.
 - Injection params added to `orchestrator.chat_stream()`, `tool_loop.*`, `chat_stream.py`, and individual API domain modules — no more module-level hard imports for test‑critical seams.
-- Bootstraps `stream-bootstrap.js`, `chat-form-bootstrap.js`, `widgets/bootstrap.js` deleted.
+- Legacy bootstraps were deleted; their remaining responsibilities now live in the current TS entrypoints and compatibility wrappers.
 - `shared-state.js`, `content-renderer.js`, and 3 bootstrap files deleted (frontend module count stabilized at 36).
 - Root `config.py` removed; `src/config_loader.py` is canonical.
 - `src/api/llm.py`, `src/api/models.py`, `src/api/history.py`, `src/api/health.py` removed from runtime; direct module imports are now the norm.
 - `HistoryMessage` introduced as the stable row/DTO boundary for history parsing and rendering.
 - `load_context()` made pure; writing `TOOLS.md` moved into an explicit snapshot step.
 - `src.tools` stopped auto-building the registry on import.
-- `web/static/modules/session-page.js` now renders action buttons through DOM APIs and accepts explicit navigation deps, reducing direct `window` coupling.
-- `web/static/modules/session-page.js` now parses the main HTML into fragments instead of assigning `innerHTML` directly.
+- `web/src_ts/core/session/SessionList.ts` now renders action buttons through DOM APIs and accepts explicit navigation deps, reducing direct `window` coupling.
+- `web/src_ts/core/session/SessionList.ts` now parses the main HTML into fragments instead of assigning `innerHTML` directly.
 - `web/static/app.js` now reads `sessionId` from `#app[data-session-id]` and sets ASR transport config in code instead of via template globals.
 - `web/static/modules/widgets/messaging.js` now receives its event target and origin explicitly from `app.js`.
-- `web/static/modules/debug-panel.js` now renders the main log lists and widget/backend panes via DOM nodes instead of `innerHTML`.
-- `web/static/modules/debug-panel.js` now builds the full debug panel body with DOM nodes instead of string concatenation.
+- `web/src_ts/core/DebugManager.ts` now renders the main log lists and widget/backend panes via DOM nodes instead of `innerHTML`.
+- `web/src_ts/core/DebugManager.ts` now builds the full debug panel body with DOM nodes instead of string concatenation.
 - `web/static/modules/sidebar-refresh.js` centralizes sidebar refresh so session, stream and lifecycle share one seam.
-- `web/static/modules/markdown-renderer.js`, `sidebar-refresh.js` and `content-handler.js` now paint with DOM fragments instead of assigning `innerHTML` directly.
+- `web/src_ts/rendering/DomRenderer.ts`, `sidebar-refresh.js` and `web/src_ts/streaming/ContentHandler.ts` now paint with DOM fragments instead of assigning `innerHTML` directly.
 - `web/static/modules/widgets/iframe-builder.js` now mounts loading/error states with DOM nodes instead of raw HTML strings.
-- `web/static/modules/debug-panel.js` can receive an injected event target for ASR listeners instead of binding to `window` directly.
-- `web/static/modules/stream-completion.js` isolates the stream success post-processing path from `stream-orchestrator.js`.
-- `web/static/modules/stream-error-handler.js` now builds retry/error UI with DOM nodes instead of `innerHTML`.
-- `web/static/modules/tool-call-renderer.js` now renders tool pills with DOM nodes instead of `innerHTML`.
-- `web/static/modules/reasoning-handler.js` now creates the initial reasoning block with DOM nodes instead of `innerHTML`.
-- `web/static/modules/content-handler.js` now delegates the main render pass to `setSegmentContent()` with `replaceChildren`.
-- `web/static/modules/markdown-renderer.js` now uses `setRenderedHtml()` in `renderAll()` instead of assigning `innerHTML` directly.
+- `web/src_ts/core/DebugManager.ts` can receive an injected event target for ASR listeners instead of binding to `window` directly.
+- `web/src_ts/streaming/StreamOrchestrator.ts` isolates the stream success post-processing path from the orchestrator.
+- `web/src_ts/streaming/error-renderer.ts` now builds retry/error UI with DOM nodes instead of `innerHTML`.
+- `web/src_ts/streaming/tool-call-renderer.ts` now renders tool pills with DOM nodes instead of `innerHTML`.
+- `web/src_ts/streaming/reasoning-handler.ts` now creates the initial reasoning block with DOM nodes instead of `innerHTML`.
+- `web/src_ts/streaming/ContentHandler.ts` now delegates the main render pass to `setSegmentContent()` with `replaceChildren`.
+- `web/src_ts/rendering/DomRenderer.ts` now uses `setRenderedHtml()` in `renderAll()` instead of assigning `innerHTML` directly.
 - `web/static/modules/sidebar-refresh.js` now paints the sidebar via `replaceChildren()` instead of direct `innerHTML`.
 - `src/tools/_tool_persister.py` now requires explicit repos instead of resolving `get_repos()` internally.
 - `src/tools/get_tool_history.py` now requires `_repos` explicitly instead of resolving `get_repos()` internally.
 - `web/services/message_renderer.py` now threads `repos` through the message/tool lookup seam instead of resolving helpers implicitly.
 - `web/routers/pages.py` now uses `FALLBACK_MODEL` for the shell page instead of running model discovery during render.
-- `web/static/modules/session-page.js`, `chat-form.js`, `retry-handler.js`, and `widgets/toolbar-editor.js` now avoid direct `innerHTML` in their critical paths.
+- `web/src_ts/core/session/SessionList.ts`, `chat-form.ts`, `retry-handler.ts`, and `widgets/toolbar-editor.ts` now avoid direct `innerHTML` in their critical paths.
 - `src/api/session.py` and `SessionRepository.delete_cascade()` now require explicit repos for session deletion.
-- `web/static/app.js` now injects navigation explicitly into `session-page.js` and `chat-form.js`.
-- `web/static/modules/session-page.js` now restores delete cancel via cloned nodes instead of `outerHTML`.
+- `web/static/app.js` now injects navigation explicitly into `core/SessionList.ts` and `core/ChatForm.ts`.
+- `web/src_ts/core/session/SessionList.ts` now restores delete cancel via cloned nodes instead of `outerHTML`.
 
 ## Prioritized backlog
 
 ### P0
 
-1. Keep shrinking any leftover transition surfaces if the legacy entrypoints are still needed.
-2. Keep shrinking legacy globals and transition surfaces where practical.
+1. Keep shrinking any leftover transition surfaces if the historical entrypoints are still needed.
+2. Keep shrinking historical globals and transition surfaces where practical.
 3. ~~Split `src/llm/policy.py` into smaller policy objects or modules.~~ ✅ DONE
-4. Finish reducing the last frontend transition surfaces in `session-page.js`, `debug-panel.js`, `chat-form.js`, and `stream-orchestrator.js`.
+4. Finish reducing the last frontend transition surfaces in `core/SessionList.ts`, `core/DebugManager.ts`, `core/ChatForm.ts`, and `streaming/StreamOrchestrator.ts`.
 5. Split `memory connection + schema + migration runner + repos` into lifecycle pieces.
 
 ### P1
@@ -220,7 +220,7 @@ I would consider the system meaningfully "lego" when:
 - persistence lives behind repo methods only
 - model selection is policy-driven and explicit
 - frontend compatibility is isolated to a few bootstraps, not spread across the app
-- the facade package is only for backwards compatibility
+- the facade package is only for bridge support
 - docs mention the compatibility story honestly
 - tests patch the seam owned by the module under test, not a generic helper cache
 

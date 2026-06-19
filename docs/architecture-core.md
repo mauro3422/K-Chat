@@ -4,7 +4,7 @@ ARQUITECTURA DE src/core/ — K-Chat
 1. QUÉ HACE CADA ARCHIVO
 --------------------------
 __init__.py        — Punto de entrada: exporta chat() y chat_stream().
-_deps.py           — Removed legacy seam; runtime uses direct imports.
+_deps.py           — Removed historical seam; runtime uses direct imports.
 orchestrator.py    — Orquestador principal: gestiona historial, compressión y delega al tool loop.
 tool_loop.py       — Bucle de ejecución de herramientas: LLM → tool calls → ejecutar → repetir (turnos compartidos).
 history_parser.py  — Parsea filas de BD a dicts de mensajes OpenAI.

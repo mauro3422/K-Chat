@@ -96,7 +96,7 @@ class StreamRetryHandler:
         try:
             chat_stream_fn = self._llm_chat_stream_fn
             if chat_stream_fn is None:
-                from src.api import llm_chat_stream as chat_stream_fn
+                from src.api.llm_client import llm_chat_stream as chat_stream_fn
 
             # Only stream content — no tool calls for continuation
             async for event in chat_stream_fn(

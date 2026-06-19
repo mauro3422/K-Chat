@@ -53,26 +53,8 @@ def reset_runtime_state() -> None:
         pass
 
     try:
-        from web.services.file_logger import reset_log_dirs
-        reset_log_dirs()
-    except Exception:
-        pass
-
-    try:
-        from web.services.model_catalog import reset_model_cache
-        reset_model_cache()
-    except Exception:
-        pass
-
-    try:
         from src.llm.model_state import reset_state
         reset_state()
-    except Exception:
-        pass
-
-    try:
-        from src.llm.container import reset_container
-        reset_container()
     except Exception:
         pass
 

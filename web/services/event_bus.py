@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from contextvars import ContextVar
 from collections.abc import AsyncGenerator
 from typing import Any, Protocol as TypingProtocol
 
@@ -92,34 +93,23 @@ class EventBus(IEventBus):
             await self.unsubscribe(client_id)
 
 
-# Module-level injected instance (set by composition root)
-# When set, get_event_bus() returns this instance instead of the singleton
-_injected_bus: IEventBus | None = None
+_current_bus: ContextVar[IEventBus | None] = ContextVar("kairos_event_bus", default=None)
 
 
 def set_event_bus(bus: IEventBus) -> None:
-    """Set the EventBus instance (called by composition root)."""
-    global _injected_bus
-    _injected_bus = bus
+    """Set the EventBus instance for the current context."""
+    _current_bus.set(bus)
 
 
 def reset_event_bus() -> None:
-    """Clear any injected bus and restore lazy singleton behavior."""
-    global _injected_bus, _bus
-    _injected_bus = None
-    _bus = None
-
-
-# Module-level singleton (lazy, created on first use)
-# DEPRECATED: inject EventBus instance instead via set_event_bus()
-_bus: EventBus | None = None
+    """Clear the current-context bus and restore lazy creation."""
+    _current_bus.set(None)
 
 
 def get_event_bus() -> IEventBus:
-    """Get EventBus — prefers injected instance, falls back to singleton."""
-    if _injected_bus is not None:
-        return _injected_bus
-    global _bus
-    if _bus is None:
-        _bus = EventBus()
-    return _bus
+    """Get or create the EventBus for the current context."""
+    bus = _current_bus.get()
+    if bus is None:
+        bus = EventBus()
+        _current_bus.set(bus)
+    return bus

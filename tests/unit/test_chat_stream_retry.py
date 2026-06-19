@@ -30,6 +30,8 @@ async def test_loop_detection_recovery_streams_continuation(mock_chat_stream, mo
     retry_handler.attempt_recovery.side_effect = fake_recovery
 
     bg = _bg_tasks()
+    orchestrator_deps = MagicMock()
+    orchestrator_deps.repos = MagicMock()
     gen_fn = build_stream_generator(
             "sess-1",
             "mensaje",
@@ -37,6 +39,7 @@ async def test_loop_detection_recovery_streams_continuation(mock_chat_stream, mo
             "model-x",
             bg,
             retry_handler=retry_handler,
+            orchestrator_deps=orchestrator_deps,
         )
     
     chunks = [t async for t in gen_fn()]
@@ -45,4 +48,4 @@ async def test_loop_detection_recovery_streams_continuation(mock_chat_stream, mo
     assert parsed[-1] == {"t": "content", "d": "recuperado"}
     retry_handler.attempt_recovery.assert_called_once()
     mock_save.assert_called()
-    bg.add_task.assert_called_once()
+    assert bg.add_task.call_count == 2

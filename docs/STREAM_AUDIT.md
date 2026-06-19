@@ -2,6 +2,8 @@
 
 Auditoría del bloque de chat streaming NDJSON, retry y persistencia parcial.
 
+Nota: algunas referencias de ruta conservan el árbol histórico como snapshot; la implementación viva del frontend está en `web/src_ts/` y la transición en `web/static/modules/`.
+
 ## Resumen ejecutivo
 
 Este bloque está bastante bien modularizado, pero sigue siendo uno de los más sensibles del sistema porque junta:
@@ -137,7 +139,7 @@ Riesgos:
 ### 7. Observabilidad
 
 Archivos:
-- [`web/static/modules/debug-panel.js`](/home/maurol/dev/K-Chat/web/static/modules/debug-panel.js)
+- [`web/src_ts/core/DebugManager.ts`](../web/src_ts/core/DebugManager.ts)
 - [`tests/unit/test_api_debug.py`](/home/maurol/dev/K-Chat/tests/unit/test_api_debug.py)
 
 Puntaje: **7.8/10**

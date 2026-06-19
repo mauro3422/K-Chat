@@ -2,6 +2,8 @@
 
 Este documento audita el bloque de audio y transcripción como una unidad lego dentro de K-Chat.
 
+Nota: algunas referencias de ruta conservan el árbol histórico como snapshot; la implementación viva del frontend está en `web/src_ts/` y la transición en `web/static/modules/`.
+
 ## Resumen ejecutivo
 
 El bloque ASR ya está bastante bien desacoplado:
@@ -37,7 +39,7 @@ Si algo rompe el ASR, este es el orden en que conviene mirar:
 4. `web/static/modules/asr/transcription-transport.js`
 5. `web/routers/asr.py`
 6. `web/services/asr_service.py`
-7. `web/static/modules/debug-panel.js`
+7. `web/src_ts/core/DebugManager.ts`
 
 Por qué:
 - si se rompe el contrato, se rompe la UI y el panel de debug al mismo tiempo
@@ -149,7 +151,7 @@ Riesgos:
 ### 7. Debug y observabilidad
 
 Archivo:
-- [`web/static/modules/debug-panel.js`](/home/maurol/dev/K-Chat/web/static/modules/debug-panel.js)
+- [`web/src_ts/core/DebugManager.ts`](../web/src_ts/core/DebugManager.ts)
 
 Puntaje: **8.3/10**
 
@@ -170,7 +172,7 @@ Más alto significa más riesgo de rotura al tocarlo.
 1. `web/routers/asr.py` - 8.2/10
 1. `transcription-transport.js` - 8.1/10
 1. `asr/contract.js` - 7.8/10
-1. `debug-panel.js` - 7.6/10
+1. `core/DebugManager.ts` - 7.6/10
 
 Interpretación:
 - el bloque está bien modularizado
@@ -218,7 +220,7 @@ Esa cobertura no hace inmune al bloque, pero sí corta los fallos típicos:
 1. `transcript-utils.js`
 2. `vad.js`
 3. `asr/contract.js`
-4. `debug-panel.js`
+4. `core/DebugManager.ts`
 5. `web/routers/asr.py`
 
 Ese orden minimiza el riesgo:

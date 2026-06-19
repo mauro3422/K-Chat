@@ -123,6 +123,7 @@ class TestAppFactory:
             patch("src.logbus.core.LogBus.start", new_callable=AsyncMock) as mock_start,
             patch("src.logbus.core.LogBus.stop", new_callable=AsyncMock) as mock_stop,
             patch("src.logbus.core.LogBus.add_writer") as mock_add_writer,
+            patch("web.app_factory.reset_web_runtime_state") as mock_reset_web_state,
             patch("web.app_factory.importlib.import_module", side_effect=lambda name: {
                 "src.memory.embeddings.service": fake_embeddings,
                 "src.memory.deleted_sessions_db": fake_deleted_sessions_db,
@@ -136,4 +137,5 @@ class TestAppFactory:
                 assert mock_add_writer.call_count >= 2
                 assert app.state.repos is not None
 
+        mock_reset_web_state.assert_called_once()
         mock_stop.assert_awaited_once()

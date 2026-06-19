@@ -7,11 +7,8 @@ from typing import Any
 
 from fastapi import BackgroundTasks
 
-from src.api import (
-    chat_stream,
-    OrchestratorDeps,
-    auto_rename_session,
-)
+from src.api.background import auto_rename_session
+from src.api.orchestrator import OrchestratorDeps, chat_stream
 from src.api.repos import DebugInfo
 from web.services.loop_detector import LoopDetector
 from web.services.message_persister import save_assistant_message
@@ -58,7 +55,8 @@ def build_stream_generator(
     async def generate() -> AsyncGenerator[str, None]:
         debug_info = DebugInfo()
         phases_output = []
-        state = StreamState()
+        state = StreamState(save_interval=30)
+        state.last_persisted_at = time.monotonic()
 
         logger.info("Starting chat for session %s with model %s", session_id, model)
 
@@ -67,6 +65,8 @@ def build_stream_generator(
             for attempt in range(max_attempts):
                 try:
                     await _save(session_id, state.full_content, state.full_reasoning, phases_output, debug_info, model)
+                    saved_at = now
+                    state.mark_persisted(saved_at)
                     logger.info("Save OK%s: %d chars", f" ({desc})" if desc else "", len(state.full_content))
                     return True
                 except Exception as e:
@@ -78,8 +78,6 @@ def build_stream_generator(
         detector = _deps.loop_detector or LoopDetector()
         _save = _deps.save_fn or save_assistant_message
         _rename = _deps.rename_fn or auto_rename_session
-        last_save_time = time.monotonic()
-        save_interval = 30
 
         # Prepare orchestrator dependencies (injected from composition root)
         if orchestrator_deps is None:
@@ -105,6 +103,8 @@ def build_stream_generator(
                 # (bug: mensajes concatenados en la DB).
                 if tipo == "tool_call":
                     state.reset_on_tool_call()
+                    yield serialize_stream_event(tipo, token)
+                    continue
                 if tipo == "content":
                     loop_error = detector.check(token)
                     if loop_error:
@@ -138,10 +138,8 @@ def build_stream_generator(
 
                 yield serialize_stream_event(tipo, token)
 
-                if now - last_save_time > save_interval and state.has_output():
-                    if await _save_with_retry("periodic"):
-                        state.mark_persisted(now)
-                        last_save_time = now
+                if state.should_persist(now):
+                    await _save_with_retry("periodic")
 
             if not state.has_output():
                 logger.warning("Empty response for session %s with model %s", session_id, model)
@@ -150,8 +148,8 @@ def build_stream_generator(
 
             logger.info("Chat completed for session %s: %d chars content, %d chars reasoning", session_id, len(state.full_content), len(state.full_reasoning))
 
-            if await _save_with_retry("final"):
-                state.mark_persisted(now)
+            if state.dirty:
+                await _save_with_retry("final")
             background_tasks.add_task(_rename, session_id, message, model)
 
         except GeneratorExit:
@@ -176,11 +174,9 @@ def build_stream_generator(
             # Always enqueue background vectorization (even on disconnect)
             background_tasks.add_task(_vectorize_session, session_id, _orch_deps)
 
-            if not state.persisted and state.has_output():
+            if state.dirty and state.has_output():
                 logger.info("Saving partial message for session %s after stream interruption", session_id)
-                if await _save_with_retry("interruption"):
-                    state.mark_persisted(time.monotonic())
-                else:
+                if not await _save_with_retry("interruption"):
                     logger.warning("Could not save partial message for session %s", session_id)
     return generate
 

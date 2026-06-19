@@ -1,8 +1,7 @@
 /**
  * WidgetRegistry — stores widget code and provides sequential widget IDs.
- * Port of widgets/core.js (nextIndex, extract, registry) into TS.
  *
- * Matches production:
+ * Runtime behavior:
  * - Sequential widget IDs (widget-0, widget-1, ...)
  * - extract() replaces ```html-widget blocks and [Widget:key] tags with container divs
  * - FNV-1a 32-bit hashing for state keys (not for IDs)
@@ -29,7 +28,7 @@ function normalizeWidgetCode(code: string): string {
 }
 
 /**
- * FNV-1a 32-bit hash (port of the JS version in core.js).
+ * FNV-1a 32-bit hash used to derive stable widget ids.
  * Returns 8-char hex string.
  */
 export function fnv1a_32(str: string): string {
@@ -109,7 +108,7 @@ export class WidgetRegistry implements IWidgetRegistry {
   /**
    * Extract widget blocks/tags from markdown text and replace with container divs.
    *
-   * Production equivalent: WidgetManager.extract(text) in widgets/core.js
+   * Extract widgets from rendered text and track their stable keys.
    *
    * Steps:
    * 1. Find ```html-widget [key] \n code \n ``` blocks → replace with <div class="interactive-widget-container" data-widget-id="widget-N" data-widget-key="key">
@@ -169,5 +168,5 @@ export class WidgetRegistry implements IWidgetRegistry {
   }
 }
 
-/** Default singleton instance for backward compatibility and simple use cases */
+/** Default singleton instance for convenience and simple use cases */
 export const defaultWidgetRegistry = new WidgetRegistry();

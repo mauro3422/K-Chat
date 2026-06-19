@@ -204,8 +204,8 @@ def reset_shared_runtime_state():
         pass
 
     try:
-        from web.services.event_bus import reset_event_bus
-        reset_event_bus()
+        from web.app_factory import reset_web_runtime_state
+        reset_web_runtime_state()
     except Exception:
         pass
 
@@ -218,7 +218,7 @@ def reset_shared_runtime_state():
         pass
 
     try:
-        from web.services.event_bus import reset_event_bus
-        reset_event_bus()
+        from web.app_factory import reset_web_runtime_state
+        reset_web_runtime_state()
     except Exception:
         pass

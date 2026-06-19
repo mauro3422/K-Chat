@@ -18,10 +18,15 @@ import asyncio
 import logging
 import threading
 import time
+from contextvars import ContextVar
 from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
+_current_registry: ContextVar[Any | None] = ContextVar(
+    "kairos_model_registry",
+    default=None,
+)
 
 # ── Heuristic tier markers ──────────────────────────────────────────
 # Since the OpenCode API doesn't return pricing/tier metadata,
@@ -262,42 +267,25 @@ class ModelRegistry:
             }
 
 
-# ── Global singleton (lazy, thread-safe) ────────────────────────────
-_registry: ModelRegistry | None = None
-_lock = threading.Lock()
-
-
 def configure_model_registry(registry: ModelRegistry | None) -> None:
-    """Set the active registry explicitly.
-
-    Passing None restores lazy singleton behavior.
-    """
-    global _registry
-    with _lock:
-        _registry = registry
+    """Set the active registry for the current context."""
+    _current_registry.set(registry)
 
 
 def reset_model_registry() -> None:
-    """Reset the active model registry."""
+    """Reset the active model registry for the current context."""
     configure_model_registry(None)
 
 
 def get_model_registry(config: Any = None) -> ModelRegistry:
-    """Get or create the global model registry (lazy singleton).
+    """Get or create the model registry for the current context."""
+    registry = _current_registry.get()
+    if registry is not None:
+        return registry
 
-    Prefers the DI container if available, falls back to module singleton.
-    """
-    global _registry
-    if _registry is not None:
-        return _registry
-    try:
-        return get_model_registry_from_container(config=config)
-    except Exception:
-        if _registry is None:
-            with _lock:
-                if _registry is None:
-                    _registry = ModelRegistry(config)
-        return _registry
+    registry = ModelRegistry(config)
+    _current_registry.set(registry)
+    return registry
 
 
 async def ensure_registry_refreshed(config: Any = None) -> None:
@@ -330,8 +318,3 @@ def get_verified_models_safe(registry: ModelRegistry | None = None) -> list[str]
 
 # ── Container-aware helpers ────────────────────────────────────────
 
-def get_model_registry_from_container(config: Any = None) -> ModelRegistry:
-    """Get model registry from the default DI container."""
-    from src.llm.container import get_container
-    container = get_container(config=config)
-    return container.get_model_registry()

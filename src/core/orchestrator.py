@@ -7,18 +7,12 @@ from datetime import datetime
 from collections.abc import Callable, AsyncGenerator
 from typing import Any, TYPE_CHECKING
 
-from src.context import build_system_prompt
-from src.tools.runner import run_parallel_tools
 from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
 from src.memory.types import DebugInfo
 from src.memory.repos import Repositories
 from src.core.orchestrator_contract import (
     OrchestratorDeps, LLMDeps, ToolDeps, StorageDeps, RequestStateDeps,
 )
-from src.tools.registry import ToolRegistry
-import src.tools as tools
-from src.llm.selector import get_default_model
-import src.llm.client as llm_client
 from src.core.history_contract import HistoryMessage
 
 from src.core.services.history_service import HistoryService

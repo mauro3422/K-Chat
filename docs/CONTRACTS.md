@@ -20,16 +20,16 @@ other parts of the system.
 
 | Boundary | Source of truth | Main consumers | Current seam / risk | Refactor target |
 |---|---|---|---|---|
-| HTTP chat stream | `web/services/chat_stream.py`, `web/services/stream_contract.py`, `web/routers/chat.py` | `web/static/modules/*`, browser UI | Stream event shape used to be implicit; server and client now share the event contract modules | Shared event schema + contract tests |
+| HTTP chat stream | `web/services/chat_stream.py`, `web/services/stream_contract.py`, `web/routers/chat.py` | `web/src_ts/*` plus the small transition surface in `web/static/modules/*`, browser UI | Stream event shape used to be implicit; server and client now share the event contract modules | Shared event schema + contract tests |
 | Assistant/tool persistence | `src.memory.repos.*`, `src.api.messages` | `src/core`, `web/services/message_persister.py`, tools | `src/tools/_tool_persister.py` used raw SQL; `tool_loop.py` now writes assistant tool-turns directly through `MessageRepository` | One persistence path through repositories/modules |
 | Tool execution loop | `src/core/tool_loop.py`, `src/constants.py` | `src/core/orchestrator.py`, `src.tools.runner` | `max_turns` and loop policy are duplicated in more than one place | Single loop policy module with shared constants |
 | LLM selection and fallback | `src/llm/discovery.py`, `src/llm/verifier.py`, `src/llm/selector.py`, `src/llm/failover.py`, `src/llm/api_call.py` | `src.core`, `src.llm`, `src.compressor`, `src.background_tasks` | Legacy `_deps.py` seam was removed; fallback policy is split | Explicit provider/fallback interface |
 | Model metadata catalog | `web/services/model_catalog.py`, `~/.local/share/opencode-delegate/model_registry.json` (or `KAIROS_MODEL_REGISTRY`) | `web/routers/pages.py`, `web/templates/chat.html` | Model selector used to show raw ids only; richer capabilities were not visible | Cached metadata helper with graceful fallback to ids |
 | Search backend bootstrap | `dependencies/manage.py`, `web/app_factory.py` | `src.tools.web_search`, app startup | SearXNG auto-start used to install dependencies implicitly on boot | Explicit install flag + graceful startup error |
 | API modules | `src/api/*` | `web/routers/*`, `web/services/*`, CLI | Domain modules are the source of truth; the package marker is empty | Split by domain contracts, not by file growth |
-| Widget rendering/state | `web/static/modules/content-handler.js`, `web/services/message_renderer.py`, `web/services/widget_contract.py`, `web/static/modules/widgets/contract.js`, `src.memory.repos.widget_state_repository` | browser, DB, tool outputs | Render state, widget code, and widget versions were split across Python and JS with no shared schema | Formal widget contract with version/state fields |
-| Retry / abort / timeout | `web/static/modules/retry-handler.js`, `web/static/modules/stream-orchestrator.js`, `web/services/chat_stream.py` | browser stream handling, server stream cleanup | Retry state used to be a singleton; now it is held by `RetryController` instances per stream | One stream lifecycle policy and isolated retry state |
-| Frontend module state | `web/static/modules/*` | browser entry points, tests | Several modules rely on globals on `window` for compatibility | Reduce globals to compatibility wrappers only |
+| Widget rendering/state | `web/src_ts/streaming/ContentHandler.ts`, `web/services/message_renderer.py`, `web/services/widget_contract.py`, `web/static/modules/widgets/contract.js`, `src.memory.repos.widget_state_repository` | browser, DB, tool outputs | Render state, widget code, and widget versions were split across Python and JS with no shared schema | Formal widget contract with version/state fields |
+| Retry / abort / timeout | `web/src_ts/core/RetryHandler.ts`, `web/src_ts/streaming/StreamOrchestrator.ts`, `web/services/chat_stream.py` | browser stream handling, server stream cleanup | Retry state used to be a singleton; now it is held by `RetryController` instances per stream | One stream lifecycle policy and isolated retry state |
+| Frontend module state | `web/src_ts/*` and the small transition surface in `web/static/*` | browser entry points, tests | Several modules rely on globals on `window` for transition support | Reduce globals to wrappers only |
 | Database lifecycle | `src/memory/connection_pool.py`, `src/memory/db_path.py`, `src/memory/engine_state.py`, `src/memory/schema.py`, `src/memory/migrations.py`, `src/memory/repos/*` | all persistence paths | Connection management, init, and migrations were concentrated in one module; now they are split | Separate lifecycle, schema, and repository responsibilities |
 
 ## Contract Details
@@ -224,14 +224,15 @@ do because many modules depend on them.
 - Widget identity comes from the rendered `data-widget-id` / `data-widget-key` pair and the `_code_` prefix for cached code entries.
 - Widget code extraction on the server lives in `web/services/widget_contract.py`.
 - Widget code normalization and key-prefix helpers on the client live in `web/static/modules/widgets/contract.js`.
-- `web/static/modules/widgets/index.js` is the pure export surface; `web/static/modules/widgets/bootstrap.js` owns the `window` compatibility install and handler startup.
-- `web/static/modules/stream-bootstrap.js` and `web/static/modules/chat-form-bootstrap.js` own the remaining legacy globals.
+- `web/static/modules/widgets/index.js` is the pure export surface; the historical bootstrap files were removed and transition logic now lives in the explicit app/session entrypoints.
+- The old `stream-bootstrap.js` and `chat-form-bootstrap.js` entrypoints are gone; the remaining globals are isolated in the current transition surfaces.
+- Widget iframes now use `window.__KAIROS_WIDGET_BRIDGE__` for `initialState` and `saveState`; direct globals were removed from the runtime contract.
 - Server-side widget HTML rendering should remain consistent with that same identity model.
 
 ### 7. Retry / Abort / Timeout
 
 **Shape today**
-- Retry state lives in a per-stream controller, with a legacy singleton kept only for compatibility.
+- Retry state lives in a per-stream controller, with a singleton kept only for bridge support.
 - Server-side stream cleanup and partial save happen in the stream wrapper.
 
 **What must stay true**
@@ -248,15 +249,15 @@ do because many modules depend on them.
 ### 8. Frontend Module State
 
 **Shape today**
-- Some modules still depend on `window` aliases for compatibility.
-- Module-local state and compatibility globals coexist.
+- Some modules still depend on `window` aliases for bridge support.
+- Module-local state and bridge globals coexist.
 - The debug panel toggle is now bound via DOM listeners instead of a global `toggleDebug()` hook.
-- Sidebar session selection is now handled by delegated clicks in `web/static/modules/session-page.js`; the template no longer carries `onclick="loadSession(...)"`.
-- The model selector is bound in `web/static/modules/session-page.js`; the template only provides state markup and the persisted value.
-- Debug copy buttons are wired via `web/static/modules/debug-panel.js`, not inline handlers.
+- Sidebar session selection is now handled by delegated clicks in `web/src_ts/core/session/SessionList.ts`; the template no longer carries `onclick="loadSession(...)"`.
+- The model selector is bound in the current session UI layer; the template only provides state markup and the persisted value.
+- Debug copy buttons are wired via `web/src_ts/core/DebugManager.ts`, not inline handlers.
 
 **What must stay true**
-- Globals should be compatibility shims only.
+- Globals should be bridge shims only.
 - New code should receive state through explicit parameters or module objects.
 
 **Recommended seam**

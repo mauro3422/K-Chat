@@ -25,7 +25,6 @@ export interface ISSEClient {
  * 1. stream:* events — live Telegram tokens, rendered via ContentHandler
  * 2. session events — new_message, session_deleted, message_deleted
  *
- * The production reference is web/static/modules/sse-client.js.
  */
 export class SSEClient implements ISSEClient {
   private eventSource: EventSource | null = null;
@@ -46,6 +45,7 @@ export class SSEClient implements ISSEClient {
     private iframeBuilder: IIframeBuilder,
     private containerRenderer: IWidgetContainerRenderer,
     private widgetRegistry: IWidgetRegistry,
+    private renderMarkdown: (markdown: string) => string,
     private debug?: IDebugManager,
   ) {
     this.logger = getLogger('sse-client');
@@ -192,6 +192,7 @@ export class SSEClient implements ISSEClient {
       this.iframeBuilder,
       this.containerRenderer,
       this.widgetRegistry,
+      this.renderMarkdown,
       this.debug,
     );
     this.liveDispatcher = dispatcher;

@@ -200,7 +200,7 @@ def _stop_all() -> None:
         return
     _shutdown = True
 
-    from src.gateway_log import log_shutdown, log_event
+    from src.gateway_log import log_shutdown, log_event, configure_logbus
     uptime = time.time() - _start_time
 
     for name, info in _services.items():
@@ -364,6 +364,11 @@ def main() -> None:
         asyncio.run(_init_logbus())
     except Exception:
         pass
+    try:
+        from src.logbus import get_logbus
+        configure_logbus(get_logbus())
+    except Exception:
+        pass
 
     parser = argparse.ArgumentParser(description="Kairos Gateway — unified launcher")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show debug logs in console")
@@ -395,14 +400,6 @@ def main() -> None:
     root_logger.setLevel(prev_level)
 
     # ── Precalentar modelo de embeddings ────────────────────────────
-    try:
-        generate_embedding = importlib.import_module("src.memory.embeddings.service").generate_embedding
-        import threading
-        threading.Thread(target=generate_embedding, args=("warmup",), daemon=True).start()
-        logger.info("Embedding model preload initiated")
-    except Exception:
-        logger.warning("Embedding model preload failed (non-fatal)")
-
     from src.gateway_log import log_startup
 
     _log_starting("Memory DB")

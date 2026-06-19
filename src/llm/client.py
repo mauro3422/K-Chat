@@ -55,6 +55,7 @@ async def _with_fallback(
     fn: Callable[[str], Any],
     breaker=None,
     rate_store=None,
+    registry=None,
 ) -> Any:
     try:
         res = await _await_if_needed(fn(model))
@@ -62,7 +63,14 @@ async def _with_fallback(
         return res
     except Exception as e:
         logger.warning("Error with model %s: %s. Retrying with model switch...", model, e)
-        next_model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e), error=e)
+        next_model = _mark_and_refresh(
+            model,
+            refresh=not is_rate_limit_error(e),
+            error=e,
+            breaker=breaker,
+            rate_store=rate_store,
+            registry=registry,
+        )
         _update_system_prompt(messages, next_model, build_prompt_fn)
         logger.info("Switching model to: %s", next_model)
         return await _await_if_needed(fn(next_model))
@@ -74,6 +82,7 @@ async def _try_stream(
     build_prompt_fn: Callable | None = None,
     breaker=None,
     rate_store=None,
+    registry=None,
     **kwargs: Any,
 ) -> Any:
     if "stream_options" not in kwargs:
@@ -85,11 +94,18 @@ async def _try_stream(
         return s
     except Exception as e:
         logger.warning("Error starting stream with model %s: %s. Retrying with switch...", model, e)
-        # Log full error chain for debugging (PYTHON-314 compatibility)
+        # Log full error chain for debugging
         cause = getattr(e, '__cause__', None) or getattr(e, '__context__', None)
         if cause:
             logger.warning("Caused by: %s: %s", type(cause).__name__, cause)
-        model = _mark_and_refresh(model, refresh=not is_rate_limit_error(e), error=e)
+        model = _mark_and_refresh(
+            model,
+            refresh=not is_rate_limit_error(e),
+            error=e,
+            breaker=breaker,
+            rate_store=rate_store,
+            registry=registry,
+        )
         _update_system_prompt(messages, model, build_prompt_fn)
         logger.info("Switching stream to: %s", model)
         return await api_call._api_call(model=model, messages=messages, stream=True, **kwargs)
@@ -141,7 +157,7 @@ def _update_debug_usage(chunk: Any, debug: DebugInfo | None) -> None:
         debug.total_tokens = usage.total_tokens
 
 
-async def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_fn: Callable | None = None, breaker=None, rate_store=None, default_model_fn: Callable[[], str] | None = None, **kwargs: Any) -> Any:
+async def chat(messages: list[dict[str, Any]], model: str | None = None, build_prompt_fn: Callable | None = None, breaker=None, rate_store=None, registry=None, default_model_fn: Callable[[], str] | None = None, **kwargs: Any) -> Any:
     debug = kwargs.pop("debug", None)
     if model is None:
         if default_model_fn is None:
@@ -179,7 +195,7 @@ async def chat(messages: list[dict[str, Any]], model: str | None = None, build_p
             )
         return response.choices[0]
 
-    return await _with_fallback(model, messages, build_prompt_fn, _call, breaker=breaker, rate_store=rate_store)
+    return await _with_fallback(model, messages, build_prompt_fn, _call, breaker=breaker, rate_store=rate_store, registry=registry)
 
 
 
@@ -291,12 +307,13 @@ async def chat_stream(
     tool_calls_output: list[Any] | None = None,
     breaker=None,
     rate_store=None,
+    registry=None,
     default_model_fn: Callable[[], str] | None = None,
     **kwargs: Any
 ) -> AsyncGenerator[Any, None]:
     debug = kwargs.pop("debug", None)
     model = _resolve_model(messages, model, build_prompt_fn, default_model_fn=default_model_fn)
-    stream = await _try_stream(model, messages, build_prompt_fn, breaker=breaker, rate_store=rate_store, **kwargs)
+    stream = await _try_stream(model, messages, build_prompt_fn, breaker=breaker, rate_store=rate_store, registry=registry, **kwargs)
 
     stats = SimpleNamespace(chunk_count=0, has_content=False, has_reasoning=False)
     async for item in _process_chunks(

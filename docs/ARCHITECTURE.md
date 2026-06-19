@@ -110,11 +110,11 @@ User → Form POST → web/routers/chat.py → web/services/chat_stream.py
                                              │
                       ┌──────────────────────┴──────────────────┐
                       │  NDJSON → stream-dispatcher.js          │
-                      │    └→ reasoning-handler.js              │
+                      │    └→ streaming/reasoning-handler.ts    │
                       │       → <details class="reasoning">     │
-                      │    └→ tool-call-renderer.js             │
+                      │    └→ streaming/tool-call-renderer.ts    │
                       │       → .tc-item pills (spinner/✓/✗)    │
-                      │    └→ content-handler.js                │
+                      │    └→ streaming/ContentHandler.ts       │
                       │       → .msg-body token by token        │
                       │       → widget detection + init         │
                       └─────────────────────────────────────────┘
@@ -339,17 +339,17 @@ User input → src/cli.py → core.orchestrator.chat_stream()
 - `ui_utils.py`: HTML rendering helpers — `render_msg_with_phases()`.
 
 **Frontend — 42 JS/TS modules, 9 CSS files:**
-- `stream-dispatcher.js`: `KairosStream` — event emitter with `on()` / `emit()`. Central dispatcher for reasoning, content, tool_call, error events.
-- `reasoning-handler.js`: Handles `reasoning` events — creates `<details class="reasoning">` elements, accumulates thinking text.
-- `content-handler.js`: Handles `content` events — manages per-phase body divs, detects inline widgets, renders markdown, initializes widgets.
-- `tool-call-renderer.js`: Handles `tool_call` events — creates `.tool-calls` divs with `.tc-item` pills.
-- `stream-orchestrator.js`: Main stream rendering orchestrator. Wires dispatcher to handlers, manages phase transitions.
-- `chat-form.js`: Chat form submission and input handling with keyboard shortcuts.
-- `markdown-renderer.js`: `KairosMarkdown.parse()` — markdown to HTML conversion.
+- `streaming/StreamDispatcher.ts`: `KairosStream` — event emitter with `on()` / `emit()`. Central dispatcher for reasoning, content, tool_call, error events.
+- `streaming/reasoning-handler.ts`: Handles `reasoning` events — creates `<details class="reasoning">` elements, accumulates thinking text.
+- `streaming/ContentHandler.ts`: Handles `content` events — manages per-phase body divs, detects inline widgets, renders markdown, initializes widgets.
+- `streaming/tool-call-renderer.ts`: Handles `tool_call` events — creates `.tool-calls` divs with `.tc-item` pills.
+- `streaming/StreamOrchestrator.ts`: Main stream rendering orchestrator. Wires dispatcher to handlers, manages phase transitions.
+- `core/ChatForm.ts`: Chat form submission and input handling with keyboard shortcuts.
+- `rendering/DomRenderer.ts`: `KairosMarkdown.parse()` — markdown to HTML conversion.
 - `api-client.js`: Unified frontend API client for all endpoints.
 - `skills-ui.ts`: TypeScript module — skills UI panel and management.
 - `message-renderer.js`: Client-side message rendering.
-- `debug-panel.js`, `rate-limit-cooldown.js`, `session-page.js`, `sidebar-refresh.js`: UI components.
+- `core/DebugManager.ts`, `core/RateLimitCooldown.ts`, `core/SessionList.ts`, `sidebar-refresh.js`: UI components.
 - `file-attachment.js`, `session-context.js`, `stream-completion.js`: State/behavior modules.
 - `asr/` (7 modules): `contract.js`, `transcript-utils.js`, `audio-capture.js`, `pcm-utils.js`, `pcm-worklet.js`, `transcription-transport.js`, `vad.js` — microphone capture, VAD segmentation, live ASR.
 - `asr-mic.js`: ES module for microphone + VAD + transcript merging.
@@ -410,7 +410,7 @@ All `session_id` columns defined with `REFERENCES sessions(session_id)` (enforce
 Widgets are self-contained HTML/CSS/JS snippets rendered in sandboxed iframes.
 - Inline widgets: ` ```html-widget [key]\n...\n``` ` → rendered immediately
 - Official widgets: `[Widget: key]` → fetches code from DB and renders
-- State persistence: via `window.saveState()` → POST to backend → `widget_states` table
+- State persistence: via `window.__KAIROS_WIDGET_BRIDGE__.saveState()` → POST to backend → `widget_states` table
 - Toolbar: version badge, edit button, history/rollback, reset state
 - Host↔iframe communication: `postMessage` protocol (sandboxed, origin-verified)
 
@@ -459,7 +459,7 @@ def resolve_deps(deps, factory, **kwargs):
     return deps if deps is not None else factory(**kwargs)
 ```
 
-Standardized in `src/api/_resolve.py`. Used across API, Core, and Web layers to allow optional dep injection with automatic fallback to production defaults.
+Standardized in `src/api/_resolve.py`. Used across API, Core, and Web layers to allow optional dep injection with automatic fallback to configured defaults.
 
 ## Channels
 
@@ -515,6 +515,7 @@ skills/
 - `discover_tools()`: Finds `tool.py` files within skill directories, loads them as tools.
 - `generate_index_md()`: Writes `skills/INDEX.md` with name, description, and available tools for each skill.
 - Skills are loaded via `read_skill` tool at runtime.
+- The web router reads the registry from `app.state.skill_registry`; if that state is missing in a real request, it fails fast instead of constructing ad hoc state.
 
 ## Gateway
 

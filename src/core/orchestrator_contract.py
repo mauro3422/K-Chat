@@ -99,13 +99,11 @@ _FIELD_MAP: dict[str, str] = {
 
 
 class OrchestratorDeps:
-    """Backward-compatible facade that composes the four dependency groups.
+    """Facade that composes the four dependency groups.
 
     All original fields are accessible as plain attributes (e.g. ``deps.repos``,
     ``deps.session_id``). New code can also access sub-groups directly via
     ``deps.llm``, ``deps.tools``, ``deps.storage``, ``deps.state``.
-
-    Accepts the same keyword arguments as before for full backward compatibility.
     """
 
     __slots__ = ("llm", "tools", "storage", "state")

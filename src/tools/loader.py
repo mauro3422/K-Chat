@@ -1,7 +1,7 @@
 # DEPRECATED: This module is only used by tests (tests/unit/test_tool_loader.py).
 # Production code uses src.tools.get_default_registry() and src.tools.ToolRegistry
 # (src/tools/__init__.py and src/tools/registry.py) instead.
-# Do not add new production imports here.
+# Do not add new runtime imports here.
 import os
 import logging
 import importlib

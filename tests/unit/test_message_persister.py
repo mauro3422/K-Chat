@@ -26,6 +26,7 @@ async def test_save_with_full_data(mock_get_repos):
 
     await save_assistant_message(
         session_id="s1",
+        user_msg="hello",
         full_content="Hello!",
         full_reasoning="thinking",
         phases_output=phases,
@@ -61,6 +62,7 @@ async def test_save_with_empty_debug_info(mock_get_repos):
 
     await save_assistant_message(
         session_id="s2",
+        user_msg="hi",
         full_content="Response",
         full_reasoning="",
         phases_output=phases,
@@ -87,6 +89,7 @@ async def test_save_with_empty_phases(mock_get_repos):
 
     await save_assistant_message(
         session_id="s3",
+        user_msg="hey",
         full_content="Short reply",
         full_reasoning="reason",
         phases_output=[],
@@ -114,6 +117,7 @@ async def test_existing_phases_not_overwritten(mock_get_repos):
 
     await save_assistant_message(
         session_id="s4",
+        user_msg="question",
         full_content="Content",
         full_reasoning="",
         phases_output=phases,
@@ -144,6 +148,7 @@ async def test_save_assistant_message_with_explicit_deps():
 
     await save_assistant_message(
         session_id="s5",
+        user_msg="hello",
         full_content="Ok",
         full_reasoning="",
         phases_output=phases,

@@ -2,7 +2,7 @@ import logging
 from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
-from src.api import SkillRegistry
+from src.api.skills import SkillRegistry
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -13,6 +13,7 @@ def _get_skill_registry(request: Request = None) -> SkillRegistry:
         reg = getattr(request.app.state, "skill_registry", None)
         if reg is not None:
             return reg
+        raise HTTPException(status_code=500, detail="Skill registry not initialized")
     return SkillRegistry()
 
 

@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-from src.api import get_repos
+from src.api.repos import get_repos
 from web.services.asr_service import transcribe_audio
 
 router = APIRouter()

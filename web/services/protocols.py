@@ -24,6 +24,7 @@ class MessagePersisterProtocol(Protocol):
         phases_output: list[dict[str, Any]],
         debug_info: DebugInfo,
         model: str,
+        user_msg: str = ...,
         repos: Any | None = None,
         deps: MessagePersisterDeps | None = None,
     ) -> None:

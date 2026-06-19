@@ -19,10 +19,16 @@ interface SkillDetail {
 export class SkillsUI implements ISkillsUI {
   private eventBus: IEventBus;
   private fetchFn: typeof fetch;
+  private renderMarkdown: (text: string) => string;
   private logger: ILogger = getLogger('skills');
 
-  constructor(eventBus: IEventBus, fetchFn: typeof fetch = window.fetch.bind(window)) {
+  constructor(
+    eventBus: IEventBus,
+    renderMarkdown: (text: string) => string,
+    fetchFn: typeof fetch,
+  ) {
     this.eventBus = eventBus;
+    this.renderMarkdown = renderMarkdown;
     this.fetchFn = fetchFn;
   }
 
@@ -127,18 +133,7 @@ export class SkillsUI implements ISkillsUI {
           title.textContent = `Skill: ${data.name.replace('-', ' ').toUpperCase()}`;
         }
 
-        let html = '';
-        if (window.marked && typeof window.marked === 'object' && 'parse' in window.marked) {
-          html = (window.marked as { parse: (text: string) => string }).parse(data.content);
-        } else {
-          html = `<pre style="white-space: pre-wrap;">${data.content}</pre>`;
-        }
-
-        if (window.DOMPurify) {
-          html = window.DOMPurify.sanitize(html, {});
-        }
-
-        body.innerHTML = html;
+        body.innerHTML = this.renderMarkdown(data.content);
         this.logger.info('skill_content_loaded', `name=${name} content_length=${data.content.length}`);
       })
       .catch(err => {

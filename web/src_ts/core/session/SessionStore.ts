@@ -13,7 +13,7 @@ export interface ISessionStore {
   createSession(name?: string): Promise<string>;
   deleteSession(id: string): Promise<void>;
   renameSession(id: string, name: string): Promise<void>;
-  selectSession(id: string): void;
+  selectSession(id: string): Promise<void>;
   addMessage(sessionId: string, msg: MessageData): void;
   getHistory(sessionId: string): MessageData[];
 }
@@ -147,14 +147,14 @@ export class SessionStore implements ISessionStore {
     }
   }
 
-  selectSession(id: string): void {
+  async selectSession(id: string): Promise<void> {
     if (this._activeSessionId !== id && this._sessions.some(s => s.id === id)) {
       this._activeSessionId = id;
       // Sync URL to session path (without triggering navigation)
       window.history.replaceState({ sessionId: id }, '', `/sessions/${id}`);
-      this._emit('session:selected', { id });
       // Load history for selected session
-      this.loadHistory(id);
+      await this.loadHistory(id);
+      this._emit('session:selected', { id });
     }
   }
 

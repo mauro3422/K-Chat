@@ -1,6 +1,7 @@
 import json
 
-from src.api import filter_messages_for_ui, match_tools_to_msgs, get_repos
+from src.api.orchestrator import filter_messages_for_ui, match_tools_to_msgs
+from src.api.repos import get_repos
 from src.api.repos import Repositories
 from web.services.widget_contract import extract_inline_widget_states
 from web.services.message_renderer_contract import MessageRenderDeps

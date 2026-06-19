@@ -19,7 +19,7 @@ Todos los módulos con estado module-level ahora exponen un par `configure_*`/`r
 | Capa | Módulo | Funciones |
 |------|--------|-----------|
 | **LLM** | `circuit_breaker.py` | `configure_breaker()` / `reset_breaker()` |
-| **LLM** | `container.py` | `configure_container()` / `reset_container()` |
+| **LLM** | `container.py` | `get_container()` / `LLMContainer` por composición raíz |
 | **LLM** | `model_registry.py` | `configure_model_registry()` / `reset_model_registry()` |
 | **LLM** | `model_state.py` | `configure_state()` / `reset_state()` |
 | **LLM** | `providers.py` | `configure_registry()` / `reset_registry()` |
@@ -130,7 +130,7 @@ Todos reseteables desde un solo punto: **`src/api/lifecycle.reset_runtime_state(
 
 ### 🏗️ Composition Root unificado (`web/app_factory.py`)
 - **5 servicios core** creados en `lifespan()` y guardados en `app.state`: `TelemetryService`, `HistoryService`, `LLMService`, `ToolExecutionService`, `RetrievalService`.
-- **LLMContainer** creado y configurado vía `configure_container()`. Sub-servicios expuestos en `app.state`: `circuit_breaker`, `rate_limit_store`, `model_registry`.
+- **LLMContainer** creado por la composición raíz y conectado a `app.state`. Sub-servicios expuestos: `circuit_breaker`, `rate_limit_store`, `model_registry`.
 - **ConnectionPool** creado y configurado vía `configure_connection_pool()`, expuesto en `app.state`.
 - **Config** (`load_config()`) guardado en `app.state.config`.
 - **LogBus** guardado en `app.state.logbus` e inyectado a `TelemetryService` por constructor.

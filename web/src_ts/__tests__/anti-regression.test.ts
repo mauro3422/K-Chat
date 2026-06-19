@@ -449,6 +449,36 @@ describe('anti-regression: session URL sync and init persistence', () => {
       window.history.replaceState = origReplaceState;
     }
   });
+
+  it('selectSession emits after history is loaded', async () => {
+    const events: string[] = [];
+
+    class SessionStoreProbe {
+      activeSessionId = 'old';
+      sessions = [{ id: 'new' }];
+
+      async loadHistory(id: string) {
+        events.push(`load:${id}`);
+      }
+
+      _emit(event: string) {
+        events.push(event);
+      }
+
+      async selectSession(id: string): Promise<void> {
+        if (this.activeSessionId !== id && this.sessions.some(s => s.id === id)) {
+          this.activeSessionId = id;
+          await this.loadHistory(id);
+          this._emit('session:selected');
+        }
+      }
+    }
+
+    const store = new SessionStoreProbe();
+    await store.selectSession('new');
+
+    expect(events).toEqual(['load:new', 'session:selected']);
+  });
 });
 
 describe('anti-regression: reasoning/memory collapsed in history, open live', () => {

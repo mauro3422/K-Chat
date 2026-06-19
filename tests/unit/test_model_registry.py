@@ -390,40 +390,46 @@ class TestSingleton:
     """get_model_registry and ensure_registry_refreshed."""
 
     def setup_method(self):
-        # Clear global singleton between tests
-        import src.llm.model_registry as mr
-        mr._registry = None
+        from src.llm.model_registry import reset_model_registry
+        reset_model_registry()
 
     async def test_singleton_returns_same_instance(self):
         r1 = get_model_registry()
         r2 = get_model_registry()
         assert r1 is r2
 
-    async def test_singleton_thread_safety(self):
-        instances = set()
+    async def test_context_isolation_across_threads(self):
+        instances = []
         lock = threading.Lock()
 
         def get():
             r = get_model_registry()
             with lock:
-                instances.add(id(r))
+                instances.append(r)
 
         threads = [threading.Thread(target=get) for _ in range(10)]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
-        assert len(instances) == 1
+        assert len({id(r) for r in instances}) == 10
 
-    @patch("src.llm.model_registry._registry")
     async def test_ensure_registry_refreshed_skips_if_has_models(
-        self, mock_registry
+        self,
     ):
         """Does not call refresh() when Go models already exist."""
-        mock_registry.get_go_models.return_value = ["model-a"]
+        mock_registry = ModelRegistry(config=None)
+        mock_registry.get_go_models = lambda: ["model-a"]
         mock_registry.refresh = AsyncMock()
 
+        from src.llm.model_registry import configure_model_registry
+        configure_model_registry(mock_registry)
+
         from src.llm.model_registry import ensure_registry_refreshed
-        await ensure_registry_refreshed()
+        try:
+            await ensure_registry_refreshed()
+        finally:
+            from src.llm.model_registry import reset_model_registry
+            reset_model_registry()
 
         mock_registry.refresh.assert_not_called()

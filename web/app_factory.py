@@ -1,4 +1,4 @@
-"""FastAPI app factory and bootstrap helpers."""
+﻿"""FastAPI app factory and bootstrap helpers."""
 
 from __future__ import annotations
 
@@ -18,8 +18,10 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from dependencies import manage as deps
-from src.api import get_repos
 from src.api.exceptions import ServiceException
+from src.api.llm_client import get_verified_models, ensure_registry_refreshed
+from src.api.repos import get_repos
+from src.api.skills import SkillRegistry
 from src.api.repos import init_db, init_memory_db
 from src.config_loader import load_config
 
@@ -67,20 +69,55 @@ def reset_config_cache() -> None:
     _config = None
 
 
+def reset_web_runtime_state() -> None:
+    """Reset web-layer process-local state owned by the composition root."""
+    try:
+        from web.services.file_logger import reset_log_dirs
+        reset_log_dirs()
+    except Exception:
+        pass
+
+    try:
+        from web.services.model_catalog import reset_model_cache
+        reset_model_cache()
+    except Exception:
+        pass
+
+    try:
+        from web.services.event_bus import reset_event_bus
+        reset_event_bus()
+    except Exception:
+        pass
+
+    try:
+        reset_config_cache()
+    except Exception:
+        pass
+
+
+def _wire_llm_runtime_state(llm_container, app_state=None) -> None:
+    """Align app-state LLM services with the process-local helper caches."""
+    from src.llm.circuit_breaker import configure_breaker
+    from src.llm.rate_limit_state import configure_rate_limit_store
+
+    breaker = llm_container.get_circuit_breaker()
+    rate_limit_store = llm_container.get_rate_limit_store()
+
+    configure_breaker(breaker)
+    configure_rate_limit_store(rate_limit_store)
+
+    if app_state is not None:
+        app_state.circuit_breaker = breaker
+        app_state.rate_limit_store = rate_limit_store
+        app_state.model_registry = llm_container.get_model_registry()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     cfg = _get_config()
     app.state.config = cfg
     searxng_started = False
     logbus = None
-    # ── Precalentar modelo de embeddings ────────────────────────────
-    if not cfg.testing:
-        try:
-            generate_embedding = importlib.import_module("src.memory.embeddings.service").generate_embedding
-            asyncio.create_task(asyncio.to_thread(generate_embedding, "warmup"))
-            logger.info("Embedding model preload initiated")
-        except Exception:
-            pass
     if cfg.testing or os.environ.get("SEARXNG_AUTO_START", "false").lower() in ("1", "true"):
         err = deps.searxng_start()
         if err:
@@ -90,17 +127,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     await init_memory_db()
     importlib.import_module("src.memory.deleted_sessions_db").init_deleted_sessions_db()
-    # ── Composition Root: Repositories ─────────────────────────
+    # â”€â”€ Composition Root: Repositories â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     repos = get_repos()
     app.state.repos = repos
-    # ── Composition Root: Connection Pool ─────────────────────
+    # â”€â”€ Composition Root: Connection Pool â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     from src.memory.connection_pool import ConnectionPool, configure_connection_pool
     pool = ConnectionPool(max_connections=5)
     configure_connection_pool(pool)
     app.state.connection_pool = pool
     logger.info("Composition root: Connection pool created and injected")
     logger.info("Composition root: Repositories created and injected")
-    # ── Composition Root: LogBus ─────────────────────────────────
+    # â”€â”€ Composition Root: LogBus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     logbus = None
     try:
         from src.logbus import get_logbus
@@ -115,7 +152,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         pass
 
-    # ── Composition Root: Core Services ──────────────────────────
+    # â”€â”€ Composition Root: Core Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     from src.core.services.telemetry_service import TelemetryService
     from src.core.services.history_service import HistoryService
     from src.core.services.llm_service import LLMService
@@ -125,50 +162,50 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     telemetry_service = TelemetryService(logbus=logbus)
     app.state.telemetry_service = telemetry_service
     app.state.history_service = HistoryService(repos=repos)
-    app.state.llm_service = LLMService(telemetry_service=telemetry_service)
     app.state.tool_service = ToolExecutionService()
     app.state.retrieval_service = RetrievalService(config=cfg)
     logger.info("Composition root: Core services created and injected")
-    # ── Composition Root: LLM Container ──────────────────────────
-    from src.llm.container import LLMContainer, configure_container
+    # â”€â”€ Composition Root: LLM Container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    from src.llm.container import LLMContainer
     llm_container = LLMContainer(config=cfg)
     app.state.llm_container = llm_container
-    configure_container(llm_container)
+    _wire_llm_runtime_state(llm_container, app.state)
     logger.info("Composition root: LLM Container created and injected")
-
-    # Wire LLM sub-services into app.state for easy access
-    app.state.circuit_breaker = llm_container.get_circuit_breaker()
-    app.state.rate_limit_store = llm_container.get_rate_limit_store()
-    app.state.model_registry = llm_container.get_model_registry()
-    try:
-        from src.api import SkillRegistry
-        SkillRegistry().generate_index_md()
-    except Exception as e:
-        logger.warning("Failed to generate skills INDEX.md: %s", e)
+    app.state.llm_service = LLMService(
+        telemetry_service=telemetry_service,
+        model_registry=llm_container.get_model_registry(),
+    )
     if not cfg.testing:
-        from src.api import get_verified_models
-        try:
-            await asyncio.wait_for(get_verified_models(), timeout=10)
-        except asyncio.TimeoutError:
-            logger.warning("Model discovery timed out (10s) — will lazy-load on first request")
-        except Exception as e:
-            logger.warning("Failed to schedule model discovery: %s", e)
-        # Auto-refresh the dynamic model registry
-        try:
-            from src.api import ensure_registry_refreshed
-            await asyncio.wait_for(ensure_registry_refreshed(), timeout=10)
-        except Exception:
-            pass  # registry will lazy-refresh on first request
-        # Preload embedding model so first chat request doesn't wait 6+ seconds
-        try:
-            get_model = importlib.import_module("src.memory.embeddings.service").get_model
-            model = await asyncio.to_thread(get_model)
-            if model is not None:
-                logger.info("Embedding model preloaded successfully")
-            else:
-                logger.warning("Embedding model not available at startup (will lazy-load)")
-        except Exception as e:
-            logger.warning("Embedding model preload failed (non-fatal): %s", e)
+        async def _generate_skills_index() -> None:
+            try:
+                await asyncio.to_thread(SkillRegistry().generate_index_md)
+            except Exception as e:
+                logger.warning("Failed to generate skills INDEX.md: %s", e)
+
+        asyncio.create_task(_generate_skills_index())
+
+        async def _prime_model_registry() -> None:
+            try:
+                get_verified_models()
+            except Exception as e:
+                logger.warning("Failed to prime verified model cache: %s", e)
+            try:
+                await asyncio.wait_for(ensure_registry_refreshed(), timeout=10)
+            except Exception:
+                pass  # registry will lazy-refresh on first request
+
+        asyncio.create_task(_prime_model_registry())
+
+        if os.environ.get("KAIROS_WARMUP_EMBEDDINGS", "false").lower() in ("1", "true"):
+            try:
+                get_model = importlib.import_module("src.memory.embeddings.service").get_model
+                model = await asyncio.to_thread(get_model)
+                if model is not None:
+                    logger.info("Embedding model preloaded successfully")
+                else:
+                    logger.warning("Embedding model not available at startup (will lazy-load)")
+            except Exception as e:
+                logger.warning("Embedding model preload failed (non-fatal): %s", e)
     yield
     if searxng_started:
         deps.searxng_stop()
@@ -194,12 +231,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         pass
     try:
-        reset_config_cache()
-    except Exception:
-        pass
-    try:
-        from web.services.event_bus import reset_event_bus
-        reset_event_bus()
+        reset_web_runtime_state()
     except Exception:
         pass
     logger.info("ML models unloaded on shutdown")
@@ -271,7 +303,7 @@ def register_routers(app: FastAPI) -> None:
         try:
             mod = importlib.import_module(f"web.routers.{mod_name}")
             if hasattr(mod, "router"):
-                app.include_router(mod.router)
+                app.router.routes.extend(mod.router.routes)
                 logger.debug("Router loaded: %s", mod_name)
         except Exception as e:
             logger.warning("Router %s: error loading (%s), skipped", mod_name, e)
@@ -279,7 +311,7 @@ def register_routers(app: FastAPI) -> None:
 def setup_logging() -> None:
     """Configure root logger for the web server process.
 
-    Called once at app creation — ensures all ``logger.info(...)`` calls
+    Called once at app creation â€” ensures all ``logger.info(...)`` calls
     from web services (chat_stream, routers, etc.) actually go somewhere.
     Also installs the structured JSONL handler for persistent searchable logs.
     """
@@ -310,16 +342,21 @@ def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
-    # ── Composition Root: create & inject all Lego blocks ────────────
+    # â”€â”€ Composition Root: create & inject all Lego blocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     from web.services.event_bus import EventBus, set_event_bus
-    from src.api import SkillRegistry
+    from src.logbus import get_logbus
     event_bus = EventBus()
     set_event_bus(event_bus)
     app.state.event_bus = event_bus
     app.state.skill_registry = SkillRegistry()
+    app.state.logbus = get_logbus()
     logger.info("Composition root: EventBus created and injected")
 
     register_middlewares(app)
     register_exception_handlers(app)
     register_routers(app)
     return app
+
+
+
+

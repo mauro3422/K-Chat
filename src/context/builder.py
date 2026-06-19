@@ -25,9 +25,7 @@ class ContextBuilderProtocol(Protocol):
 
 
 def load_context() -> str:
-    """⚠️ Deprecated: use build_context_snapshot() instead.
-    Kept for backward compatibility. Will be removed in v0.0.61.
-    """
+    """Load the current context snapshot using the file-based path."""
     segments = []
     templates = get_templates()
     for filename in ["SOUL.md", "MEMORY.md", "AGENTS.md"]:

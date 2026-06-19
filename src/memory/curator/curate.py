@@ -12,12 +12,18 @@ import logging
 import os
 import sqlite3
 import sys
+import threading
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
+
+from src.memory.operations._helpers import _get_memory_md_path, _parse_memory_md, _write_memory_md
+from src.memory.repos_memory.memory_index_repo import GlobalMemoryIndexRepository
+from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
 MEMORY_MD_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "MEMORY.md")
+_SAVE_LOCK = threading.Lock()
 
 CURATOR_PROMPT = """You are a memory curator. From the conversation exchanges below,
 extract NEW information worth saving. Only extract things NOT already known.
@@ -76,6 +82,51 @@ async def _noop_save_memory(key: str, value: str) -> str:
     """No-op fallback when no save_memory_fn is injected."""
     logger.debug("save_memory not injected — would save: %s = %s", key, value[:80])
     return "[NOOP] save_memory_fn not injected"
+
+
+async def _save_memory_local(key: str, value: str) -> str:
+    """Memory-layer save helper used by curator standalone mode.
+
+    Keeps MEMORY.md + memory_index in sync without importing tools.
+    """
+    key_clean = key.strip()
+    value_clean = value.strip()
+    if not key_clean:
+        return "[ERROR] The key cannot be empty."
+
+    filepath = _get_memory_md_path()
+
+    def _sync_write() -> str:
+        with _SAVE_LOCK:
+            memories = _parse_memory_md(filepath)
+            if value_clean:
+                memories[key_clean] = value_clean
+                action_msg = f"saved key '{key_clean}' with value '{value_clean}'"
+            else:
+                if key_clean in memories:
+                    del memories[key_clean]
+                    action_msg = f"deleted key '{key_clean}'"
+                else:
+                    action_msg = f"key '{key_clean}' did not exist in memory"
+            _write_memory_md(filepath, memories)
+            return action_msg
+
+    try:
+        action_msg = await run_in_thread(_sync_write)
+    except Exception:
+        logger.exception("Failed to write MEMORY.md in curator local save")
+        return "[ERROR] Could not write to MEMORY.md."
+
+    try:
+        repo = GlobalMemoryIndexRepository()
+        if value_clean:
+            await repo.upsert(key_clean, value_clean)
+        else:
+            await repo.delete(key_clean)
+    except Exception:
+        logger.exception("Failed to sync curator save to memory.db")
+
+    return f"[OK] {action_msg} in MEMORY.md."
 
 
 def _get_memory_db_path() -> str:
@@ -454,8 +505,7 @@ async def curate_all(
 async def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     dry = "--dry" in sys.argv
-    from src.tools.save_memory import run as save_memory_run
-    r = await curate_all(dry=dry, save_memory_fn=lambda k, v: save_memory_run(key=k, value=v))
+    r = await curate_all(dry=dry, save_memory_fn=_save_memory_local)
 
     print("\n=== Gardener ===")
     for gr in r.get("gardener", []):

@@ -6,6 +6,7 @@ import src.llm.model_state as models
 import src.llm.model_registry as registry
 import src.llm.discovery as discovery
 from src.config_loader import SECONDARY_MODEL
+from src.utils.async_utils import run_awaitable_sync
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -14,14 +15,7 @@ def _get_free_models_sync(free_models_fn=None) -> list:
     """Get free models, handling both sync and async versions."""
     result = (free_models_fn or discovery.get_free_models)()
     if inspect.isawaitable(result):
-        try:
-            asyncio.get_running_loop()
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, result)
-                return future.result(timeout=30)
-        except RuntimeError:
-            return asyncio.run(result)
+        return run_awaitable_sync(result, label="free-model lookup")
     return result
 
 

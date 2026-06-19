@@ -1,4 +1,4 @@
-import { IWidgetRegistry } from '../types/widgets';
+﻿import { IWidgetRegistry } from '../types/widgets';
 import { fnv1a_32 } from '../core/WidgetRegistry';
 import { IDebugManager } from '../types/debug';
 import { IWidgetStateManager } from '../core/WidgetStateManager';
@@ -104,7 +104,7 @@ export class IframeBuilder implements IIframeBuilder {
 
   /**
    * Build the full srcdoc HTML for a widget.
-   * Includes: CSS reset, widget code, resize observer, saveState API.
+   * Includes: CSS reset, widget code, resize observer, and an explicit widget bridge.
    * Widget code is sanitized to remove SVG animations that cause infinite growth.
    */
   buildSrcDoc(id: string, code: string, initialState?: Record<string, unknown>): string {
@@ -139,15 +139,17 @@ export class IframeBuilder implements IIframeBuilder {
 <script>
   // ── Infra API (defined BEFORE widget code so widgets can use them) ──
   window.parent.postMessage({ type: "widget-lifecycle", id: "${id}", phase: "infra-ready" }, "*");
-  window.initialState = ${stateStr};
-
-  window.saveState = function(stateObj) {
-    window.parent.postMessage({
-      type: "save-widget-state",
-      id: "${id}",
-      state: typeof stateObj === "string" ? stateObj : JSON.stringify(stateObj)
-    }, "*");
+  window.__KAIROS_WIDGET_BRIDGE__ = {
+    initialState: ${stateStr},
+    saveState: function(stateObj) {
+      window.parent.postMessage({
+        type: "save-widget-state",
+        id: "${id}",
+        state: typeof stateObj === "string" ? stateObj : JSON.stringify(stateObj)
+      }, "*");
+    }
   };
+  window.saveState = window.__KAIROS_WIDGET_BRIDGE__.saveState;
 
   // ── Clipboard proxy (sandboxed iframes lack secure context) ──
   // Widgets using navigator.clipboard.writeText() fail silently in null-origin

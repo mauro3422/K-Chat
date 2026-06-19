@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 from typing import Any, Protocol
 
 
@@ -7,39 +8,24 @@ class DatabaseEngine(Protocol):
     def commit(self, conn: Any) -> None: ...
     def rollback(self, conn: Any) -> None: ...
     def close(self, conn: Any) -> None: ...
-
-
-class EngineState:
-    """Holds the current database engine (for test injection)."""
-
-    def __init__(self) -> None:
-        self._engine: DatabaseEngine | None = None
-
-    def get(self) -> DatabaseEngine | None:
-        return self._engine
-
-    def set(self, engine: DatabaseEngine | None) -> None:
-        self._engine = engine
-
-    def clear(self) -> None:
-        self._engine = None
-
-
-_engine_state = EngineState()
+_current_engine: ContextVar[DatabaseEngine | None] = ContextVar(
+    "kairos_memory_engine",
+    default=None,
+)
 
 
 def configure_engine(engine: DatabaseEngine | None) -> None:
     """Set the active database engine explicitly, or clear it with None."""
-    _engine_state.set(engine)
+    _current_engine.set(engine)
 
 
 def reset_engine() -> None:
-    """Clear the active database engine and restore lazy fallback behavior."""
-    _engine_state.clear()
+    """Clear the active database engine for the current context."""
+    _current_engine.set(None)
 
 
 def get_engine() -> DatabaseEngine | None:
-    return _engine_state.get()
+    return _current_engine.get()
 
 
 def set_engine(engine: DatabaseEngine | None) -> None:

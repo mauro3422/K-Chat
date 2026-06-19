@@ -1,5 +1,6 @@
 import asyncio
 import os
+from contextvars import ContextVar
 from typing import Any
 
 from src.memory.db_path import resolve_db_path
@@ -43,21 +44,28 @@ class ConnectionPool:
                 await conn.close()
 
 
-_pool = ConnectionPool()
+_current_pool: ContextVar[ConnectionPool | None] = ContextVar(
+    "kairos_connection_pool",
+    default=None,
+)
+
+
+def get_pool() -> ConnectionPool:
+    pool = _current_pool.get()
+    if pool is None:
+        pool = ConnectionPool()
+        _current_pool.set(pool)
+    return pool
 
 
 def configure_connection_pool(pool: ConnectionPool | None) -> None:
-    """Set the active connection pool explicitly.
-
-    Passing None restores the default module pool.
-    """
-    global _pool
-    _pool = pool or ConnectionPool()
+    """Set the active connection pool explicitly, or clear it with None."""
+    _current_pool.set(pool or ConnectionPool())
 
 
 def reset_connection_pool() -> None:
-    """Reset the active connection pool to a fresh instance."""
-    configure_connection_pool(None)
+    """Reset the active connection pool for the current context."""
+    _current_pool.set(ConnectionPool())
 
 
 class PooledConnection:
@@ -92,7 +100,7 @@ async def get_conn(db_path: str | None = None) -> PooledConnection:
         db_path = resolve_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-    raw = await _pool.acquire(db_path)
+    raw = await get_pool().acquire(db_path)
     if raw is None:
         raw = await create_raw_conn(db_path)
     return PooledConnection(raw, db_path)
@@ -102,10 +110,10 @@ async def return_conn(db_path: str, conn: Any) -> None:
     if isinstance(conn, PooledConnection):
         if conn._conn is not None:
             raw, conn._conn = conn._conn, None
-            await _pool.release(db_path, raw)
+            await get_pool().release(db_path, raw)
         return
-    await _pool.release(db_path, conn)
+    await get_pool().release(db_path, conn)
 
 
 async def close_all() -> None:
-    await _pool.close_all()
+    await get_pool().close_all()

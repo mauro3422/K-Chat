@@ -4,12 +4,12 @@ import { IframeBuilder } from './IframeBuilder';
 import { C } from '../core/DomContracts';
 
 /**
- * WidgetContainerRenderer — production-matching widget detection.
+ * WidgetContainerRenderer — runtime widget detection and ordering.
  *
  * NOW ONLY CALCULATES STRUCTURE — does NOT modify the DOM.
  * The ContentHandler applies DOM changes incrementally (preserving iframes).
  *
- * Mirrors: web/static/modules/widget-container-renderer.js
+ * Keeps widget detection and container ordering consistent with runtime behavior.
  */
 export class WidgetContainerRenderer implements IWidgetContainerRenderer {
   private debug?: IDebugManager;

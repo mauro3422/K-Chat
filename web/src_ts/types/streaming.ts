@@ -1,4 +1,4 @@
-/** NDJSON event types matching the production stream-contract.js */
+/** NDJSON event types for the streaming contract */
 export const STREAM_EVENT_TYPES = {
   HEARTBEAT: 'heartbeat',
   CONTENT: 'content',

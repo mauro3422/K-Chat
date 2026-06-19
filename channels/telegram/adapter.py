@@ -652,13 +652,10 @@ class _LazyImports:
     def _ensure(self) -> None:
         if self._loaded:
             return
-        from src.api import (
-            build_system_prompt,
-            chat_stream,
-            get_default_model,
-            get_repos,
-        )
-        from src.api.repos import MessageRecord
+        from src.api.context import build_system_prompt
+        from src.api.llm_client import get_default_model
+        from src.api.orchestrator import chat_stream
+        from src.api.repos import MessageRecord, get_repos
         self.MessageRecord = MessageRecord
         self.build_system_prompt = build_system_prompt
         self.chat_stream = chat_stream

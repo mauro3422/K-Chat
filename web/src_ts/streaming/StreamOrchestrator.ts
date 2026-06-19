@@ -53,6 +53,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     private iframeBuilder: IframeBuilder,
     private containerRenderer: WidgetContainerRenderer,
     private widgetRegistry: WidgetRegistry,
+    private renderMarkdown: (markdown: string) => string,
     private rateLimitCooldown: RateLimitCooldown,
     private debug?: IDebugManager,
     private retryController?: IRetryController,
@@ -135,7 +136,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
     const dispatcher = new StreamDispatcher<StreamHandlerContext>();
     this.contentHandler = new ContentHandler(
-      dispatcher, this.iframeBuilder, this.containerRenderer, this.widgetRegistry, this.debug,
+      dispatcher, this.iframeBuilder, this.containerRenderer, this.widgetRegistry, this.renderMarkdown, this.debug,
     );
 
     let streamError: { type: string; message: string } | null = null;

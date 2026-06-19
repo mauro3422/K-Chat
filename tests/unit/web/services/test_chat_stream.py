@@ -619,8 +619,8 @@ class TestPeriodicSave:
             )
             _ = [line async for line in gen()]
 
-        # save_fn called: 1 periodic + 1 final = 2
-        assert deps.save_fn.await_count >= 2
+        # With no new tokens after the autosave, the final pass should skip.
+        assert deps.save_fn.await_count == 1
 
     async def test_periodic_save_not_called_before_interval(self, deps, background_tasks, orch_deps):
         deps.chat_stream_fn = _make_stream([
@@ -750,6 +750,34 @@ class TestInterruptionSave:
         assert args[0] == "s1"
         assert "partial data" in args[1]
 
+    async def test_saves_dirty_tail_after_periodic_save(self, deps, background_tasks, orch_deps):
+        """If a periodic save happened and more tokens arrived, the tail is saved on interruption."""
+        deps.retry_handler = None
+        deps.save_fn = AsyncMock()
+
+        async def stream_then_crash(*args, **kwargs):
+            for token in ["a", "b", "c", "d", "e"]:
+                yield ("content", token)
+            raise RuntimeError("oops")
+
+        deps.chat_stream_fn = stream_then_crash
+
+        time_values = [100.0, 100.0, 100.0, 150.0, 160.0, 170.0, 180.0, 190.0]
+
+        with patch.object(time, "monotonic", side_effect=time_values):
+            gen = build_stream_generator(
+                session_id="s1", message="hi", history=[], model="gpt4",
+                background_tasks=background_tasks, deps=deps,
+                orchestrator_deps=orch_deps,
+            )
+            async for _ in gen():
+                pass
+
+        assert deps.save_fn.await_count >= 2
+        args, _ = deps.save_fn.call_args
+        assert args[0] == "s1"
+        assert args[1].endswith("e")
+
     async def test_not_saved_when_no_output(self, deps, background_tasks, orch_deps):
         """If the stream produced nothing, finally does not save."""
         deps.retry_handler = None
@@ -789,6 +817,31 @@ class TestInterruptionSave:
         # Actually, with only 1 token and time 100→150, periodic saves on token 1
         # (50>30). So we'd have both periodic and final saves, and no interruption.
         assert deps.save_fn.await_count >= 1
+
+    async def test_dirty_content_after_periodic_save_is_persisted(self, deps, background_tasks, orch_deps):
+        """New content after an autosave must still be flushed at the end."""
+        deps.chat_stream_fn = _make_stream([
+            ("content", "hola "),
+            ("content", "mundo"),
+        ])
+        deps.save_fn = AsyncMock(return_value=None)
+
+        time_values = [100.0, 131.0, 131.1, 132.0, 132.1]
+
+        with patch.object(time, "monotonic", side_effect=time_values):
+            gen = build_stream_generator(
+                session_id="s1", message="hi", history=[], model="gpt4",
+                background_tasks=background_tasks, deps=deps,
+                orchestrator_deps=orch_deps,
+            )
+            async for _ in gen():
+                pass
+
+        assert deps.save_fn.await_count == 2
+        first_call = deps.save_fn.call_args_list[0][0]
+        second_call = deps.save_fn.call_args_list[1][0]
+        assert first_call[1] == "hola "
+        assert second_call[1] == "hola mundo"
 
     async def test_vectorization_always_scheduled(self, deps, background_tasks, orch_deps):
         """finally block always schedules vectorization, even on disconnect."""

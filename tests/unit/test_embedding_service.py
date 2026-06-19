@@ -1,5 +1,6 @@
 from src.memory.embeddings.service import (
     configure_model,
+    get_service,
     reset_model,
 )
 
@@ -12,8 +13,7 @@ def test_configure_model_sets_explicit_instance():
     model = _DummyEmbeddingModel()
     configure_model(model)
     try:
-        from src.memory.embeddings import service
-        assert service._embedding_model is model
+        assert get_service()._model is model
     finally:
         reset_model()
 
@@ -22,5 +22,4 @@ def test_reset_model_clears_cached_instance():
     model = _DummyEmbeddingModel()
     configure_model(model)
     reset_model()
-    from src.memory.embeddings import service
-    assert service._embedding_model is None
+    assert get_service()._model is None

@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 import json
 from collections.abc import AsyncGenerator, Callable, Awaitable
 from dataclasses import dataclass
@@ -57,7 +57,7 @@ class _ToolLoopContext:
     skill_registry: Any | None = None
 
 
-# ── helpers ──────────────────────────────────────────────────────
+# â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def _build_ctx(
@@ -148,7 +148,7 @@ def _set_debug(ctx: _ToolLoopContext, reasoning: str) -> None:
         ctx.debug.reasoning = reasoning
 
 
-# ── tool execution (shared) ──────────────────────────────────────
+# â”€â”€ tool execution (shared) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 async def _execute_tools(
@@ -175,7 +175,7 @@ async def _execute_tools(
     phase_tool_ids.clear()
 
 
-# ── core streaming loop (internal, unifies yielԁ mechanism) ──────
+# â”€â”€ core streaming loop (internal, unifies yielÔ mechanism) â”€â”€â”€â”€â”€â”€
 
 
 async def _run_tool_loop(
@@ -187,7 +187,7 @@ async def _run_tool_loop(
 
     Yields events directly. When *yield_event* is provided, each event
     is also dispatched through the callback instead of (or in addition
-    to) the generator yield — this lets the sync path intercept events
+    to) the generator yield â€” this lets the sync path intercept events
     without changing the loop structure.
     """
     turn = 0
@@ -250,7 +250,7 @@ async def _run_tool_loop(
     _set_debug(ctx, "".join(total_reasoning))
 
 
-# ── public API ────────────────────────────────────────────────────
+# â”€â”€ public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 async def run_tool_loop_streaming(
@@ -303,12 +303,11 @@ async def run_tool_loop_sync(
     """Tool loop for synchronous path (tests). Yields NDJSON events.
 
     Delegates to the shared streaming loop (``_run_tool_loop``) and adds
-    sync‑specific post‑processing: final assistant message persistence and
+    sync-specific post-processing: final assistant message persistence and
     *used_tools* logging.
 
-    ``max_turns`` is interpreted as the maximum number of *tool‑call* turns
-    (matching the legacy sync behaviour) — one extra LLM call is made for the
-    final assistant response.
+    ``max_turns`` is interpreted as the maximum number of *tool-call* turns -
+    one extra LLM call is made for the final assistant response.
     """
     ctx = _build_ctx(
         history, model, session_id, tagged, debug, phases_output,

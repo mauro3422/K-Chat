@@ -1,12 +1,13 @@
 import os
 import logging
+import json
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from src.api import get_repos, get_rate_limit_store, get_model_registry
-from pathlib import Path
-import json
+from src.api.llm_client import get_rate_limit_store
+from src.api.repos import get_repos
 
 def get_backend_logs(limit: int = 100) -> list[dict]:
     """Read recent logs from the JSONL server log files."""
@@ -40,7 +41,6 @@ logger = logging.getLogger(__name__)
 @router.get("/rate-limits")
 async def rate_limits(request: Request) -> dict:
     _local_only(request)
-    from src.api import get_rate_limit_store
     return get_rate_limit_store().summary()
 
 
@@ -52,15 +52,16 @@ async def model_availability(request: Request) -> dict:
     show live availability dots.
     """
     _local_only(request)
-    from src.api import get_rate_limit_store, get_model_registry
-    from web.routers.pages import get_available_model_ids, _get_model_tier, get_available_models
+    from web.routers.pages import get_available_model_ids, _get_model_tier
 
     rl = getattr(request.app.state, "rate_limit_store", None) or get_rate_limit_store()
-    reg = getattr(request.app.state, "model_registry", None) or get_model_registry()
+    reg = getattr(request.app.state, "model_registry", None)
+    if reg is None:
+        raise HTTPException(status_code=500, detail="Model registry not initialized")
     result: dict[str, dict] = {}
 
     for model_id in get_available_model_ids(request=request):
-        tier = _get_model_tier(model_id)
+        tier = _get_model_tier(model_id, request=request)
         if tier == "zen":
             continue  # hide Zen from UI
         cooldown = rl.get_cooldown_remaining(model_id)

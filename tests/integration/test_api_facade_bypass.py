@@ -10,7 +10,8 @@ class TestApiFacadeBypass:
     @pytest.mark.anyio
     async def test_api_init_is_empty(self):
         content = open(api_init_module.__file__).read().strip()
-        assert content.startswith('"""Public API for K-Chat')
+        assert "src.api" in content
+        assert "compatibilidad" in content.lower()
 
     @pytest.mark.anyio
     async def test_api_modules_importable(self):

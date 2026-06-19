@@ -46,15 +46,17 @@ async def test_csp_includes_blob_for_img_src() -> None:
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-# 2. Lifespan: get_verified_models must have timeout
+# 2. Lifespan: verified model priming must not await a sync function
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def test_lifespan_has_timeout_on_get_verified_models() -> None:
     content = _read("web/app_factory.py")
-    assert "asyncio.wait_for(get_verified_models(), timeout=10)" in content, \
-        "Missing timeout on get_verified_models in lifespan â€” server startup hangs!"
-    assert "asyncio.TimeoutError" in content, \
-        "Missing TimeoutError handler in lifespan!"
+    assert "get_verified_models()" in content, \
+        "Missing verified-model priming in lifespan!"
+    assert "asyncio.wait_for(get_verified_models(), timeout=10)" not in content, \
+        "Lifespan must not await the sync get_verified_models() call!"
+    assert "asyncio.wait_for(ensure_registry_refreshed(), timeout=10)" in content, \
+        "Missing timeout on ensure_registry_refreshed in lifespan!"
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -319,58 +321,16 @@ async def test_no_module_level_singletons() -> None:
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-# 14. src/api/__init__.py must export from all submodules
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# 14. src/api/__init__.py must stay a minimal compatibility shim
+# -----------------------------------------------------------------------
 
-async def test_api_facade_exports_complete() -> None:
+async def test_api_facade_is_minimal_shim() -> None:
     content = _read("src/api/__init__.py")
-
-    all_match = re.search(r'__all__\s*=\s*\[(.*?)\]', content, re.DOTALL)
-    assert all_match, "src/api/__init__.py missing __all__"
-
-    exports: set[str] = set(re.findall(r'"([^"]+)"', all_match.group(1)))
-    assert len(exports) >= 30, \
-        f"__all__ only has {len(exports)} exports, expected >= 30"
-
-    required_imports = [
-        "from src.api.session import",
-        "from src.api.debug import",
-        "from src.api.messages import",
-        "from src.api.tools import",
-        "from src.api.widgets import",
-        "from src.api.orchestrator import",
-        "from src.api.llm_client import",
-        "from src.api.repos import",
-        "from src.api.context import",
-        "from src.api.background import",
-        "from src.api.journal import",
-        "from src.api.skills import",
-        "from src.api.exceptions import",
-    ]
-    for imp in required_imports:
-        assert imp in content, f"Missing import: '{imp}' in src/api/__init__.py"
-
-    required_exports = [
-        "ensure_session", "rename_session", "delete_session", "get_sessions",
-        "save_debug_info", "get_debug_info", "append_asr_telemetry",
-        "get_tool_history", "sanitize_widget_id",
-        "save_widget_state", "get_widget_states",
-        "db_save_widget", "db_get_widget",
-        "chat_stream", "generate_session_id", "OrchestratorDeps",
-        "get_default_model", "get_verified_models", "get_verified_models_safe",
-        "get_repos",
-        "build_system_prompt",
-        "auto_rename_session",
-        "log_turn",
-        "SkillRegistry",
-        "ServiceException",
-    ]
-    missing = [e for e in required_exports if e not in exports]
-    assert not missing, \
-        f"Missing exports in src/api/__init__.__all__: {missing}"
+    assert "Compatibilidad mínima" in content
+    assert "from src.api.session import" not in content
+    assert "__all__" not in content
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # 15. CSP must include 'unsafe-inline' in script-src (widget iframe scripts)
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
@@ -508,4 +468,6 @@ async def test_widget_container_renderer_uses_real_dom_contract() -> None:
         "WidgetContainerRenderer must remain the source of widget extraction."
     assert "widgetMatches" in content, \
         "WidgetContainerRenderer must preserve widget detection results."
+
+
 

@@ -191,15 +191,14 @@ async def test_reasoning_tool_content_separate():
         "__tool__:call_1:web_search:calling",
         "__content__:Found results",
     ))
-    # 2 sends: reasoning, content. Tool pill is edited inline.
-    assert len(api.sent_messages) == 2
-    # Tool pill is in the edited version of the reasoning message
-    assert len(api.edited_messages) >= 1
-    edit_text = api.edited_messages[-1]["text"]
-    assert "🔧" in edit_text
-    assert "web_search" in edit_text
+    # 3 sends: reasoning, tool, content.
+    assert len(api.sent_messages) == 3
+    assert "Pensando" in api.sent_messages[0]["text"]
+    tool_text = api.sent_messages[1]["text"]
+    assert "🔧" in tool_text
+    assert "web_search" in tool_text
     # Content is separate
-    content_text = api.sent_messages[1]["text"]
+    content_text = api.sent_messages[2]["text"]
     assert "Found results" in content_text
 
 
@@ -213,10 +212,11 @@ async def test_tool_does_not_reset_phases():
         "__tool__:call_1:search:calling",
         "__content__:After tool content",
     ))
-    # 2 messages: reasoning+tool, content
-    assert len(api.sent_messages) == 2
+    # 3 messages: reasoning, tool, content
+    assert len(api.sent_messages) == 3
     assert "Before tool" in api.sent_messages[0]["text"]
-    assert "After tool" in api.sent_messages[1]["text"]
+    assert "search" in api.sent_messages[1]["text"]
+    assert "After tool" in api.sent_messages[2]["text"]
 
 
 @pytest.mark.asyncio
@@ -337,12 +337,14 @@ async def test_tool_inline_in_reasoning():
         "__tool__:call_x:search:calling",
         "__reasoning__:R1",
     ))
-    # 3 sent messages: reasoning(R0), (tool inline edit), reasoning(R1)
-    # Tool pill is inline in the edited reasoning message
+    # Sent messages: reasoning(R0) + tool pill. Reasoning R1 is an edit
+    # and must not absorb the tool pill.
+    assert len(api.sent_messages) == 2
+    assert "search" in api.sent_messages[1]["text"]
+    assert "🔧" in api.sent_messages[1]["text"]
     assert len(api.edited_messages) >= 1
     edit_text = api.edited_messages[-1]["text"]
-    assert "search" in edit_text
-    assert "🔧" in edit_text
+    assert "search" not in edit_text
 
 
 # ══════════════════════════════════════════════════════════════════════════════

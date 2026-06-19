@@ -5,9 +5,14 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
-from src.api import PRIORITY, FALLBACK_MODEL, get_verified_models_safe
-from src.api import get_model_registry, ensure_registry_refreshed
-from src.api import get_rate_limit_store, get_repos
+from src.api.llm_client import (
+    PRIORITY,
+    FALLBACK_MODEL,
+    get_verified_models_safe,
+    get_model_registry,
+    get_rate_limit_store,
+)
+from src.api.repos import get_repos
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
 from web.services.protocols import MessageRendererProtocol
@@ -34,6 +39,7 @@ def _get_registry(request: Request | None = None):
         reg = getattr(request.app.state, "model_registry", None)
         if reg is not None:
             return reg
+        raise RuntimeError("Model registry not initialized")
     return get_model_registry()
 
 
@@ -42,6 +48,7 @@ def _get_rate_store(request: Request | None = None):
         store = getattr(request.app.state, "rate_limit_store", None)
         if store is not None:
             return store
+        raise RuntimeError("Rate limit store not initialized")
     return get_rate_limit_store()
 
 
@@ -105,13 +112,13 @@ def get_available_models(request: Request | None = None) -> list[dict[str, str]]
     Only shows Go (paid) and Free (rate-limited) models.
     Zen-only models (paid per-use, not OpenCode) are hidden.
     """
-    rl = get_rate_limit_store()
+    rl = _get_rate_store(request)
     grouped: dict[str, list[dict[str, str]]] = {
         "go_premium": [], "go_standard": [], "go_economy": [],
         "free_ratelimited": [],
     }
     for model_id in get_available_model_ids(request=request):
-        tier = _get_model_tier(model_id)
+        tier = _get_model_tier(model_id, request=request)
         if tier == "zen":
             continue  # Hide Zen-only models — paid per-use, not OpenCode
         label = format_model_label(model_id)

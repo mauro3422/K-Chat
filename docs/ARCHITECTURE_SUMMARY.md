@@ -94,7 +94,8 @@ CONFIG
 WEB (dashboard)
 ├── web/routers/                (chat, pages, sessions, widgets, debug, health, asr, logs)
 ├── web/services/               (chat_stream, message_persister, error_classifier, renderer, loop_detector, file_logger, stream_retry_handler, asr_service)
-├── web/static/modules/         (36 módulos ES: stream-dispatcher, handlers, forms, utils, widgets)
+├── web/src_ts/                 (frontend TS source: streaming, core, rendering, widgets)
+├── web/static/                 (compatibilidad y entrypoints mínimos del bundle)
 └── web/logging_handler.py      (BackendLogHandler ring buffer)
 ```
 
@@ -130,7 +131,7 @@ WEB (dashboard)
     │
 [10] auto_rename_session() → LLM background
      │
-[11] Frontend: stream-dispatcher.js → reasoning-handler / content-handler / tool-call-renderer
+[11] Frontend: StreamDispatcher / reasoning / content / tool-call handlers
      └→ DOM: <details> reasoning + .tc-item pills + .msg-body tokens
 ```
 

@@ -3,8 +3,6 @@ import { IStreamDispatcher, StreamHandler } from '../types/dispatcher';
 
 /**
  * StreamDispatcher — distributes NDJSON stream events to registered handlers.
- * Port of stream-dispatcher.js from production.
- *
  * One dispatcher per stream session. Handlers receive (data: string, context).
  */
 export class StreamDispatcher<TContext = unknown> implements IStreamDispatcher<TContext> {

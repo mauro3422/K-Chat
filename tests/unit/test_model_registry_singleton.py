@@ -15,7 +15,7 @@ def test_configure_model_registry_returns_explicit_registry():
         reset_model_registry()
 
 
-def test_reset_model_registry_restores_lazy_singleton():
+def test_reset_model_registry_restores_context_local_registry():
     reg = ModelRegistry(config=None)
     configure_model_registry(reg)
     reset_model_registry()

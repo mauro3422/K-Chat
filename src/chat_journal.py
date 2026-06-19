@@ -41,6 +41,7 @@ def log_turn(
     duration_ms: int = 0,
     token_count: int = 0,
     error: str = "",
+    logbus: Any | None = None,
 ) -> None:
     """Log a summarized chat turn to the journal."""
     tools_summary = []
@@ -51,7 +52,7 @@ def log_turn(
         })
     try:
         from src.logbus import LogEvent, get_logbus
-        bus = get_logbus()
+        bus = logbus or get_logbus()
         bus.emit(LogEvent(
             level="INFO",
             module="chat.journal",

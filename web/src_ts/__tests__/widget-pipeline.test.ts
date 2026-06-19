@@ -8,6 +8,7 @@ import type { IStreamDispatcher } from '../types/dispatcher';
 import type { IIframeBuilder } from '../types/iframe';
 
 const noop = () => {};
+const renderMarkdown = (text: string) => text;
 
 function mockDispatcher(): IStreamDispatcher<StreamHandlerContext> {
   return { on: noop, off: noop, emit: noop, removeAll: noop };
@@ -194,6 +195,7 @@ describe('ContentHandler.ensureBody', () => {
       mockIframeBuilder(),
       renderer,
       widgetRegistry,
+      renderMarkdown,
     );
     msgEl = document.createElement('div');
   });
@@ -250,6 +252,7 @@ describe('ContentHandler.buildContainerLookup', () => {
       mockIframeBuilder(),
       renderer,
       widgetRegistry,
+      renderMarkdown,
     );
   });
 

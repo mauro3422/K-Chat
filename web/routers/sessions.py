@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _request_repos(request: Request):
+def _request_repos(request: Request | None):
     app = getattr(request, "app", None)
     state = getattr(app, "__dict__", {}).get("state") if app is not None else None
     repos = getattr(state, "repos", None) if state is not None else None
@@ -19,7 +19,7 @@ def _request_repos(request: Request):
 
 
 @router.post("/sessions/{session_id}/rename")
-async def rename(session_id: str, request: Request, name: str = Body(..., embed=True)) -> JSONResponse:
+async def rename(session_id: str, name: str = Body(..., embed=True), *, request: Request = None) -> JSONResponse:
     repos = _request_repos(request)
     new_name = name.strip() or session_id[:8]
     await repos.sessions.require_session(session_id)
@@ -29,10 +29,10 @@ async def rename(session_id: str, request: Request, name: str = Body(..., embed=
 
 
 @router.post("/sessions/create")
-async def create_session(request: Request) -> JSONResponse:
+async def create_session(*, request: Request = None) -> JSONResponse:
     """Create a new session and return its id."""
     repos = _request_repos(request)
-    from src.api import generate_session_id
+    from src.api.orchestrator import generate_session_id
     from src.api.session import ensure_session
     sid = generate_session_id()
     await ensure_session(sid, session_repo=repos.sessions)
@@ -41,7 +41,7 @@ async def create_session(request: Request) -> JSONResponse:
 
 
 @router.get("/sessions")
-async def list_sessions(request: Request) -> JSONResponse:
+async def list_sessions(*, request: Request = None) -> JSONResponse:
     """JSON endpoint for sessions list (used by TS prototype)."""
     repos = _request_repos(request)
     raw = await repos.sessions.get_all(50)
@@ -60,7 +60,7 @@ async def list_sessions(request: Request) -> JSONResponse:
 
 
 @router.post("/sessions/{session_id}/favorite")
-async def toggle_favorite(session_id: str, request: Request, body: dict = Body(...)) -> JSONResponse:
+async def toggle_favorite(session_id: str, body: dict = Body(...), *, request: Request = None) -> JSONResponse:
     repos = _request_repos(request)
     favorite = body.get("favorite", False)
     await repos.sessions.set_favorite(session_id, favorite)
@@ -68,7 +68,7 @@ async def toggle_favorite(session_id: str, request: Request, body: dict = Body(.
 
 
 @router.post("/sessions/{session_id}/delete")
-async def delete(session_id: str, request: Request) -> JSONResponse:
+async def delete(session_id: str, *, request: Request = None) -> JSONResponse:
     repos = _request_repos(request)
     await repos.sessions.delete_cascade(session_id, repos=repos)
     log_event("INFO", "web", "session_deleted", session_id, meta={"session_id": session_id})

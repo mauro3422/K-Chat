@@ -1,6 +1,5 @@
 import logging
 import os
-import time
 import uuid
 from typing import Any
 
@@ -8,8 +7,9 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, R
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.api.repos import MessageRecord, DebugInfo, get_repos
-from src.api import llm_chat_stream, rebuild_history, get_default_model, OrchestratorDeps
+from src.api.llm_client import get_default_model, llm_chat_stream
+from src.api.orchestrator import OrchestratorDeps, rebuild_history
+from src.api.repos import MessageRecord, get_repos
 from web.services.chat_stream import build_stream_generator
 from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.protocols import MessagePersisterProtocol, StreamGeneratorProtocol
@@ -104,28 +104,12 @@ async def chat(
     except Exception as e:
         logger.error("Error saving user message for %s: %s", session_id, e)
 
-    _journal_start = time.time()
-    _journal_user_msg = full_message
-
     from web.services.message_persister import save_assistant_message
 
     async def _wrapped_save(*a: Any, **kw: Any) -> None:
-        result = await save_assistant_message(*a, **kw, repos=repos)
-        try:
-            from src.api import log_turn
-            duration_ms = int((time.time() - _journal_start) * 1000)
-            log_turn(
-                session_id=session_id,
-                user_msg=_journal_user_msg,
-                assistant_msg=kw.get("full_content", "")[:200] if "full_content" in kw else "",
-                tools_used=[],
-                model=model,
-                duration_ms=duration_ms,
-                token_count=kw.get("debug_info", DebugInfo()).total_tokens if "debug_info" in kw else 0,
-            )
-        except Exception:
-            pass
-        return result
+        logbus = getattr(request.app.state, "logbus", None)
+        user_msg = kw.pop("user_msg", full_message)
+        return await save_assistant_message(*a, **kw, user_msg=user_msg, repos=repos, logbus=logbus)
 
     generate = build_stream_generator(
         session_id,

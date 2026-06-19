@@ -1,4 +1,5 @@
 import time
+from functools import partial
 from typing import Any, AsyncGenerator, Callable
 from src.core.services.protocols import LLMServiceProtocol
 import src.llm.client as llm_client
@@ -14,10 +15,11 @@ class LLMService(LLMServiceProtocol):
         chat_fn: Callable[..., Any] | None = None,
         chat_stream_fn: Callable[..., Any] | None = None,
         default_model_fn: Callable[[], str] | None = None,
+        model_registry: Any | None = None,
         telemetry_service: 'TelemetryServiceProtocol | None' = None
     ):
-        self._chat_fn = chat_fn or llm_client.chat
-        self._chat_stream_fn = chat_stream_fn or llm_client.chat_stream
+        self._chat_fn = chat_fn or partial(llm_client.chat, registry=model_registry)
+        self._chat_stream_fn = chat_stream_fn or partial(llm_client.chat_stream, registry=model_registry)
         self._default_model_fn = default_model_fn or get_default_model
         self.telemetry_service = telemetry_service
 

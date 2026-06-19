@@ -120,9 +120,16 @@ class SkillRegistry:
         
         lines.append("")
         index_path = os.path.join(self.skills_dir, "INDEX.md")
+        new_content = "\n".join(lines)
         try:
+            if os.path.exists(index_path):
+                with open(index_path, "r", encoding="utf-8") as f:
+                    current_content = f.read()
+                if current_content == new_content:
+                    logger.debug("INDEX.md already up to date at %s", index_path)
+                    return
             with open(index_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(lines))
+                f.write(new_content)
             logger.debug("Auto-generated INDEX.md at %s", index_path)
         except Exception as e:
             logger.error("Failed to generate INDEX.md: %s", e)

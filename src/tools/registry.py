@@ -20,6 +20,8 @@ class ToolRegistryProtocol(Protocol):
     def definitions(self) -> dict[str, dict[str, Any]]: ...
     @property
     def tools_openai(self) -> list[dict[str, Any]]: ...
+    @property
+    def skill_registry(self) -> Any | None: ...
     def get(self, name: str) -> Callable[..., str] | None: ...
     def has(self, name: str) -> bool: ...
     def get_definition(self, name: str) -> dict[str, Any] | None: ...
@@ -137,6 +139,13 @@ class ToolRegistry:
             {"type": "function", "function": {**definitions[name]["function"]}}
             for name in sorted(definitions.keys())
         ]
+
+    @property
+    def skill_registry(self) -> Any | None:
+        """Get the skill registry injected during build, if any."""
+        if not self._built:
+            self.build()
+        return self._skill_registry
     
     def get(self, name: str) -> Callable[..., str] | None:
         """Get a single tool by name (triggers lazy build if needed)."""
