@@ -11,6 +11,7 @@ export interface SessionSummary {
   last_str: string;
   node_id?: string;
   node_role?: string;
+  node_platform?: string;
   cluster_name?: string;
   source_url?: string;
   source_mode?: string;

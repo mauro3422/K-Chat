@@ -21,6 +21,7 @@ export interface SessionListEntry {
   last_str?: string;
   node_id?: string;
   node_role?: string;
+  node_platform?: string;
   cluster_name?: string;
   source_url?: string;
   source_mode?: string;
@@ -107,8 +108,24 @@ export class SessionList {
       if (s.node_id) {
         const originEl = document.createElement('span');
         originEl.className = 'session-origin';
-        originEl.title = `Nodo de origen: ${s.node_id}${s.node_role ? ` · ${s.node_role}` : ''}`;
-        originEl.textContent = `${s.node_id}${s.node_role ? ` · ${s.node_role}` : ''}`;
+        const platform = (s.node_platform || '').toLowerCase();
+        const role = (s.node_role || 'secondary').toLowerCase();
+        originEl.title = `${s.node_id} · ${platform || 'sistema desconocido'} · ${role}`;
+        originEl.setAttribute('aria-label', originEl.title);
+
+        if (platform === 'linux' || platform === 'windows') {
+          const osIcon = document.createElement('img');
+          osIcon.className = 'session-origin-icon';
+          osIcon.src = `/static/icons/node-${platform}.svg`;
+          osIcon.alt = platform === 'linux' ? 'Linux' : 'Windows';
+          originEl.appendChild(osIcon);
+        }
+
+        const roleIcon = document.createElement('img');
+        roleIcon.className = `session-origin-icon session-role-${role}`;
+        roleIcon.src = `/static/icons/node-${role === 'primary' ? 'primary' : 'secondary'}.svg`;
+        roleIcon.alt = role === 'primary' ? 'Primario' : 'Secundario';
+        originEl.appendChild(roleIcon);
         previewEl.appendChild(originEl);
       }
 

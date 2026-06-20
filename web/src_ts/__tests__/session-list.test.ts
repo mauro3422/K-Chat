@@ -24,9 +24,9 @@ describe('SessionList DOM contract', () => {
   });
 
   const sessions = [
-    { id: 'sess_001', name: 'Chat about AI', count: 5, last_str: '2026-06-16T10:00:00Z', node_id: 'MAUROPRIME', node_role: 'primary' },
-    { id: 'tele_abc', name: 'Telegram chat', count: 3, last_str: '2026-06-16T09:00:00Z', node_id: 'MAUROPRIME', node_role: 'primary' },
-    { id: 'sess_003', name: 'Research', count: 12, last_str: '2026-06-15T18:00:00Z', node_id: 'archlinux', node_role: 'secondary' },
+    { id: 'sess_001', name: 'Chat about AI', count: 5, last_str: '2026-06-16T10:00:00Z', node_id: 'MAUROPRIME', node_role: 'primary', node_platform: 'windows' },
+    { id: 'tele_abc', name: 'Telegram chat', count: 3, last_str: '2026-06-16T09:00:00Z', node_id: 'MAUROPRIME', node_role: 'primary', node_platform: 'windows' },
+    { id: 'sess_003', name: 'Research', count: 12, last_str: '2026-06-15T18:00:00Z', node_id: 'archlinux', node_role: 'secondary', node_platform: 'linux' },
   ];
 
   it('renders session items', () => {
@@ -63,12 +63,15 @@ describe('SessionList DOM contract', () => {
     expect(label!.textContent).toBe('Chat about AI');
   });
 
-  it('renders node origin badge when available', () => {
+  it('renders compact platform and role icons without node text', () => {
     sessionList.renderSessions(sessions, 'sess_001');
     const item = sidebarEl.querySelector('.session-item[data-sid="sess_003"]');
     const origin = item!.querySelector('.session-origin');
     expect(origin).not.toBeNull();
-    expect(origin!.textContent).toContain('archlinux');
+    expect(origin!.textContent).toBe('');
+    expect(origin!.querySelector('img[src="/static/icons/node-linux.svg"]')).not.toBeNull();
+    expect(origin!.querySelector('img[src="/static/icons/node-secondary.svg"]')).not.toBeNull();
+    expect(origin!.getAttribute('title')).toContain('archlinux');
   });
 
   it('has session-meta with message count', () => {

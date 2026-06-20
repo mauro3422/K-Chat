@@ -20,8 +20,9 @@
       {% endif %}
       <span class="session-label">{{ label }}</span>
       {% if s.node_id %}
-      <span class="session-origin" title="Nodo de origen: {{ s.node_id }}{% if s.node_role %} · {{ s.node_role }}{% endif %}">
-        {{ s.node_id }}{% if s.node_role %} · {{ s.node_role }}{% endif %}
+      <span class="session-origin" title="{{ s.node_id }} · {{ s.node_platform or 'sistema desconocido' }} · {{ s.node_role or 'secondary' }}">
+        {% if s.node_platform in ['linux', 'windows'] %}<img class="session-origin-icon" src="/static/icons/node-{{ s.node_platform }}.svg" alt="{{ s.node_platform }}">{% endif %}
+        <img class="session-origin-icon" src="/static/icons/node-{{ 'primary' if s.node_role == 'primary' else 'secondary' }}.svg" alt="{{ s.node_role or 'secondary' }}">
       </span>
       {% endif %}
     </div>

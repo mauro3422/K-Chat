@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import platform
 import socket
 import time
 from contextvars import ContextVar
@@ -54,6 +55,8 @@ class NodeCoordinator:
         self._lock = asyncio.Lock()
         self._node_id = (config.node_id if config and getattr(config, "node_id", "") else _default_node_id())
         self._role = (config.node_role if config and getattr(config, "node_role", "") else "secondary")
+        configured_platform = str(getattr(config, "node_platform", "") if config else "").strip().lower()
+        self._platform = configured_platform or platform.system().strip().lower() or "unknown"
         self._cluster_name = (config.cluster_name if config and getattr(config, "cluster_name", "") else "default")
         self._heartbeat_ttl = float(getattr(config, "node_heartbeat_ttl", 15.0) if config else 15.0)
         self._peer_urls = _parse_peer_urls(getattr(config, "peer_urls", "") if config else "")
@@ -165,6 +168,7 @@ class NodeCoordinator:
         return {
             "node_id": self._node_id,
             "role": self._role,
+            "node_platform": self._platform,
             "cluster_name": self._cluster_name,
             "heartbeat_ttl": self._heartbeat_ttl,
             "last_heartbeat": self._last_heartbeat,

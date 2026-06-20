@@ -234,6 +234,7 @@ async def sidebar(request: Request) -> HTMLResponse:
             "is_favorite": s.get("is_favorite", False),
             "node_id": s.get("node_id", ""),
             "node_role": s.get("node_role", ""),
+            "node_platform": s.get("node_platform", ""),
         })
     resp = templates.TemplateResponse(request, "sidebar.html", {"sessions": sessions, "current": current})
     resp.headers.update(_NOCACHE_HEADERS)

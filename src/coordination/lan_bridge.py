@@ -66,6 +66,9 @@ class NodeLanBridge:
 
     @property
     def base_url(self) -> str:
+        configured = str(getattr(self._config, "node_base_url", "") or "").strip().rstrip("/")
+        if configured:
+            return configured
         host = (self._config.host or "127.0.0.1").strip() or "127.0.0.1"
         return f"http://{host}:{self._config.port}"
 
@@ -263,10 +266,15 @@ class NodeLanBridge:
                         if not isinstance(session, dict):
                             continue
                         enriched = dict(session)
-                        enriched.setdefault("source_mode", "peer")
-                        enriched.setdefault("source_url", peer)
-                        enriched.setdefault("node_id", str(node.get("node_id") or session.get("node_id") or peer).strip() or peer)
+                        # The peer endpoint describes its own rows as local. From
+                        # this node they are always remote, so these fields must
+                        # override the peer payload instead of using setdefault().
+                        enriched["source_mode"] = "peer"
+                        enriched["source_url"] = peer
+                        node_id = str(node.get("node_id") or session.get("node_id") or peer).strip() or peer
+                        enriched.setdefault("node_id", node_id)
                         enriched.setdefault("node_role", str(node.get("role") or session.get("node_role") or "secondary").strip() or "secondary")
+                        enriched["node_platform"] = str(node.get("node_platform") or session.get("node_platform") or "").strip().lower()
                         enriched.setdefault("cluster_name", str(node.get("cluster_name") or session.get("cluster_name") or "kairos").strip() or "kairos")
                         result["sessions"].append(enriched)
                 except Exception as exc:

@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import ipaddress
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -40,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/rate-limits")
 async def rate_limits(request: Request) -> dict:
-    _local_only(request)
+    _trusted_lan_or_local(request)
     return get_rate_limit_store().summary()
 
 
@@ -51,7 +52,7 @@ async def model_availability(request: Request) -> dict:
     Combines rate-limit state with known model tiers so the UI can
     show live availability dots.
     """
-    # No _local_only — consumed by main UI for live status dots
+    _trusted_lan_or_local(request)
     from web.routers.pages import get_available_model_ids, _get_model_tier
 
     rl = getattr(request.app.state, "rate_limit_store", None) or get_rate_limit_store()
@@ -89,17 +90,23 @@ async def model_availability(request: Request) -> dict:
     }
 
 
-def _local_only(request: Request) -> None:
+def _trusted_lan_or_local(request: Request) -> None:
     if os.getenv("TESTING") == "true":
         return
     host = request.client.host if request.client else "unknown"
-    if host in ("127.0.0.1", "::1", "localhost"):
+    if host == "localhost":
         return
+    try:
+        address = ipaddress.ip_address(host)
+        if address.is_loopback or address.is_private:
+            return
+    except ValueError:
+        pass
     logger.warning("Debug endpoint access denied from %s", host)
-    raise HTTPException(status_code=403, detail="Debug endpoint disabled in production")
+    raise HTTPException(status_code=403, detail="Debug endpoint restricted to localhost or private LAN clients")
 
 
-@router.get("/sessions/{session_id}/debug")
+@router.get("/sessions/{session_id}/debug", dependencies=[Depends(_trusted_lan_or_local)])
 async def debug_info(session_id: str, request: Request) -> JSONResponse:
     repos = getattr(request.app.state, 'repos', None) or get_repos()
     try:
@@ -110,6 +117,6 @@ async def debug_info(session_id: str, request: Request) -> JSONResponse:
     return JSONResponse(d)
 
 
-@router.get("/debug/backend-logs", dependencies=[Depends(_local_only)])
+@router.get("/debug/backend-logs", dependencies=[Depends(_trusted_lan_or_local)])
 def backend_logs() -> JSONResponse:
     return JSONResponse({"logs": get_backend_logs()})

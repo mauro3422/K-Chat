@@ -16,6 +16,7 @@ def session_summary_from_row(
     node_id: str,
     node_role: str,
     cluster_name: str,
+    node_platform: str = "",
     source_url: str = "",
     source_mode: str = "local",
 ) -> dict[str, Any]:
@@ -36,6 +37,7 @@ def session_summary_from_row(
         "is_favorite": is_favorite,
         "node_id": _safe_text(node_id, "local"),
         "node_role": _safe_text(node_role, "secondary"),
+        "node_platform": _safe_text(node_platform).lower(),
         "cluster_name": _safe_text(cluster_name, "kairos"),
         "source_url": _safe_text(source_url),
         "source_mode": _safe_text(source_mode, "local"),

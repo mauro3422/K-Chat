@@ -128,6 +128,7 @@ async def node_sessions(request: Request, limit: int = 50) -> JSONResponse:
             node_id=snapshot.get("node_id", coordinator.node_id),
             node_role=snapshot.get("role", coordinator.role),
             cluster_name=snapshot.get("cluster_name", coordinator.cluster_name),
+            node_platform=snapshot.get("node_platform", ""),
             source_url=_request_base_url(request),
             source_mode="local",
         )

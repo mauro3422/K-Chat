@@ -16,6 +16,19 @@ def test_parse_peer_urls_handles_commas_and_newlines() -> None:
     assert peers == ["http://a:8000", "https://b:9000", "http://c:7000"]
 
 
+def test_base_url_prefers_explicit_node_address_over_bind_host() -> None:
+    cfg = SimpleNamespace(
+        host="0.0.0.0",
+        port=8000,
+        peer_urls="",
+        node_base_url="http://192.168.1.35:8000/",
+        node_heartbeat_ttl=12.0,
+    )
+    bridge = NodeLanBridge(cfg, NodeCoordinator(cfg))
+
+    assert bridge.base_url == "http://192.168.1.35:8000"
+
+
 class _FakeResponse:
     def __init__(self, payload: dict, status_code: int = 200) -> None:
         self._payload = payload
@@ -204,6 +217,35 @@ async def test_request_memory_snapshot_gets_peer_diagnostics() -> None:
     assert result["snapshot"]["queue_path"] == "/tmp/peer-queue.json"
     assert fake_client.calls[0][0] == "http://peer-a:8000/api/memory/diagnostics"
     assert fake_client.calls[0][1]["key_pattern"] == "user:*"
+
+
+@pytest.mark.anyio
+async def test_request_session_directory_marks_peer_rows_as_remote() -> None:
+    cfg = SimpleNamespace(
+        host="127.0.0.1",
+        port=8000,
+        peer_urls="http://peer-a:8000",
+        node_base_url="http://local:8000",
+        node_heartbeat_ttl=12.0,
+    )
+    coordinator = NodeCoordinator(cfg)
+    responses = {
+        "http://peer-a:8000/api/node/sessions": _FakeResponse({
+            "node": {"node_id": "peer-a", "role": "primary", "cluster_name": "kairos"},
+            "sessions": [{
+                "id": "remote-session",
+                "name": "Remote",
+                "source_mode": "local",
+                "source_url": "http://0.0.0.0:8000",
+            }],
+        }),
+    }
+    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: _FakeClient(responses))
+
+    result = await bridge.request_session_directory()
+
+    assert result["sessions"][0]["source_mode"] == "peer"
+    assert result["sessions"][0]["source_url"] == "http://peer-a:8000"
 
 
 @pytest.mark.anyio

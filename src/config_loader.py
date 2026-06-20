@@ -55,8 +55,10 @@ class Config:
     # ── LAN coordination ─────────────────────────────────────────────
     node_id: str = ""
     node_role: str = "secondary"
+    node_platform: str = ""
     cluster_name: str = "kairos"
     peer_urls: str = ""
+    node_base_url: str = ""
     node_heartbeat_ttl: float = 15.0
 
 
@@ -100,8 +102,10 @@ def load_config(overrides: dict | None = None) -> Config:
         session_max_age_days=int(os.getenv("SESSION_MAX_AGE_DAYS", "90")),
         node_id=os.getenv("KAIROS_NODE_ID", "") or os.getenv("HOSTNAME", "") or os.getenv("COMPUTERNAME", ""),
         node_role=os.getenv("KAIROS_NODE_ROLE", "secondary"),
+        node_platform=os.getenv("KAIROS_NODE_PLATFORM", ""),
         cluster_name=os.getenv("KAIROS_CLUSTER_NAME", "kairos"),
         peer_urls=os.getenv("KAIROS_PEER_URLS", ""),
+        node_base_url=os.getenv("KAIROS_NODE_BASE_URL", ""),
         node_heartbeat_ttl=float(os.getenv("KAIROS_NODE_HEARTBEAT_TTL", "15.0")),
     )
 

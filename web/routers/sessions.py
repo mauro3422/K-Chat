@@ -70,6 +70,7 @@ async def _local_session_entries(request: Request | None, limit: int) -> list[di
             node_id=snapshot.get("node_id", ""),
             node_role=snapshot.get("role", "secondary"),
             cluster_name=snapshot.get("cluster_name", "kairos"),
+            node_platform=snapshot.get("node_platform", ""),
             source_url=_request_base_url(request),
             source_mode="local",
         )
