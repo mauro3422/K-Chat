@@ -33,6 +33,9 @@ def test_linux_control_exposes_recovery_contract() -> None:
     for function in ("preflight()", "backup()", "rollback_to()", "update()"):
         assert function in source
     assert "sqlite3 \"$source\" \".backup '$target'\"" in source
+    assert 'for database_root in "$ROOT/data" "$ROOT/memory"' in source
+    assert 'chmod 600 "$target"' in source
+    assert 'install -d -m 700 "$BACKUP_ROOT" "$destination"' in source
     assert 'rollback_to "$previous_commit"' in source
     assert 'KAIROS_BACKUP_KEEP:-7' in source
     assert "preflight) preflight" in source

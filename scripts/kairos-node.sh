@@ -84,7 +84,7 @@ backup() {
   require_command sqlite3
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   destination="$BACKUP_ROOT/$timestamp"
-  install -d -m 700 "$destination/databases" "$destination/config"
+  install -d -m 700 "$BACKUP_ROOT" "$destination" "$destination/databases" "$destination/config"
   manifest="$destination/manifest.txt"
   {
     printf 'created_utc=%s\n' "$timestamp"
@@ -92,15 +92,19 @@ backup() {
     printf 'branch=%s\n' "$(git -C "$ROOT" branch --show-current)"
     printf 'service=%s\nservice_scope=%s\n' "$SERVICE" "$SERVICE_SCOPE"
   } > "$manifest"
-  while IFS= read -r -d '' source; do
-    relative="${source#"$ROOT"/}"
-    target="$destination/databases/$relative"
-    install -d -m 700 "$(dirname "$target")"
-    sqlite3 "$source" ".backup '$target'"
-    printf 'database=%s\n' "$relative" >> "$manifest"
-  done < <(find "$ROOT" -xdev -type f \( -name '*.db' -o -name '*.sqlite' \) \
-    -not -path "$BACKUP_ROOT/*" -not -path "$ROOT/.git/*" -not -path "$ROOT/node_modules/*" \
-    -not -path "$ROOT/venv/*" -not -path "$ROOT/.venv/*" -print0)
+  chmod 600 "$manifest"
+  for database_root in "$ROOT/data" "$ROOT/memory"; do
+    [[ -d "$database_root" ]] || continue
+    while IFS= read -r -d '' source; do
+      relative="${source#"$ROOT"/}"
+      target="$destination/databases/$relative"
+      install -d -m 700 "$(dirname "$target")"
+      sqlite3 "$source" ".backup '$target'"
+      chmod 600 "$target"
+      printf 'database=%s\n' "$relative" >> "$manifest"
+    done < <(find "$database_root" -xdev -type f \( -name '*.db' -o -name '*.sqlite' \) \
+      -not -path "$ROOT/data/fastembed_cache/*" -not -path "$ROOT/data/huggingface/*" -print0)
+  done
   for source in "$ROOT/MEMORY.md" "$ROOT/.env" "$CONTROL_CONFIG"; do
     if [[ -f "$source" ]]; then
       cp -p "$source" "$destination/config/$(basename "$source")"
