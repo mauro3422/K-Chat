@@ -162,8 +162,10 @@ def resolve_frontend_entry(preferred_name: str = "app_mock.js", fallback_name: s
     """
     bundled = _DIST_DIR / preferred_name
     if bundled.exists():
-        return f"/static/dist/assets/{preferred_name}"
-    return f"/static/{fallback_name}"
+        return f"/static/dist/assets/{preferred_name}?v={bundled.stat().st_mtime_ns}"
+    fallback = _STATIC_DIR / fallback_name
+    version = fallback.stat().st_mtime_ns if fallback.exists() else 0
+    return f"/static/{fallback_name}?v={version}"
 
 
 @router.get("/favicon.ico")
