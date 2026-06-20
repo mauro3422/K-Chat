@@ -221,6 +221,32 @@ class NodeLanBridge:
                     result["errors"].append({"peer": peer, "error": str(exc)})
         return result
 
+    async def request_peer_states(self) -> dict[str, Any]:
+        """Ask peers for their local node state snapshots.
+
+        This intentionally targets /api/node/state instead of /api/node/sync/status
+        so we can aggregate peer health without recursive peer fan-out.
+        """
+        if not self._peer_urls:
+            return {"ok": False, "peers": [], "states": [], "errors": []}
+
+        result: dict[str, Any] = {"ok": True, "peers": self.peer_urls, "states": [], "errors": []}
+        async with self._client_factory() as client:
+            for peer in self._peer_urls:
+                try:
+                    response = await self._request_with_retry(client, "get", f"{peer}/api/node/state")
+                    data = response.json() if response.content else {}
+                    if not isinstance(data, dict):
+                        result["errors"].append({"peer": peer, "error": "invalid response"})
+                        continue
+                    enriched = dict(data)
+                    enriched.setdefault("source_url", peer)
+                    enriched.setdefault("peer_url", peer)
+                    result["states"].append(enriched)
+                except Exception as exc:
+                    result["errors"].append({"peer": peer, "error": str(exc)})
+        return result
+
     async def replay_pending_memory_writes(self) -> list[dict[str, str]]:
         """Replay queued writes against the first reachable primary peer."""
         queue = get_memory_write_queue(self._config)

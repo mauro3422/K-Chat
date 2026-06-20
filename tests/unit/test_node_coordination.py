@@ -413,7 +413,22 @@ async def test_node_diagnostics_combines_node_bridge_and_memory_snapshot():
     fake_bridge = MagicMock()
     fake_bridge.peer_urls = ["http://peer-a:8000"]
     fake_bridge.base_url = "http://node-a:8000"
+    fake_bridge.broadcast_once = AsyncMock(return_value={"ok": True})
     fake_bridge.request_memory_snapshot = AsyncMock()
+    fake_bridge.request_peer_states = AsyncMock(return_value={
+        "ok": True,
+        "peers": ["http://peer-a:8000"],
+        "states": [
+            {
+                "node_id": "peer-a",
+                "role": "primary",
+                "healthy": True,
+                "memory_is_fresh": True,
+                "peer_url": "http://peer-a:8000",
+            }
+        ],
+        "errors": [],
+    })
 
     with (
         patch("web.app_factory.load_config", return_value=fake_config),
@@ -471,9 +486,66 @@ async def test_node_sync_status_reports_queue_and_memory_state():
         body = response.json()
         assert body["ok"] is True
         assert body["node"]["role"] == "secondary"
+        assert body["bridge"]["peer_urls"] == []
+        assert body["cluster"]["peer_count"] == 0
         assert body["queue"]["size"] == 1
         assert body["queue"]["pending"][0]["key"] == "Preferencia"
         assert body["sync"]["is_primary"] is False
+
+
+@pytest.mark.anyio
+async def test_node_sync_status_includes_peer_states():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="secondary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+    )
+
+    fake_bridge = MagicMock()
+    fake_bridge.base_url = "http://127.0.0.1:8000"
+    fake_bridge.peer_urls = ["http://peer-a:8000"]
+    fake_bridge.request_peer_states = AsyncMock(return_value={
+        "ok": True,
+        "peers": ["http://peer-a:8000"],
+        "states": [
+            {
+                "node_id": "peer-a",
+                "role": "primary",
+                "healthy": True,
+                "memory_is_fresh": True,
+                "peer_url": "http://peer-a:8000",
+            }
+        ],
+        "errors": [],
+    })
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+
+    app.state.node_bridge = fake_bridge
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/node/sync/status")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["cluster"]["peer_count"] == 1
+        assert body["cluster"]["reachable_peers"] == 1
+        assert body["cluster"]["states"][0]["node_id"] == "peer-a"
+        assert body["cluster"]["states"][0]["healthy"] is True
 
 
 @pytest.mark.anyio

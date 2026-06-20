@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from src.config_loader import load_config
+from src.coordination.lan_bridge import NodeLanBridge
 
 router = APIRouter()
 
@@ -23,6 +24,19 @@ def _bool_or_default(value, default: bool = False) -> bool:
 
 def _int_or_default(value, default: int = 0) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else default
+
+
+def _get_node_bridge(request: Request):
+    bridge = getattr(request.app.state, "node_bridge", None)
+    if bridge is not None:
+        return bridge
+    coordinator = getattr(request.app.state, "node_coordinator", None)
+    cfg = getattr(request.app.state, "config", None) or load_config()
+    if coordinator is None:
+        return None
+    bridge = NodeLanBridge(config=cfg, coordinator=coordinator)
+    request.app.state.node_bridge = bridge
+    return bridge
 
 
 @router.get("/health")
@@ -70,6 +84,17 @@ async def health(request: Request):
     coordination = {}
     try:
         coordinator = getattr(request.app.state, "node_coordinator", None)
+        bridge = _get_node_bridge(request)
+        cluster = {"peer_count": 0, "reachable_peers": 0, "unreachable_peers": 0, "states": [], "errors": []}
+        if bridge is not None and bridge.peer_urls:
+            peer_result = await bridge.request_peer_states()
+            cluster = {
+                "peer_count": len(bridge.peer_urls),
+                "reachable_peers": len([state for state in peer_result.get("states", []) if isinstance(state, dict)]),
+                "unreachable_peers": len([error for error in peer_result.get("errors", []) if isinstance(error, dict)]),
+                "states": [state for state in peer_result.get("states", []) if isinstance(state, dict)],
+                "errors": [error for error in peer_result.get("errors", []) if isinstance(error, dict)],
+            }
         if coordinator is not None:
             snapshot = coordinator.snapshot()
             coordination = {
@@ -77,6 +102,7 @@ async def health(request: Request):
                 "role": _text_or_default(snapshot.get("role"), _text_or_default(getattr(cfg, "node_role", None), "secondary")),
                 "has_recent_primary": snapshot.get("has_recent_primary"),
                 "peer_count": len(snapshot.get("peers", [])),
+                "cluster": cluster,
             }
         else:
             coordination = {
@@ -84,6 +110,7 @@ async def health(request: Request):
                 "role": _text_or_default(getattr(cfg, "node_role", None), "secondary"),
                 "has_recent_primary": None,
                 "peer_count": 0,
+                "cluster": cluster,
             }
     except Exception:
         coordination = {
@@ -91,6 +118,13 @@ async def health(request: Request):
             "role": _text_or_default(getattr(cfg, "node_role", None), "secondary"),
             "has_recent_primary": None,
             "peer_count": 0,
+            "cluster": {
+                "peer_count": 0,
+                "reachable_peers": 0,
+                "unreachable_peers": 0,
+                "states": [],
+                "errors": [],
+            },
         }
 
     memory = {}

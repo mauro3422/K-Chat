@@ -71,6 +71,28 @@ def _request_base_url(request: Request) -> str:
         return ""
 
 
+async def _peer_cluster_state(request: Request) -> dict:
+    bridge = _get_node_bridge(request)
+    if bridge is None or not bridge.peer_urls:
+        return {
+            "peer_count": 0,
+            "reachable_peers": 0,
+            "unreachable_peers": 0,
+            "states": [],
+            "errors": [],
+        }
+    peer_result = await bridge.request_peer_states()
+    states = [state for state in peer_result.get("states", []) if isinstance(state, dict)]
+    errors = [error for error in peer_result.get("errors", []) if isinstance(error, dict)]
+    return {
+        "peer_count": len(bridge.peer_urls),
+        "reachable_peers": len(states),
+        "unreachable_peers": len(errors),
+        "states": states,
+        "errors": errors,
+    }
+
+
 class NodeHeartbeatPayload(BaseModel):
     node_id: str = Field(default="")
     role: str = Field(default="secondary")
@@ -247,11 +269,18 @@ async def sync_status(request: Request) -> JSONResponse:
     queue = _get_memory_queue(request)
     lease_manager = _get_leader_lease_manager(request)
     lease = lease_manager.snapshot()
+    bridge = _get_node_bridge(request)
+    cluster = await _peer_cluster_state(request)
     snapshot = coordinator.snapshot()
     return JSONResponse(
         {
             "ok": True,
             "node": snapshot,
+            "bridge": {
+                "base_url": bridge.base_url,
+                "peer_urls": bridge.peer_urls,
+            },
+            "cluster": cluster,
             "lease": lease.to_dict() if lease else None,
             "queue": {
                 "size": len(queue),
@@ -296,6 +325,7 @@ async def node_diagnostics(request: Request, key_pattern: str = "") -> JSONRespo
     coordinator = _get_coordinator(request)
     bridge = _get_node_bridge(request)
     memory = await build_memory_snapshot(request, key_pattern=key_pattern)
+    cluster = await _peer_cluster_state(request)
     payload = {
         "ok": True,
         "node": coordinator.snapshot(),
@@ -303,6 +333,7 @@ async def node_diagnostics(request: Request, key_pattern: str = "") -> JSONRespo
             "base_url": bridge.base_url,
             "peer_urls": bridge.peer_urls,
         },
+        "cluster": cluster,
         "memory": memory,
     }
     return JSONResponse(payload)

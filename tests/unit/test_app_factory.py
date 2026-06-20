@@ -71,6 +71,7 @@ class TestAppFactory:
             assert "sync" in data
             assert "failover" in data
             assert "freshness" in data["memory"]
+            assert "cluster" in data["coordination"]
 
     @pytest.mark.anyio
     async def test_static_file_served(self):
