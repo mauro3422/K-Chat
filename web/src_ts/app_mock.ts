@@ -38,6 +38,7 @@ import { GridController } from './core/ui/GridController';
 import { CanvasOverlay } from './widgets/CanvasOverlay';
 import { LanStatusPanel } from './widgets/LanStatusPanel';
 import { MemoryStatusPanel } from './widgets/MemoryStatusPanel';
+import { HealthOverviewPanel } from './widgets/HealthOverviewPanel';
 import { getLogger } from './core/infra/LoggerFactory';
 import { SystemLogPanel } from './core/debug/SystemLogPanel';
 import { BrowserDomRenderer } from './rendering/DomRenderer';
@@ -105,10 +106,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const systemLogPanel = new SystemLogPanel(apiClient);
   const lanStatusPanel = new LanStatusPanel(apiClient, getLogger('lan-status'));
   const memoryStatusPanel = new MemoryStatusPanel(apiClient, getLogger('memory-status'));
+  const healthOverviewPanel = new HealthOverviewPanel(apiClient, getLogger('health-overview'));
   skillsUI.init();
   systemLogPanel.init();
   lanStatusPanel.init();
   memoryStatusPanel.init();
+  healthOverviewPanel.init();
 
   window.addEventListener('kairos:ui-log', (event) => {
     const detail = (event as CustomEvent<{ label?: string; detail?: string }>).detail;
@@ -370,10 +373,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     void memoryStatusPanel.refresh();
   }, 7000);
   void memoryStatusPanel.refresh();
+
+  const healthOverviewIntervalId = setInterval(() => {
+    void healthOverviewPanel.refresh();
+  }, 9000);
+  void healthOverviewPanel.refresh();
   window.addEventListener('beforeunload', () => {
     clearInterval(debugIntervalId);
     clearInterval(lanStatusIntervalId);
     clearInterval(memoryStatusIntervalId);
+    clearInterval(healthOverviewIntervalId);
     streamOrchestrator.abort();
     ndjsonClient.abort();
     sseClient.disconnect();
