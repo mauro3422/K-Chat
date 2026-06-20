@@ -15,15 +15,11 @@ def resolve_memory_db_path(config=None) -> str:
     1. KAIROS_MEMORY_DB_PATH env var
     2. config.memory_db_path (from .env file MEMORY_DB_PATH or default)
     """
-    env_path = os.environ.get("KAIROS_MEMORY_DB_PATH")
-    if env_path:
-        return env_path
-
     if config is None:
         from src.config_loader import load_config
         config = load_config()
 
-    memory_path = Path(config.memory_db_path).resolve()
+    memory_path = Path(os.environ.get("KAIROS_MEMORY_DB_PATH") or config.memory_db_path).resolve()
     sessions_path = Path(config.sessions_db_path).resolve()
     if memory_path == sessions_path:
         return str(memory_path.with_name("kairos_curated_memory.db"))

@@ -13,3 +13,11 @@ def test_curated_memory_never_reuses_sessions_database(tmp_path, monkeypatch):
 
     assert resolved != shared.resolve()
     assert resolved.name == "kairos_curated_memory.db"
+
+
+def test_legacy_kairos_override_cannot_reuse_sessions_database(tmp_path, monkeypatch):
+    shared = tmp_path / "kairos_memory.db"
+    monkeypatch.setenv("KAIROS_MEMORY_DB_PATH", str(shared))
+    config = Config(sessions_db_path=str(shared), memory_db_path=str(shared))
+
+    assert Path(resolve_memory_db_path(config)).name == "kairos_curated_memory.db"
