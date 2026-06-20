@@ -93,7 +93,7 @@ class TestLoadConfig:
         monkeypatch.delenv("MEMORY_DB_PATH", raising=False)
 
         cfg = load_config()
-        assert cfg.memory_db_path.endswith("kairos_memory.db")
+        assert cfg.memory_db_path.endswith("kairos_curated_memory.db")
         assert "memory" in cfg.memory_db_path
 
     @pytest.mark.anyio

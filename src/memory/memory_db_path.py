@@ -5,6 +5,7 @@ which are for sessions.db).
 """
 
 import os
+from pathlib import Path
 
 
 def resolve_memory_db_path(config=None) -> str:
@@ -22,4 +23,8 @@ def resolve_memory_db_path(config=None) -> str:
         from src.config_loader import load_config
         config = load_config()
 
-    return config.memory_db_path
+    memory_path = Path(config.memory_db_path).resolve()
+    sessions_path = Path(config.sessions_db_path).resolve()
+    if memory_path == sessions_path:
+        return str(memory_path.with_name("kairos_curated_memory.db"))
+    return str(memory_path)

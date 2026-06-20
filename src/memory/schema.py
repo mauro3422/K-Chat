@@ -25,7 +25,7 @@ async def init_db_for_path(db_path: str) -> None:
         cursor = await conn.cursor()
         await cursor.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER)")
         try:
-            await cursor.execute("SELECT version FROM schema_version LIMIT 1")
+            await cursor.execute("SELECT MAX(version) AS version FROM schema_version")
             row = await cursor.fetchone()
             current = row["version"] if row else 0
         except Exception as e:

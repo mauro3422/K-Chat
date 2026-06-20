@@ -393,6 +393,27 @@ async def _migration_023_memory_index_unique(conn: Any, engine: Any) -> None:
     """)
 
 
+async def _migration_024_restore_session_memory_index(conn: Any, engine: Any) -> None:
+    """Repair installations where curated and session memory shared a table."""
+    cursor = await engine.execute(conn, "PRAGMA table_info(memory_index)")
+    columns = {row[1] for row in await cursor.fetchall()}
+    if "session_id" in columns:
+        return
+    await engine.execute(conn, "DROP TABLE IF EXISTS memory_index")
+    await engine.execute(conn, """
+        CREATE TABLE memory_index (
+            session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            weight REAL NOT NULL DEFAULT 1.0,
+            PRIMARY KEY (session_id, key)
+        )
+    """)
+    await engine.execute(conn, "CREATE INDEX IF NOT EXISTS idx_memory_index_key ON memory_index (key)")
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -417,4 +438,5 @@ MIGRATIONS = (
     _migration_021_messages_session_created_index,
     _migration_022_add_session_favorite,
     _migration_023_memory_index_unique,
+    _migration_024_restore_session_memory_index,
 )

@@ -192,4 +192,4 @@ class TestMigrationRegistry:
 
     @pytest.mark.anyio
     async def test_migration_count(self):
-        assert len(MIGRATIONS) == 19
+        assert len(MIGRATIONS) == 24
