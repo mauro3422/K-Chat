@@ -165,7 +165,7 @@ def _sync_validate(files: list[str], directory: str | None, pattern: str, arch_c
                 else:
                     summary += f"\n🏛️ ARCHITECTURE CHECK — ✅ Sin violaciones arquitectónicas\n"
         except Exception:
-            pass
+            logger.warning("Failed to run arch check", exc_info=True)
 
     return summary
 

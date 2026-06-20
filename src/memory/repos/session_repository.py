@@ -130,14 +130,14 @@ class SessionRepository(_BaseRepository):
             if row:
                 name = row["name"] or ""
         except Exception:
-            pass
+            logger.warning("Failed to fetch session name for snapshot", exc_info=True)
 
         # Fetch messages for summary
         messages: list[tuple] = []
         try:
             messages = await repos.messages.get_session_messages(session_id)
         except Exception:
-            pass
+            logger.warning("Failed to fetch messages for snapshot", exc_info=True)
 
         message_count = len(messages)
 

@@ -28,12 +28,11 @@ def test_no_await_send_event_in_adapter():
             self.generic_visit(node)
 
         def _check_call(self, call, lineno):
-            # Match: get_ws_client().send_event(...)
+            # Match: ws_client.send_event(...)
             if (isinstance(call.func, ast.Attribute)
                     and call.func.attr == "send_event"
-                    and isinstance(call.func.value, ast.Call)
-                    and isinstance(call.func.value.func, ast.Attribute)
-                    and call.func.value.func.attr == "get_ws_client"):
+                    and isinstance(call.func.value, ast.Name)
+                    and call.func.value.id == "ws_client"):
                 self.found.append(lineno)
 
     finder = SendEventAawaitFinder()
@@ -49,9 +48,9 @@ def test_all_send_event_calls_use_create_task():
     """Every send_event call in adapter.py should be wrapped in
     asyncio.create_task()."""
     source = _read_source("channels/telegram/adapter.py")
-    count_create_task = source.count("asyncio.create_task(get_ws_client().send_event(")
+    count_create_task = source.count("asyncio.create_task(ws_client.send_event(")
     # Count total send_event calls by looking for the pattern
-    count_total = _count_occurrences(source, "get_ws_client().send_event(")
+    count_total = _count_occurrences(source, "ws_client.send_event(")
     # create_task count should match total (all should be wrapped)
     assert count_create_task >= count_total, (
         f"Found {count_total} send_event calls but only "
@@ -586,6 +585,23 @@ def test_sse_client_handles_session_deleted():
     app_source = _read_source("web/src_ts/app_mock.ts")
     assert "eventBus.on<{ id: string }>('sse:session-deleted'" in app_source, (
         "App layer must listen for session deletion events"
+    )
+
+
+def test_sse_client_handles_memory_write_events():
+    """SSEClient must surface memory queue/completion events in the UI."""
+    source = _read_source("web/src_ts/streaming/SSEClient.ts")
+    assert "case 'memory_write_queued':" in source, (
+        "Missing memory_write_queued handler in SSEClient.ts"
+    )
+    assert "case 'memory_write_completed':" in source, (
+        "Missing memory_write_completed handler in SSEClient.ts"
+    )
+    assert "Memoria en cola" in source, (
+        "Queued memory writes should surface as a notification"
+    )
+    assert "Memoria sincronizada" in source, (
+        "Completed memory writes should surface as a notification"
     )
 
 

@@ -1,7 +1,7 @@
 import { IDomRenderer } from '../types/rendering';
 import { IWidgetRegistry } from '../types/widgets';
-import { defaultWidgetRegistry } from '../core/WidgetRegistry';
-import { C } from '../core/DomContracts';
+import { defaultWidgetRegistry } from '../core/widget/WidgetRegistry';
+import { C } from '../core/infra/DomContracts';
 
 /**
  * BrowserDomRenderer — renders Markdown → HTML using injected `marked` and `DOMPurify`.

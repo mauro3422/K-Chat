@@ -1,6 +1,6 @@
 import { IEventBus } from '../types/events';
-import { getLogger } from '../core/LoggerFactory';
-import { ILogger } from '../core/Logger';
+import { getLogger } from '../core/infra/LoggerFactory';
+import { ILogger } from '../core/infra/Logger';
 
 export interface ISkillsUI {
   init(): void;

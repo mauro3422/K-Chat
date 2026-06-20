@@ -28,7 +28,8 @@ from channels.telegram.handlers import dispatch
 from channels.telegram.message_manager import MessageManager
 from channels.telegram.rate_limiter import RateLimiter
 from channels.telegram.renderer import TelegramRenderer
-from channels.telegram.ws_client import get_ws_client
+from channels.telegram.ws_client import BotWSClient
+from src.config_loader import load_config
 from src.memory.repos.telegram_msg_id_repository import TelegramMsgIdRepo
 from web.services.file_logger import install_jsonl_handler
 
@@ -60,7 +61,7 @@ async def run_bot(config: TelegramConfig) -> None:
     print("[Telegram]   Commands: /start /help /new /reset")
 
     # ── WebSocket connection for live token streaming ─────────────────
-    ws_client = get_ws_client()
+    ws_client = BotWSClient()
     await ws_client.connect()
 
     # ── Warmup: preheat httpx connection pool ──────────────────────────
@@ -195,7 +196,7 @@ async def _process_single_update(
     await api_client.send_action(chat_id, "typing")
 
     from channels.telegram.adapter import process_message
-    await renderer.render_stream(chat_id, process_message(text, chat_id, config))
+    await renderer.render_stream(chat_id, process_message(text, chat_id, config, ws_client))
 
 
 # ─── Authorization ─────────────────────────────────────────────────────

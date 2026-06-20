@@ -1,4 +1,4 @@
-import { C } from '../core/DomContracts';
+import { C } from '../core/infra/DomContracts';
 import { IDebugManager } from '../types/debug';
 import type { StreamHandlerContext } from './ContentHandler';
 

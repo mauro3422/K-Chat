@@ -26,7 +26,7 @@ def _free_port_if_needed(host: str, port: int) -> None:
             subprocess.run(["fuser", "-k", f"{port}/tcp"], capture_output=True, timeout=5)
             time.sleep(1)
         except Exception:
-            pass
+            logger.warning("Failed to free port %s", port, exc_info=True)
 
 
 def main() -> None:

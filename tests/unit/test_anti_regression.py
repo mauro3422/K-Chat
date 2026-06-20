@@ -53,8 +53,8 @@ async def test_lifespan_has_timeout_on_get_verified_models() -> None:
     content = _read("web/app_factory.py")
     assert "get_verified_models()" in content, \
         "Missing verified-model priming in lifespan!"
-    assert "asyncio.wait_for(get_verified_models(), timeout=10)" not in content, \
-        "Lifespan must not await the sync get_verified_models() call!"
+    assert "await asyncio.wait_for(get_verified_models(), timeout=10)" in content, \
+        "Lifespan must await async get_verified_models() with timeout!"
     assert "asyncio.wait_for(ensure_registry_refreshed(), timeout=10)" in content, \
         "Missing timeout on ensure_registry_refreshed in lifespan!"
 
@@ -118,17 +118,17 @@ async def test_skills_ui_ts_exists() -> None:
 
 
 async def test_chat_form_ts_exists() -> None:
-    content = _read("web/src_ts/core/ChatForm.ts")
-    assert "export * from './ui/ChatForm';" in content
-    ui_content = _read("web/src_ts/core/ui/ChatForm.ts")
-    assert "export class ChatForm" in ui_content
-    assert "handleSubmit()" in ui_content
-    assert "setStreamingState" in ui_content
+    content = _read("web/src_ts/core/ui/ChatForm.ts")
+    assert "export class ChatForm" in content
+    assert "handleSubmit()" in content
+    assert "setStreamingState" in content
 
 
 async def test_logger_ts_reexport_exists() -> None:
-    content = _read("web/src_ts/core/Logger.ts")
-    assert "export * from './infra/Logger';" in content
+    content = _read("web/src_ts/core/infra/Logger.ts")
+    assert "export class Logger" in content
+    assert "sendClientLogs" in content
+    assert "_flush" in content
 
 
 async def test_api_client_ts_exposes_debug_and_asr_methods() -> None:
@@ -138,8 +138,10 @@ async def test_api_client_ts_exposes_debug_and_asr_methods() -> None:
 
 
 async def test_session_store_ts_reexport_exists() -> None:
-    content = _read("web/src_ts/core/SessionStore.ts")
-    assert "export * from './session/SessionStore';" in content
+    content = _read("web/src_ts/core/session/SessionStore.ts")
+    assert "export class SessionStore" in content
+    assert "selectSession(id: string): Promise<void>" in content
+    assert "loadSessions" in content
 
 
 async def test_reasoning_handler_ts_exists() -> None:

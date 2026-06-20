@@ -36,6 +36,7 @@ async def ws_event_stream(websocket: WebSocket) -> None:
     """
     await websocket.accept()
     bus = getattr(websocket.app.state, 'event_bus', None) or get_event_bus()
+    bridge = getattr(websocket.app.state, "node_bridge", None)
     logger.info("WS bot connected")
     try:
         while True:
@@ -49,6 +50,11 @@ async def ws_event_stream(websocket: WebSocket) -> None:
             event_type = msg.get("type", "unknown")
             event_data = msg.get("data", {})
             await bus.publish(event_type, event_data)
+            if bridge is not None and event_type != "ping":
+                try:
+                    await bridge.broadcast_event(event_type, event_data)
+                except Exception:
+                    logger.warning("LAN event broadcast failed for %s", event_type, exc_info=True)
             logger.debug("WS event: %s → session %s", event_type, event_data.get("session_id", "?"))
     except Exception:
         logger.info("WS bot disconnected")
@@ -56,4 +62,4 @@ async def ws_event_stream(websocket: WebSocket) -> None:
         try:
             await websocket.close()
         except Exception:
-            pass
+            logger.warning("Failed to close WS event stream", exc_info=True)

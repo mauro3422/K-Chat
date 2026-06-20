@@ -91,7 +91,7 @@ class PooledConnection:
             try:
                 await self.rollback()
             except Exception:
-                pass
+                logger.warning("Failed to rollback pooled connection", exc_info=True)
         await self.close()
 
 

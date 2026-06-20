@@ -9,7 +9,7 @@ class TestAppFactory:
     def _mock_startup(self):
         fake_config = MagicMock(testing=True, log_level="INFO", http_rate_limit=10)
         with (
-            patch("web.app_factory._get_config", return_value=fake_config),
+            patch("web.app_factory.load_config", return_value=fake_config),
             patch("web.app_factory.init_db", new=AsyncMock()),
             patch("web.app_factory.init_memory_db", new=AsyncMock()),
             patch("web.app_factory.get_repos", return_value=MagicMock()),
@@ -66,6 +66,11 @@ class TestAppFactory:
             assert response.status_code in (200, 503)
             data = response.json()
             assert "status" in data
+            assert "coordination" in data
+            assert "memory" in data
+            assert "sync" in data
+            assert "failover" in data
+            assert "freshness" in data["memory"]
 
     @pytest.mark.anyio
     async def test_static_file_served(self):

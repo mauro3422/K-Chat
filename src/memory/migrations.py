@@ -1,5 +1,8 @@
+import logging
 import sqlite3
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 async def _migration_001_initial_schema(conn: Any, engine: Any) -> None:
@@ -220,9 +223,7 @@ async def _migration_011_cleanup_orphans(conn, engine):
                 DELETE FROM {table} WHERE session_id NOT IN (SELECT session_id FROM sessions)
             """)
         except Exception:
-            # Table may have been converted to global schema (memory_index)
-            # or column doesn't exist — skip gracefully.
-            pass
+            logger.warning("Failed to clean orphaned records from %s", table, exc_info=True)
     # Add cleanup triggers: when a session is deleted, cascade cleanups
     triggers = [
         ('trg_cleanup_widget_states', 'widget_states'),
@@ -319,15 +320,18 @@ async def _migration_017_telegram_chat_id(conn: Any, engine: Any) -> None:
             ON sessions (telegram_chat_id)
         """)
     except Exception:
-        pass
+        logger.warning("Failed to create telegram_chat_id index", exc_info=True)
 
 
 async def _migration_018_auto_memories(conn: Any, engine: Any) -> None:
     """Add auto_memories column to debug_info table."""
     try:
-        await engine.execute(conn, "ALTER TABLE debug_info ADD COLUMN auto_memories TEXT NOT NULL DEFAULT ''")
+        cursor = await conn.execute("PRAGMA table_info(debug_info)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        if "auto_memories" not in cols:
+            await engine.execute(conn, "ALTER TABLE debug_info ADD COLUMN auto_memories TEXT NOT NULL DEFAULT ''")
     except Exception:
-        pass  # Column already exists
+        logger.warning("Column auto_memories may already exist", exc_info=True)
 
 
 async def _migration_019_memory_index_weight(conn: Any, engine: Any) -> None:
@@ -335,7 +339,7 @@ async def _migration_019_memory_index_weight(conn: Any, engine: Any) -> None:
     try:
         await engine.execute(conn, "ALTER TABLE memory_index ADD COLUMN weight REAL NOT NULL DEFAULT 1.0")
     except Exception:
-        pass
+        logger.warning("Column weight may already exist in memory_index", exc_info=True)
 
 
 async def _migration_020_chat_journal_fk(conn: Any, engine: Any) -> None:
@@ -373,7 +377,7 @@ async def _migration_022_add_session_favorite(conn: Any, engine: Any) -> None:
     try:
         await engine.execute(conn, "ALTER TABLE sessions ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
     except Exception:
-        pass
+        logger.warning("Column is_favorite may already exist in sessions", exc_info=True)
 
 
 async def _migration_023_memory_index_unique(conn: Any, engine: Any) -> None:

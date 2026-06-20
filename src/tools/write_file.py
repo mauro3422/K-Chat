@@ -84,7 +84,7 @@ async def run(**kwargs) -> str:
                 if verbose or "🔴" in arch_result or "VIOLACIÓN" in arch_result:
                     msg += f"\n   {arch_result}"
             except Exception:
-                pass
+                logger.warning("Failed to run arch check after write", exc_info=True)
 
         return msg
     except Exception:

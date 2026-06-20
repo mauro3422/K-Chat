@@ -13,6 +13,7 @@ import os
 import sys
 from pathlib import Path
 
+from src.config_loader import load_config
 from channels.telegram.config import load_telegram_config
 from channels.telegram.bot import run_bot
 
@@ -97,6 +98,11 @@ def main() -> None:
         print("❌ TELEGRAM_BOT_TOKEN not set.")
         print("   Set the environment variable or pass --token")
         sys.exit(1)
+
+    cluster_cfg = load_config()
+    if getattr(cluster_cfg, "peer_urls", "").strip() and getattr(cluster_cfg, "node_role", "secondary") != "primary":
+        print("⚠️ Telegram bot disabled on secondary node.")
+        sys.exit(0)
 
     try:
         import asyncio

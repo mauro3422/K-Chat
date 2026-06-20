@@ -1,5 +1,5 @@
 import { IWidgetRegistry } from './widgets';
-import { IWidgetStateManager } from '../core/WidgetStateManager';
+import { IWidgetStateManager } from '../core/widget/WidgetStateManager';
 
 export interface IIframeBuilder {
   stateManager?: IWidgetStateManager;

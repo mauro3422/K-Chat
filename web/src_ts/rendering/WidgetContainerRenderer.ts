@@ -1,7 +1,7 @@
 import { IDebugManager } from '../types/debug';
 import { WidgetMatch, ProcessResult, IWidgetContainerRenderer } from '../types/widget-renderer';
 import { IframeBuilder } from './IframeBuilder';
-import { C } from '../core/DomContracts';
+import { C } from '../core/infra/DomContracts';
 
 /**
  * WidgetContainerRenderer — runtime widget detection and ordering.

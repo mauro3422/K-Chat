@@ -1,7 +1,7 @@
-import { C } from '../core/DomContracts';
+import { C } from '../core/infra/DomContracts';
 import { IDebugManager } from '../types/debug';
-import { getLogger } from '../core/LoggerFactory';
-import { ILogger } from '../core/Logger';
+import { getLogger } from '../core/infra/LoggerFactory';
+import { ILogger } from '../core/infra/Logger';
 import type { StreamHandlerContext } from './ContentHandler';
 
 export class ReasoningHandler {

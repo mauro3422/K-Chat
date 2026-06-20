@@ -1,4 +1,28 @@
-# Changelog ??? K-Chat
+# Changelog — K-Chat
+
+## [2026-06-19] - Coordinación LAN, memoria compartida y observabilidad viva
+
+### Nuevas capacidades
+
+- Coordinación entre instancias por LAN con estado de nodo, heartbeat, liderazgo y failover observable.
+- Cola persistente de escrituras de memoria, replay al volver la primaria y diagnóstico de conflictos con resumen accionable.
+- `memory.db` reconstruible desde `MEMORY.md` y sync/repair con marcas de estado.
+- Telegram reflejado entre UIs con estado observable para ver si el evento salió por bus local y por LAN.
+- Runbook operativo en la raíz para arrancar, monitorear y depurar el sistema.
+
+### Observabilidad
+
+- `GET /health` ahora expone coordinación, sync y failover.
+- `GET /api/node/sync/status` expone cola, lease y frescura.
+- `GET /api/node/failover/status` expone la política de failover y su estado actual.
+- `GET /api/memory/conflicts` resume conflictos de memoria y sugiere acciones.
+- `GET /api/telegram/status` expone el estado del reflejo de Telegram.
+- `GET /api/logs/tail` y `GET /api/logbus` quedan como vistas vivas para seguir el sistema.
+
+### Pruebas
+
+- Se agregaron pruebas de coordinación, memoria, failover, reflejo de Telegram y logging.
+- La batería relevante quedó validada con más de 100 tests verdes.
 
 ## [2026-06-18] - Lifecycle unificado + Singleton x Testing + Frontend Widget Runtime
 

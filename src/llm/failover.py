@@ -72,7 +72,7 @@ def _mark_and_refresh(
                 (registry or _resolve_registry()).mark_quota_exhausted()
                 logger.warning("Go quota exhausted detected for model %s", model)
             except Exception:
-                pass
+                logger.warning("Failed to mark quota exhausted", exc_info=True)
 
     try:
         next_model = models._switch_model(model)

@@ -2,9 +2,9 @@ import { IDomRenderer } from '../types/rendering';
 import { IIframeBuilder } from '../types/iframe';
 import { IMessageView } from '../types/message-view';
 import { IWidgetContainerRenderer } from '../types/widget-renderer';
-import { C } from '../core/DomContracts';
-import { getLogger } from '../core/LoggerFactory';
-import { ILogger } from '../core/Logger';
+import { C } from '../core/infra/DomContracts';
+import { getLogger } from '../core/infra/LoggerFactory';
+import { ILogger } from '../core/infra/Logger';
 import type { MessageData } from '../types/messages';
 
 /**

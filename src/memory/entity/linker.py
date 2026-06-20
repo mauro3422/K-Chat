@@ -307,7 +307,7 @@ async def flush_entity_mentions_to_db(linker: EntityLinker, db_path: str) -> int
                     """, (entity_id, rowid, now))
                     count += 1
                 except Exception:
-                    pass
+                    logger.warning("Failed to insert entity mention for %s", entity_id, exc_info=True)
         await db.commit()
     return count
 

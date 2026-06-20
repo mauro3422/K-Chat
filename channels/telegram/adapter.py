@@ -25,13 +25,16 @@ import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator
 
+import anyio
+
 from channels.telegram.config import TelegramConfig
-from channels.telegram.ws_client import get_ws_client
+from channels.telegram.ws_client import BotWSClient
 
 logger = logging.getLogger(__name__)
 
 # ─── SSE notify URLs (multi-device) ──────────────────────────────────
 _SSE_NOTIFY_URLS: list[str] | None = None
+_WS_CLIENT: BotWSClient | None = None
 
 def _get_sse_notify_urls() -> list[str]:
     """Get ALL SSE notify URLs from env KAIROS_WEB_URL (comma-separated).
@@ -56,12 +59,39 @@ async def _notify_all(event_type: str, data: dict) -> None:
     """
     import httpx
     payload = {"type": event_type, "data": data}
-    for url in _get_sse_notify_urls():
+    urls = _get_sse_notify_urls()
+    if not urls:
+        return
+    url = urls[0]
+    try:
+        async with httpx.AsyncClient() as client:
+            await _post_with_retry(client, url, payload)
+    except Exception:
+        logger.debug("SSE notify failed for %s: %s", url, event_type)
+
+
+async def _post_with_retry(client: Any, url: str, payload: dict[str, Any], *, attempts: int = 3, base_delay: float = 0.1) -> None:
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
         try:
-            async with httpx.AsyncClient() as client:
-                await client.post(url, json=payload, timeout=3)
-        except Exception:
-            logger.debug("SSE notify failed for %s: %s", url, event_type)
+            response = await client.post(url, json=payload, timeout=3)
+            response.raise_for_status()
+            return
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= attempts - 1:
+                break
+            await anyio.sleep(base_delay * (attempt + 1))
+    if last_exc is not None:
+        raise last_exc
+
+
+def get_ws_client() -> BotWSClient:
+    """Return the module-level WS client singleton for legacy callers/tests."""
+    global _WS_CLIENT
+    if _WS_CLIENT is None:
+        _WS_CLIENT = BotWSClient()
+    return _WS_CLIENT
 
 
 # ─── Channel marker ────────────────────────────────────────────────────
@@ -84,6 +114,7 @@ async def process_message(
     text: str,
     chat_id: int,
     config: TelegramConfig,
+    ws_client: BotWSClient | None = None,
 ) -> AsyncGenerator[str, None]:
     """Process a Telegram message through the K-Chat core pipeline.
 
@@ -98,6 +129,9 @@ async def process_message(
         Tagged strings: ``__reasoning__:...``, ``__content__:...``,
         ``__tool__:...``, ``__error__:...``.
     """
+    if ws_client is None:
+        ws_client = get_ws_client()
+
     _late_imports = _LazyImports()
 
     session_id, history = await _get_or_create_session(
@@ -247,14 +281,14 @@ async def process_message(
                     # First token → flush to both
                     yield f"__reasoning__:{"".join(reasoning_buf)}"
                     tg_reasoning_offset = rlen
-                    asyncio.create_task(get_ws_client().send_event("stream:reasoning", {
+                    asyncio.create_task(ws_client.send_event("stream:reasoning", {
                         "session_id": session_id,
                         "text": "".join(reasoning_buf),
                     }))
                 else:
                     # WS flush every reasoning_ws_interval (smooth web UI)
                     if rlen % reasoning_ws_interval == 0:
-                        asyncio.create_task(get_ws_client().send_event("stream:reasoning", {
+                        asyncio.create_task(ws_client.send_event("stream:reasoning", {
                             "session_id": session_id,
                             "text": "".join(reasoning_buf),
                         }))
@@ -282,14 +316,14 @@ async def process_message(
                 if clen == 1:
                     # First token → flush to both
                     yield f"__content__:{"".join(content_buf)}"
-                    asyncio.create_task(get_ws_client().send_event("stream:content", {
+                    asyncio.create_task(ws_client.send_event("stream:content", {
                         "session_id": session_id,
                         "text": "".join(content_buf),
                     }))
                 else:
                     # WS flush every content_ws_interval (smooth web UI)
                     if clen % content_ws_interval == 0:
-                        asyncio.create_task(get_ws_client().send_event("stream:content", {
+                        asyncio.create_task(ws_client.send_event("stream:content", {
                             "session_id": session_id,
                             "text": "".join(content_buf),
                         }))
@@ -312,7 +346,7 @@ async def process_message(
                     status = "calling"
 
                 # Notify web UI about tool call in real-time
-                asyncio.create_task(get_ws_client().send_event("stream:tool", {
+                asyncio.create_task(ws_client.send_event("stream:tool", {
                     "session_id": session_id,
                     "tool_name": name,
                     "tool_id": tool_id,
@@ -341,7 +375,7 @@ async def process_message(
                 if content_buf:
                     yield f"__content__:{"".join(content_buf)}"
                 # Notify web UI about error
-                asyncio.create_task(get_ws_client().send_event("stream:error", {
+                asyncio.create_task(ws_client.send_event("stream:error", {
                     "session_id": session_id,
                     "error": str(token),
                 }))
@@ -368,12 +402,12 @@ async def process_message(
                 yield f"__content__:{final_content}"
                 # Final stream flush so web UI has all content before new_message
                 if final_reasoning:
-                    asyncio.create_task(get_ws_client().send_event("stream:reasoning", {
+                    asyncio.create_task(ws_client.send_event("stream:reasoning", {
                         "session_id": session_id,
                         "text": final_reasoning,
                     }))
                 if final_content:
-                    asyncio.create_task(get_ws_client().send_event("stream:content", {
+                    asyncio.create_task(ws_client.send_event("stream:content", {
                         "session_id": session_id,
                         "text": final_content,
                     }))
@@ -385,7 +419,10 @@ async def process_message(
                 try:
                     from src.background_tasks import auto_rename_session
                     asyncio.create_task(auto_rename_session(
-                        session_id, text, _late_imports.get_default_model(),
+                        session_id,
+                        text,
+                        _late_imports.get_default_model(),
+                        session_repo=repos.sessions,
                     ))
                 except Exception:
                     pass
@@ -652,10 +689,11 @@ class _LazyImports:
     def _ensure(self) -> None:
         if self._loaded:
             return
+        from src.api import get_repos
         from src.api.context import build_system_prompt
         from src.api.llm_client import get_default_model
         from src.api.orchestrator import chat_stream
-        from src.api.repos import MessageRecord, get_repos
+        from src.api.repos import MessageRecord
         self.MessageRecord = MessageRecord
         self.build_system_prompt = build_system_prompt
         self.chat_stream = chat_stream

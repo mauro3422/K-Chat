@@ -1,4 +1,4 @@
-import { C } from '../core/DomContracts';
+import { C } from '../core/infra/DomContracts';
 import { IDebugManager } from '../types/debug';
 import { ToolCallPayload } from '../types/streaming';
 import type { StreamHandlerContext } from './ContentHandler';

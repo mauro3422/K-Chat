@@ -64,7 +64,7 @@ class TelemetryService(TelemetryServiceProtocol):
                 data={"model": model, "tokens": tokens},
             ))
         except Exception:
-            pass
+            logger.warning("Failed to emit LLM usage telemetry to LogBus", exc_info=True)
         self.log_event("llm_usage", {
             "model": model,
             "tokens": tokens,
@@ -84,7 +84,7 @@ class TelemetryService(TelemetryServiceProtocol):
                 data={"tool_name": tool_name, "success": success},
             ))
         except Exception:
-            pass
+            logger.warning("Failed to emit tool execution telemetry to LogBus", exc_info=True)
         self.log_event("tool_execution", {
             "tool_name": tool_name,
             "success": success,

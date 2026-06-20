@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 # and KAIROS_MEMORY_DB_PATH (for memory.db), NOT "MEMORY_DB_PATH".
 os.environ["SESSIONS_DB_PATH"] = "/tmp/kairos_test_sessions.db"
 os.environ["KAIROS_MEMORY_DB_PATH"] = "/tmp/kairos_test_memory.db"
+os.environ["KAIROS_MEMORY_WRITE_QUEUE_PATH"] = "/tmp/kairos_test_memory_write_queue.json"
 os.environ["OPENCODE_ZEN_API_KEY"] = "test-key-for-tests"
 os.environ["SEARXNG_AUTO_START"] = "false"
 os.environ["TESTING"] = "true"
@@ -170,9 +171,11 @@ async def setup_test_db(monkeypatch):
     temp_dir = tempfile.mkdtemp()
     sessions_db_path = os.path.join(temp_dir, "test_sessions.db")
     memory_db_path = os.path.join(temp_dir, "test_memory.db")
+    memory_queue_path = os.path.join(temp_dir, "test_memory_write_queue.json")
 
     monkeypatch.setenv("SESSIONS_DB_PATH", sessions_db_path)
     monkeypatch.setenv("KAIROS_MEMORY_DB_PATH", memory_db_path)
+    monkeypatch.setenv("KAIROS_MEMORY_WRITE_QUEUE_PATH", memory_queue_path)
 
     conn = sqlite3.connect(sessions_db_path)
     try:
@@ -186,7 +189,7 @@ async def setup_test_db(monkeypatch):
     yield sessions_db_path
 
     try:
-        for path in (sessions_db_path, memory_db_path):
+        for path in (sessions_db_path, memory_db_path, memory_queue_path):
             if os.path.exists(path):
                 os.remove(path)
         os.rmdir(temp_dir)

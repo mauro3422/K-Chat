@@ -1,8 +1,11 @@
+import logging
 import re
 import os
 import threading
 from collections import defaultdict
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 _LEXICON: dict[str, set[str]] = {
     'tecnologia': {
@@ -206,7 +209,7 @@ def load_learned_entities(filepath: Optional[str] = None) -> None:
                 _LEARNED_ENTITIES[etype].update(entities)
             _CANDIDATE_FREQ.update(data.get("freq", {}))
         except Exception:
-            pass
+            logger.warning("Failed to load learned entities", exc_info=True)
 
 
 def extract_entities(text: str) -> list[tuple[str, str, float]]:

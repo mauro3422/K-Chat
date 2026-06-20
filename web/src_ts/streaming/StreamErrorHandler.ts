@@ -1,4 +1,4 @@
-import { C } from '../core/DomContracts';
+import { C } from '../core/infra/DomContracts';
 
 export interface IStreamErrorPayload {
   type: string;

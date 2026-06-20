@@ -81,7 +81,7 @@ async def _reindex_sessions(dry_run: bool = False, repos: Any = None) -> str:
             cc = conn.execute("SELECT COUNT(*) FROM topic_clusters").fetchone()[0]
             rc = conn.execute("SELECT COUNT(*) FROM topic_relations").fetchone()[0]
         except Exception:
-            pass
+            logger.warning("Failed to count clusters/relations", exc_info=True)
 
     return f"Vectorizadas {len(results)} sesiones, {total} exchanges. Clusters: {cc} | Relaciones: {rc} | Vectores: {vec_total}."
 

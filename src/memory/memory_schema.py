@@ -60,7 +60,7 @@ def _migration_001_global_memory_index(conn: sqlite3.Connection, engine) -> None
                             (key, row[1], row[2] if len(row) > 2 else None),
                         )
                     except Exception:
-                        pass
+                        logger.debug("Failed to migrate memory_index key %s", key, exc_info=True)
             logger.info("Migrated %d entries to global memory_index", len(seen))
     else:
         conn.execute("""

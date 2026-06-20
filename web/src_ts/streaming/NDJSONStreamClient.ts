@@ -2,8 +2,8 @@ import { IStreamDispatcher } from '../types/dispatcher';
 import { ApiClient } from '../api/ApiClient';
 import { StreamEvent, StreamEventType, STREAM_EVENT_TYPES } from '../types/streaming';
 import { IEventBus } from '../types/events';
-import { getLogger } from '../core/LoggerFactory';
-import { ILogger } from '../core/Logger';
+import { getLogger } from '../core/infra/LoggerFactory';
+import { ILogger } from '../core/infra/Logger';
 
 /** Pre-built set of valid stream event types — avoid `new Set()` on every parse */
 const VALID_EVENT_TYPES = new Set(Object.values(STREAM_EVENT_TYPES));

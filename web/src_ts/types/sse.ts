@@ -50,6 +50,21 @@ export interface SSEMessageDeleted {
   message_id: number;
 }
 
+export interface SSEMemoryWriteQueued {
+  key: string;
+  value: string;
+  reason: string;
+  node_id: string;
+  requested_at: number;
+}
+
+export interface SSEMemoryWriteCompleted {
+  key: string;
+  value: string;
+  node_id: string;
+  result: string;
+}
+
 export type SSEEvent =
   | { type: 'ping'; data?: undefined }
   | { type: 'stream:reasoning'; data: SSEStreamReasoning }
@@ -60,4 +75,6 @@ export type SSEEvent =
   | { type: 'stream:notification'; data: SSEStreamNotification }
   | { type: 'new_message'; data: SSENewMessage }
   | { type: 'session_deleted'; data: SSESessionDeleted }
-  | { type: 'message_deleted'; data: SSEMessageDeleted };
+  | { type: 'message_deleted'; data: SSEMessageDeleted }
+  | { type: 'memory_write_queued'; data: SSEMemoryWriteQueued }
+  | { type: 'memory_write_completed'; data: SSEMemoryWriteCompleted };

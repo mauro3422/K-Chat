@@ -111,7 +111,7 @@ class RetrievalService:
                 try:
                     retriever.close()
                 except Exception:
-                    pass
+                    logger.warning("Failed to close retriever", exc_info=True)
 
         return None, degraded
 

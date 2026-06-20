@@ -59,6 +59,32 @@ def mock_lazy_imports():
         yield li
 
 
+class _RetryResponse:
+    def __init__(self, failures_before_success: int = 1) -> None:
+        self._remaining_failures = failures_before_success
+
+    def raise_for_status(self) -> None:
+        if self._remaining_failures > 0:
+            self._remaining_failures -= 1
+            raise RuntimeError("HTTP 502")
+
+
+class _RetryHttpClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+        self.response = _RetryResponse(failures_before_success=1)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+    async def post(self, url: str, json: dict, timeout: int):
+        self.calls.append((url, json))
+        return self.response
+
+
 @pytest.mark.asyncio
 async def test_send_event_called_for_reasoning(mock_ws_client, mock_lazy_imports):
     """First reasoning token should trigger send_event for stream:reasoning."""
@@ -171,3 +197,24 @@ async def test_reasoning_flush_interval_respected(mock_ws_client, mock_lazy_impo
     assert len(reasoning_calls) >= 4, (
         f"Expected ~5 reasoning flushes, got {len(reasoning_calls)}"
     )
+
+
+@pytest.mark.asyncio
+async def test_notify_all_retries_transient_http_failures(monkeypatch):
+    from channels.telegram.adapter import _notify_all
+
+    monkeypatch.setattr("channels.telegram.adapter._get_sse_notify_urls", lambda: ["http://peer-a:8000/api/events/notify"])
+    monkeypatch.setattr("channels.telegram.adapter.anyio.sleep", AsyncMock())
+    fake_client = _RetryHttpClient()
+
+    class _Factory:
+        async def __aenter__(self):
+            return fake_client
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    with patch("httpx.AsyncClient", return_value=_Factory()):
+        await _notify_all("memory_updated", {"session_id": "s1"})
+
+    assert len(fake_client.calls) == 2

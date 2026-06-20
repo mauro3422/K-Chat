@@ -181,7 +181,7 @@ def _tail_logbus_logs(lines: int) -> list[dict]:
         if logbus_files:
             return _tail_file(logbus_files[-1], lines)
     except Exception:
-        pass
+        logger.warning("Failed to tail logbus logs", exc_info=True)
     return []
 
 

@@ -18,19 +18,19 @@ class DebugRepository(_BaseRepository):
             try:
                 await conn.execute("ALTER TABLE debug_info ADD COLUMN phases TEXT DEFAULT '[]'")
             except Exception:
-                pass
+                logger.warning("Column phases may already exist in debug_info", exc_info=True)
             try:
                 await conn.execute("ALTER TABLE debug_info ADD COLUMN prompt_tokens INTEGER DEFAULT 0")
             except Exception:
-                pass
+                logger.warning("Column prompt_tokens may already exist in debug_info", exc_info=True)
             try:
                 await conn.execute("ALTER TABLE debug_info ADD COLUMN completion_tokens INTEGER DEFAULT 0")
             except Exception:
-                pass
+                logger.warning("Column completion_tokens may already exist in debug_info", exc_info=True)
             try:
                 await conn.execute("ALTER TABLE debug_info ADD COLUMN total_tokens INTEGER DEFAULT 0")
             except Exception:
-                pass
+                logger.warning("Column total_tokens may already exist in debug_info", exc_info=True)
             await conn.execute('''
                 INSERT OR REPLACE INTO debug_info (session_id, model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, auto_memories, phases, prompt_tokens, completion_tokens, total_tokens, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

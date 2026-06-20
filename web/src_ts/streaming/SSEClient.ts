@@ -3,13 +3,13 @@ import { IWidgetRegistry } from '../types/widgets';
 import { IIframeBuilder } from '../types/iframe';
 import { IWidgetContainerRenderer } from '../types/widget-renderer';
 import { IDebugManager } from '../types/debug';
-import { SSEEvent, SSENewMessage, SSEStreamReasoning, SSEStreamContent, SSEStreamTool, SSEStreamMemory, SSEStreamError, SSEStreamNotification } from '../types/sse';
+import { SSEEvent, SSENewMessage, SSEMemoryWriteCompleted, SSEMemoryWriteQueued, SSEStreamReasoning, SSEStreamContent, SSEStreamTool, SSEStreamMemory, SSEStreamError, SSEStreamNotification } from '../types/sse';
 import { StreamDispatcher } from './StreamDispatcher';
 import { ContentHandler, StreamHandlerContext } from './ContentHandler';
 import { IMessageView } from '../types/message-view';
 import type { MessageData } from '../types/messages';
-import { getLogger } from '../core/LoggerFactory';
-import { ILogger } from '../core/Logger';
+import { getLogger } from '../core/infra/LoggerFactory';
+import { ILogger } from '../core/infra/Logger';
 
 export interface ISSEClient {
   connect(): void;
@@ -112,6 +112,12 @@ export class SSEClient implements ISSEClient {
         break;
       case 'message_deleted':
         this.handleMessageDeleted(event.data);
+        break;
+      case 'memory_write_queued':
+        this.handleMemoryWriteQueued(event.data);
+        break;
+      case 'memory_write_completed':
+        this.handleMemoryWriteCompleted(event.data);
         break;
     }
   }
@@ -277,5 +283,37 @@ export class SSEClient implements ISSEClient {
         setTimeout(() => msgEl.remove(), 350);
       }
     }
+  }
+
+  private handleMemoryWriteQueued(data: SSEMemoryWriteQueued): void {
+    const message = data.reason
+      ? `Memoria en cola: ${data.key} (${data.reason})`
+      : `Memoria en cola: ${data.key}`;
+    this.eventBus.emit('notification:show', {
+      id: 'mem-queued-' + Date.now(),
+      type: 'warning',
+      message,
+      duration: 7000,
+    });
+    this.eventBus.emit('sse:memory-write-queued', {
+      key: data.key,
+      reason: data.reason,
+      nodeId: data.node_id,
+      requestedAt: data.requested_at,
+    });
+  }
+
+  private handleMemoryWriteCompleted(data: SSEMemoryWriteCompleted): void {
+    this.eventBus.emit('notification:show', {
+      id: 'mem-completed-' + Date.now(),
+      type: 'success',
+      message: `Memoria sincronizada: ${data.key}`,
+      duration: 5000,
+    });
+    this.eventBus.emit('sse:memory-write-completed', {
+      key: data.key,
+      nodeId: data.node_id,
+      result: data.result,
+    });
   }
 }

@@ -55,7 +55,7 @@ def log_event(
             data=meta,
         ))
     except Exception:
-        pass
+        logger.warning("Failed to emit gateway log to LogBus", exc_info=True)
     try:
         conn = _get_conn()
         try:

@@ -66,7 +66,7 @@ async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], t
     if not tasks:
         return
 
-    outputs = await asyncio.gather(*tasks)
+    outputs = [await t for t in tasks]
     for tc, name, tool_result, status in outputs:
         results[tc.id] = (tool_result, status)
         if tagged:

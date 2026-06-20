@@ -69,7 +69,7 @@ def log_turn(
             },
         ))
     except Exception:
-        pass
+        logger.warning("Failed to emit chat journal to LogBus", exc_info=True)
     try:
         conn = _get_conn()
         try:

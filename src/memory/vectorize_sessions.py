@@ -433,7 +433,7 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                                 )
                             conn.commit()
                         except Exception:
-                            pass
+                            logger.warning("Failed to insert keywords for exchange", exc_info=True)
 
                     count += 1
                     entities_list.append({

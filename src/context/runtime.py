@@ -9,6 +9,9 @@ from src.context.files import _ensure_file, _read_file
 from src.context.templates import get_templates
 from src.context.tools_docs import _build_rules_files, _build_tools_md
 from src.paths import CONTEXT_DIR
+import logging
+
+logger = logging.getLogger(__name__)
 
 RULES_DIR: Final[str] = os.path.join(CONTEXT_DIR, "rules")
 TOOLS_PATH: Final[str] = os.path.join(CONTEXT_DIR, "TOOLS.md")
@@ -29,7 +32,7 @@ def _check_invalidate_marker() -> bool:
             os.unlink(_invalidate_marker_path)
             return True
         except Exception:
-            pass
+            logger.warning("Failed to unlink invalidate marker", exc_info=True)
     return False
 
 

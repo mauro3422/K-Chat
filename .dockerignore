@@ -14,8 +14,6 @@ docs
 .env*
 .config
 dependencies/searxng
-web/static/marked.min.js
-web/static/purify.min.js
 logs/
 memory/
 data/

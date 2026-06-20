@@ -25,7 +25,7 @@ def _parse_memory_md(path: str) -> dict[str, str]:
     if not path:
         return memories
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             content = f.read()
     except FileNotFoundError:
         return memories

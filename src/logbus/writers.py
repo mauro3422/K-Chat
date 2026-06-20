@@ -38,7 +38,7 @@ class JsonlWriter(BaseWriter):
                 if os.path.getmtime(fpath) < cutoff:
                     os.remove(fpath)
             except OSError:
-                pass
+                logger.warning("Failed to clean up old log file %s", fpath, exc_info=True)
 
     async def write(self, events: list[LogEvent]) -> None:
         filepath = self._get_filepath()
@@ -46,7 +46,7 @@ class JsonlWriter(BaseWriter):
         lines = "\n".join(self._serialize(e) for e in events) + "\n"
 
         def _sync_write():
-            with open(filepath, mode="a") as f:
+            with open(filepath, mode="a", encoding="utf-8") as f:
                 f.write(lines)
 
         await asyncio.to_thread(_sync_write)
@@ -123,7 +123,7 @@ class SqliteWriter(BaseWriter):
             conn.execute("DELETE FROM logbus_events WHERE ts < ?", (cutoff_ts,))
             conn.commit()
         except Exception:
-            pass
+            logger.warning("Failed to clean up old logbus entries", exc_info=True)
         conn.commit()
         conn.close()
 

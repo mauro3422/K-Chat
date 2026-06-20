@@ -2,8 +2,8 @@ import { IIframeBuilder } from '../types/iframe';
 import { IWidgetRegistry, ICanvasCardManager, CardLayout } from '../types/widgets';
 import { IEventBus } from '../types/events';
 import { IDebugManager } from '../types/debug';
-import { getLogger } from '../core/LoggerFactory';
-import { ILogger } from '../core/Logger';
+import { getLogger } from '../core/infra/LoggerFactory';
+import { ILogger } from '../core/infra/Logger';
 
 export class CanvasCardManager implements ICanvasCardManager {
   private cards = new Map<string, HTMLElement>();

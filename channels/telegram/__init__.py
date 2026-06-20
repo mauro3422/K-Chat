@@ -18,6 +18,7 @@ Environment variables:
 from __future__ import annotations
 
 import asyncio
+from src.config_loader import load_config
 from channels.telegram.config import load_telegram_config
 from channels.telegram.bot import run_bot
 
@@ -36,6 +37,10 @@ def run() -> None:
     This is the entry point used by the channel registry / CLI dispatcher.
     """
     config = load_telegram_config()
+    cluster_cfg = load_config()
+    if getattr(cluster_cfg, "peer_urls", "").strip() and getattr(cluster_cfg, "node_role", "secondary") != "primary":
+        print("⚠️ Telegram bot disabled on secondary node.")
+        return
     asyncio.run(run_bot(config))
 
 

@@ -2,7 +2,7 @@ use_default_settings: true
 
 general:
   instance_name: "Kairos Search"
-  debug: true
+  debug: false
   enable_metrics: false
 
 search:
@@ -13,9 +13,11 @@ search:
 server:
   port: 8080
   bind_address: "127.0.0.1"
-  limiter: false
+  limiter: true
   public_instance: false
-  secret_key: "168cd69ae52c484936ea41d6f7b8bb43b1196838141398fdb8eb637510828a0b"
+  # Can also be set via SEARXNG_SECRET_KEY env var (takes precedence)
+  # Fallback key: c6bac04a5a42f9bf4a2e8d7a2e375a2d9cf65788a5f8368ef1af4c5c3574ee61
+  secret_key: "$__env__SEARXNG_SECRET_KEY"
   method: "GET"
   image_proxy: false
 

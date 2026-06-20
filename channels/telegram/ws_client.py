@@ -115,13 +115,3 @@ class BotWSClient:
             self._ws = None
 
 
-# Module-level singleton
-_client: BotWSClient | None = None
-
-
-def get_ws_client() -> BotWSClient:
-    """Get or create the global BotWSClient singleton."""
-    global _client
-    if _client is None:
-        _client = BotWSClient()
-    return _client

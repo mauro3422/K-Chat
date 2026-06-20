@@ -1,0 +1,276 @@
+"""LAN node coordination endpoints."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from src.gateway_log import log_event
+from src.coordination.leader_lease import get_leader_lease_manager
+from src.coordination.memory_write_queue import apply_pending_memory_writes, get_memory_write_queue
+from src.coordination.node_state import NodeCoordinator, get_node_coordinator
+from src.coordination.lan_bridge import NodeLanBridge
+from web.routers._memory_snapshot import build_memory_snapshot, relay_memory_event
+from web.services.event_bus import IEventBus, get_event_bus
+from web.services.failover_state import get_failover_state
+
+router = APIRouter(prefix="/api/node")
+
+
+def _get_coordinator(request: Request) -> NodeCoordinator:
+    return getattr(request.app.state, "node_coordinator", None) or get_node_coordinator(getattr(request.app.state, "config", None))
+
+
+def _get_event_bus(request: Request) -> IEventBus:
+    return getattr(request.app.state, "event_bus", None) or get_event_bus()
+
+
+def _get_memory_queue(request: Request):
+    return getattr(request.app.state, "memory_write_queue", None) or get_memory_write_queue()
+
+
+def _get_save_memory_run(request: Request):
+    runner = getattr(request.app.state, "save_memory_run", None)
+    if runner is None:
+        raise RuntimeError("save_memory runner not configured")
+    return runner
+
+
+def _get_node_bridge(request: Request) -> NodeLanBridge:
+    bridge = getattr(request.app.state, "node_bridge", None)
+    if bridge is None:
+        coordinator = _get_coordinator(request)
+        config = getattr(request.app.state, "config", None)
+        bridge = NodeLanBridge(config=config, coordinator=coordinator)
+        request.app.state.node_bridge = bridge
+    return bridge
+
+
+def _get_leader_lease_manager(request: Request):
+    return getattr(request.app.state, "leader_lease_manager", None) or get_leader_lease_manager(getattr(request.app.state, "config", None))
+
+
+def _get_failover_state(request: Request):
+    return getattr(request.app.state, "failover_state", None) or get_failover_state()
+
+
+class NodeHeartbeatPayload(BaseModel):
+    node_id: str = Field(default="")
+    role: str = Field(default="secondary")
+    base_url: str = Field(default="")
+    metadata: dict = Field(default_factory=dict)
+
+
+class NodeRolePayload(BaseModel):
+    role: str = Field(default="secondary")
+
+
+class NodeEventPayload(BaseModel):
+    type: str = Field(default="unknown")
+    data: dict | list | str | int | float | bool | None = None
+    source: dict = Field(default_factory=dict)
+
+
+class NodeMemoryWritePayload(BaseModel):
+    key: str = Field(default="")
+    value: str = Field(default="")
+    source: dict = Field(default_factory=dict)
+
+
+@router.get("/state")
+async def node_state(request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    snapshot = coordinator.snapshot()
+    snapshot["local_peer_count"] = len(snapshot.get("peers", []))
+    return JSONResponse(snapshot)
+
+
+@router.post("/heartbeat")
+async def node_heartbeat(payload: NodeHeartbeatPayload, request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    if payload.node_id:
+        snapshot = await coordinator.record_peer_heartbeat(
+            node_id=payload.node_id,
+            role=payload.role,
+            base_url=payload.base_url,
+            metadata=payload.metadata,
+        )
+    else:
+        snapshot = await coordinator.beat(metadata=payload.metadata)
+    return JSONResponse({"ok": True, "state": snapshot})
+
+
+@router.post("/promote")
+async def node_promote(request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    lease_manager = _get_leader_lease_manager(request)
+    lease = lease_manager.acquire(coordinator.node_id, ttl=coordinator.heartbeat_ttl, reason="manual_promote")
+    if lease is None:
+        return JSONResponse({"ok": False, "error": "leader lease busy"}, status_code=409)
+    snapshot = await coordinator.promote()
+    applied = await apply_pending_memory_writes(
+        _get_memory_queue(request),
+        _get_save_memory_run(request),
+        repos=getattr(request.app.state, "repos", None),
+    )
+    if applied:
+        await coordinator.mark_memory_sync({"event": "node_promote", "applied": len(applied)})
+    await _get_event_bus(request).publish("leader_changed", {"role": "primary", "state": snapshot})
+    log_event("INFO", "node", "promote", detail="node promoted to primary", meta={"applied": len(applied)})
+    return JSONResponse({"ok": True, "state": snapshot, "applied": applied})
+
+
+@router.post("/demote")
+async def node_demote(request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    lease_manager = _get_leader_lease_manager(request)
+    lease_manager.release(coordinator.node_id)
+    snapshot = await coordinator.demote()
+    await _get_event_bus(request).publish("leader_changed", {"role": "secondary", "state": snapshot})
+    log_event("INFO", "node", "demote", detail="node demoted to secondary")
+    return JSONResponse({"ok": True, "state": snapshot})
+
+
+@router.post("/event")
+async def node_event(payload: NodeEventPayload, request: Request) -> JSONResponse:
+    await relay_memory_event(request, payload.type, {"data": payload.data, "source": payload.source})
+    return JSONResponse({"ok": True, "type": payload.type})
+
+
+@router.post("/memory/request")
+async def memory_request(payload: NodeMemoryWritePayload, request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    if not await coordinator.is_primary():
+        queue = _get_memory_queue(request)
+        queued = queue.enqueue(payload.key, payload.value, source_node=str(payload.source.get("node_id", "")), reason="primary_unavailable")
+        await _get_event_bus(request).publish(
+            "memory_write_queued",
+            {"key": payload.key, "source": payload.source, "state": queue.snapshot()},
+        )
+        return JSONResponse({"ok": True, "granted": False, "queued": True, "request": queued.to_dict()})
+
+    result = await _get_save_memory_run(request)(
+        key=payload.key,
+        value=payload.value,
+        _repos=getattr(request.app.state, "repos", None),
+        _force_local_write=True,
+    )
+    if result.startswith("[OK]"):
+        await coordinator.mark_memory_revision({"event": "memory_request", "key": payload.key})
+        await coordinator.mark_memory_sync({"event": "memory_request", "key": payload.key})
+        completion_event = {
+            "key": payload.key,
+            "value": payload.value,
+            "source": payload.source,
+            "node_id": coordinator.node_id,
+            "result": result,
+        }
+        bus = _get_event_bus(request)
+        await bus.publish("memory_synced", completion_event)
+        await bus.publish("memory_write_completed", completion_event)
+        try:
+            bridge = _get_node_bridge(request)
+            await bridge.broadcast_event("memory_write_completed", completion_event)
+        except Exception:
+            pass
+    return JSONResponse({"ok": True, "granted": True, "queued": False, "status": "completed", "result": result})
+
+
+@router.get("/memory/queue")
+async def memory_queue(request: Request) -> JSONResponse:
+    queue = _get_memory_queue(request)
+    return JSONResponse({"ok": True, "pending": queue.snapshot()})
+
+
+@router.post("/memory/flush")
+async def memory_flush(request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    if not await coordinator.is_primary():
+        return JSONResponse({"ok": False, "error": "primary only"}, status_code=403)
+
+    results = await apply_pending_memory_writes(
+        _get_memory_queue(request),
+        _get_save_memory_run(request),
+        repos=getattr(request.app.state, "repos", None),
+    )
+    if results:
+        await _get_event_bus(request).publish("memory_synced", {"applied": results, "source": "flush"})
+    return JSONResponse({"ok": True, "applied": results, "pending": []})
+
+
+@router.get("/sync/status")
+async def sync_status(request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    queue = _get_memory_queue(request)
+    lease_manager = _get_leader_lease_manager(request)
+    lease = lease_manager.snapshot()
+    snapshot = coordinator.snapshot()
+    return JSONResponse(
+        {
+            "ok": True,
+            "node": snapshot,
+            "lease": lease.to_dict() if lease else None,
+            "queue": {
+                "size": len(queue),
+                "pending": queue.snapshot(),
+                "path": getattr(queue, "persistence_path", ""),
+            },
+            "sync": {
+                "role": snapshot.get("role", ""),
+                "is_primary": await coordinator.is_primary(),
+                "has_recent_primary": snapshot.get("has_recent_primary", False),
+                "memory_is_fresh": snapshot.get("memory_is_fresh", False),
+                "last_memory_revision": snapshot.get("last_memory_revision", 0.0),
+                "last_memory_sync": snapshot.get("last_memory_sync", 0.0),
+            },
+        }
+    )
+
+
+@router.get("/memory/snapshot")
+async def memory_snapshot(request: Request, key_pattern: str = "") -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    if await coordinator.is_primary():
+        return JSONResponse(await build_memory_snapshot(request, key_pattern=key_pattern))
+
+    bridge = _get_node_bridge(request)
+    if bridge.peer_urls:
+        remote = await bridge.request_memory_snapshot(key_pattern=key_pattern)
+        if remote.get("ok"):
+            payload = dict(remote.get("snapshot", {}))
+            payload["source"] = {
+                "mode": "peer",
+                "peer": remote.get("peer"),
+                "node_id": coordinator.node_id,
+            }
+            return JSONResponse(payload)
+
+    return JSONResponse(await build_memory_snapshot(request, key_pattern=key_pattern))
+
+
+@router.get("/diagnostics")
+async def node_diagnostics(request: Request, key_pattern: str = "") -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    bridge = _get_node_bridge(request)
+    memory = await build_memory_snapshot(request, key_pattern=key_pattern)
+    payload = {
+        "ok": True,
+        "node": coordinator.snapshot(),
+        "bridge": {
+            "base_url": bridge.base_url,
+            "peer_urls": bridge.peer_urls,
+        },
+        "memory": memory,
+    }
+    return JSONResponse(payload)
+
+
+@router.get("/failover/status")
+async def failover_status(request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    state = _get_failover_state(request)
+    snapshot = state.snapshot()
+    snapshot["ok"] = True
+    snapshot["node"] = coordinator.snapshot()
+    return JSONResponse(snapshot)

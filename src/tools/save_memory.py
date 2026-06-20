@@ -5,6 +5,11 @@ import threading
 from typing import Any
 
 from src.memory.operations._helpers import _parse_memory_md, _write_memory_md
+from src.coordination.memory_lease import get_memory_lease_manager
+from src.coordination.memory_write_queue import get_memory_write_queue
+from src.coordination.lan_bridge import NodeLanBridge
+from src.coordination.node_state import peek_node_coordinator
+from src.config_loader import load_config
 from src.paths import CONTEXT_DIR
 from src.utils.async_utils import run_in_thread, sleep
 
@@ -97,11 +102,53 @@ async def run(**kwargs) -> str:
     _session_id = kwargs.get("_session_id")
     _invalidate_cache_fn = kwargs.get("_invalidate_cache_fn")
     _repos = kwargs.get("_repos")
+    _force_local_write = bool(kwargs.get("_force_local_write", False))
 
     filepath = os.path.join(CONTEXT_DIR, "MEMORY.md")
 
+    coordinator = peek_node_coordinator()
+    if coordinator is not None and coordinator.peer_urls and not _force_local_write:
+        if await coordinator.is_primary():
+            pass
+        else:
+            bridge_cfg = coordinator.config or load_config()
+            bridge = NodeLanBridge(config=bridge_cfg, coordinator=coordinator)
+            permission = await bridge.request_memory_write(key, value)
+            if permission.get("ok") and permission.get("granted"):
+                return str(permission.get("response", {}).get("result", "[OK] memory write approved by primary."))
+
+            queue = get_memory_write_queue()
+            queued = queue.enqueue(
+                key,
+                value,
+                source_node=coordinator.node_id,
+                reason=str(permission.get("error", "primary unavailable")),
+            )
+            try:
+                bridge_cfg = coordinator.config or load_config()
+                bridge = NodeLanBridge(config=bridge_cfg, coordinator=coordinator)
+                await bridge.broadcast_event(
+                    "memory_write_queued",
+                    {
+                        "key": queued.key,
+                        "value": queued.value,
+                        "reason": queued.reason,
+                        "node_id": coordinator.node_id,
+                        "requested_at": queued.requested_at,
+                    },
+                )
+            except Exception:
+                logger.warning("Failed to broadcast queued memory event", exc_info=True)
+            logger.warning("save_memory queued on secondary node: %s", key)
+            return f"[PENDING] memory write queued for primary approval: {queued.key}"
+
     def _synced_op():
         with _save_lock:
+            if coordinator is not None and coordinator.peer_urls:
+                lease_manager = get_memory_lease_manager(coordinator.config or load_config())
+                lease = lease_manager.acquire(coordinator.node_id, ttl=coordinator.heartbeat_ttl, reason="save_memory")
+                if lease is None:
+                    return "[ERROR] Memory write lease held by another node.", "", None
             return _sync_read_and_write(filepath, key, value)
 
     err, action_msg, backup_lines = await run_in_thread(_synced_op)
@@ -126,9 +173,6 @@ async def run(**kwargs) -> str:
             else:
                 db_ok = False
 
-    if db_ok and _invalidate_cache_fn is not None:
-        _invalidate_cache_fn()
-
     if not db_ok and backup_lines is not None:
         try:
             with open(filepath, "w", encoding="utf-8") as f:
@@ -141,15 +185,55 @@ async def run(**kwargs) -> str:
             os.remove(filepath)
             logger.info("Removed MEMORY.md after db write failure (no backup)")
         except Exception:
-            pass
+            logger.warning("Failed to remove MEMORY.md after db write failure", exc_info=True)
+
+    if not db_ok:
+        return f"[ERROR] {action_msg} but memory.db sync failed."
+
+    key_clean = key.strip()
+    value_clean = value.strip()
+
+    if _invalidate_cache_fn is not None:
+        _invalidate_cache_fn()
 
     store = _repos.memory.vector_store if _repos else None
-    if value.strip() and store is not None:
-        await _retry_embed(key, value, store)
-    elif key.strip() and store is not None:
-        await _retry_delete_embedding(key, store)
+    if value_clean and store is not None:
+        await _retry_embed(key_clean, value_clean, store)
+    elif key_clean and store is not None:
+        await _retry_delete_embedding(key_clean, store)
 
-    return f"[OK] {action_msg} in MEMORY.md."
+    if coordinator is not None:
+        try:
+            await coordinator.mark_memory_revision({"event": "save_memory", "key": key_clean})
+            await coordinator.mark_memory_sync({"event": "save_memory", "key": key_clean, "db": "memory.db"})
+        except Exception:
+            logger.warning("Failed to update memory revision/sync markers", exc_info=True)
+
+    if err is None and coordinator is not None and coordinator.peer_urls:
+        try:
+            bridge_cfg = coordinator.config or load_config()
+            bridge = NodeLanBridge(config=bridge_cfg, coordinator=coordinator)
+            await bridge.broadcast_event(
+                "memory_updated",
+                {"key": key_clean, "value": value_clean, "node_id": coordinator.node_id},
+            )
+            await bridge.broadcast_event(
+                "memory_synced",
+                {"key": key_clean, "value": value_clean, "node_id": coordinator.node_id},
+            )
+            await bridge.broadcast_event(
+                "memory_write_completed",
+                {
+                    "key": key_clean,
+                    "value": value_clean,
+                    "node_id": coordinator.node_id,
+                    "result": f"[OK] {action_msg} in MEMORY.md and memory.db.",
+                },
+            )
+        except Exception:
+            logger.warning("Failed to broadcast memory events", exc_info=True)
+
+    return f"[OK] {action_msg} in MEMORY.md and memory.db."
 
 
 async def _retry_upsert(memory_index: Any, key: str, value: str, max_retries: int = 3) -> bool:
@@ -260,7 +344,7 @@ async def _embed_and_store(key: str, value: str, store: Any) -> None:
                 )
             conn.commit()
         except Exception:
-            pass
+            logger.warning("Failed to store keywords for embedding key %s", key, exc_info=True)
     logger.debug("Embedding stored for key: %s (dim=%d)", key, len(vec))
 
 

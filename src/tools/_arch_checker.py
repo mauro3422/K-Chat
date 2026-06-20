@@ -15,7 +15,10 @@ Usage:
 from __future__ import annotations
 
 import ast
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -206,7 +209,7 @@ def _extract_imports_regex(file_path: str) -> list[tuple[int, str]]:
                 if stripped.startswith("import ") or stripped.startswith("from ") and " import " in stripped:
                     results.append((i, stripped))
     except Exception:
-        pass
+        logger.warning("Failed to extract imports from %s", file_path, exc_info=True)
     return results
 
 

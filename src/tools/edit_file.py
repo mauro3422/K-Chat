@@ -25,6 +25,7 @@ def _run_impact_analysis(def_name: str, path: str) -> str | None:
         from src.tools.impact_analysis import run as impact_run
         return run_awaitable_sync(impact_run(name=def_name, path=path), label="impact analysis")
     except Exception:
+        logger.warning("Failed to run impact analysis", exc_info=True)
         return None
 
 DEFINITION = {
@@ -132,7 +133,7 @@ def _edit_file_sync(path: str, start_line: int, end_line: int | None, new_conten
                         if name and not name.startswith('__'):
                             deleted_defs.append(name)
             except Exception:
-                pass
+                logger.warning("Failed to parse deleted defs", exc_info=True)
     elif new_content:
         modo = "insertar"
         new_lines = new_content.splitlines(keepends=True)
@@ -183,7 +184,7 @@ def _edit_file_sync(path: str, start_line: int, end_line: int | None, new_conten
                 if impact_result and "Sin dependencias" not in impact_result:
                     summary += f"\n{impact_result}"
         except Exception:
-            pass
+            logger.warning("Failed to run impact analysis for deleted def", exc_info=True)
 
     return AwaitableText(summary)
 
@@ -216,6 +217,6 @@ def run(**kwargs: Any) -> str:
             if verbose or "🔴" in arch_result or "VIOLACIÓN" in arch_result:
                 summary += f"\n   {arch_result}"
         except Exception:
-            pass
+            logger.warning("Failed to run arch check post-hook", exc_info=True)
 
     return summary

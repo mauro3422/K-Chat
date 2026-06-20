@@ -1,9 +1,9 @@
 ﻿import { IWidgetRegistry } from '../types/widgets';
-import { fnv1a_32 } from '../core/WidgetRegistry';
+import { fnv1a_32 } from '../core/widget/WidgetRegistry';
 import { IDebugManager } from '../types/debug';
-import { IWidgetStateManager } from '../core/WidgetStateManager';
+import { IWidgetStateManager } from '../core/widget/WidgetStateManager';
 import { IIframeBuilder } from '../types/iframe';
-import { C } from '../core/DomContracts';
+import { C } from '../core/infra/DomContracts';
 
 /**
  * Widget state for lazy-loaded widget containers.

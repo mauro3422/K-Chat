@@ -99,7 +99,7 @@ class VectorStore:
             try:
                 conn.execute(f"ALTER TABLE vec_meta ADD COLUMN {col[0]} {col[1]}")
             except Exception:
-                pass
+                logger.warning("Failed to add column %s to vec_meta", col[0], exc_info=True)
 
         # Create indexes if they don't exist
         existing = {r[0] for r in conn.execute(

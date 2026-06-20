@@ -2,8 +2,8 @@ import { IEventBus } from '../types/events';
 import { IWidgetRegistry, ICanvasCardManager, ILayoutStore } from '../types/widgets';
 import { IIframeBuilder } from '../types/iframe';
 import { IDebugManager } from '../types/debug';
-import { getLogger } from '../core/LoggerFactory';
-import { ILogger } from '../core/Logger';
+import { getLogger } from '../core/infra/LoggerFactory';
+import { ILogger } from '../core/infra/Logger';
 
 export interface ICanvasWorkspace {
   init(sessionId: string): void;

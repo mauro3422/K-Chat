@@ -111,7 +111,7 @@ def _cleanup_orphans() -> None:
                     _sp.run(["kill", str(old_pid)], capture_output=True, timeout=5)
                     time.sleep(0.5)
             except Exception:
-                pass
+                logger.warning("Failed to kill stale process", exc_info=True)
             pid_path.unlink(missing_ok=True)
 
     for pattern in ["uvicorn web.server:app", "channels.telegram", "searx.webapp"]:
@@ -213,7 +213,7 @@ def _stop_all() -> None:
                 try:
                     proc.kill()
                 except Exception:
-                    pass
+                    logger.warning("Failed to kill process %s", name, exc_info=True)
             log_shutdown(name, f"uptime={uptime:.0f}s")
 
     from dependencies import manage as deps
@@ -363,12 +363,12 @@ def main() -> None:
     try:
         asyncio.run(_init_logbus())
     except Exception:
-        pass
+        logger.warning("Failed to initialize LogBus", exc_info=True)
     try:
         from src.logbus import get_logbus
         configure_logbus(get_logbus())
     except Exception:
-        pass
+        logger.warning("Failed to configure LogBus", exc_info=True)
 
     parser = argparse.ArgumentParser(description="Kairos Gateway — unified launcher")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show debug logs in console")

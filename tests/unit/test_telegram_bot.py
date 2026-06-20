@@ -135,6 +135,39 @@ class TestAdapterModuleLoad:
         assert _LazyImports is not None
 
 
+class TestTelegramClusterGate:
+    """Telegram debe respetar el rol del nodo cuando hay cluster."""
+
+    def test_package_run_skips_on_secondary_cluster(self):
+        from channels.telegram import run
+
+        fake_cluster = MagicMock(peer_urls="http://peer-a:8000", node_role="secondary")
+        with (
+            patch("channels.telegram.load_telegram_config", return_value=MagicMock(enabled=True)),
+            patch("channels.telegram.load_config", return_value=fake_cluster),
+            patch("channels.telegram.run_bot") as mock_run_bot,
+        ):
+            run()
+
+        mock_run_bot.assert_not_called()
+
+    def test_main_exits_on_secondary_cluster(self):
+        from channels.telegram.__main__ import main
+
+        fake_cluster = MagicMock(peer_urls="http://peer-a:8000", node_role="secondary")
+        with (
+            patch("sys.argv", ["telegram"]),
+            patch("channels.telegram.__main__.load_telegram_config", return_value=MagicMock(enabled=True)),
+            patch("channels.telegram.__main__.load_config", return_value=fake_cluster),
+            patch("channels.telegram.__main__.run_bot") as mock_run_bot,
+            pytest.raises(SystemExit) as exc,
+        ):
+            main()
+
+        assert exc.value.code == 0
+        mock_run_bot.assert_not_called()
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # ADAPTER SESSION MANAGEMENT TESTS
 # ═══════════════════════════════════════════════════════════════════════

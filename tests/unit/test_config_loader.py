@@ -1,8 +1,15 @@
 import pytest
-from unittest.mock import AsyncMock
 """Tests for src/config_loader.py"""
 import os
+from src import config_loader as _config_loader
 from src.config_loader import Config, load_config
+
+
+@pytest.fixture(autouse=True)
+def _no_dotenv_reload():
+    """Prevent load_dotenv() from re-populating env vars during tests."""
+    _config_loader._dotenv_loaded = True
+    yield
 
 
 class TestConfigDataclass:
@@ -74,7 +81,7 @@ class TestLoadConfig:
     @pytest.mark.anyio
     async def test_env_fallback_key(self, monkeypatch):
         """OPENCODE_ZEN_API_KEY_FALLBACK used when primary key is empty."""
-        monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
+        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "")
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY_FALLBACK", "fallback-key")
 
         cfg = load_config()

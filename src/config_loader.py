@@ -4,20 +4,16 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-_dotenv_loaded = False
+def _ensure_dotenv_loaded() -> None:
+    if not _ensure_dotenv_loaded._loaded:
+        load_dotenv()
+        _ensure_dotenv_loaded._loaded = True
+_ensure_dotenv_loaded._loaded = False
 
 
 def reset_dotenv_state() -> None:
     """Allow dotenv loading to run again on the next config access."""
-    global _dotenv_loaded
-    _dotenv_loaded = False
-
-
-def _ensure_dotenv_loaded() -> None:
-    global _dotenv_loaded
-    if not _dotenv_loaded:
-        load_dotenv()
-        _dotenv_loaded = True
+    _ensure_dotenv_loaded._loaded = False
 
 # ── Model name constants ────────────────────────────────────────────────
 DEFAULT_MODEL: str = "deepseek-v4-flash"
@@ -55,6 +51,12 @@ class Config:
     watchdog_url: str = "http://127.0.0.1:8000/health"
     # ── Session retention ──────────────────────────────────────────
     session_max_age_days: int = 90
+    # ── LAN coordination ─────────────────────────────────────────────
+    node_id: str = ""
+    node_role: str = "secondary"
+    cluster_name: str = "kairos"
+    peer_urls: str = ""
+    node_heartbeat_ttl: float = 15.0
 
 
 def _resolve_project_root() -> Path:
@@ -94,6 +96,11 @@ def load_config(overrides: dict | None = None) -> Config:
         watchdog_url=os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/health"),
         # ── Session retention ──────────────────────────────────────
         session_max_age_days=int(os.getenv("SESSION_MAX_AGE_DAYS", "90")),
+        node_id=os.getenv("KAIROS_NODE_ID", "") or os.getenv("HOSTNAME", "") or os.getenv("COMPUTERNAME", ""),
+        node_role=os.getenv("KAIROS_NODE_ROLE", "secondary"),
+        cluster_name=os.getenv("KAIROS_CLUSTER_NAME", "kairos"),
+        peer_urls=os.getenv("KAIROS_PEER_URLS", ""),
+        node_heartbeat_ttl=float(os.getenv("KAIROS_NODE_HEARTBEAT_TTL", "15.0")),
     )
 
     if overrides:

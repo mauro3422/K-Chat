@@ -175,7 +175,7 @@ async def asr_stream(websocket: WebSocket, request: Request):
         try:
             await websocket.close()
         except Exception:
-            pass
+            logger.warning("Failed to close ASR websocket", exc_info=True)
 
 
 async def _read_audio_payload(request: Request) -> tuple[bytes, str | None]:

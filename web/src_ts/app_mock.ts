@@ -7,36 +7,36 @@
  * SSEClient is instantiated and ready for real backend connection.
  */
 
-import { TypedEventBus } from './core/EventBus';
-import { ChatForm } from './core/ChatForm';
-import { FileUploader } from './core/FileUploader';
+import { TypedEventBus } from './core/infra/EventBus';
+import { ChatForm } from './core/ui/ChatForm';
+import { FileUploader } from './core/ui/FileUploader';
 import { MessageView } from './rendering/MessageView';
-import { SessionList } from './core/SessionList';
-import { WidgetRegistry } from './core/WidgetRegistry';
+import { SessionList } from './core/session/SessionList';
+import { WidgetRegistry } from './core/widget/WidgetRegistry';
 import { IframeBuilder } from './rendering/IframeBuilder';
 import { WidgetContainerRenderer } from './rendering/WidgetContainerRenderer';
 import { StreamSimulator } from './streaming/StreamSimulator';
 import { StreamOrchestrator } from './streaming/StreamOrchestrator';
 import { RetryController } from './core/ui/RetryHandler';
-import { DebugManager } from './core/DebugManager';
-import { SessionStore } from './core/SessionStore';
+import { DebugManager } from './core/debug/DebugManager';
+import { SessionStore } from './core/session/SessionStore';
 import { NDJSONStreamClient } from './streaming/NDJSONStreamClient';
 import { SSEClient } from './streaming/SSEClient';
 import { ApiClient } from './api/ApiClient';
-import { WidgetStateManager } from './core/WidgetStateManager';
+import { WidgetStateManager } from './core/widget/WidgetStateManager';
 import { CanvasWorkspace } from './widgets/CanvasWorkspace';
 import { CanvasCardManager } from './widgets/CanvasCardManager';
 import { CanvasLayoutStore } from './widgets/CanvasLayoutStore';
 import { SkillsUI } from './widgets/SkillsUI';
-import { NotificationService } from './core/NotificationService';
-import { RateLimitCooldown } from './core/RateLimitCooldown';
-import { ToastUI } from './core/ToastUI';
-import { NotificationBell } from './core/NotificationBell';
+import { NotificationService } from './core/notification/NotificationService';
+import { RateLimitCooldown } from './core/notification/RateLimitCooldown';
+import { ToastUI } from './core/notification/ToastUI';
+import { NotificationBell } from './core/notification/NotificationBell';
 import { CSSInjector } from './core/infra/CSSInjector';
 import { AudioBus } from './core/notification/AudioBus';
 import { GridController } from './core/ui/GridController';
 import { CanvasOverlay } from './widgets/CanvasOverlay';
-import { getLogger } from './core/LoggerFactory';
+import { getLogger } from './core/infra/LoggerFactory';
 import { SystemLogPanel } from './core/debug/SystemLogPanel';
 import { BrowserDomRenderer } from './rendering/DomRenderer';
 

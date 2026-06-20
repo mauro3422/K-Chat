@@ -1,12 +1,12 @@
 import json
 from unittest.mock import patch, AsyncMock, MagicMock
 import pytest
-import json
 from datetime import datetime
 from types import SimpleNamespace
 
 from src.core.debug_info import DebugInfo
 from src.core.history_contract import HistoryMessage
+from src.core.orchestrator_contract import OrchestratorDeps
 
 
 def _tool_call(tc_id: str, name: str, args: dict[str, object]) -> SimpleNamespace:
@@ -16,6 +16,26 @@ def _tool_call(tc_id: str, name: str, args: dict[str, object]) -> SimpleNamespac
     tc.function.name = name
     tc.function.arguments = json.dumps(args)
     return tc
+
+
+def _make_deps(tool_map=None):
+    repos = AsyncMock()
+    repos.messages = AsyncMock()
+    repos.sessions = AsyncMock()
+    repos.tool_calls = AsyncMock()
+    repos.widget_states = AsyncMock()
+    repos.debug = AsyncMock()
+    repos.saved_widgets = AsyncMock()
+    repos.memory_index = AsyncMock()
+    deps = OrchestratorDeps(repos=repos)
+    if tool_map is not None:
+        from src.tools.registry import ToolRegistry
+        reg = ToolRegistry()
+        reg._tool_map = tool_map
+        reg._definitions = {}
+        reg._built = True
+        deps.tool_registry = reg
+    return deps
 
 
 @pytest.mark.anyio
@@ -29,7 +49,7 @@ async def test_no_tools(mock_chat_stream):
     from src.core.orchestrator import chat_stream
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
-    tokens = [t async for t in chat_stream("Hola!", history, model="test-model", tagged=True, streaming=False)]
+    tokens = [t async for t in chat_stream("Hola!", history, model="test-model", tagged=True, streaming=False, deps=_make_deps())]
     contents = [t for t in tokens if t[0] == "content"]
     full = "".join(t[1] for t in contents)
     assert "¡Hola!" in full
@@ -70,7 +90,7 @@ async def test_tool_call_then_response(mock_get_reg, mock_chat_stream):
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     debug = DebugInfo()
     
-    tokens = [t async for t in chat_stream("Busca algo", history, model="test-model", tagged=True, debug=debug, streaming=False)]
+    tokens = [t async for t in chat_stream("Busca algo", history, model="test-model", tagged=True, debug=debug, streaming=False, deps=_make_deps())]
 
     types_seen = [t[0] for t in tokens]
     assert "reasoning" in types_seen
@@ -122,7 +142,7 @@ async def test_tool_error(mock_get_reg, mock_chat_stream):
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
-    tokens = [t async for t in chat_stream("test", history, model="test-model", tagged=True, streaming=False)]
+    tokens = [t async for t in chat_stream("test", history, model="test-model", tagged=True, streaming=False, deps=_make_deps())]
 
     tcs = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     assert any(t["status"] == "error" for t in tcs)
@@ -133,9 +153,6 @@ async def test_tool_error(mock_get_reg, mock_chat_stream):
 @patch("src.tools.get_default_registry")
 async def test_session_id_propagates_to_tools(mock_get_reg, mock_chat_stream):
     """session_id is passed as _session_id to tools."""
-    from src.api.session import ensure_session
-    await ensure_session("ses-123")
-    
     mock_reg = MagicMock()
     captured = {}
     async def tracking_tool(**kwargs):
@@ -162,7 +179,7 @@ async def test_session_id_propagates_to_tools(mock_get_reg, mock_chat_stream):
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
-    [t async for t in chat_stream("test", history, model="test-model", session_id="ses-123", tagged=True, streaming=False)]
+    [t async for t in chat_stream("test", history, model="test-model", session_id="ses-123", tagged=True, streaming=False, deps=_make_deps())]
 
     assert captured.get("session_id") == "ses-123"
 
@@ -172,9 +189,6 @@ async def test_session_id_propagates_to_tools(mock_get_reg, mock_chat_stream):
 @patch("src.tools.get_default_registry")
 async def test_multiple_tool_calls_same_turn(mock_get_reg, mock_chat_stream):
     """Multiple tools called in a single turn."""
-    from src.api.session import ensure_session
-    await ensure_session("ses-1")
-    
     mock_reg = MagicMock()
     tools_called = []
     async def tracking_tool(**kwargs):
@@ -205,7 +219,7 @@ async def test_multiple_tool_calls_same_turn(mock_get_reg, mock_chat_stream):
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
-    tokens = [t async for t in chat_stream("test", history, model="test-model", session_id="ses-1", tagged=True, streaming=False)]
+    tokens = [t async for t in chat_stream("test", history, model="test-model", session_id="ses-1", tagged=True, streaming=False, deps=_make_deps())]
 
     tcs = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     calling = [t for t in tcs if t["status"] == "calling"]
@@ -220,9 +234,6 @@ async def test_multiple_tool_calls_same_turn(mock_get_reg, mock_chat_stream):
 @patch("src.tools.get_default_registry")
 async def test_mixed_tool_results(mock_get_reg, mock_chat_stream):
     """One tool succeeds, one fails in the same turn."""
-    from src.api.session import ensure_session
-    await ensure_session("ses-2")
-    
     mock_reg = MagicMock()
     call_count = [0]
     async def flip_flop(**kwargs):
@@ -254,7 +265,7 @@ async def test_mixed_tool_results(mock_get_reg, mock_chat_stream):
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
-    tokens = [t async for t in chat_stream("test", history, model="test-model", session_id="ses-2", tagged=True, streaming=False)]
+    tokens = [t async for t in chat_stream("test", history, model="test-model", session_id="ses-2", tagged=True, streaming=False, deps=_make_deps())]
 
     tcs = [json.loads(t[1]) for t in tokens if t[0] == "tool_call"]
     errors = [t for t in tcs if t["status"] == "error"]
@@ -268,9 +279,6 @@ async def test_mixed_tool_results(mock_get_reg, mock_chat_stream):
 @patch("src.tools.get_default_registry")
 async def test_tool_result_truncation(mock_get_reg, mock_chat_stream):
     """Tool result >30000 chars gets truncated."""
-    from src.api.session import ensure_session
-    await ensure_session("ses-3")
-    
     mock_reg = MagicMock()
     long_result = "x" * 35000
     mock_reg.tool_map = {"web_search": AsyncMock(return_value=long_result)}
@@ -294,7 +302,7 @@ async def test_tool_result_truncation(mock_get_reg, mock_chat_stream):
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
     
-    [t async for t in chat_stream("test", history, model="test-model", session_id="ses-3", tagged=True, streaming=False)]
+    [t async for t in chat_stream("test", history, model="test-model", session_id="ses-3", tagged=True, streaming=False, deps=_make_deps())]
 
     # Check history has truncated tool result
     tool_msgs = [m for m in history if m.role == "tool"]
@@ -313,7 +321,7 @@ async def test_empty_message(mock_chat_stream):
     from src.core.orchestrator import chat_stream
 
     history = [HistoryMessage(role="system", content="test", created_at=datetime.now().isoformat())]
-    tokens = [t async for t in chat_stream("", history, model="test-model", tagged=True, streaming=False)]
+    tokens = [t async for t in chat_stream("", history, model="test-model", tagged=True, streaming=False, deps=_make_deps())]
     contents = [t[1] for t in tokens if t[0] == "content"]
     assert any("OK" in c for c in contents)
 
@@ -334,7 +342,7 @@ async def test_chat_non_streaming(mock_chat_stream):
     from src.core.orchestrator import chat_stream
 
     history = []
-    tokens = [t async for t in chat_stream("Hola", history, model="test-model", streaming=False)]
+    tokens = [t async for t in chat_stream("Hola", history, model="test-model", streaming=False, deps=_make_deps())]
     assert "Respuesta de prueba" in "".join(tokens)
     assert len(history) >= 2
     assert history[-1].role == "assistant"
