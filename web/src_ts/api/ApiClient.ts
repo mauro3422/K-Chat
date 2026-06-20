@@ -128,6 +128,10 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     return fetch(`${this.baseUrl}/api/logs/tail?source=all&lines=200`, { cache: 'no-store' });
   }
 
+  syncStatus(): Promise<Response> {
+    return fetch(`${this.baseUrl}/api/node/sync/status`, { cache: 'no-store' });
+  }
+
   sendClientLogs(entries: ClientLogEntry[]): Promise<Response> {
     return fetch(`${this.baseUrl}/api/logs/client`, {
       method: 'POST',

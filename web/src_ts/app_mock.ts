@@ -36,6 +36,7 @@ import { CSSInjector } from './core/infra/CSSInjector';
 import { AudioBus } from './core/notification/AudioBus';
 import { GridController } from './core/ui/GridController';
 import { CanvasOverlay } from './widgets/CanvasOverlay';
+import { LanStatusPanel } from './widgets/LanStatusPanel';
 import { getLogger } from './core/infra/LoggerFactory';
 import { SystemLogPanel } from './core/debug/SystemLogPanel';
 import { BrowserDomRenderer } from './rendering/DomRenderer';
@@ -101,8 +102,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const skillsUI = new SkillsUI(eventBus, renderMarkdownFn, window.fetch.bind(window));
   const systemLogPanel = new SystemLogPanel(apiClient);
+  const lanStatusPanel = new LanStatusPanel(apiClient, getLogger('lan-status'));
   skillsUI.init();
   systemLogPanel.init();
+  lanStatusPanel.init();
 
   window.addEventListener('kairos:ui-log', (event) => {
     const detail = (event as CustomEvent<{ label?: string; detail?: string }>).detail;
@@ -354,8 +357,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       systemLogPanel.refresh();
     }
   }, 400);
+
+  const lanStatusIntervalId = setInterval(() => {
+    void lanStatusPanel.refresh();
+  }, 5000);
+  void lanStatusPanel.refresh();
   window.addEventListener('beforeunload', () => {
     clearInterval(debugIntervalId);
+    clearInterval(lanStatusIntervalId);
     streamOrchestrator.abort();
     ndjsonClient.abort();
     sseClient.disconnect();

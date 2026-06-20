@@ -89,10 +89,12 @@ class TestPageEndpoints:
     async def test_sidebar_returns_html(self, mock_tpl, mock_get_repos):
         mock_repos = MagicMock()
         mock_repos.sessions = AsyncMock()
-        mock_repos.sessions.get_all.return_value = []
+        mock_repos.sessions.get_all = AsyncMock(return_value=[])
         mock_get_repos.return_value = mock_repos
-        request = MagicMock()
-        request.query_params.get.return_value = ""
+        request = SimpleNamespace(
+            query_params=SimpleNamespace(get=lambda key, default="": ""),
+            app=SimpleNamespace(state=SimpleNamespace(repos=mock_repos)),
+        )
         mock_tpl.return_value = HTMLResponse("<div></div>")
         from web.routers.pages import sidebar
         resp = await sidebar(request)

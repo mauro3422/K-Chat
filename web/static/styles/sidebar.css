@@ -73,6 +73,117 @@
   padding: 8px;
 }
 
+.lan-status-section {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+.lan-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.lan-status-header h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.lan-status-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.lan-status-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lan-status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lan-status-pill {
+  font-size: 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+}
+
+.lan-status-pill-ok {
+  color: var(--accent-success, #4caf50);
+  border-color: rgba(76, 175, 80, 0.35);
+}
+
+.lan-status-pill-warn {
+  color: var(--accent-yellow, #f5c542);
+  border-color: rgba(245, 197, 66, 0.35);
+}
+
+.lan-status-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.lan-status-peers {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+
+.lan-status-peer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+
+.lan-status-peer-ok {
+  border-color: rgba(76, 175, 80, 0.35);
+}
+
+.lan-status-peer-warn {
+  border-color: rgba(245, 197, 66, 0.35);
+}
+
+.lan-status-peer-label {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lan-status-peer-meta {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.lan-status-empty {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 .session-item {
   padding: 8px 12px;
   border-radius: 6px;
