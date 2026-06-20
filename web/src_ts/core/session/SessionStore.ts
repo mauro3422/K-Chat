@@ -51,6 +51,13 @@ export class SessionStore implements ISessionStore {
   get activeSessionId() { return this._activeSessionId; }
   get activeHistory() { return this.getHistory(this._activeSessionId); }
 
+  private _syncMasterLink(sessionId: string): void {
+    const link = document.getElementById('master-session-link') as HTMLAnchorElement | null;
+    if (!link) return;
+    link.href = `/go/${sessionId}`;
+    link.textContent = sessionId ? `Abrir sesión actual · ${sessionId.substring(0, 8)}` : 'Abrir sesión actual';
+  }
+
   async init(eventBus: IEventBus, initialSessionId?: string): Promise<void> {
     this._eventBus = eventBus;
     this._initialSessionId = initialSessionId || '';
@@ -75,6 +82,7 @@ export class SessionStore implements ISessionStore {
 
     // Load sessions from backend
     await this.loadSessions(this._initialSessionId);
+    this._syncMasterLink(this._activeSessionId);
 
     // Prefer initialSessionId from DOM (page refresh / direct URL) over data[0].id
     if (this._initialSessionId && this._sessions.some(s => s.id === this._initialSessionId)) {
@@ -181,9 +189,11 @@ export class SessionStore implements ISessionStore {
       if (needsUrlSync) {
         window.history.replaceState({ sessionId: id }, '', canonicalPath);
       }
+      this._syncMasterLink(id);
     } else if (needsUrlSync) {
       // Normalize direct /sessions/:id entries to the master URL.
       window.history.replaceState({ sessionId: id }, '', canonicalPath);
+      this._syncMasterLink(id);
     }
   }
 
@@ -233,11 +243,13 @@ export class SessionStore implements ISessionStore {
       }
       this._loaded = true;
       this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
+      this._syncMasterLink(this._activeSessionId);
     } catch (err) {
       this._logger.warn('loadSessions failed, using empty state', err);
       this._sessions = [];
       this._loaded = true;
       this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
+      this._syncMasterLink(this._activeSessionId);
     }
   }
 

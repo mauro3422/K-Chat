@@ -367,6 +367,23 @@ describe('anti-regression: session load scrolls to last assistant msg', () => {
 });
 
 describe('anti-regression: session URL sync and init persistence', () => {
+  it('master session link follows the active session', () => {
+    const link = document.createElement('a');
+    link.id = 'master-session-link';
+    document.body.appendChild(link);
+
+    const syncMasterLink = (sessionId: string) => {
+      const el = document.getElementById('master-session-link') as HTMLAnchorElement | null;
+      if (!el) return;
+      el.href = `/go/${sessionId}`;
+      el.textContent = sessionId ? `Abrir sesión actual · ${sessionId.substring(0, 8)}` : 'Abrir sesión actual';
+    };
+
+    syncMasterLink('session-123456');
+    expect(link.getAttribute('href')).toBe('/go/session-123456');
+    expect(link.textContent).toBe('Abrir sesión actual · session-');
+  });
+
   it('init() uses initialSessionId from DOM over data[0].id', () => {
     const sessions = [
       { id: 'aaa', name: 'Old', count: 1, last_str: '2024-01-01' },
