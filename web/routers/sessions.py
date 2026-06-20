@@ -5,6 +5,8 @@ from fastapi.responses import JSONResponse
 
 from src.api.repos import get_repos
 from src.gateway_log import log_event
+from src.coordination.lan_bridge import NodeLanBridge
+from web.services.session_directory import merge_session_entries, session_summary_from_row
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +15,78 @@ router = APIRouter()
 
 def _request_repos(request: Request | None):
     app = getattr(request, "app", None)
-    state = getattr(app, "__dict__", {}).get("state") if app is not None else None
+    state = getattr(app, "state", None) if app is not None else None
     repos = getattr(state, "repos", None) if state is not None else None
     return repos or get_repos()
+
+
+def _request_coordinator(request: Request | None):
+    if request is None:
+        return None
+    app = getattr(request, "app", None)
+    state = getattr(app, "state", None) if app is not None else None
+    return getattr(state, "node_coordinator", None) if state is not None else None
+
+
+def _request_bridge(request: Request | None):
+    if request is None:
+        return None
+    app = getattr(request, "app", None)
+    state = getattr(app, "state", None) if app is not None else None
+    bridge = getattr(state, "node_bridge", None) if state is not None else None
+    if bridge is not None:
+        return bridge
+    coordinator = _request_coordinator(request)
+    config = getattr(state, "config", None) if state is not None else None
+    if coordinator is None:
+        return None
+    bridge = NodeLanBridge(config=config, coordinator=coordinator)
+    if state is not None:
+        state.node_bridge = bridge
+    return bridge
+
+
+def _request_base_url(request: Request | None) -> str:
+    if request is None:
+        return ""
+    try:
+        return str(request.base_url).rstrip("/")
+    except Exception:
+        return ""
+
+
+async def _local_session_entries(request: Request | None, limit: int) -> list[dict]:
+    repos = _request_repos(request)
+    coordinator = _request_coordinator(request)
+    snapshot = coordinator.snapshot() if coordinator is not None else {
+        "node_id": "",
+        "role": "secondary",
+        "cluster_name": "kairos",
+    }
+    raw = await repos.sessions.get_all(limit)
+    entries = [
+        session_summary_from_row(
+            row,
+            node_id=snapshot.get("node_id", ""),
+            node_role=snapshot.get("role", "secondary"),
+            cluster_name=snapshot.get("cluster_name", "kairos"),
+            source_url=_request_base_url(request),
+            source_mode="local",
+        )
+        for row in raw
+    ]
+    return entries
+
+
+async def _federated_session_entries(request: Request | None, limit: int) -> list[dict]:
+    local = await _local_session_entries(request, limit)
+    bridge = _request_bridge(request)
+    if bridge is None or not bridge.peer_urls:
+        return local
+    remote_payload = await bridge.request_session_directory(limit=limit)
+    remote_sessions = remote_payload.get("sessions", []) if isinstance(remote_payload, dict) else []
+    merged = merge_session_entries(local, [s for s in remote_sessions if isinstance(s, dict)])
+    return merged
 
 
 @router.post("/sessions/{session_id}/rename")
@@ -41,21 +112,9 @@ async def create_session(*, request: Request = None) -> JSONResponse:
 
 
 @router.get("/sessions")
-async def list_sessions(*, request: Request = None) -> JSONResponse:
+async def list_sessions(limit: int = 50, *, request: Request = None) -> JSONResponse:
     """JSON endpoint for sessions list (used by TS prototype)."""
-    repos = _request_repos(request)
-    raw = await repos.sessions.get_all(50)
-    sessions = []
-    for s in raw:
-        sid, first, last, count, name = s[0], s[1], s[2], s[3], s[4]
-        is_favorite = bool(s[6]) if len(s) > 6 else False
-        sessions.append({
-            "id": sid,
-            "name": name or sid[:8],
-            "count": count,
-            "last_str": str(last)[:10] if last else "",
-            "is_favorite": is_favorite,
-        })
+    sessions = await _federated_session_entries(request, limit)
     return JSONResponse(sessions)
 
 

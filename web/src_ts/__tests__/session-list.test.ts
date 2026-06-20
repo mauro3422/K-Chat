@@ -24,9 +24,9 @@ describe('SessionList DOM contract', () => {
   });
 
   const sessions = [
-    { id: 'sess_001', name: 'Chat about AI', count: 5, last_str: '2026-06-16T10:00:00Z' },
-    { id: 'tele_abc', name: 'Telegram chat', count: 3, last_str: '2026-06-16T09:00:00Z' },
-    { id: 'sess_003', name: 'Research', count: 12, last_str: '2026-06-15T18:00:00Z' },
+    { id: 'sess_001', name: 'Chat about AI', count: 5, last_str: '2026-06-16T10:00:00Z', node_id: 'MAUROPRIME', node_role: 'primary' },
+    { id: 'tele_abc', name: 'Telegram chat', count: 3, last_str: '2026-06-16T09:00:00Z', node_id: 'MAUROPRIME', node_role: 'primary' },
+    { id: 'sess_003', name: 'Research', count: 12, last_str: '2026-06-15T18:00:00Z', node_id: 'archlinux', node_role: 'secondary' },
   ];
 
   it('renders session items', () => {
@@ -61,6 +61,14 @@ describe('SessionList DOM contract', () => {
     const item = sidebarEl.querySelector('.session-item[data-sid="sess_001"]');
     const label = item!.querySelector('.session-label');
     expect(label!.textContent).toBe('Chat about AI');
+  });
+
+  it('renders node origin badge when available', () => {
+    sessionList.renderSessions(sessions, 'sess_001');
+    const item = sidebarEl.querySelector('.session-item[data-sid="sess_003"]');
+    const origin = item!.querySelector('.session-origin');
+    expect(origin).not.toBeNull();
+    expect(origin!.textContent).toContain('archlinux');
   });
 
   it('has session-meta with message count', () => {

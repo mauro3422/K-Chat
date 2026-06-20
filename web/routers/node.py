@@ -6,11 +6,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from src.api.repos import get_repos
 from src.gateway_log import log_event
 from src.coordination.leader_lease import get_leader_lease_manager
 from src.coordination.memory_write_queue import apply_pending_memory_writes, get_memory_write_queue
 from src.coordination.node_state import NodeCoordinator, get_node_coordinator
 from src.coordination.lan_bridge import NodeLanBridge
+from web.services.session_directory import session_summary_from_row
 from web.routers._memory_snapshot import build_memory_snapshot, relay_memory_event
 from web.services.event_bus import IEventBus, get_event_bus
 from web.services.failover_state import get_failover_state
@@ -20,6 +22,13 @@ router = APIRouter(prefix="/api/node")
 
 def _get_coordinator(request: Request) -> NodeCoordinator:
     return getattr(request.app.state, "node_coordinator", None) or get_node_coordinator(getattr(request.app.state, "config", None))
+
+
+def _request_repos(request: Request):
+    app = getattr(request, "app", None)
+    state = getattr(app, "state", None) if app is not None else None
+    repos = getattr(state, "repos", None) if state is not None else None
+    return repos or get_repos()
 
 
 def _get_event_bus(request: Request) -> IEventBus:
@@ -55,6 +64,13 @@ def _get_failover_state(request: Request):
     return getattr(request.app.state, "failover_state", None) or get_failover_state()
 
 
+def _request_base_url(request: Request) -> str:
+    try:
+        return str(request.base_url).rstrip("/")
+    except Exception:
+        return ""
+
+
 class NodeHeartbeatPayload(BaseModel):
     node_id: str = Field(default="")
     role: str = Field(default="secondary")
@@ -76,6 +92,32 @@ class NodeMemoryWritePayload(BaseModel):
     key: str = Field(default="")
     value: str = Field(default="")
     source: dict = Field(default_factory=dict)
+
+
+@router.get("/sessions")
+async def node_sessions(request: Request, limit: int = 50) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    repos = _request_repos(request)
+    raw = await repos.sessions.get_all(limit)
+    snapshot = coordinator.snapshot()
+    sessions = [
+        session_summary_from_row(
+            row,
+            node_id=snapshot.get("node_id", coordinator.node_id),
+            node_role=snapshot.get("role", coordinator.role),
+            cluster_name=snapshot.get("cluster_name", coordinator.cluster_name),
+            source_url=_request_base_url(request),
+            source_mode="local",
+        )
+        for row in raw
+    ]
+    return JSONResponse({
+        "ok": True,
+        "node": snapshot,
+        "sessions": sessions,
+        "returned": len(sessions),
+        "total": len(sessions),
+    })
 
 
 @router.get("/state")

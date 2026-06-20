@@ -186,6 +186,41 @@ class NodeLanBridge:
                     last_error = str(exc)
         return {"ok": False, "peer": None, "error": locals().get("last_error", "snapshot request failed")}
 
+    async def request_session_directory(self, *, limit: int = 50) -> dict[str, Any]:
+        """Ask peers for their session directory snapshots."""
+        if not self._peer_urls:
+            return {"ok": False, "peers": [], "sessions": [], "errors": []}
+
+        result: dict[str, Any] = {"ok": True, "peers": self.peer_urls, "sessions": [], "errors": []}
+        async with self._client_factory() as client:
+            for peer in self._peer_urls:
+                try:
+                    response = await self._request_with_retry(client, "get", f"{peer}/api/node/sessions", params={"limit": limit})
+                    data = response.json() if response.content else {}
+                    if not isinstance(data, dict):
+                        result["errors"].append({"peer": peer, "error": "invalid response"})
+                        continue
+                    sessions = data.get("sessions", [])
+                    if not isinstance(sessions, list):
+                        result["errors"].append({"peer": peer, "error": "invalid sessions payload"})
+                        continue
+                    node = data.get("node", {})
+                    if not isinstance(node, dict):
+                        node = {}
+                    for session in sessions:
+                        if not isinstance(session, dict):
+                            continue
+                        enriched = dict(session)
+                        enriched.setdefault("source_mode", "peer")
+                        enriched.setdefault("source_url", peer)
+                        enriched.setdefault("node_id", str(node.get("node_id") or session.get("node_id") or peer).strip() or peer)
+                        enriched.setdefault("node_role", str(node.get("role") or session.get("node_role") or "secondary").strip() or "secondary")
+                        enriched.setdefault("cluster_name", str(node.get("cluster_name") or session.get("cluster_name") or "kairos").strip() or "kairos")
+                        result["sessions"].append(enriched)
+                except Exception as exc:
+                    result["errors"].append({"peer": peer, "error": str(exc)})
+        return result
+
     async def replay_pending_memory_writes(self) -> list[dict[str, str]]:
         """Replay queued writes against the first reachable primary peer."""
         queue = get_memory_write_queue(self._config)

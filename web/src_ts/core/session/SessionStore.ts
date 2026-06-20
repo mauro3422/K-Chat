@@ -4,8 +4,21 @@ import { ApiClient } from '../../api/ApiClient';
 import { getLogger } from '../infra/LoggerFactory';
 import { ILogger } from '../infra/Logger';
 
+export interface SessionSummary {
+  id: string;
+  name: string;
+  count: number;
+  last_str: string;
+  node_id?: string;
+  node_role?: string;
+  cluster_name?: string;
+  source_url?: string;
+  source_mode?: string;
+  is_favorite?: boolean;
+}
+
 export interface ISessionStore {
-  readonly sessions: Array<{ id: string; name: string; count: number; last_str: string }>;
+  readonly sessions: SessionSummary[];
   readonly activeSessionId: string;
   readonly activeHistory: MessageData[];
 
@@ -19,7 +32,7 @@ export interface ISessionStore {
 }
 
 export class SessionStore implements ISessionStore {
-  private _sessions: Array<{ id: string; name: string; count: number; last_str: string }> = [];
+  private _sessions: SessionSummary[] = [];
   private _histories: Record<string, MessageData[]> = {};
   private _activeSessionId = '';
   private _initialSessionId = '';
@@ -183,7 +196,7 @@ export class SessionStore implements ISessionStore {
   private async loadSessions(): Promise<void> {
     try {
       const resp = await this._apiClient.getSessions();
-      const data = await resp.json() as Array<{ id: string; name: string; count: number; last_str: string }>;
+      const data = await resp.json() as SessionSummary[];
       this._sessions = data;
       this._logger.info('loadSessions', `count=${data.length}`);
       if (data.length > 0) {

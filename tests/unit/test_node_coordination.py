@@ -114,6 +114,35 @@ async def test_node_router_receives_event_and_publishes_bus():
 
 
 @pytest.mark.anyio
+async def test_node_router_exposes_local_session_directory():
+    from web.routers.node import node_sessions
+
+    fake_repos = MagicMock()
+    fake_repos.sessions = AsyncMock()
+    fake_repos.sessions.get_all.return_value = [
+        ("sess-local", "2026-06-19T09:00:00", "2026-06-19T10:00:00", 2, "Local Session", None, 0),
+    ]
+
+    req = MagicMock()
+    req.base_url = "http://127.0.0.1:8000/"
+    req.app.state.repos = fake_repos
+    req.app.state.node_coordinator = MagicMock(
+        snapshot=lambda: {"node_id": "node-a", "role": "primary", "cluster_name": "kairos"},
+        node_id="node-a",
+        role="primary",
+        cluster_name="kairos",
+    )
+
+    with patch("web.routers.node._request_repos", return_value=fake_repos):
+        response = await node_sessions(req, limit=50)
+
+    payload = response.body.decode()
+    assert response.status_code == 200
+    assert "sess-local" in payload
+    assert "node-a" in payload
+
+
+@pytest.mark.anyio
 async def test_node_event_marks_memory_revision_on_memory_updated_via_lan():
     from fastapi.testclient import TestClient
     from web.app_factory import create_app

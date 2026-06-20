@@ -13,12 +13,17 @@
   <div class="session-main">
     <button class="act-favorite" data-sid="{{ s.sid }}" data-favorite="{{ '1' if s.is_favorite else '0' }}" title="Favorito">{{ '★' if s.is_favorite else '☆' }}</button>
     <div class="session-preview">
-      {% if is_telegram %}
+  {% if is_telegram %}
       <svg class="session-icon session-icon-tg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-label="Telegram"><path d="M9.8 16.2l-.4 3.2c.2 0 .4-.1.5-.2l2.2-2.1 4.6 3.4c.8.5 1.4.2 1.6-.7l2.8-13.5"/><path d="M1 11.5l5.8 2.2 2.7 8.9"/><path d="M9.8 16.2l9.5-5.9"/></svg>
       {% else %}
       <svg class="session-icon session-icon-chat" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-label="Chat"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.2L4 17.2V4h16v12z"/></svg>
       {% endif %}
       <span class="session-label">{{ label }}</span>
+      {% if s.node_id %}
+      <span class="session-origin" title="Nodo de origen: {{ s.node_id }}{% if s.node_role %} · {{ s.node_role }}{% endif %}">
+        {{ s.node_id }}{% if s.node_role %} · {{ s.node_role }}{% endif %}
+      </span>
+      {% endif %}
     </div>
     <div class="session-actions">
       <button class="act-rename" title="Renombrar">

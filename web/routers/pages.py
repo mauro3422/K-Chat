@@ -13,6 +13,7 @@ from src.api.llm_client import (
     get_rate_limit_store,
 )
 from src.api.repos import get_repos
+from web.routers.sessions import _federated_session_entries
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
 from web.services.protocols import MessageRendererProtocol
@@ -29,7 +30,7 @@ _DIST_DIR = _STATIC_DIR / "dist" / "assets"
 
 def _request_repos(request: Request):
     app = getattr(request, "app", None)
-    state = getattr(app, "__dict__", {}).get("state") if app is not None else None
+    state = getattr(app, "state", None) if app is not None else None
     repos = getattr(state, "repos", None) if state is not None else None
     return repos or get_repos()
 
@@ -193,20 +194,19 @@ def session_page(request: Request, session_id: str) -> HTMLResponse:
 
 @router.get("/sidebar", response_class=HTMLResponse)
 async def sidebar(request: Request) -> HTMLResponse:
-    repos = _request_repos(request)
-    raw = await repos.sessions.get_all(50)
+    raw_sessions = await _federated_session_entries(request, 50)
     current = request.query_params.get("current", "")
     sessions = []
-    for s in raw:
-        sid, first, last, count, name = s[0], s[1], s[2], s[3], s[4]
-        is_favorite = bool(s[6]) if len(s) > 6 else False
+    for s in raw_sessions:
         sessions.append({
-            "sid": sid,
-            "first_str": str(first),
-            "last_str": str(last),
-            "count": count,
-            "name": name,
-            "is_favorite": is_favorite,
+            "sid": s.get("id", ""),
+            "first_str": s.get("first_str", ""),
+            "last_str": s.get("last_str", ""),
+            "count": s.get("count", 0),
+            "name": s.get("name", ""),
+            "is_favorite": s.get("is_favorite", False),
+            "node_id": s.get("node_id", ""),
+            "node_role": s.get("node_role", ""),
         })
     resp = templates.TemplateResponse(request, "sidebar.html", {"sessions": sessions, "current": current})
     resp.headers.update(_NOCACHE_HEADERS)
