@@ -12,6 +12,14 @@ SERVICE_SCOPE="${KAIROS_SERVICE_SCOPE:-system}"
 PORT="${PORT:-8000}"
 ACTION="${1:-help}"
 health() { curl --fail --silent --show-error "http://127.0.0.1:${PORT}/health"; printf '\n'; }
+wait_for_health() {
+  for _ in {1..30}; do
+    if health >/dev/null 2>&1; then health; return 0; fi
+    sleep 1
+  done
+  service_control status --no-pager
+  return 1
+}
 service_control() {
   if [[ "$SERVICE_SCOPE" == "user" ]]; then
     systemctl --user "$@" "$SERVICE"
@@ -33,14 +41,9 @@ case "$ACTION" in
     npm ci
     npm run build
     service_control restart
-    for _ in {1..30}; do
-      if health >/dev/null 2>&1; then health; exit 0; fi
-      sleep 1
-    done
-    service_control status --no-pager
-    exit 1
+    wait_for_health
     ;;
-  restart) service_control restart; health ;;
+  restart) service_control restart; wait_for_health ;;
   status) service_control status --no-pager ;;
   logs)
     if [[ "$SERVICE_SCOPE" == "user" ]]; then journalctl --user -u "$SERVICE" -n "${2:-150}" --no-pager
