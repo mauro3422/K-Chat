@@ -2,7 +2,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from src.api.llm_client import (
@@ -182,7 +182,14 @@ def home(request: Request, new: bool = False) -> HTMLResponse:
 
 
 @router.get("/sessions/{session_id}", response_class=HTMLResponse)
-def session_page(request: Request, session_id: str) -> HTMLResponse:
+async def session_page(request: Request, session_id: str) -> Response:
+    target = await _resolve_session_entry(request, session_id)
+    if target:
+        source_mode = str(target.get("source_mode", "local") or "local")
+        source_url = str(target.get("source_url", "") or "").rstrip("/")
+        current_base = str(request.base_url).rstrip("/")
+        if source_mode == "peer" and source_url and source_url != current_base:
+            return RedirectResponse(url=f"{source_url}/sessions/{session_id}", status_code=307)
     resp = templates.TemplateResponse(request, "chat_ts.html", {
         "session_id": session_id,
         "model": FALLBACK_MODEL,
@@ -219,6 +226,36 @@ async def diagnostics(request: Request) -> HTMLResponse:
     snapshot = await build_diagnostics_snapshot(request, key_pattern=request.query_params.get("key_pattern", ""))
     resp = templates.TemplateResponse(request, "diagnostics.html", {
         "snapshot": snapshot,
+    })
+    resp.headers.update(_NOCACHE_HEADERS)
+    return resp
+
+
+async def _resolve_session_entry(request: Request, session_id: str) -> dict | None:
+    try:
+        sessions = await _federated_session_entries(request, 200)
+    except Exception:
+        return None
+    for session in sessions:
+        if session.get("id") == session_id:
+            return session
+    return None
+
+
+@router.get("/go/{session_id}", response_class=HTMLResponse)
+async def go_session(request: Request, session_id: str) -> Response:
+    target = await _resolve_session_entry(request, session_id)
+    if target:
+        source_mode = str(target.get("source_mode", "local") or "local")
+        source_url = str(target.get("source_url", "") or "").rstrip("/")
+        current_base = str(request.base_url).rstrip("/")
+        if source_mode == "peer" and source_url and source_url != current_base:
+            return RedirectResponse(url=f"{source_url}/go/{session_id}", status_code=307)
+    resp = templates.TemplateResponse(request, "chat_ts.html", {
+        "session_id": session_id,
+        "model": FALLBACK_MODEL,
+        "models": get_available_models(request=request),
+        "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp

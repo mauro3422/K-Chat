@@ -400,8 +400,8 @@ describe('anti-regression: session URL sync and init persistence', () => {
 
     try {
       const id = 'test-session-123';
-      window.history.replaceState({ sessionId: id }, '', `/sessions/${id}`);
-      expect(replacedUrl).toBe('/sessions/test-session-123');
+      window.history.replaceState({ sessionId: id }, '', `/go/${id}`);
+      expect(replacedUrl).toBe('/go/test-session-123');
     } finally {
       window.history.replaceState = origReplaceState;
     }
@@ -416,8 +416,8 @@ describe('anti-regression: session URL sync and init persistence', () => {
 
     try {
       const id = 'new-session-456';
-      window.history.pushState({ sessionId: id }, '', `/sessions/${id}`);
-      expect(pushedUrl).toBe('/sessions/new-session-456');
+      window.history.pushState({ sessionId: id }, '', `/go/${id}`);
+      expect(pushedUrl).toBe('/go/new-session-456');
     } finally {
       window.history.pushState = origPushState;
     }
@@ -442,9 +442,9 @@ describe('anti-regression: session URL sync and init persistence', () => {
         newActive = remaining[0].id;
       }
       if (newActive) {
-        window.history.replaceState({ sessionId: newActive }, '', `/sessions/${newActive}`);
+        window.history.replaceState({ sessionId: newActive }, '', `/go/${newActive}`);
       }
-      expect(replacedUrl).toBe('/sessions/survivor');
+      expect(replacedUrl).toBe('/go/survivor');
     } finally {
       window.history.replaceState = origReplaceState;
     }

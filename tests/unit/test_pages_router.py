@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 
 from web.routers.pages import router, get_available_model_ids
 from web.routers.pages import get_available_models
@@ -20,6 +20,7 @@ async def test_router_has_routes():
     assert len(router.routes) >= 1
     paths = [r.path for r in router.routes]
     assert "/" in paths
+    assert "/go/{session_id}" in paths
     assert "/sessions/{session_id}" in paths
     assert "/sidebar" in paths
     assert "/sessions/{session_id}/messages" in paths
@@ -72,16 +73,48 @@ class TestPageEndpoints:
         resp = home(request)
         assert isinstance(resp, HTMLResponse)
 
+    @patch("web.routers.pages._resolve_session_entry", new_callable=AsyncMock)
     @patch("web.routers.pages.get_available_model_ids", return_value=["m1"])
     @patch("web.routers.pages.templates.TemplateResponse")
     @patch("web.routers.pages.get_available_models", return_value={"go_standard": [{"id": "m1", "label": "m1", "tier": "go_standard"}]})
     @pytest.mark.anyio
-    async def test_session_page_returns_html(self, mock_models_full, mock_tpl, mock_models):
+    async def test_session_page_returns_html(self, mock_models_full, mock_tpl, mock_models, mock_resolve):
         request = MagicMock()
+        mock_resolve.return_value = None
         mock_tpl.return_value = HTMLResponse("<html></html>")
         from web.routers.pages import session_page
-        resp = session_page(request, "sid-1")
+        resp = await session_page(request, "sid-1")
         assert isinstance(resp, HTMLResponse)
+
+    @patch("web.routers.pages._resolve_session_entry", new_callable=AsyncMock)
+    @pytest.mark.anyio
+    async def test_session_page_redirects_remote_peer(self, mock_resolve):
+        request = MagicMock()
+        request.base_url = "http://127.0.0.1:8000/"
+        mock_resolve.return_value = {
+            "id": "sid-remote",
+            "source_mode": "peer",
+            "source_url": "http://192.168.1.40:8000",
+        }
+        from web.routers.pages import session_page
+        resp = await session_page(request, "sid-remote")
+        assert isinstance(resp, RedirectResponse)
+        assert resp.headers["location"] == "http://192.168.1.40:8000/sessions/sid-remote"
+
+    @patch("web.routers.pages._resolve_session_entry", new_callable=AsyncMock)
+    @pytest.mark.anyio
+    async def test_go_session_redirects_remote_peer(self, mock_resolve):
+        request = MagicMock()
+        request.base_url = "http://127.0.0.1:8000/"
+        mock_resolve.return_value = {
+            "id": "sid-remote",
+            "source_mode": "peer",
+            "source_url": "http://192.168.1.40:8000",
+        }
+        from web.routers.pages import go_session
+        resp = await go_session(request, "sid-remote")
+        assert isinstance(resp, RedirectResponse)
+        assert resp.headers["location"] == "http://192.168.1.40:8000/go/sid-remote"
 
     @patch("web.routers.pages.get_repos")
     @patch("web.routers.pages.templates.TemplateResponse")

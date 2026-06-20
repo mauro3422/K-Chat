@@ -38,7 +38,7 @@ async def test_home_page(mock_tpl, _mock_models):
 async def test_session_page(mock_tpl, _mock_models):
     mock_tpl.return_value = HTMLResponse("<html></html>")
     from web.routers.pages import session_page
-    resp = session_page(_request("/sessions/test-session-123"), "test-session-123")
+    resp = await session_page(_request("/sessions/test-session-123"), "test-session-123")
     assert isinstance(resp, HTMLResponse)
 
 

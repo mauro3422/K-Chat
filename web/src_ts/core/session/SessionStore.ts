@@ -74,13 +74,11 @@ export class SessionStore implements ISessionStore {
     this._boundListeners.push({ event: 'session:delete', cb: deleteCb as EventCallback<any> });
 
     // Load sessions from backend
-    await this.loadSessions();
+    await this.loadSessions(this._initialSessionId);
 
     // Prefer initialSessionId from DOM (page refresh / direct URL) over data[0].id
     if (this._initialSessionId && this._sessions.some(s => s.id === this._initialSessionId)) {
-      this._activeSessionId = this._initialSessionId;
-      await this.loadHistory(this._initialSessionId);
-      this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
+      await this.selectSession(this._initialSessionId);
     }
   }
 
@@ -105,7 +103,7 @@ export class SessionStore implements ISessionStore {
       this._histories[id] = [];
       this._activeSessionId = id;
       // Push new history entry so back button works after creating a session
-      window.history.pushState({ sessionId: id }, '', `/sessions/${id}`);
+      window.history.pushState({ sessionId: id }, '', `/go/${id}`);
       this._emit('session:created', { id });
       this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
       this._emit('history:updated', { sessionId: id, history: [] });
@@ -131,7 +129,7 @@ export class SessionStore implements ISessionStore {
     if (this._activeSessionId === id) {
       this._activeSessionId = this._sessions.length > 0 ? this._sessions[0].id : '';
       if (this._activeSessionId) {
-        window.history.replaceState({ sessionId: this._activeSessionId }, '', `/sessions/${this._activeSessionId}`);
+        window.history.replaceState({ sessionId: this._activeSessionId }, '', `/go/${this._activeSessionId}`);
       } else {
         window.history.replaceState({}, '', '/');
       }
@@ -161,13 +159,31 @@ export class SessionStore implements ISessionStore {
   }
 
   async selectSession(id: string): Promise<void> {
-    if (this._activeSessionId !== id && this._sessions.some(s => s.id === id)) {
+    const session = this._sessions.find(s => s.id === id);
+    if (!session) return;
+
+    const sourceMode = session.source_mode || 'local';
+    const sourceUrl = (session.source_url || '').replace(/\/+$/, '');
+    const currentOrigin = window.location.origin.replace(/\/+$/, '');
+    if (sourceMode === 'peer' && sourceUrl && sourceUrl !== currentOrigin) {
+      window.location.assign(`${sourceUrl}/go/${id}`);
+      return;
+    }
+
+    const canonicalPath = `/go/${id}`;
+    const needsUrlSync = window.location.pathname !== canonicalPath;
+
+    if (this._activeSessionId !== id) {
       this._activeSessionId = id;
-      // Sync URL to session path (without triggering navigation)
-      window.history.replaceState({ sessionId: id }, '', `/sessions/${id}`);
       // Load history for selected session
       await this.loadHistory(id);
       this._emit('session:selected', { id });
+      if (needsUrlSync) {
+        window.history.replaceState({ sessionId: id }, '', canonicalPath);
+      }
+    } else if (needsUrlSync) {
+      // Normalize direct /sessions/:id entries to the master URL.
+      window.history.replaceState({ sessionId: id }, '', canonicalPath);
     }
   }
 
@@ -193,15 +209,27 @@ export class SessionStore implements ISessionStore {
 
   // ── API calls ──
 
-  private async loadSessions(): Promise<void> {
+  private async loadSessions(preferredSessionId: string = ''): Promise<void> {
     try {
       const resp = await this._apiClient.getSessions();
       const data = await resp.json() as SessionSummary[];
       this._sessions = data;
       this._logger.info('loadSessions', `count=${data.length}`);
-      if (data.length > 0) {
+      const preferred = preferredSessionId && data.some(s => s.id === preferredSessionId)
+        ? preferredSessionId
+        : '';
+      if (preferred) {
+        this._activeSessionId = preferred;
+        const selected = this._sessions.find(s => s.id === preferred);
+        if (!selected || (selected.source_mode || 'local') !== 'peer') {
+          await this.loadHistory(this._activeSessionId);
+        }
+      } else if (data.length > 0) {
         this._activeSessionId = data[0].id;
-        await this.loadHistory(this._activeSessionId);
+        const selected = this._sessions[0];
+        if (!selected || (selected.source_mode || 'local') !== 'peer') {
+          await this.loadHistory(this._activeSessionId);
+        }
       }
       this._loaded = true;
       this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
