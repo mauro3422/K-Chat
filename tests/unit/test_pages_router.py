@@ -109,6 +109,21 @@ class TestPageEndpoints:
         assert isinstance(resp, dict)
         assert "messages" in resp
 
+    @patch("web.routers.pages.build_diagnostics_snapshot", new_callable=AsyncMock)
+    @patch("web.routers.pages.templates.TemplateResponse")
+    @pytest.mark.anyio
+    async def test_diagnostics_returns_html(self, mock_tpl, mock_snapshot):
+        request = SimpleNamespace(
+            query_params=SimpleNamespace(get=lambda key, default="": ""),
+            app=SimpleNamespace(state=SimpleNamespace()),
+        )
+        mock_snapshot.return_value = {"node": {}, "bridge": {}, "cluster": {}, "memory": {}, "health": {}}
+        mock_tpl.return_value = HTMLResponse("<html></html>")
+        from web.routers.pages import diagnostics
+        resp = await diagnostics(request)
+        assert isinstance(resp, HTMLResponse)
+        mock_snapshot.assert_awaited_once()
+
     @pytest.mark.anyio
     def test_get_available_models_uses_request_state(self):
         class FakeRegistry:

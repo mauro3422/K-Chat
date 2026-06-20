@@ -13,6 +13,7 @@ from src.api.llm_client import (
     get_rate_limit_store,
 )
 from src.api.repos import get_repos
+from web.services.diagnostics_snapshot import build_diagnostics_snapshot
 from web.routers.sessions import _federated_session_entries
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
@@ -209,6 +210,16 @@ async def sidebar(request: Request) -> HTMLResponse:
             "node_role": s.get("node_role", ""),
         })
     resp = templates.TemplateResponse(request, "sidebar.html", {"sessions": sessions, "current": current})
+    resp.headers.update(_NOCACHE_HEADERS)
+    return resp
+
+
+@router.get("/diagnostics", response_class=HTMLResponse)
+async def diagnostics(request: Request) -> HTMLResponse:
+    snapshot = await build_diagnostics_snapshot(request, key_pattern=request.query_params.get("key_pattern", ""))
+    resp = templates.TemplateResponse(request, "diagnostics.html", {
+        "snapshot": snapshot,
+    })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp
 
