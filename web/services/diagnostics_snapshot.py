@@ -71,6 +71,7 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
             "aligned_peers": 0,
             "stale_peers": 0,
             "stale_details": [],
+            "peer_diffs": [],
         },
     }
     if bridge is not None and bridge.peer_urls:
@@ -81,6 +82,7 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
                 or (((memory.get("sync") or {}).get("last_memory_revision")) or 0.0)
             )
             stale_details: list[dict[str, Any]] = []
+            peer_diffs: list[dict[str, Any]] = []
             aligned = 0
             stale = 0
             peers = [snapshot for snapshot in memory_result.get("snapshots", []) if isinstance(snapshot, dict)]
@@ -104,6 +106,17 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
                         reasons.append("not_fresh")
                     if peer_revision < local_revision:
                         reasons.append("revision_behind")
+                    peer_diffs.append({
+                        "peer_url": peer.get("peer_url", ""),
+                        "local_revision": local_revision,
+                        "peer_revision": peer_revision,
+                        "revision_delta": max(0.0, local_revision - peer_revision),
+                        "queue_size": peer_queue,
+                        "is_fresh": peer_fresh,
+                        "stale_reason": "+".join(reasons) if reasons else "unknown",
+                        "compare_severity": (peer.get("compare_summary", {}) or {}).get("severity", "clean"),
+                        "compare_actions": list((peer.get("compare_summary", {}) or {}).get("actions", []) or []),
+                    })
                     stale_details.append({
                         "peer_url": peer.get("peer_url", ""),
                         "revision_delta": max(0.0, local_revision - peer_revision),
@@ -120,6 +133,7 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
                     "aligned_peers": aligned,
                     "stale_peers": stale,
                     "stale_details": stale_details,
+                    "peer_diffs": peer_diffs,
                 },
             }
         except Exception:

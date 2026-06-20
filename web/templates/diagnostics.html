@@ -188,6 +188,24 @@
           </tbody>
         </table>
         {% endif %}
+
+        {% if peer_memory_summary.peer_diffs %}
+        <table class="diag-table" style="margin-top:12px">
+          <thead><tr><th>Peer</th><th>Local rev</th><th>Peer rev</th><th>Delta</th><th>Compare</th><th>Acciones</th></tr></thead>
+          <tbody>
+          {% for diff in peer_memory_summary.peer_diffs %}
+            <tr>
+              <td>{{ diff.peer_url or 'peer' }}</td>
+              <td>{{ diff.local_revision or 0 }}</td>
+              <td>{{ diff.peer_revision or 0 }}</td>
+              <td>{{ diff.revision_delta or 0 }}</td>
+              <td>{{ diff.compare_severity or 'clean' }}</td>
+              <td>{{ (diff.compare_actions or [])|join(' · ') or 'sin acciones' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
       </article>
     </section>
   </div>

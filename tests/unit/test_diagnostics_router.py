@@ -71,6 +71,7 @@ async def test_api_diagnostics_returns_unified_snapshot():
         assert body["peer_memory"]["summary"]["peer_count"] == 1
         assert body["peer_memory"]["summary"]["stale_peers"] == 1
         assert body["peer_memory"]["summary"]["stale_details"][0]["stale_reason"] == "queue_pending+not_fresh"
+        assert body["peer_memory"]["summary"]["peer_diffs"][0]["compare_severity"] == "medium"
         assert "memory" in body
         assert "health" in body
 
