@@ -74,6 +74,43 @@ describe('SessionList DOM contract', () => {
     expect(origin!.getAttribute('title')).toContain('archlinux');
   });
 
+  it.each([
+    ['windows', 'primary'],
+    ['windows', 'secondary'],
+    ['linux', 'primary'],
+    ['linux', 'secondary'],
+  ])('renders the correct DOM icons for %s %s', (platform, role) => {
+    sessionList.renderSessions([{
+      id: `session-${platform}-${role}`,
+      name: 'Node session',
+      node_id: `node-${platform}`,
+      node_platform: platform,
+      node_role: role,
+    }], '');
+
+    const origin = sidebarEl.querySelector('.session-origin')!;
+    const icons = Array.from(origin.querySelectorAll('img'));
+    expect(icons).toHaveLength(2);
+    expect(icons[0].getAttribute('src')).toBe(`/static/icons/node-${platform}.svg`);
+    expect(icons[1].getAttribute('src')).toBe(`/static/icons/node-${role}.svg`);
+    expect(origin.getAttribute('title')).toContain(platform);
+    expect(origin.getAttribute('title')).toContain(role);
+  });
+
+  it('omits an unknown platform icon and keeps the safe secondary role icon', () => {
+    sessionList.renderSessions([{
+      id: 'session-unknown-node',
+      name: 'Unknown node',
+      node_id: 'mystery-node',
+      node_platform: 'plan9',
+      node_role: 'unexpected',
+    }], '');
+
+    const icons = sidebarEl.querySelectorAll('.session-origin img');
+    expect(icons).toHaveLength(1);
+    expect(icons[0].getAttribute('src')).toBe('/static/icons/node-secondary.svg');
+  });
+
   it('has session-meta with message count', () => {
     sessionList.renderSessions(sessions, 'sess_001');
     const item = sidebarEl.querySelector('.session-item[data-sid="sess_001"]');

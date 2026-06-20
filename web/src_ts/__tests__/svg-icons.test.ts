@@ -164,4 +164,31 @@ describe('icon type-specific checks', () => {
       expect(svg).toContain('stroke-width');
     });
   });
+
+  it('node icon family is complete and uses a shared 24x24 canvas', () => {
+    const nodeFiles = ['node-linux.svg', 'node-windows.svg', 'node-primary.svg', 'node-secondary.svg'];
+    nodeFiles.forEach(f => {
+      const svg = contents[f];
+      expect(svg, `${f} must exist`).toBeTruthy();
+      expect(svg).toContain('viewBox="0 0 24 24"');
+      expect(svg).toContain('width="24"');
+      expect(svg).toContain('height="24"');
+      expect(svg).toMatch(/role="img"/);
+      expect(svg).toMatch(/aria-label="[^"]+"/);
+    });
+  });
+
+  it('node platform icons keep their recognizable visual contract', () => {
+    expect(contents['node-linux.svg']).toContain('#F6B73C');
+    expect(contents['node-linux.svg']).toContain('<ellipse');
+    expect(contents['node-windows.svg']).toContain('#38A9F0');
+    expect(contents['node-windows.svg'].match(/<path/g)?.length).toBe(1);
+  });
+
+  it('node role icons remain visually distinct', () => {
+    expect(contents['node-primary.svg']).toContain('#2EA043');
+    expect(contents['node-primary.svg']).toContain('<path');
+    expect(contents['node-secondary.svg']).toContain('#66707B');
+    expect(contents['node-secondary.svg'].match(/<circle/g)?.length).toBe(3);
+  });
 });
