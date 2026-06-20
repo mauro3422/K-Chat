@@ -100,6 +100,7 @@ async def test_asr_websocket_stream_roundtrip():
     assert fake_ws.sent_json == [{"type": "transcript", "success": True, "transcript": "hola"}]
     mock_telemetry.assert_called_once()
     args, kwargs = mock_telemetry.call_args
-    assert args[0] == "sess-1"
-    assert args[1]["transport"] == "ws"
-    assert args[1]["success"] is True
+    assert args[0] is fake_ws
+    assert args[1] == "sess-1"
+    assert args[2]["transport"] == "ws"
+    assert args[2]["success"] is True

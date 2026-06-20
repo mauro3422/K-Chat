@@ -59,6 +59,7 @@ async def test_stream_contract_uses_ndjson_t_and_d(mock_chat_stream, mock_save):
         [{"role": "system", "content": "test"}],
         "test-model",
         _bg_tasks(),
+        orchestrator_deps=MagicMock(),
     )
     chunks = [chunk async for chunk in gen()]
 
