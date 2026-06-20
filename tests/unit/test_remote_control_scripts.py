@@ -30,7 +30,7 @@ def test_linux_control_scripts_have_valid_bash_syntax() -> None:
 
 def test_linux_control_exposes_recovery_contract() -> None:
     source = LINUX_SCRIPT.read_text(encoding="utf-8")
-    for function in ("preflight()", "backup()", "rollback_to()", "update()"):
+    for function in ("preflight()", "backup()", "restore_backup()", "rollback_to()", "update()"):
         assert function in source
     assert "sqlite3 \"$source\" \".backup '$target'\"" in source
     assert 'for database_root in "$ROOT/data" "$ROOT/memory"' in source
@@ -40,6 +40,15 @@ def test_linux_control_exposes_recovery_contract() -> None:
     assert 'KAIROS_BACKUP_KEEP:-7' in source
     assert "preflight) preflight" in source
     assert "backup) backup" in source
+    assert 'restore) restore_backup "${2:-}"' in source
+
+
+def test_restore_validates_backup_before_stopping_service() -> None:
+    source = LINUX_SCRIPT.read_text(encoding="utf-8")
+    body = source.split("restore_backup()", 1)[1].split("rollback_to()", 1)[0]
+    assert body.index("PRAGMA integrity_check") < body.index("service_control stop")
+    assert body.index("backup") < body.index("service_control stop")
+    assert '[[ "$relative" == data/* || "$relative" == memory/* ]]' in body
     assert 'rollback) rollback_to "${2:-}"' in source
 
 
@@ -55,7 +64,7 @@ def test_windows_remote_control_maps_recovery_actions() -> None:
     source = WINDOWS_SCRIPT.read_text(encoding="utf-8")
     for action in ("Preflight", "Backup", "Rollback"):
         assert action in source
-    for command in ("'preflight'", "'backup'", "'rollback'"):
+    for command in ("'preflight'", "'backup'", "'restore'", "'rollback'"):
         assert command in source
 
 

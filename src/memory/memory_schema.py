@@ -450,17 +450,20 @@ async def init_memory_db() -> None:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA foreign_keys=ON")
 
+        # Curated memory shares a SQLite file with legacy session tables in
+        # some installations. Its migrations therefore need an independent
+        # version marker; the generic schema_version belongs to sessions.db.
         cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='memory_schema_version'"
         )
         row = cursor.fetchone()
         current = 0
         if row:
-            c2 = conn.execute("SELECT version FROM schema_version LIMIT 1")
+            c2 = conn.execute("SELECT MAX(version) AS version FROM memory_schema_version")
             r = c2.fetchone()
             current = r["version"] if r else 0
         else:
-            conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER)")
+            conn.execute("CREATE TABLE IF NOT EXISTS memory_schema_version (version INTEGER PRIMARY KEY)")
 
         # Simple sync engine wrapper
         class _SyncEngine:
@@ -476,7 +479,7 @@ async def init_memory_db() -> None:
             for version, migration in enumerate(_MEMORY_MIGRATIONS[current:], start=current + 1):
                 migration(conn, engine)
                 conn.execute(
-                    "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+                    "INSERT OR REPLACE INTO memory_schema_version (version) VALUES (?)",
                     (version,),
                 )
                 conn.commit()

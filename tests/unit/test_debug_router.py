@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
-from web.routers.debug import router, _local_only, debug_info, backend_logs
+from web.routers.debug import router, _trusted_lan_or_local, debug_info, backend_logs
 from web.routers.debug import model_availability
 
 
@@ -22,32 +22,39 @@ async def test_router_has_routes():
     assert "/debug/backend-logs" in paths
 
 
-class TestLocalOnly:
+class TestTrustedLanOrLocal:
     @pytest.mark.anyio
     async def test_localhost_ipv4_passes(self):
         request = MagicMock()
         request.client.host = "127.0.0.1"
-        _local_only(request)  # should not raise
+        _trusted_lan_or_local(request)  # should not raise
 
     @pytest.mark.anyio
     async def test_localhost_ipv6_passes(self):
         request = MagicMock()
         request.client.host = "::1"
-        _local_only(request)  # should not raise
+        _trusted_lan_or_local(request)  # should not raise
 
     @pytest.mark.anyio
     async def test_localhost_name_passes(self):
         request = MagicMock()
         request.client.host = "localhost"
-        _local_only(request)  # should not raise
+        _trusted_lan_or_local(request)  # should not raise
 
     @pytest.mark.anyio
-    async def test_non_local_ip_raises_403(self, monkeypatch):
+    async def test_private_lan_ip_passes(self, monkeypatch):
         monkeypatch.delenv("TESTING", raising=False)
         request = MagicMock()
         request.client.host = "192.168.1.1"
+        _trusted_lan_or_local(request)  # should not raise
+
+    @pytest.mark.anyio
+    async def test_public_ip_raises_403(self, monkeypatch):
+        monkeypatch.delenv("TESTING", raising=False)
+        request = MagicMock()
+        request.client.host = "8.8.8.8"
         with pytest.raises(HTTPException) as exc:
-            _local_only(request)
+            _trusted_lan_or_local(request)
         assert exc.value.status_code == 403
 
     @pytest.mark.anyio
@@ -55,7 +62,7 @@ class TestLocalOnly:
         monkeypatch.setenv("TESTING", "true")
         request = MagicMock()
         request.client.host = "evil.com"
-        _local_only(request)  # should not raise because TESTING=true
+        _trusted_lan_or_local(request)  # should not raise because TESTING=true
 
     @pytest.mark.anyio
     async def test_no_client_uses_unknown_fallback(self, monkeypatch):
@@ -64,7 +71,7 @@ class TestLocalOnly:
         request = MagicMock()
         request.client = None
         with pytest.raises(HTTPException) as exc:
-            _local_only(request)
+            _trusted_lan_or_local(request)
         assert exc.value.status_code == 403
 
 

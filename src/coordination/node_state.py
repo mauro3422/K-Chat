@@ -176,7 +176,9 @@ class NodeCoordinator:
             "last_memory_sync": self._last_memory_sync,
             "healthy": (now - self._last_heartbeat) <= self._heartbeat_ttl,
             "has_recent_primary": (now - self._last_primary_seen) <= self._heartbeat_ttl if self._last_primary_seen else False,
-            "memory_is_fresh": self._last_memory_revision <= 0 or self._last_memory_revision >= self._last_memory_sync,
+            # A sync happens after the revision it incorporates. Equal zeroes
+            # mean that no memory activity has occurred since this process began.
+            "memory_is_fresh": self._last_memory_sync >= self._last_memory_revision,
             "peers": sorted(peers, key=lambda item: item["node_id"]),
             "metadata": dict(metadata or {}),
         }

@@ -117,6 +117,49 @@ backup() {
   printf 'backup=%s\n' "$destination"
 }
 
+restore_backup() {
+  local backup_id="${1:-}" source_root relative source target temporary
+  [[ "$backup_id" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || {
+    echo "Identificador de backup inválido: $backup_id" >&2
+    return 2
+  }
+  source_root="$BACKUP_ROOT/$backup_id"
+  [[ -f "$source_root/manifest.txt" && -d "$source_root/databases" ]] || {
+    echo "Backup inexistente o incompleto: $source_root" >&2
+    return 2
+  }
+  while IFS= read -r source; do
+    [[ "$(sqlite3 "$source" 'PRAGMA integrity_check;')" == "ok" ]] || {
+      echo "Base inválida en backup: $source" >&2
+      return 1
+    }
+  done < <(find "$source_root/databases" -type f \( -name '*.db' -o -name '*.sqlite' \))
+
+  backup
+  service_control stop
+  trap 'service_control start >/dev/null 2>&1 || true' RETURN
+  while IFS= read -r -d '' source; do
+    relative="${source#"$source_root/databases/"}"
+    [[ "$relative" == data/* || "$relative" == memory/* ]] || {
+      echo "Ruta no permitida en backup: $relative" >&2
+      return 1
+    }
+    target="$ROOT/$relative"
+    install -d -m 700 "$(dirname "$target")"
+    temporary="${target}.restore.$$"
+    install -m 600 "$source" "$temporary"
+    mv -f "$temporary" "$target"
+  done < <(find "$source_root/databases" -type f \( -name '*.db' -o -name '*.sqlite' \) -print0)
+  if [[ -f "$source_root/config/MEMORY.md" ]]; then
+    install -m 600 "$source_root/config/MEMORY.md" "$ROOT/MEMORY.md.restore.$$"
+    mv -f "$ROOT/MEMORY.md.restore.$$" "$ROOT/MEMORY.md"
+  fi
+  service_control start
+  wait_for_health
+  trap - RETURN
+  printf 'restore=ok backup=%s\n' "$backup_id"
+}
+
 rollback_to() {
   local target="${1:-}"
   cd "$ROOT"
@@ -164,6 +207,7 @@ update() {
 case "$ACTION" in
   preflight) preflight ;;
   backup) backup ;;
+  restore) restore_backup "${2:-}" ;;
   update) update ;;
   rollback) rollback_to "${2:-}" ;;
   restart) service_control restart; wait_for_health ;;

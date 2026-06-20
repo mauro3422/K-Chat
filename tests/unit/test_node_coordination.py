@@ -29,6 +29,18 @@ async def test_node_coordinator_tracks_primary_and_peers():
 
 
 @pytest.mark.anyio
+async def test_memory_freshness_requires_sync_at_or_after_revision():
+    from src.coordination.node_state import NodeCoordinator
+
+    coordinator = NodeCoordinator()
+    assert coordinator.snapshot()["memory_is_fresh"] is True
+    await coordinator.mark_memory_revision()
+    assert coordinator.snapshot()["memory_is_fresh"] is False
+    await coordinator.mark_memory_sync()
+    assert coordinator.snapshot()["memory_is_fresh"] is True
+
+
+@pytest.mark.anyio
 async def test_node_router_exposes_state_and_heartbeat():
     from fastapi.testclient import TestClient
     from web.app_factory import create_app
