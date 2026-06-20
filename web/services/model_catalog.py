@@ -89,7 +89,7 @@ def format_model_json(model_id: str) -> dict:
     """Return model metadata as a JSON-safe dict for the frontend dropdown."""
     meta = get_model_metadata(model_id)
     if not meta:
-        return {"id": model_id, "name": model_id, "caps": [], "ctx": None, "out": None}
+        return {"id": model_id, "name": model_id, "label": model_id, "caps": [], "ctx": None, "out": None}
     caps = []
     if meta.get("image"): caps.append("image")
     if meta.get("video"): caps.append("video")
@@ -99,6 +99,7 @@ def format_model_json(model_id: str) -> dict:
     return {
         "id": model_id,
         "name": meta.get("name") or model_id,
+        "label": format_model_label(model_id),
         "ctx": _compact_ctx(meta.get("context")),
         "out": _compact_ctx(meta.get("output")),
         "caps": caps,

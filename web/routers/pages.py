@@ -37,6 +37,28 @@ def _request_repos(request: Request):
     return repos or get_repos()
 
 
+def _request_web_base_url(request: Request | None = None) -> str:
+    if request is None:
+        return ""
+    app = getattr(request, "app", None)
+    state = getattr(app, "state", None) if app is not None else None
+    cfg = getattr(state, "config", None) if state is not None else None
+    web_base_url = str(getattr(cfg, "web_base_url", "") or "").rstrip("/") if cfg is not None else ""
+    if web_base_url:
+        return web_base_url
+    try:
+        return str(request.base_url).rstrip("/")
+    except Exception:
+        return ""
+
+
+def _master_session_url(request: Request | None, session_id: str) -> str:
+    base_url = _request_web_base_url(request)
+    if not base_url:
+        return f"/go/{session_id}"
+    return f"{base_url}/go/{session_id}"
+
+
 def _get_registry(request: Request | None = None):
     if request is not None:
         reg = getattr(request.app.state, "model_registry", None)
@@ -127,6 +149,7 @@ def get_available_models(request: Request | None = None) -> dict[str, list[dict]
         cooldown = rl.get_cooldown_remaining(model_id)
         if cooldown is not None:
             meta["cooldown"] = int(cooldown)
+            meta["label"] = f'{meta.get("label", model_id)} · {int(cooldown)}s'
         grouped[tier].append(meta)
     return grouped
 
@@ -163,6 +186,8 @@ def home(request: Request, new: bool = False) -> HTMLResponse:
         "model": FALLBACK_MODEL,
         "models": _models,
         "models_json": _json.dumps(_models),
+        "master_session_base_url": _request_web_base_url(request),
+        "master_session_url": _master_session_url(request, session_id),
         "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
@@ -186,6 +211,8 @@ async def session_page(request: Request, session_id: str) -> Response:
         "model": FALLBACK_MODEL,
         "models": _models2,
         "models_json": _json.dumps(_models2),
+        "master_session_base_url": _request_web_base_url(request),
+        "master_session_url": _master_session_url(request, session_id),
         "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
@@ -249,6 +276,8 @@ async def go_session(request: Request, session_id: str) -> Response:
         "model": FALLBACK_MODEL,
         "models": _models3,
         "models_json": _json.dumps(_models3),
+        "master_session_base_url": _request_web_base_url(request),
+        "master_session_url": _master_session_url(request, session_id),
         "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)

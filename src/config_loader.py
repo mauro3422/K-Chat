@@ -25,6 +25,7 @@ class Config:
     opencode_zen_api_key: str = ""
     opencode_zen_base_url: str = "https://opencode.ai/zen/v1"
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
+    web_base_url: str = ""
     llm_provider: str = "openai"
     llm_mode: str = "go"
     sessions_db_path: str = ""
@@ -70,6 +71,7 @@ def load_config(overrides: dict | None = None) -> Config:
         opencode_zen_api_key=os.getenv("OPENCODE_ZEN_API_KEY", "") or os.getenv("OPENCODE_ZEN_API_KEY_FALLBACK", ""),
         opencode_zen_base_url=os.getenv("OPENCODE_ZEN_BASE_URL", "https://opencode.ai/zen/v1"),
         opencode_go_base_url=os.getenv("OPENCODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1"),
+        web_base_url=os.getenv("KAIROS_WEB_BASE_URL", "") or os.getenv("WEB_BASE_URL", ""),
         llm_provider=os.getenv("LLM_PROVIDER", "openai"),
         llm_mode=os.getenv("LLM_MODE", "go"),
         sessions_db_path=os.getenv("SESSIONS_DB_PATH", str(root / "memory" / "kairos_memory.db")),

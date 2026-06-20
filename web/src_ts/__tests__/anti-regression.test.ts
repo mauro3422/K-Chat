@@ -805,3 +805,26 @@ describe('anti-regression: widget rendering fixes', () => {
     expect(fullRegenCalled).toBe(true); // full regeneration triggered
   });
 });
+
+describe('anti-regression: master session link stays canonical', () => {
+  it('syncs the visible master link from the configured base url', async () => {
+    const app = document.createElement('div');
+    app.id = 'app';
+    app.dataset.masterSessionBaseUrl = 'http://kairos.local:8000';
+    document.body.appendChild(app);
+
+    const link = document.createElement('a');
+    link.id = 'master-session-link';
+    document.body.appendChild(link);
+
+    try {
+      const module = await import('../core/session/SessionStore');
+      const store = new module.SessionStore({} as never);
+      (store as unknown as { _syncMasterLink(sessionId: string): void })._syncMasterLink('sess-9');
+      expect(link.getAttribute('href')).toBe('http://kairos.local:8000/go/sess-9');
+    } finally {
+      app.remove();
+      link.remove();
+    }
+  });
+});

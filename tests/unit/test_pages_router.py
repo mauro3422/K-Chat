@@ -67,11 +67,17 @@ class TestPageEndpoints:
     @patch("web.routers.pages.get_available_models", return_value={"go_standard": [{"id": "m1", "label": "m1", "tier": "go_standard"}]})
     @pytest.mark.anyio
     async def test_home_returns_html(self, mock_models_full, mock_tpl, mock_models):
-        request = MagicMock()
+        request = SimpleNamespace(
+            cookies={"kchat_session_id": "sess-1"},
+            app=SimpleNamespace(state=SimpleNamespace(config=SimpleNamespace(web_base_url="http://kairos.local:8000"))),
+        )
         mock_tpl.return_value = HTMLResponse("<html></html>")
         from web.routers.pages import home
         resp = home(request)
         assert isinstance(resp, HTMLResponse)
+        context = mock_tpl.call_args.args[2]
+        assert context["master_session_base_url"] == "http://kairos.local:8000"
+        assert context["master_session_url"] == "http://kairos.local:8000/go/sess-1"
 
     @patch("web.routers.pages._resolve_session_entry", new_callable=AsyncMock)
     @patch("web.routers.pages.get_available_model_ids", return_value=["m1"])
@@ -80,11 +86,15 @@ class TestPageEndpoints:
     @pytest.mark.anyio
     async def test_session_page_returns_html(self, mock_models_full, mock_tpl, mock_models, mock_resolve):
         request = MagicMock()
+        request.app.state.config.web_base_url = "http://kairos.local:8000"
         mock_resolve.return_value = None
         mock_tpl.return_value = HTMLResponse("<html></html>")
         from web.routers.pages import session_page
         resp = await session_page(request, "sid-1")
         assert isinstance(resp, HTMLResponse)
+        context = mock_tpl.call_args.args[2]
+        assert context["master_session_base_url"] == "http://kairos.local:8000"
+        assert context["master_session_url"] == "http://kairos.local:8000/go/sid-1"
 
     @patch("web.routers.pages._resolve_session_entry", new_callable=AsyncMock)
     @pytest.mark.anyio

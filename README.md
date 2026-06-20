@@ -165,6 +165,9 @@ python -m src.cli
 # Web dashboard
 python web/server.py
 # → http://127.0.0.1:8000
+
+# Optional: set KAIROS_WEB_BASE_URL to force a single canonical web link across machines.
+# Otherwise the app uses the URL you used to enter the server.
 ```
 
 ### Docker

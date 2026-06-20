@@ -51,6 +51,23 @@ export class SessionStore implements ISessionStore {
   get activeSessionId() { return this._activeSessionId; }
   get activeHistory() { return this.getHistory(this._activeSessionId); }
 
+  private _masterSessionBaseUrl(): string {
+    const app = document.getElementById('app') as HTMLElement | null;
+    const configured = app?.dataset.masterSessionBaseUrl?.replace(/\/+$/, '') || '';
+    return configured || window.location.origin.replace(/\/+$/, '');
+  }
+
+  private _syncMasterLink(sessionId: string): void {
+    const link = document.getElementById('master-session-link') as HTMLAnchorElement | null;
+    if (!link) return;
+    const baseUrl = this._masterSessionBaseUrl();
+    if (!sessionId) {
+      link.href = baseUrl || '/';
+      return;
+    }
+    link.href = `${baseUrl}/go/${sessionId}`;
+  }
+
   async init(eventBus: IEventBus, initialSessionId?: string): Promise<void> {
     this._eventBus = eventBus;
     this._initialSessionId = initialSessionId || '';
@@ -80,6 +97,7 @@ export class SessionStore implements ISessionStore {
     if (this._initialSessionId && this._sessions.some(s => s.id === this._initialSessionId)) {
       await this.selectSession(this._initialSessionId);
     }
+    this._syncMasterLink(this._activeSessionId || this._initialSessionId || '');
   }
 
   dispose(): void {
@@ -104,6 +122,7 @@ export class SessionStore implements ISessionStore {
       this._activeSessionId = id;
       // Push new history entry so back button works after creating a session
       window.history.pushState({ sessionId: id }, '', `/go/${id}`);
+      this._syncMasterLink(id);
       this._emit('session:created', { id });
       this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
       this._emit('history:updated', { sessionId: id, history: [] });
@@ -133,6 +152,7 @@ export class SessionStore implements ISessionStore {
       } else {
         window.history.replaceState({}, '', '/');
       }
+      this._syncMasterLink(this._activeSessionId);
     }
     // Notify UI to cleanup widgets, canvas, messages
     this._emit('session:deleted', { id });
@@ -185,6 +205,7 @@ export class SessionStore implements ISessionStore {
       // Normalize direct /sessions/:id entries to the master URL.
       window.history.replaceState({ sessionId: id }, '', canonicalPath);
     }
+    this._syncMasterLink(id);
   }
 
   addMessage(sessionId: string, msg: MessageData): void {
@@ -233,11 +254,13 @@ export class SessionStore implements ISessionStore {
       }
       this._loaded = true;
       this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
+      this._syncMasterLink(this._activeSessionId);
     } catch (err) {
       this._logger.warn('loadSessions failed, using empty state', err);
       this._sessions = [];
       this._loaded = true;
       this._emit('sessions:updated', { sessions: this._sessions, activeId: this._activeSessionId });
+      this._syncMasterLink(this._activeSessionId);
     }
   }
 

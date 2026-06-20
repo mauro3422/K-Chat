@@ -25,9 +25,12 @@
 </head><body>
 <canvas id="fx-canvas" class="fx-canvas"></canvas>
 <div id="bg-effects" class="bg-effects"></div>
-<div id="app" data-session-id="{{ session_id }}">
+<div id="app" data-session-id="{{ session_id }}" data-master-session-base-url="{{ master_session_base_url }}">
 <aside id="sidebar">
   <div id="session-list"></div>
+  <div class="sidebar-footer">
+    <a id="master-session-link" class="btn-new-glass" href="{{ master_session_url }}">Abrir sesión actual</a>
+  </div>
 </aside>
 <div id="sidebar-gutter" class="sidebar-gutter"></div>
 <main id="main">
