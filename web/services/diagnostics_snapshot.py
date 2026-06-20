@@ -66,13 +66,53 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
     peer_memory = {
         "peers": [],
         "errors": [],
+        "summary": {
+            "peer_count": 0,
+            "aligned_peers": 0,
+            "stale_peers": 0,
+            "stale_details": [],
+        },
     }
     if bridge is not None and bridge.peer_urls:
         try:
             memory_result = await bridge.request_peer_memory_snapshots(key_pattern=key_pattern)
+            local_revision = float(
+                (((memory.get("memory") or {}).get("revision")) or 0.0)
+                or (((memory.get("sync") or {}).get("last_memory_revision")) or 0.0)
+            )
+            stale_details: list[dict[str, Any]] = []
+            aligned = 0
+            stale = 0
+            peers = [snapshot for snapshot in memory_result.get("snapshots", []) if isinstance(snapshot, dict)]
+            for peer in peers:
+                peer_memory_state = peer.get("memory") if isinstance(peer.get("memory"), dict) else {}
+                peer_revision = float(
+                    (peer_memory_state.get("revision") or 0.0)
+                    or (peer.get("sync", {}).get("last_memory_revision") if isinstance(peer.get("sync"), dict) else 0.0)
+                )
+                peer_fresh = bool(peer_memory_state.get("is_fresh", False))
+                peer_queue = int(peer.get("queue_size", 0) or 0)
+                is_aligned = peer_fresh and peer_revision >= local_revision and peer_queue == 0
+                if is_aligned:
+                    aligned += 1
+                else:
+                    stale += 1
+                    stale_details.append({
+                        "peer_url": peer.get("peer_url", ""),
+                        "revision_delta": max(0.0, local_revision - peer_revision),
+                        "queue_size": peer_queue,
+                        "is_fresh": peer_fresh,
+                        "severity": (peer.get("compare_summary", {}) or {}).get("severity", "clean"),
+                    })
             peer_memory = {
-                "peers": [snapshot for snapshot in memory_result.get("snapshots", []) if isinstance(snapshot, dict)],
+                "peers": peers,
                 "errors": [error for error in memory_result.get("errors", []) if isinstance(error, dict)],
+                "summary": {
+                    "peer_count": len(peers),
+                    "aligned_peers": aligned,
+                    "stale_peers": stale,
+                    "stale_details": stale_details,
+                },
             }
         except Exception:
             pass

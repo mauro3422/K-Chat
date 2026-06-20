@@ -68,5 +68,7 @@ async def test_api_diagnostics_returns_unified_snapshot():
         assert body["node"]["node_id"] == "node-a"
         assert body["bridge"]["base_url"] == "http://127.0.0.1:8000"
         assert body["peer_memory"]["peers"][0]["peer_url"] == "http://peer-a:8000"
+        assert body["peer_memory"]["summary"]["peer_count"] == 1
+        assert body["peer_memory"]["summary"]["stale_peers"] == 1
         assert "memory" in body
         assert "health" in body

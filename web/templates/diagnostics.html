@@ -50,6 +50,7 @@
     {% set bridge = snapshot.bridge or {} %}
     {% set cluster = snapshot.cluster or {} %}
     {% set peer_memory = snapshot.peer_memory or {} %}
+    {% set peer_memory_summary = peer_memory.summary or {} %}
     {% set memory = snapshot.memory or {} %}
     {% set memory_data = memory.memory or {} %}
     {% set compare_summary = memory.compare_summary or {} %}
@@ -141,17 +142,23 @@
 
       <article class="diag-card">
         <h2>Memoria por peer</h2>
-        <div class="diag-muted">Snapshots remotos: {{ (peer_memory.peers or [])|length }} · Errores: {{ (peer_memory.errors or [])|length }}</div>
+        <div class="diag-pills">
+          <span class="diag-pill">Snapshots: {{ peer_memory_summary.peer_count or 0 }}</span>
+          <span class="diag-pill">Alineados: {{ peer_memory_summary.aligned_peers or 0 }}</span>
+          <span class="diag-pill">Desfasados: {{ peer_memory_summary.stale_peers or 0 }}</span>
+        </div>
+        <div class="diag-muted">Errores: {{ (peer_memory.errors or [])|length }}</div>
         <table class="diag-table">
           <thead><tr><th>Peer</th><th>Cola</th><th>Fresca</th><th>Severity</th></tr></thead>
           <tbody>
           {% for peer in peer_memory.peers or [] %}
             {% set diag = peer.compare_summary or {} %}
             {% set peer_memory_state = peer.memory or {} %}
+            {% set is_aligned = peer_memory_state.is_fresh and ((peer_memory_state.revision or 0) >= (memory_data.revision or 0)) and (peer.queue_size or 0) == 0 %}
             <tr>
               <td>{{ peer.peer_url or 'peer' }}</td>
               <td>{{ peer.queue_size or 0 }}</td>
-              <td>{{ 'sí' if peer_memory_state.is_fresh else 'no' }}</td>
+              <td>{{ 'sí' if is_aligned else 'no' }}</td>
               <td>{{ diag.severity or 'clean' }}</td>
             </tr>
           {% else %}
@@ -159,6 +166,21 @@
           {% endfor %}
           </tbody>
         </table>
+        {% if peer_memory_summary.stale_details %}
+        <table class="diag-table" style="margin-top:12px">
+          <thead><tr><th>Peer desfasado</th><th>Delta rev</th><th>Cola</th><th>Fresh</th></tr></thead>
+          <tbody>
+          {% for stale in peer_memory_summary.stale_details %}
+            <tr>
+              <td>{{ stale.peer_url or 'peer' }}</td>
+              <td>{{ stale.revision_delta or 0 }}</td>
+              <td>{{ stale.queue_size or 0 }}</td>
+              <td>{{ 'sí' if stale.is_fresh else 'no' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
       </article>
     </section>
   </div>
