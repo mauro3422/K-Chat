@@ -38,6 +38,12 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Validate operations scripts
+        shell: bash
+        run: |
+          bash -n scripts/kairos-node.sh scripts/bootstrap-linux-remote-control.sh
+          pwsh -NoProfile -Command '$errors = $null; [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "scripts/remote-kairos.ps1"), [ref]$null, [ref]$errors) > $null; if ($errors.Count) { $errors | Format-List; exit 1 }'
+
       - name: Run TS frontend tests
         run: npm run test:ts
 

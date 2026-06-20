@@ -57,6 +57,11 @@ TOOLS.md
 .kairos/error_context.md
 .kairos/telegram_bot.pid
 .kairos/telegram_offset
+.kairos/remote-control.env
+.kairos/invalidate_cache
+.kairos/last-good-commit
+.kairos/backups/
+MEMORY.md.local-backup-*
 
 # Scratch scripts
 scratch/
