@@ -51,7 +51,7 @@ async def model_availability(request: Request) -> dict:
     Combines rate-limit state with known model tiers so the UI can
     show live availability dots.
     """
-    _local_only(request)
+    # No _local_only — consumed by main UI for live status dots
     from web.routers.pages import get_available_model_ids, _get_model_tier
 
     rl = getattr(request.app.state, "rate_limit_store", None) or get_rate_limit_store()
@@ -99,7 +99,7 @@ def _local_only(request: Request) -> None:
     raise HTTPException(status_code=403, detail="Debug endpoint disabled in production")
 
 
-@router.get("/sessions/{session_id}/debug", dependencies=[Depends(_local_only)])
+@router.get("/sessions/{session_id}/debug")
 async def debug_info(session_id: str, request: Request) -> JSONResponse:
     repos = getattr(request.app.state, 'repos', None) or get_repos()
     try:

@@ -182,10 +182,12 @@ export class SessionStore implements ISessionStore {
     const session = this._sessions.find(s => s.id === id);
     if (!session) return;
 
-    const sourceMode = session.source_mode || 'local';
     const sourceUrl = (session.source_url || '').replace(/\/+$/, '');
     const currentOrigin = window.location.origin.replace(/\/+$/, '');
-    if (sourceMode === 'peer' && sourceUrl && sourceUrl !== currentOrigin) {
+    // Redirect to origin node if the session belongs to another PC.
+    // Memory sync replicates metadata (name, dates) but NOT messages,
+    // so we need to redirect to load the actual chat content.
+    if (sourceUrl && sourceUrl !== currentOrigin) {
       window.location.assign(`${sourceUrl}/go/${id}`);
       return;
     }
@@ -228,6 +230,13 @@ export class SessionStore implements ISessionStore {
     return this._histories[sessionId] || [];
   }
 
+  /** Check if a session belongs to this node (same origin). */
+  private _isLocalSession(session: SessionSummary): boolean {
+    const sourceUrl = (session.source_url || '').replace(/\/+$/, '');
+    const currentOrigin = window.location.origin.replace(/\/+$/, '');
+    return !sourceUrl || sourceUrl === currentOrigin;
+  }
+
   // ── API calls ──
 
   private async loadSessions(preferredSessionId: string = ''): Promise<void> {
@@ -242,13 +251,14 @@ export class SessionStore implements ISessionStore {
       if (preferred) {
         this._activeSessionId = preferred;
         const selected = this._sessions.find(s => s.id === preferred);
-        if (!selected || (selected.source_mode || 'local') !== 'peer') {
+        // Only load history if session belongs to this node
+        if (!selected || this._isLocalSession(selected)) {
           await this.loadHistory(this._activeSessionId);
         }
       } else if (data.length > 0) {
         this._activeSessionId = data[0].id;
         const selected = this._sessions[0];
-        if (!selected || (selected.source_mode || 'local') !== 'peer') {
+        if (!selected || this._isLocalSession(selected)) {
           await this.loadHistory(this._activeSessionId);
         }
       }

@@ -67,12 +67,11 @@ export class SessionList {
   renderSessions(sessions: SessionListEntry[], activeId: string): void {
     if (!this.sidebarEl) return;
 
-    const localSessions = sessions.filter(s => (s.source_mode || 'local') !== 'peer');
-    this.logger.info('render_sessions', `total=${sessions.length} visible=${localSessions.length} activeId=${activeId}`);
+    this.logger.info('render_sessions', `total=${sessions.length} activeId=${activeId}`);
     this.sidebarEl.innerHTML = '';
     const fragment = document.createDocumentFragment();
 
-    localSessions.forEach((s) => {
+    sessions.forEach((s) => {
       const isTelegram = s.id.startsWith('tele_');
       const label = s.name || s.id.substring(0, 8);
       const msgCount = s.count !== undefined ? s.count : 0;
