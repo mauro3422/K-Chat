@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PUBLIC_KEY="$ROOT/ops/ssh/kairos-codex-windows.pub"
 SERVICE="${KAIROS_SERVICE:-kairos}"
+SERVICE_SCOPE="${KAIROS_SERVICE_SCOPE:-system}"
 REMOTE_USER="${SUDO_USER:-$USER}"
 REMOTE_HOME="$(getent passwd "$REMOTE_USER" | cut -d: -f6)"
 [[ -s "$PUBLIC_KEY" ]] || { echo "No se encontró la clave pública: $PUBLIC_KEY" >&2; exit 1; }
@@ -29,7 +30,8 @@ SUDOERS_FILE="/etc/sudoers.d/kairos-remote-$REMOTE_USER"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$REMOTE_USER" | sudo tee "$SUDOERS_FILE" >/dev/null
 sudo chmod 440 "$SUDOERS_FILE"; sudo visudo -cf "$SUDOERS_FILE"
 PYTHON="$ROOT/.venv/bin/python"; [[ -x "$PYTHON" ]] || PYTHON="$(command -v python3)"
-sudo tee "/etc/systemd/system/${SERVICE}.service" >/dev/null <<EOF
+if [[ "$SERVICE_SCOPE" == "system" ]]; then
+  sudo tee "/etc/systemd/system/${SERVICE}.service" >/dev/null <<EOF
 [Unit]
 Description=Kairos web service
 After=network-online.target
@@ -45,6 +47,15 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now "$SERVICE"
+elif [[ "$SERVICE_SCOPE" == "user" ]]; then
+  systemctl --user status "$SERVICE" --no-pager >/dev/null
+else
+  echo "KAIROS_SERVICE_SCOPE debe ser 'user' o 'system'." >&2
+  exit 2
+fi
+install -d -m 700 "$ROOT/.kairos"
+printf 'KAIROS_SERVICE=%q\nKAIROS_SERVICE_SCOPE=%q\n' "$SERVICE" "$SERVICE_SCOPE" > "$ROOT/.kairos/remote-control.env"
 chmod +x "$ROOT/scripts/kairos-node.sh"
-sudo systemctl daemon-reload; sudo systemctl enable --now "$SERVICE"
-echo "REMOTE_USER=$REMOTE_USER"; echo "REMOTE_REPO=$ROOT"; echo "SERVICE=$SERVICE"
+echo "REMOTE_USER=$REMOTE_USER"; echo "REMOTE_REPO=$ROOT"; echo "SERVICE=$SERVICE"; echo "SERVICE_SCOPE=$SERVICE_SCOPE"

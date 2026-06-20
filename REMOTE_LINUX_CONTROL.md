@@ -13,6 +13,14 @@ chmod +x scripts/bootstrap-linux-remote-control.sh scripts/kairos-node.sh
 
 Esto instala y activa OpenSSH Server, autoriza `ops/ssh/kairos-codex-windows.pub`, concede `sudo` sin contraseña al usuario actual y crea `kairos.service`.
 
+Si la instalación ya tiene un servicio de usuario, indicarlo para no crear uno duplicado:
+
+```bash
+KAIROS_SERVICE=k-chat KAIROS_SERVICE_SCOPE=user ./scripts/bootstrap-linux-remote-control.sh
+```
+
+La selección queda guardada localmente en `.kairos/remote-control.env`.
+
 Al finalizar, informar los valores impresos de `REMOTE_USER`, `REMOTE_REPO` y `SERVICE`.
 
 ## Verificación en Linux

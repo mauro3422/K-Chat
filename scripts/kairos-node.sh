@@ -1,10 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONTROL_CONFIG="${KAIROS_CONTROL_CONFIG:-$ROOT/.kairos/remote-control.env}"
+if [[ -f "$CONTROL_CONFIG" ]]; then
+  # Configuración local de despliegue; no se versiona.
+  # shellcheck disable=SC1090
+  source "$CONTROL_CONFIG"
+fi
 SERVICE="${KAIROS_SERVICE:-kairos}"
+SERVICE_SCOPE="${KAIROS_SERVICE_SCOPE:-system}"
 PORT="${PORT:-8000}"
 ACTION="${1:-help}"
 health() { curl --fail --silent --show-error "http://127.0.0.1:${PORT}/health"; printf '\n'; }
+service_control() {
+  if [[ "$SERVICE_SCOPE" == "user" ]]; then
+    systemctl --user "$@" "$SERVICE"
+  elif [[ "$SERVICE_SCOPE" == "system" ]]; then
+    sudo systemctl "$@" "$SERVICE"
+  else
+    echo "KAIROS_SERVICE_SCOPE debe ser 'user' o 'system'." >&2
+    return 2
+  fi
+}
 case "$ACTION" in
   update)
     cd "$ROOT"
@@ -15,18 +32,24 @@ case "$ACTION" in
     if [[ -x .venv/bin/pip ]]; then .venv/bin/pip install -r requirements.txt; fi
     npm ci
     npm run build
-    sudo systemctl restart "$SERVICE"
+    service_control restart
     for _ in {1..30}; do
       if health >/dev/null 2>&1; then health; exit 0; fi
       sleep 1
     done
-    sudo systemctl status "$SERVICE" --no-pager
+    service_control status --no-pager
     exit 1
     ;;
-  restart) sudo systemctl restart "$SERVICE"; health ;;
-  status) sudo systemctl status "$SERVICE" --no-pager ;;
-  logs) sudo journalctl -u "$SERVICE" -n "${2:-150}" --no-pager ;;
-  follow-logs) sudo journalctl -u "$SERVICE" -f ;;
+  restart) service_control restart; health ;;
+  status) service_control status --no-pager ;;
+  logs)
+    if [[ "$SERVICE_SCOPE" == "user" ]]; then journalctl --user -u "$SERVICE" -n "${2:-150}" --no-pager
+    else sudo journalctl -u "$SERVICE" -n "${2:-150}" --no-pager; fi
+    ;;
+  follow-logs)
+    if [[ "$SERVICE_SCOPE" == "user" ]]; then journalctl --user -u "$SERVICE" -f
+    else sudo journalctl -u "$SERVICE" -f; fi
+    ;;
   health) health ;;
   platform) uname -a; printf 'node='; curl --fail --silent "http://127.0.0.1:${PORT}/api/node/state"; printf '\n' ;;
   *) echo "Uso: $0 {update|restart|status|logs [líneas]|follow-logs|health|platform}" >&2; exit 2 ;;
