@@ -72,6 +72,91 @@ Este documento resume cómo operar el estado actual del sistema entre dos instan
 El objetivo no es tener dos escritores simultáneos.
 El objetivo es que una instancia coordine, la otra acompañe y ambas vean el mismo estado curado sin duplicar persistencia.
 
+## Prueba de campo recomendada entre dos PCs
+
+Usala cuando quieras confirmar el sistema en vivo y no solo por tests.
+
+### Antes de empezar
+
+- Elegí una PC como primaria inicial.
+- Asigná `KAIROS_NODE_ID` estable en ambas máquinas.
+- Configurá `KAIROS_PEER_URLS` con la URL LAN de la otra PC.
+- Confirmá que ambas máquinas pueden verse por red local.
+- Reiniciá el servidor después de tocar `.env`.
+
+### Secuencia de validación
+
+1. Levantá la primaria y verificá:
+   - `GET /health`
+   - `GET /api/node/state`
+   - `GET /api/node/sync/status`
+2. Levantá la secundaria y verificá que:
+   - vea a la primaria en `cluster.states`
+   - reporte `role=secondary`
+   - mantenga `sessions.db` local
+3. Hacé una escritura de memoria en la primaria.
+4. Confirmá que:
+   - se emita `memory_synced`
+   - se emita `memory_write_completed`
+   - la secundaria vea memoria fresca
+5. Probá Telegram o un evento reflejado y revisá:
+   - `GET /api/telegram/status`
+   - `GET /api/events/stream`
+6. Simulá caída de la primaria.
+7. Confirmá que la secundaria:
+   - detecta misses de heartbeat
+   - puede promoverse si corresponde
+   - no duplica sesiones ni memoria
+8. Al volver la antigua primaria, verificá que:
+   - no pisa al líder actual
+   - la memoria se re-sincroniza sin conflicto
+
+### Criterio de aprobado
+
+- `health.status == ok`
+- `sync.memory_is_fresh == true`
+- no hay doble escritura de memoria
+- `sessions.db` sigue separado por máquina
+- Telegram o el evento reflejado aparece en ambas UIs
+- el failover no rompe la coordinación
+
+### Comandos rápidos
+
+Primaria:
+
+```bash
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/api/node/state
+curl http://127.0.0.1:8000/api/node/sync/status
+curl http://127.0.0.1:8000/api/node/failover/status
+```
+
+Secundaria:
+
+```bash
+curl http://192.168.1.40:8000/health
+curl http://192.168.1.40:8000/api/node/state
+curl http://192.168.1.40:8000/api/node/sync/status
+curl http://192.168.1.40:8000/api/node/failover/status
+curl http://192.168.1.40:8000/api/telegram/status
+```
+
+Prueba de memoria:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/memory/sync -H "Content-Type: application/json" -d '{"dry_run":false,"confirm":true,"key_pattern":"","fmt":"text"}'
+curl -X POST http://127.0.0.1:8000/api/node/memory/flush
+```
+
+Prueba de failover:
+
+```bash
+curl -X POST http://192.168.1.40:8000/api/node/promote
+curl http://192.168.1.40:8000/api/node/failover/status
+```
+
+Si usás otra IP o puerto, reemplazalos por la URL LAN real del nodo.
+
 ## Coordinación automática entre PCs
 
 Para que los nodos se vean solos después de reiniciar, configurá en cada máquina:
