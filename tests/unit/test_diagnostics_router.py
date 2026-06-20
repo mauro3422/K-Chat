@@ -19,6 +19,7 @@ async def test_api_diagnostics_returns_unified_snapshot():
     fake_bridge = MagicMock()
     fake_bridge.base_url = "http://127.0.0.1:8000"
     fake_bridge.peer_urls = ["http://peer-a:8000"]
+    fake_bridge.broadcast_once = AsyncMock(return_value={"ok": True})
     fake_bridge.request_peer_states = AsyncMock(return_value={
         "ok": True,
         "peers": ["http://peer-a:8000"],
@@ -93,6 +94,7 @@ async def test_diagnostics_page_contains_peer_action_links():
     fake_bridge = MagicMock()
     fake_bridge.base_url = "http://127.0.0.1:8000"
     fake_bridge.peer_urls = ["http://peer-a:8000"]
+    fake_bridge.broadcast_once = AsyncMock(return_value={"ok": True})
     fake_bridge.request_peer_states = AsyncMock(return_value={
         "ok": True,
         "peers": ["http://peer-a:8000"],
@@ -137,5 +139,64 @@ async def test_diagnostics_page_contains_peer_action_links():
         response = client.get("/diagnostics")
         assert response.status_code == 200
         html = response.text
-        assert "http://peer-a:8000/diagnostics" in html
-        assert "http://peer-a:8000/api/memory/diagnostics" in html
+        assert "/api/diagnostics/peer?peer_url=" in html
+        assert "kind=diagnostics" in html
+        assert "kind=memory" in html
+
+
+@pytest.mark.anyio
+async def test_api_peer_diagnostics_proxies_allowed_peer():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="primary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+    )
+    fake_bridge = MagicMock()
+    fake_bridge.base_url = "http://127.0.0.1:8000"
+    fake_bridge.peer_urls = ["http://peer-a:8000"]
+    fake_bridge.broadcast_once = AsyncMock(return_value={"ok": True})
+    fake_bridge.request_peer_diagnostics = AsyncMock(return_value={
+        "ok": True,
+        "peer": "http://peer-a:8000",
+        "snapshot": {"ok": True, "memory": {"queue_size": 0}},
+    })
+    fake_bridge.request_peer_state = AsyncMock(return_value={
+        "ok": True,
+        "peer": "http://peer-a:8000",
+        "state": {"node_id": "peer-a"},
+    })
+    fake_bridge.request_memory_snapshot = AsyncMock(return_value={
+        "ok": True,
+        "peer": "http://peer-a:8000",
+        "snapshot": {"ok": True, "memory": {"queue_size": 0}},
+    })
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+
+    app.state.node_bridge = fake_bridge
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/diagnostics/peer?peer_url=http://peer-a:8000&kind=diagnostics")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["peer"] == "http://peer-a:8000"
+        assert body["snapshot"]["ok"] is True
+
+        state_response = client.get("/api/diagnostics/peer?peer_url=http://peer-a:8000&kind=state")
+        assert state_response.status_code == 200
+        assert state_response.json()["state"]["node_id"] == "peer-a"

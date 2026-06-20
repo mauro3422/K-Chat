@@ -170,13 +170,14 @@ class NodeLanBridge:
                     last_error = str(exc)
         return {"ok": False, "granted": False, "queued": False, "peer": None, "error": locals().get("last_error", "request failed")}
 
-    async def request_memory_snapshot(self, *, key_pattern: str = "") -> dict[str, Any]:
+    async def request_memory_snapshot(self, *, key_pattern: str = "", peer: str | None = None) -> dict[str, Any]:
         """Ask a peer for a complete memory snapshot."""
         if not self._peer_urls:
             return {"ok": False, "peer": None, "error": "no peers configured"}
 
         async with self._client_factory() as client:
-            for peer in self._peer_urls:
+            peers = [peer] if peer else self._peer_urls
+            for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "get", f"{peer}/api/memory/diagnostics", params={"key_pattern": key_pattern})
                     data = response.json() if response.content else {}
@@ -185,6 +186,36 @@ class NodeLanBridge:
                 except Exception as exc:
                     last_error = str(exc)
         return {"ok": False, "peer": None, "error": locals().get("last_error", "snapshot request failed")}
+
+    async def request_peer_state(self, *, peer: str) -> dict[str, Any]:
+        """Ask a specific peer for its local node state snapshot."""
+        if peer not in self._peer_urls:
+            return {"ok": False, "peer": peer, "error": "peer not configured"}
+
+        async with self._client_factory() as client:
+            try:
+                response = await self._request_with_retry(client, "get", f"{peer}/api/node/state")
+                data = response.json() if response.content else {}
+                if isinstance(data, dict):
+                    return {"ok": True, "peer": peer, "state": data}
+            except Exception as exc:
+                return {"ok": False, "peer": peer, "error": str(exc)}
+        return {"ok": False, "peer": peer, "error": "state request failed"}
+
+    async def request_peer_diagnostics(self, *, peer: str, key_pattern: str = "") -> dict[str, Any]:
+        """Ask a specific peer for its full diagnostics snapshot."""
+        if peer not in self._peer_urls:
+            return {"ok": False, "peer": peer, "error": "peer not configured"}
+
+        async with self._client_factory() as client:
+            try:
+                response = await self._request_with_retry(client, "get", f"{peer}/api/node/diagnostics", params={"key_pattern": key_pattern})
+                data = response.json() if response.content else {}
+                if isinstance(data, dict):
+                    return {"ok": True, "peer": peer, "snapshot": data}
+            except Exception as exc:
+                return {"ok": False, "peer": peer, "error": str(exc)}
+        return {"ok": False, "peer": peer, "error": "diagnostics request failed"}
 
     async def request_peer_memory_snapshots(self, *, key_pattern: str = "") -> dict[str, Any]:
         """Ask every peer for its memory diagnostics snapshot."""

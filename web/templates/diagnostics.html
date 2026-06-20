@@ -161,9 +161,11 @@
               <td>{{ 'sí' if is_aligned else 'no' }}</td>
               <td>{{ diag.severity or 'clean' }}</td>
               <td>
-                <a class="diag-link" href="{{ peer.peer_url }}/diagnostics" target="_blank" rel="noreferrer">diagnóstico</a>
+                <a class="diag-link" href="/api/diagnostics/peer?peer_url={{ peer.peer_url|urlencode }}&kind=diagnostics" target="_blank" rel="noreferrer">diagnóstico</a>
                 ·
-                <a class="diag-link" href="{{ peer.peer_url }}/api/memory/diagnostics" target="_blank" rel="noreferrer">memoria</a>
+                <a class="diag-link" href="/api/diagnostics/peer?peer_url={{ peer.peer_url|urlencode }}&kind=state" target="_blank" rel="noreferrer">estado</a>
+                ·
+                <a class="diag-link" href="/api/diagnostics/peer?peer_url={{ peer.peer_url|urlencode }}&kind=memory" target="_blank" rel="noreferrer">memoria</a>
               </td>
             </tr>
           {% else %}
@@ -182,7 +184,7 @@
               <td>{{ stale.queue_size or 0 }}</td>
               <td>{{ 'sí' if stale.is_fresh else 'no' }}</td>
               <td>{{ stale.stale_reason or 'unknown' }}</td>
-              <td><a class="diag-link" href="{{ stale.peer_url }}/diagnostics" target="_blank" rel="noreferrer">abrir</a></td>
+              <td><a class="diag-link" href="/api/diagnostics/peer?peer_url={{ stale.peer_url|urlencode }}&kind=diagnostics" target="_blank" rel="noreferrer">abrir</a></td>
             </tr>
           {% endfor %}
           </tbody>
