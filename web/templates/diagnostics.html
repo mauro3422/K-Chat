@@ -30,6 +30,14 @@
     .diag-btn-warn { color: var(--accent-yellow, #f5c542); }
     .diag-btn-danger { color: var(--accent-red, #ff5c5c); }
     .diag-status { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+    .diag-remote { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72); padding: 24px; z-index: 1000; }
+    .diag-remote.open { display: flex; align-items: center; justify-content: center; }
+    .diag-remote-card { width: min(1100px, 100%); max-height: 90vh; overflow: auto; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: var(--glow-soft, none); }
+    .diag-remote-header { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom: 12px; }
+    .diag-remote-header h3 { margin: 0; font-size: 18px; }
+    .diag-remote-close { background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); cursor: pointer; padding: 6px 10px; }
+    .diag-remote-body { display: grid; gap: 12px; }
+    .diag-remote-body .diag-card { background: var(--bg-secondary); }
     @media (max-width: 900px) { .diag-grid { grid-template-columns: 1fr; } .diag-hero { flex-direction: column; } }
   </style>
 </head>
@@ -161,11 +169,11 @@
               <td>{{ 'sí' if is_aligned else 'no' }}</td>
               <td>{{ diag.severity or 'clean' }}</td>
               <td>
-                <a class="diag-link" href="/api/diagnostics/peer?peer_url={{ peer.peer_url|urlencode }}&kind=diagnostics" target="_blank" rel="noreferrer">diagnóstico</a>
+                <button class="diag-link" type="button" data-peer-url="{{ peer.peer_url|e }}" data-peer-kind="diagnostics">diagnóstico</button>
                 ·
-                <a class="diag-link" href="/api/diagnostics/peer?peer_url={{ peer.peer_url|urlencode }}&kind=state" target="_blank" rel="noreferrer">estado</a>
+                <button class="diag-link" type="button" data-peer-url="{{ peer.peer_url|e }}" data-peer-kind="state">estado</button>
                 ·
-                <a class="diag-link" href="/api/diagnostics/peer?peer_url={{ peer.peer_url|urlencode }}&kind=memory" target="_blank" rel="noreferrer">memoria</a>
+                <button class="diag-link" type="button" data-peer-url="{{ peer.peer_url|e }}" data-peer-kind="memory">memoria</button>
               </td>
             </tr>
           {% else %}
@@ -184,7 +192,7 @@
               <td>{{ stale.queue_size or 0 }}</td>
               <td>{{ 'sí' if stale.is_fresh else 'no' }}</td>
               <td>{{ stale.stale_reason or 'unknown' }}</td>
-              <td><a class="diag-link" href="/api/diagnostics/peer?peer_url={{ stale.peer_url|urlencode }}&kind=diagnostics" target="_blank" rel="noreferrer">abrir</a></td>
+              <td><button class="diag-link" type="button" data-peer-url="{{ stale.peer_url|e }}" data-peer-kind="diagnostics">abrir</button></td>
             </tr>
           {% endfor %}
           </tbody>
@@ -211,15 +219,92 @@
       </article>
     </section>
   </div>
+  <div class="diag-remote" id="diag-remote">
+    <div class="diag-remote-card">
+      <div class="diag-remote-header">
+        <h3 id="diag-remote-title">Snapshot remoto</h3>
+        <button class="diag-remote-close" id="diag-remote-close" type="button">Cerrar</button>
+      </div>
+      <div class="diag-remote-body" id="diag-remote-body">
+        <div class="diag-muted">Selecciona un peer para ver su snapshot.</div>
+      </div>
+    </div>
+  </div>
   <script>
     (function() {
       const shell = document.getElementById('diag-shell');
       const statusEl = document.getElementById('diag-status');
-      if (!shell || !statusEl) return;
+      const remote = document.getElementById('diag-remote');
+      const remoteTitle = document.getElementById('diag-remote-title');
+      const remoteBody = document.getElementById('diag-remote-body');
+      const remoteClose = document.getElementById('diag-remote-close');
+      if (!shell || !statusEl || !remote || !remoteTitle || !remoteBody || !remoteClose) return;
 
       function setStatus(text) {
         statusEl.textContent = text;
       }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      function openRemote(title, data) {
+        remoteTitle.textContent = title;
+        const node = data.node || {};
+        const bridge = data.bridge || {};
+        const memory = data.memory || {};
+        const peerMemory = data.peer_memory || {};
+        const cluster = data.cluster || {};
+        const peerMemorySummary = peerMemory.summary || {};
+        const health = data.health || {};
+        const compareSummary = memory.compare_summary || {};
+        const memoryData = memory.memory || {};
+        const failover = health.failover || {};
+
+        remoteBody.innerHTML = `
+          <section class="diag-card">
+            <h2>Resumen remoto</h2>
+            <div class="diag-pills">
+              <span class="diag-pill">Nodo: ${escapeHtml(node.node_id || 'n/a')}</span>
+              <span class="diag-pill">Rol: ${escapeHtml(node.role || 'secondary')}</span>
+              <span class="diag-pill">Peers: ${cluster.reachable_peers || 0}/${cluster.peer_count || 0}</span>
+              <span class="diag-pill">Memoria: ${memory.queue_size || 0}</span>
+              <span class="diag-pill">Failover: ${escapeHtml(failover.last_action || 'idle')}</span>
+            </div>
+            <div class="diag-muted">Base URL: ${escapeHtml(bridge.base_url || 'n/a')}</div>
+          </section>
+          <section class="diag-grid">
+            <article class="diag-card">
+              <h2>Memoria</h2>
+              <div class="diag-pills">
+                <span class="diag-pill">Fresca: ${memoryData.is_fresh ? 'sí' : 'no'}</span>
+                <span class="diag-pill">Revision: ${memoryData.revision || 0}</span>
+                <span class="diag-pill">Sync: ${memoryData.sync || 0}</span>
+              </div>
+              <div class="diag-muted">Severity: ${escapeHtml(compareSummary.severity || 'clean')}</div>
+            </article>
+            <article class="diag-card">
+              <h2>Memoria por peer</h2>
+              <div class="diag-pills">
+                <span class="diag-pill">Snapshots: ${peerMemorySummary.peer_count || 0}</span>
+                <span class="diag-pill">Alineados: ${peerMemorySummary.aligned_peers || 0}</span>
+                <span class="diag-pill">Desfasados: ${peerMemorySummary.stale_peers || 0}</span>
+              </div>
+            </article>
+          </section>
+        `;
+        remote.classList.add('open');
+      }
+
+      remoteClose.addEventListener('click', () => remote.classList.remove('open'));
+      remote.addEventListener('click', (event) => {
+        if (event.target === remote) {
+          remote.classList.remove('open');
+        }
+      });
 
       async function refresh() {
         setStatus('Actualizando...');
@@ -245,9 +330,34 @@
         return data;
       }
 
+      async function loadPeerSnapshot(peerUrl, kind) {
+        const url = `/api/diagnostics/peer?peer_url=${encodeURIComponent(peerUrl)}&kind=${encodeURIComponent(kind)}`;
+        const resp = await fetch(url, { cache: 'no-store' });
+        const data = await resp.json();
+        if (!resp.ok || data.ok === false) {
+          throw new Error(data.error || data.detail || `HTTP ${resp.status}`);
+        }
+        return data;
+      }
+
       shell.addEventListener('click', async (event) => {
-        const btn = event.target.closest('[data-action]');
+        const btn = event.target.closest('[data-action], [data-peer-url]');
         if (!btn) return;
+
+        const peerUrl = btn.getAttribute('data-peer-url');
+        const peerKind = btn.getAttribute('data-peer-kind') || 'diagnostics';
+        if (peerUrl) {
+          try {
+            setStatus(`Abriendo snapshot remoto: ${peerUrl}`);
+            const data = await loadPeerSnapshot(peerUrl, peerKind);
+            openRemote(`${peerKind === 'memory' ? 'Memoria' : peerKind === 'state' ? 'Estado' : 'Diagnóstico'} · ${peerUrl}`, data.snapshot || data.state || data);
+            setStatus(`Snapshot remoto listo: ${peerUrl}`);
+          } catch (err) {
+            setStatus(`Error: ${err && err.message ? err.message : err}`);
+          }
+          return;
+        }
+
         const action = btn.getAttribute('data-action');
         try {
           if (action === 'refresh') {

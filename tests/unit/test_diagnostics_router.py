@@ -139,9 +139,9 @@ async def test_diagnostics_page_contains_peer_action_links():
         response = client.get("/diagnostics")
         assert response.status_code == 200
         html = response.text
-        assert "/api/diagnostics/peer?peer_url=" in html
-        assert "kind=diagnostics" in html
-        assert "kind=memory" in html
+        assert 'data-peer-url="http://peer-a:8000"' in html
+        assert 'data-peer-kind="diagnostics"' in html
+        assert 'data-peer-kind="memory"' in html
 
 
 @pytest.mark.anyio
