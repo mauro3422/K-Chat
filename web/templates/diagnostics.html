@@ -49,6 +49,7 @@
     {% set node = snapshot.node or {} %}
     {% set bridge = snapshot.bridge or {} %}
     {% set cluster = snapshot.cluster or {} %}
+    {% set peer_memory = snapshot.peer_memory or {} %}
     {% set memory = snapshot.memory or {} %}
     {% set memory_data = memory.memory or {} %}
     {% set compare_summary = memory.compare_summary or {} %}
@@ -134,6 +135,28 @@
             <tr><th>Última acción</th><td>{{ failover.last_action or 'idle' }}</td></tr>
             <tr><th>Razón</th><td>{{ failover.last_reason or 'n/a' }}</td></tr>
             <tr><th>Promover</th><td>{{ 'sí' if failover.should_promote else 'no' }}</td></tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="diag-card">
+        <h2>Memoria por peer</h2>
+        <div class="diag-muted">Snapshots remotos: {{ (peer_memory.peers or [])|length }} · Errores: {{ (peer_memory.errors or [])|length }}</div>
+        <table class="diag-table">
+          <thead><tr><th>Peer</th><th>Cola</th><th>Fresca</th><th>Severity</th></tr></thead>
+          <tbody>
+          {% for peer in peer_memory.peers or [] %}
+            {% set diag = peer.compare_summary or {} %}
+            {% set peer_memory_state = peer.memory or {} %}
+            <tr>
+              <td>{{ peer.peer_url or 'peer' }}</td>
+              <td>{{ peer.queue_size or 0 }}</td>
+              <td>{{ 'sí' if peer_memory_state.is_fresh else 'no' }}</td>
+              <td>{{ diag.severity or 'clean' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="diag-muted">Sin snapshots remotos</td></tr>
+          {% endfor %}
           </tbody>
         </table>
       </article>

@@ -18,7 +18,34 @@ async def test_api_diagnostics_returns_unified_snapshot():
     )
     fake_bridge = MagicMock()
     fake_bridge.base_url = "http://127.0.0.1:8000"
-    fake_bridge.peer_urls = []
+    fake_bridge.peer_urls = ["http://peer-a:8000"]
+    fake_bridge.request_peer_states = AsyncMock(return_value={
+        "ok": True,
+        "peers": ["http://peer-a:8000"],
+        "states": [
+            {
+                "node_id": "peer-a",
+                "role": "secondary",
+                "healthy": True,
+                "memory_is_fresh": True,
+                "peer_url": "http://peer-a:8000",
+            }
+        ],
+        "errors": [],
+    })
+    fake_bridge.request_peer_memory_snapshots = AsyncMock(return_value={
+        "ok": True,
+        "peers": ["http://peer-a:8000"],
+        "snapshots": [
+            {
+                "peer_url": "http://peer-a:8000",
+                "queue_size": 1,
+                "memory": {"revision": 12, "sync": 12, "is_fresh": False},
+                "compare_summary": {"severity": "medium", "actions": ["revisar"], "counts": {}, "has_conflicts": True},
+            }
+        ],
+        "errors": [],
+    })
 
     with (
         patch("web.app_factory.load_config", return_value=fake_config),
@@ -40,5 +67,6 @@ async def test_api_diagnostics_returns_unified_snapshot():
         assert body["ok"] is True
         assert body["node"]["node_id"] == "node-a"
         assert body["bridge"]["base_url"] == "http://127.0.0.1:8000"
+        assert body["peer_memory"]["peers"][0]["peer_url"] == "http://peer-a:8000"
         assert "memory" in body
         assert "health" in body

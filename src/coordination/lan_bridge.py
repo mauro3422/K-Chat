@@ -186,6 +186,27 @@ class NodeLanBridge:
                     last_error = str(exc)
         return {"ok": False, "peer": None, "error": locals().get("last_error", "snapshot request failed")}
 
+    async def request_peer_memory_snapshots(self, *, key_pattern: str = "") -> dict[str, Any]:
+        """Ask every peer for its memory diagnostics snapshot."""
+        if not self._peer_urls:
+            return {"ok": False, "peers": [], "snapshots": [], "errors": []}
+
+        result: dict[str, Any] = {"ok": True, "peers": self.peer_urls, "snapshots": [], "errors": []}
+        async with self._client_factory() as client:
+            for peer in self._peer_urls:
+                try:
+                    response = await self._request_with_retry(client, "get", f"{peer}/api/memory/diagnostics", params={"key_pattern": key_pattern})
+                    data = response.json() if response.content else {}
+                    if not isinstance(data, dict):
+                        result["errors"].append({"peer": peer, "error": "invalid response"})
+                        continue
+                    enriched = dict(data)
+                    enriched.setdefault("peer_url", peer)
+                    result["snapshots"].append(enriched)
+                except Exception as exc:
+                    result["errors"].append({"peer": peer, "error": str(exc)})
+        return result
+
     async def request_session_directory(self, *, limit: int = 50) -> dict[str, Any]:
         """Ask peers for their session directory snapshots."""
         if not self._peer_urls:

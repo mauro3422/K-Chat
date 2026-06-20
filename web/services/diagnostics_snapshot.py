@@ -63,6 +63,20 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
         except Exception:
             pass
 
+    peer_memory = {
+        "peers": [],
+        "errors": [],
+    }
+    if bridge is not None and bridge.peer_urls:
+        try:
+            memory_result = await bridge.request_peer_memory_snapshots(key_pattern=key_pattern)
+            peer_memory = {
+                "peers": [snapshot for snapshot in memory_result.get("snapshots", []) if isinstance(snapshot, dict)],
+                "errors": [error for error in memory_result.get("errors", []) if isinstance(error, dict)],
+            }
+        except Exception:
+            pass
+
     snapshot = coordinator.snapshot()
     return {
         "node": snapshot,
@@ -71,6 +85,7 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
             "peer_urls": bridge.peer_urls if bridge is not None else [],
         },
         "cluster": cluster,
+        "peer_memory": peer_memory,
         "memory": memory,
         "health": health,
     }
