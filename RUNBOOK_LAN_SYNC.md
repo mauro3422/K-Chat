@@ -71,3 +71,20 @@ Este documento resume cómo operar el estado actual del sistema entre dos instan
 
 El objetivo no es tener dos escritores simultáneos.
 El objetivo es que una instancia coordine, la otra acompañe y ambas vean el mismo estado curado sin duplicar persistencia.
+
+## Coordinación automática entre PCs
+
+Para que los nodos se vean solos después de reiniciar, configurá en cada máquina:
+
+- `KAIROS_NODE_ID`: un nombre estable, por ejemplo `mauro-pc` y `archlinux`.
+- `KAIROS_PEER_URLS`: la URL del otro nodo, por ejemplo `http://192.168.1.40:8000` en la principal y `http://192.168.1.35:8000` en la secundaria.
+- `KAIROS_NODE_HEARTBEAT_TTL`: dejalo en `15.0` salvo que quieras un timeout más largo.
+
+Con eso, el arranque queda automático:
+
+1. Hacés `git pull`.
+2. Reiniciás el proceso en cada PC.
+3. El nodo vuelve a mandar heartbeats al peer configurado.
+4. `/health` y `/api/node/state` reflejan la relación sin tocar nada a mano.
+
+Si cambiaste código, sí: `git pull` alcanza para traer la versión nueva, pero después hay que reiniciar el servidor para cargar el nuevo Python. Si solo cambiaste `.env`, también reiniciá para que tome la configuración.
