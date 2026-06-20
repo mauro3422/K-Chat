@@ -149,7 +149,7 @@
         </div>
         <div class="diag-muted">Errores: {{ (peer_memory.errors or [])|length }}</div>
         <table class="diag-table">
-          <thead><tr><th>Peer</th><th>Cola</th><th>Fresca</th><th>Severity</th></tr></thead>
+          <thead><tr><th>Peer</th><th>Cola</th><th>Fresca</th><th>Severity</th><th>Acciones</th></tr></thead>
           <tbody>
           {% for peer in peer_memory.peers or [] %}
             {% set diag = peer.compare_summary or {} %}
@@ -160,15 +160,20 @@
               <td>{{ peer.queue_size or 0 }}</td>
               <td>{{ 'sí' if is_aligned else 'no' }}</td>
               <td>{{ diag.severity or 'clean' }}</td>
+              <td>
+                <a class="diag-link" href="{{ peer.peer_url }}/diagnostics" target="_blank" rel="noreferrer">diagnóstico</a>
+                ·
+                <a class="diag-link" href="{{ peer.peer_url }}/api/memory/diagnostics" target="_blank" rel="noreferrer">memoria</a>
+              </td>
             </tr>
           {% else %}
-            <tr><td colspan="4" class="diag-muted">Sin snapshots remotos</td></tr>
+            <tr><td colspan="5" class="diag-muted">Sin snapshots remotos</td></tr>
           {% endfor %}
           </tbody>
         </table>
         {% if peer_memory_summary.stale_details %}
         <table class="diag-table" style="margin-top:12px">
-          <thead><tr><th>Peer desfasado</th><th>Delta rev</th><th>Cola</th><th>Fresh</th><th>Razón</th></tr></thead>
+          <thead><tr><th>Peer desfasado</th><th>Delta rev</th><th>Cola</th><th>Fresh</th><th>Razón</th><th>Acción</th></tr></thead>
           <tbody>
           {% for stale in peer_memory_summary.stale_details %}
             <tr>
@@ -177,6 +182,7 @@
               <td>{{ stale.queue_size or 0 }}</td>
               <td>{{ 'sí' if stale.is_fresh else 'no' }}</td>
               <td>{{ stale.stale_reason or 'unknown' }}</td>
+              <td><a class="diag-link" href="{{ stale.peer_url }}/diagnostics" target="_blank" rel="noreferrer">abrir</a></td>
             </tr>
           {% endfor %}
           </tbody>
