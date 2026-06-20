@@ -1,6 +1,6 @@
 import { ApiClient } from '../../api/ApiClient';
 import { ILogger } from '../Logger';
-import { getLogger } from '../LoggerFactory';
+import { getLogger } from '../infra/LoggerFactory';
 
 type SystemLogEntry = {
   t?: string;

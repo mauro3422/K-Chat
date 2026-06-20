@@ -132,6 +132,11 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     return fetch(`${this.baseUrl}/api/node/sync/status`, { cache: 'no-store' });
   }
 
+  memoryDiagnostics(keyPattern: string = ''): Promise<Response> {
+    const query = keyPattern ? `?key_pattern=${encodeURIComponent(keyPattern)}` : '';
+    return fetch(`${this.baseUrl}/api/memory/diagnostics${query}`, { cache: 'no-store' });
+  }
+
   sendClientLogs(entries: ClientLogEntry[]): Promise<Response> {
     return fetch(`${this.baseUrl}/api/logs/client`, {
       method: 'POST',

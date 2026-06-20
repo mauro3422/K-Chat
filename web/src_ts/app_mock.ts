@@ -37,6 +37,7 @@ import { AudioBus } from './core/notification/AudioBus';
 import { GridController } from './core/ui/GridController';
 import { CanvasOverlay } from './widgets/CanvasOverlay';
 import { LanStatusPanel } from './widgets/LanStatusPanel';
+import { MemoryStatusPanel } from './widgets/MemoryStatusPanel';
 import { getLogger } from './core/infra/LoggerFactory';
 import { SystemLogPanel } from './core/debug/SystemLogPanel';
 import { BrowserDomRenderer } from './rendering/DomRenderer';
@@ -103,9 +104,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const skillsUI = new SkillsUI(eventBus, renderMarkdownFn, window.fetch.bind(window));
   const systemLogPanel = new SystemLogPanel(apiClient);
   const lanStatusPanel = new LanStatusPanel(apiClient, getLogger('lan-status'));
+  const memoryStatusPanel = new MemoryStatusPanel(apiClient, getLogger('memory-status'));
   skillsUI.init();
   systemLogPanel.init();
   lanStatusPanel.init();
+  memoryStatusPanel.init();
 
   window.addEventListener('kairos:ui-log', (event) => {
     const detail = (event as CustomEvent<{ label?: string; detail?: string }>).detail;
@@ -362,9 +365,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     void lanStatusPanel.refresh();
   }, 5000);
   void lanStatusPanel.refresh();
+
+  const memoryStatusIntervalId = setInterval(() => {
+    void memoryStatusPanel.refresh();
+  }, 7000);
+  void memoryStatusPanel.refresh();
   window.addEventListener('beforeunload', () => {
     clearInterval(debugIntervalId);
     clearInterval(lanStatusIntervalId);
+    clearInterval(memoryStatusIntervalId);
     streamOrchestrator.abort();
     ndjsonClient.abort();
     sseClient.disconnect();
