@@ -13,8 +13,12 @@ PORT="${PORT:-8000}"
 ACTION="${1:-help}"
 health() { curl --fail --silent --show-error "http://127.0.0.1:${PORT}/health"; printf '\n'; }
 wait_for_health() {
+  local response
   for _ in {1..30}; do
-    if health >/dev/null 2>&1; then health; return 0; fi
+    if response="$(curl --fail --silent --show-error "http://127.0.0.1:${PORT}/health" 2>/dev/null)"; then
+      printf '%s\n' "$response"
+      return 0
+    fi
     sleep 1
   done
   service_control status --no-pager
