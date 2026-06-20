@@ -209,6 +209,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         asyncio.create_task(_generate_skills_index())
 
         async def _prime_model_registry() -> None:
+            from src.llm.model_registry import configure_model_registry
+            # Sync ContextVar with the shared app instance so the background
+            # task populates the same registry that HTTP requests read from
+            configure_model_registry(app.state.model_registry)
             try:
                 await asyncio.wait_for(get_verified_models(), timeout=10)
             except Exception as e:

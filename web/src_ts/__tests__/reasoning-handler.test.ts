@@ -48,7 +48,7 @@ describe('ReasoningHandler DOM contract', () => {
 
       const summary = ctx.msgEl.querySelector('details.' + C.REASONING + ' summary');
       expect(summary).not.toBeNull();
-      expect(summary!.textContent).toBe('Razonando...');
+      expect(summary!.textContent).toContain('Razonando...');
     });
 
     it('has summary with phase number for subsequent phases', () => {

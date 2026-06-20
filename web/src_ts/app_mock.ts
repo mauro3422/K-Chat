@@ -28,6 +28,7 @@ import { CanvasWorkspace } from './widgets/CanvasWorkspace';
 import { CanvasCardManager } from './widgets/CanvasCardManager';
 import { CanvasLayoutStore } from './widgets/CanvasLayoutStore';
 import { SkillsUI } from './widgets/SkillsUI';
+import { ModelSelector } from './widgets/ModelSelector';
 import { NotificationService } from './core/notification/NotificationService';
 import { RateLimitCooldown } from './core/notification/RateLimitCooldown';
 import { ToastUI } from './core/notification/ToastUI';
@@ -103,11 +104,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   const skillsUI = new SkillsUI(eventBus, renderMarkdownFn, window.fetch.bind(window));
+  const modelSelector = new ModelSelector();
   const systemLogPanel = new SystemLogPanel(apiClient);
   const lanStatusPanel = new LanStatusPanel(apiClient, getLogger('lan-status'));
   const memoryStatusPanel = new MemoryStatusPanel(apiClient, getLogger('memory-status'));
   const healthOverviewPanel = new HealthOverviewPanel(apiClient, getLogger('health-overview'));
   skillsUI.init();
+  modelSelector.init();
   systemLogPanel.init();
   lanStatusPanel.init();
   memoryStatusPanel.init();
@@ -297,17 +300,71 @@ document.addEventListener('DOMContentLoaded', async () => {
   // â”€â”€ 9. Sidebar Toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const sidebarToggle = document.getElementById('sidebar-toggle');
   const sidebarEl = document.getElementById('sidebar');
+  const gutterEl = document.getElementById('sidebar-gutter');
 
   if (sidebarToggle && sidebarEl) {
     sidebarToggle.addEventListener('click', () => {
       sidebarEl.classList.toggle('collapsed');
-      sidebarToggle.textContent = sidebarEl.classList.contains('collapsed') ? 'â–¶' : 'â—€';
+      sidebarToggle.textContent = sidebarEl.classList.contains('collapsed') ? '▶' : '◀';
       sidebarToggle.title = sidebarEl.classList.contains('collapsed') ? 'Mostrar panel' : 'Ocultar panel';
       if (debugPanel && debugPanel.classList.contains('open')) debug.refresh();
     });
   }
 
-  // â”€â”€ 10. Theme Toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Gutter drag
+  let isDragging = false;
+  const MIN_SIDEBAR_WIDTH = 160;
+  const MAX_SIDEBAR_WIDTH = 500;
+
+  function onGutterDown(e) {
+    if (sidebarEl?.classList.contains('collapsed')) return;
+    isDragging = true;
+    gutterEl?.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  }
+
+  function onGutterMove(e) {
+    if (!isDragging || !sidebarEl) return;
+    const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, e.clientX));
+    sidebarEl.style.width = newWidth + 'px';
+    localStorage.setItem('sidebar_width', String(newWidth));
+  }
+
+  function onGutterUp() {
+    if (!isDragging) return;
+    isDragging = false;
+    gutterEl?.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+
+  if (gutterEl) {
+    gutterEl.addEventListener('mousedown', onGutterDown);
+    gutterEl.addEventListener('touchstart', (e) => {
+      if (sidebarEl?.classList.contains('collapsed')) return;
+      isDragging = true;
+      gutterEl.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      const touch = e.touches[0];
+      const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, touch.clientX));
+      sidebarEl.style.width = newWidth + 'px';
+      localStorage.setItem('sidebar_width', String(newWidth));
+      e.preventDefault();
+    }, { passive: false });
+  }
+  document.addEventListener('mousemove', onGutterMove);
+  document.addEventListener('mouseup', onGutterUp);
+  document.addEventListener('touchmove', (e) => {
+    if (!isDragging || !sidebarEl) return;
+    const touch = e.touches[0];
+    const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, touch.clientX));
+    sidebarEl.style.width = newWidth + 'px';
+    localStorage.setItem('sidebar_width', String(newWidth));
+  }, { passive: true });
+  document.addEventListener('touchend', onGutterUp);
+
   document.getElementById('theme-toggle')?.addEventListener('click', () => {
     const isLight = document.body.classList.toggle('light-theme');
     document.documentElement.classList.toggle('light-theme', isLight);
@@ -358,6 +415,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else {
         const lastMsg = streamOrchestrator.debugLastAssistantMsgEl || document.querySelector('#messages .msg.assistant:last-child') as HTMLElement | null;
         debug.setActiveMessage(lastMsg, null);
+      }
+      // Auto-load session debug info (reasoning, context, system prompt, etc.)
+      const sid = sessionStore.activeSessionId;
+      if (sid) {
+        debug.loadDebugInfo(sid);
       }
       debug.refresh();
       systemLogPanel.refresh();

@@ -2,6 +2,7 @@ import { C } from '../core/infra/DomContracts';
 import { IDebugManager } from '../types/debug';
 import { getLogger } from '../core/infra/LoggerFactory';
 import { ILogger } from '../core/infra/Logger';
+import { ICON_REASONING } from '../core/ui/Icons';
 import type { StreamHandlerContext } from './ContentHandler';
 
 export class ReasoningHandler {
@@ -24,7 +25,7 @@ export class ReasoningHandler {
       details.className = C.REASONING;
       details.dataset.phase = String(ctx.phaseIndex);
       details.open = true;
-      details.innerHTML = `<summary>${ctx.phaseIndex === 0 ? 'Razonando...' : 'Razonamiento (Fase ' + (ctx.phaseIndex + 1) + ')'}</summary><div class="${C.RT}"></div>`;
+      details.innerHTML = `<summary>${ICON_REASONING} <span>${ctx.phaseIndex === 0 ? 'Razonando...' : 'Fase ' + (ctx.phaseIndex + 1)}</span></summary><div class="${C.RT}"></div>`;
       this.insertBeforeBody(ctx, details);
     }
     const rt = details.querySelector('.' + C.RT) as HTMLElement;

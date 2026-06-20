@@ -78,6 +78,13 @@ export class ChatForm implements IChatForm {
   }
 
   private getSelectedModel(): string {
+    // Read from ModelSelector's global reference (set by ModelSelector on change)
+    const fromGlobal = (window as any).__k?.selectedModel;
+    if (fromGlobal) return fromGlobal;
+    // Fallback: localStorage (ModelSelector persists there)
+    const saved = localStorage.getItem('selected_model');
+    if (saved) return saved;
+    // Last resort: hidden select (may be empty if no options)
     const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
     if (modelSelect && modelSelect.value) return modelSelect.value;
     return 'default';

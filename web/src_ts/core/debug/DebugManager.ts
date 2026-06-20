@@ -101,6 +101,15 @@ export class DebugManager implements IDebugManager {
   refresh(): void {
     if (!this.contentEl) return;
 
+    // Save scroll positions of pre elements and details
+    const scrollPositions: Record<string, number> = {};
+    if (this.contentEl) {
+      this.contentEl.querySelectorAll('pre.db-pre, .dbg-dom, .sl-container').forEach((el, i) => {
+        const key = (el.id || `scroll-${i}`);
+        scrollPositions[key] = el.scrollTop;
+      });
+    }
+
     let html = '';
     const durations = this.calcStreamDurations();
 
@@ -135,6 +144,15 @@ export class DebugManager implements IDebugManager {
     html += this.renderWidgetDomSection();
     html += this.renderBackendLogsSection();
 
+    // Full session messages JSON (auto-loaded from debugInfo)
+    const hasSessionData = this.debugInfo && Object.keys(this.debugInfo).length > 0;
+    if (hasSessionData) {
+      html += `<details class="db-section" open>
+        <summary><strong>📦 Session Data</strong> <button class="db-copy" data-copy-action="all-session" style="font-size:10px;padding:1px 6px">📋 Copy</button></summary>
+        <pre class="db-pre" style="max-height:500px">${this.esc(JSON.stringify(this.debugInfo, null, 2))}</pre>
+      </details>`;
+    }
+
     html += `<details class="db-section" open>
       <summary><strong>📄 DOM Tree</strong></summary>
       <div class="dbg-dom" id="dom-tree">`;
@@ -146,6 +164,17 @@ export class DebugManager implements IDebugManager {
     html += `</div></details>`;
 
     this.contentEl.innerHTML = html;
+
+    // Restore scroll positions
+    if (Object.keys(scrollPositions).length > 0) {
+      this.contentEl.querySelectorAll('pre.db-pre, .dbg-dom, .sl-container').forEach((el, i) => {
+        const key = (el.id || `scroll-${i}`);
+        const saved = scrollPositions[key];
+        if (saved !== undefined) {
+          el.scrollTop = saved;
+        }
+      });
+    }
   }
 
   getAllText(): string {

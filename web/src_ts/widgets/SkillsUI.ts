@@ -32,14 +32,68 @@ export class SkillsUI implements ISkillsUI {
     this.fetchFn = fetchFn;
   }
 
+  private dropdownEl: HTMLElement | null = null;
+  private skillsListEl: HTMLElement | null = null;
+  private toggleBtn: HTMLElement | null = null;
+  private _clickCb: ((e: MouseEvent) => void) | null = null;
+
   init(): void {
-    this.fetchSkills();
     this.createModalContainer();
+    this.createDropdown();
+    this.attachEvents();
+    this.fetchSkills();
     this.logger.info('init');
   }
 
+  private createDropdown(): void {
+    this.toggleBtn = document.getElementById('skills-toggle');
+    if (!this.toggleBtn) return;
+
+    this.dropdownEl = document.createElement('div');
+    this.dropdownEl.id = 'skills-dropdown';
+    this.dropdownEl.className = 'skills-dropdown';
+    this.dropdownEl.innerHTML = `
+      <div class="skills-dropdown-header">Skills</div>
+      <div id="skills-dropdown-list" class="skills-dropdown-list"></div>
+    `;
+    this.skillsListEl = this.dropdownEl.querySelector('#skills-dropdown-list');
+    this.toggleBtn.parentNode?.insertBefore(this.dropdownEl, this.toggleBtn.nextSibling);
+  }
+
+  private attachEvents(): void {
+    this.toggleBtn?.addEventListener('click', (e: MouseEvent) => {
+      e.stopPropagation();
+      this.toggleDropdown();
+    });
+
+    this._clickCb = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        this.dropdownEl &&
+        !this.dropdownEl.contains(target) &&
+        target !== this.toggleBtn &&
+        !this.toggleBtn?.contains(target)
+      ) {
+        this.closeDropdown();
+      }
+    };
+    document.addEventListener('click', this._clickCb);
+  }
+
+  private toggleDropdown(): void {
+    if (!this.dropdownEl) return;
+    const isOpen = this.dropdownEl.classList.toggle('open');
+    if (isOpen) {
+      this.logger.info('dropdown_open');
+    }
+  }
+
+  private closeDropdown(): void {
+    this.dropdownEl?.classList.remove('open');
+  }
+
   private fetchSkills(): void {
-    const listContainer = document.getElementById('skills-sidebar-list');
+    const listContainer = this.skillsListEl || document.getElementById('skills-dropdown-list');
     if (!listContainer) return;
 
     listContainer.textContent = 'Cargando...';
@@ -53,17 +107,18 @@ export class SkillsUI implements ISkillsUI {
         listContainer.textContent = '';
         this.logger.info('fetched_skills', `count=${skills.length}`);
         if (skills.length === 0) {
-          listContainer.innerHTML = '<span class="session-empty">No hay skills</span>';
+          listContainer.innerHTML = '<div class="skills-dropdown-empty">No hay skills</div>';
           return;
         }
 
         skills.forEach(skill => {
           const btn = document.createElement('button');
-          btn.className = 'skill-item-btn';
+          btn.className = 'skills-dropdown-item';
           btn.dataset.name = skill.name;
           btn.textContent = `\u2022 ${skill.title}`;
           btn.addEventListener('click', () => {
             this.openSkill(skill.name);
+            this.closeDropdown();
           });
           listContainer.appendChild(btn);
         });
@@ -71,6 +126,11 @@ export class SkillsUI implements ISkillsUI {
       .catch(err => {
         this.logger.error('fetch_skills_failed', String(err));
       });
+  }
+
+  dispose(): void {
+    if (this._clickCb) document.removeEventListener('click', this._clickCb);
+    this.dropdownEl?.remove();
   }
 
   private createModalContainer(): void {

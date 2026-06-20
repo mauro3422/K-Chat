@@ -1,3 +1,4 @@
+import json as _json
 import uuid
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from web.routers.sessions import _federated_session_entries
 from web.services.message_renderer import render_session_messages
 from web.services.message_renderer_contract import MessageRenderDeps
 from web.services.protocols import MessageRendererProtocol
-from web.services.model_catalog import format_model_label, get_model_metadata
+from web.services.model_catalog import format_model_label, format_model_json, get_model_metadata
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
@@ -107,39 +108,26 @@ def get_available_model_ids(request: Request | None = None) -> list[str]:
     return models
 
 
-def get_available_models(request: Request | None = None) -> list[dict[str, str]]:
+def get_available_models(request: Request | None = None) -> dict[str, list[dict]]:
     """Return models grouped by tier for the UI selector.
 
     Fully dynamic — no hardcoded model names.
-    Only shows Go (paid) and Free (rate-limited) models.
-    Zen-only models (paid per-use, not OpenCode) are hidden.
+    Each entry includes JSON metadata for the frontend custom dropdown.
     """
     rl = _get_rate_store(request)
-    grouped: dict[str, list[dict[str, str]]] = {
+    grouped: dict[str, list[dict]] = {
         "go_premium": [], "go_standard": [], "go_economy": [],
         "free_ratelimited": [],
     }
     for model_id in get_available_model_ids(request=request):
         tier = _get_model_tier(model_id, request=request)
         if tier == "zen":
-            continue  # Hide Zen-only models — paid per-use, not OpenCode
-        label = format_model_label(model_id)
-        # Add visual indicators
-        if tier == "free_ratelimited":
-            label = "⚠️ " + label
-        elif tier == "go_premium":
-            label = "🚀 " + label
-        elif tier == "go_standard":
-            label = "⚡ " + label
-        elif tier == "go_economy":
-            label = "💰 " + label
-
-        # Rate limit cooldown badge
+            continue
+        meta = format_model_json(model_id)
         cooldown = rl.get_cooldown_remaining(model_id)
         if cooldown is not None:
-            label += f"  🔒 {int(cooldown)}s"
-
-        grouped[tier].append({"id": model_id, "label": label, "tier": tier})
+            meta["cooldown"] = int(cooldown)
+        grouped[tier].append(meta)
     return grouped
 
 
@@ -169,10 +157,12 @@ def home(request: Request, new: bool = False) -> HTMLResponse:
         session_id = request.cookies.get("kchat_session_id")
         if not session_id:
             session_id = str(uuid.uuid4())
+    _models = get_available_models(request=request)
     resp = templates.TemplateResponse(request, "chat_ts.html", {
         "session_id": session_id,
         "model": FALLBACK_MODEL,
-        "models": get_available_models(request=request),
+        "models": _models,
+        "models_json": _json.dumps(_models),
         "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
@@ -190,10 +180,12 @@ async def session_page(request: Request, session_id: str) -> Response:
         current_base = str(request.base_url).rstrip("/")
         if source_mode == "peer" and source_url and source_url != current_base:
             return RedirectResponse(url=f"{source_url}/sessions/{session_id}", status_code=307)
+    _models2 = get_available_models(request=request)
     resp = templates.TemplateResponse(request, "chat_ts.html", {
         "session_id": session_id,
         "model": FALLBACK_MODEL,
-        "models": get_available_models(request=request),
+        "models": _models2,
+        "models_json": _json.dumps(_models2),
         "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
@@ -251,10 +243,12 @@ async def go_session(request: Request, session_id: str) -> Response:
         current_base = str(request.base_url).rstrip("/")
         if source_mode == "peer" and source_url and source_url != current_base:
             return RedirectResponse(url=f"{source_url}/go/{session_id}", status_code=307)
+    _models3 = get_available_models(request=request)
     resp = templates.TemplateResponse(request, "chat_ts.html", {
         "session_id": session_id,
         "model": FALLBACK_MODEL,
-        "models": get_available_models(request=request),
+        "models": _models3,
+        "models_json": _json.dumps(_models3),
         "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)

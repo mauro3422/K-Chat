@@ -28,54 +28,13 @@
 <div id="app" data-session-id="{{ session_id }}">
 <aside id="sidebar">
   <div id="session-list"></div>
-  <section class="lan-status-section" aria-label="Estado LAN">
-    <div class="lan-status-header">
-      <h4>Estado LAN</h4>
-      <span class="lan-status-hint">sync/status</span>
-    </div>
-    <div id="lan-status-panel" class="lan-status-panel">
-      <div class="lan-status-empty">Cargando estado...</div>
-    </div>
-  </section>
-  <section class="memory-status-section" aria-label="Estado de memoria">
-    <div class="memory-status-header">
-      <h4>Memoria</h4>
-      <span class="memory-status-hint">memory/diagnostics</span>
-    </div>
-    <div id="memory-status-panel" class="memory-status-panel">
-      <div class="memory-status-empty">Cargando memoria...</div>
-    </div>
-  </section>
-  <section class="health-overview-section" aria-label="Salud total">
-    <div class="health-overview-header">
-      <h4>Salud total</h4>
-      <span class="health-overview-hint">/health</span>
-    </div>
-    <div id="health-overview-panel" class="health-overview-panel">
-      <div class="health-overview-empty">Cargando salud total...</div>
-    </div>
-  </section>
-  <!-- Skills Section -->
-  <div class="skills-sidebar-section">
-    <div class="skills-header" id="skills-sidebar-header">
-      <span class="skills-icon">💡</span>
-      <h4>Skills</h4>
-    </div>
-    <div class="skills-list" id="skills-sidebar-list">
-      <!-- Cargar dinámicamente -->
-    </div>
-  </div>
-  <div class="sidebar-footer">
-    <button id="btn-new-session" class="btn-new-glass">+ Nueva Sesión</button>
-    <a id="master-session-link" class="btn-new-glass" href="/go/{{ session_id }}" style="display:block;text-align:center;margin-top:8px;text-decoration:none;">Abrir sesión actual</a>
-    <a class="btn-new-glass" href="/diagnostics" style="display:block;text-align:center;margin-top:8px;text-decoration:none;">Ver diagnóstico</a>
-  </div>
 </aside>
 <div id="sidebar-gutter" class="sidebar-gutter"></div>
 <main id="main">
   <div class="main-header">
     <div class="header-left">
       <button id="sidebar-toggle" class="header-btn" title="Mostrar/Ocultar panel">☰</button>
+      <button id="btn-new-session" class="header-btn" title="Nueva sesión">+</button>
       <img src="/static/logo.png" alt="Kairos Logo" class="header-logo">
       <span class="header-brand">Kairos TS</span>
     </div>
@@ -90,6 +49,7 @@
       </button>
       <button id="canvas-toggle" class="header-btn" title="Ver Lienzo">🎨</button>
       <button id="theme-toggle" class="header-btn" title="Cambiar tema">🌓</button>
+      <button class="header-btn" id="skills-toggle" title="Skills">🧩</button>
       <span class="debug-toggle" id="debug-toggle">📊 Debug</span>
     </div>
   </div>
@@ -101,7 +61,7 @@
       <div id="attach-preview" class="attach-preview"></div>
       <div class="chat-input-toolbar">
         <div class="toolbar-left">
-          <div class="model-select-wrapper">
+          <div class="model-select-wrapper" id="model-select-wrapper">
             <span class="robot-icon" title="Modelos">
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="5" y="7" width="14" height="12" rx="3"/>
@@ -112,25 +72,16 @@
                 <line x1="9" y1="4" x2="15" y2="4"/>
                 <line x1="9" y1="4" x2="8" y2="2"/>
                 <line x1="15" y1="4" x2="16" y2="2"/>
-                <line x1="5" y1="11" x2="3" y2="10"/>
-                <line x1="5" y1="14" x2="3" y2="15"/>
-                <line x1="19" y1="11" x2="21" y2="10"/>
-                <line x1="19" y1="14" x2="21" y2="15"/>
               </svg>
             </span>
-            <select id="model-select" class="model-select" aria-label="Seleccionar modelo de lenguaje">
-              {% for group_name, group_models in models.items() %}
-                {% if group_models %}
-                  {% set group_labels = {"go_premium": "🚀 GO Premium", "go_standard": "⚡ GO Standard", "go_economy": "💰 GO Económico", "free_ratelimited": "⚠️ Free (Rate Limited)", "zen": "🔵 Zen"} %}
-                  <optgroup label="{{ group_labels.get(group_name, group_name) }}">
-                    {% for m in group_models %}
-                      <option value="{{ m.id }}" class="model-option-{{ m.tier }}" title="{{ m.label }}">{{ m.label }}</option>
-                    {% endfor %}
-                  </optgroup>
-                {% endif %}
-              {% endfor %}
-            </select>
+            <div id="model-select-trigger" class="model-select-trigger" tabindex="0" role="combobox" aria-label="Seleccionar modelo">
+              <span class="model-select-current" id="model-select-current">Cargando...</span>
+              <span class="model-select-arrow">▾</span>
+            </div>
+            <div id="model-select-dropdown" class="model-select-dropdown" style="display:none"></div>
+            <select id="model-select" style="display:none" aria-label="Seleccionar modelo de lenguaje"></select>
           </div>
+          <script id="model-data" type="application/json">{{ models_json | safe }}</script>
           <input type="file" id="file-input" multiple accept="image/*,application/pdf,audio/*,*/*" style="display:none">
         </div>
         <div class="toolbar-right">
@@ -173,13 +124,46 @@
 <div id="debug-panel" class="debug-panel">
   <div class="debug-header">
     <h3>Debug</h3>
-    <span class="debug-close" id="debug-close">&times;</span>
+    <div class="debug-header-actions">
+      <a class="debug-header-link" href="/diagnostics" title="Diagnóstico completo">🔬</a>
+      <span class="debug-close" id="debug-close">&times;</span>
+    </div>
   </div>
   <div class="debug-tabs">
     <button type="button" class="debug-tab active" id="debug-tab-btn">Debug</button>
+    <button type="button" class="debug-tab" id="status-tab-btn">Estado</button>
     <button type="button" class="debug-tab" id="logs-tab-btn">Logs</button>
   </div>
   <div id="debug-content" class="debug-body">Envia un mensaje para ver el debug</div>
+  <div id="status-content" class="debug-body" style="display:none">
+    <section class="debug-status-section" aria-label="Estado LAN">
+      <div class="debug-status-header">
+        <h4>Estado LAN</h4>
+        <span class="debug-status-hint">sync/status</span>
+      </div>
+      <div id="lan-status-panel" class="lan-status-panel">
+        <div class="lan-status-empty">Cargando estado...</div>
+      </div>
+    </section>
+    <section class="debug-status-section" aria-label="Estado de memoria">
+      <div class="debug-status-header">
+        <h4>Memoria</h4>
+        <span class="debug-status-hint">memory/diagnostics</span>
+      </div>
+      <div id="memory-status-panel" class="memory-status-panel">
+        <div class="memory-status-empty">Cargando memoria...</div>
+      </div>
+    </section>
+    <section class="debug-status-section" aria-label="Salud total">
+      <div class="debug-status-header">
+        <h4>Salud total</h4>
+        <span class="debug-status-hint">/health</span>
+      </div>
+      <div id="health-overview-panel" class="health-overview-panel">
+        <div class="health-overview-empty">Cargando salud total...</div>
+      </div>
+    </section>
+  </div>
   <div id="system-log-content" class="debug-body" style="display:none">Abre Logs para ver el sistema</div>
 </div>
 </div>

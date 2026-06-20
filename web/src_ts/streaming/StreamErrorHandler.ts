@@ -70,6 +70,24 @@ function showRetryMessage(asstDiv: HTMLElement, reason: string, errorType?: stri
     card.appendChild(header);
     card.appendChild(detail);
     card.appendChild(hint);
+  } else if (errorType === 'auth' || errorType === 'quota' || errorType === 'insufficient_quota') {
+    card.classList.add('rate-limit-card');
+
+    const header = document.createElement('div');
+    header.className = 'error-header rate-limit-header';
+    header.textContent = '🔒 Sin crédito disponible';
+
+    const detail = document.createElement('div');
+    detail.className = 'error-detail';
+    detail.textContent = reason;
+
+    const hint = document.createElement('div');
+    hint.className = 'error-hint';
+    hint.textContent = 'Tu cuenta OpenCode no tiene tokens suficientes. Recargá o esperá al reseteo mensual.';
+
+    card.appendChild(header);
+    card.appendChild(detail);
+    card.appendChild(hint);
   } else {
     const header = document.createElement('div');
     header.className = 'error-header';

@@ -1,5 +1,5 @@
 import { ApiClient } from '../../api/ApiClient';
-import { ILogger } from '../Logger';
+import { ILogger } from '../infra/Logger';
 import { getLogger } from '../infra/LoggerFactory';
 
 type SystemLogEntry = {
@@ -15,23 +15,28 @@ type SystemLogEntry = {
 export class SystemLogPanel {
   private panelEl: HTMLElement | null = null;
   private debugContentEl: HTMLElement | null = null;
+  private statusContentEl: HTMLElement | null = null;
   private logsContentEl: HTMLElement | null = null;
   private debugTabBtn: HTMLElement | null = null;
+  private statusTabBtn: HTMLElement | null = null;
   private logsTabBtn: HTMLElement | null = null;
   private logger: ILogger = getLogger('system-log-panel');
   private refreshQueued = false;
-  private activeTab: 'debug' | 'logs' = 'debug';
+  private activeTab: 'debug' | 'status' | 'logs' = 'debug';
 
   constructor(private readonly apiClient: ApiClient) {}
 
   init(): void {
     this.panelEl = document.getElementById('debug-panel');
     this.debugContentEl = document.getElementById('debug-content');
+    this.statusContentEl = document.getElementById('status-content');
     this.logsContentEl = document.getElementById('system-log-content');
     this.debugTabBtn = document.getElementById('debug-tab-btn');
+    this.statusTabBtn = document.getElementById('status-tab-btn');
     this.logsTabBtn = document.getElementById('logs-tab-btn');
 
     this.debugTabBtn?.addEventListener('click', () => this.showTab('debug'));
+    this.statusTabBtn?.addEventListener('click', () => this.showTab('status'));
     this.logsTabBtn?.addEventListener('click', () => this.showTab('logs'));
     this.showTab('debug');
   }
@@ -66,15 +71,19 @@ export class SystemLogPanel {
       });
   }
 
-  private showTab(tab: 'debug' | 'logs'): void {
+  private showTab(tab: 'debug' | 'status' | 'logs'): void {
     this.activeTab = tab;
     if (this.debugContentEl) {
       this.debugContentEl.style.display = tab === 'debug' ? 'block' : 'none';
+    }
+    if (this.statusContentEl) {
+      this.statusContentEl.style.display = tab === 'status' ? 'block' : 'none';
     }
     if (this.logsContentEl) {
       this.logsContentEl.style.display = tab === 'logs' ? 'block' : 'none';
     }
     this.debugTabBtn?.classList.toggle('active', tab === 'debug');
+    this.statusTabBtn?.classList.toggle('active', tab === 'status');
     this.logsTabBtn?.classList.toggle('active', tab === 'logs');
     if (tab === 'logs') {
       this.refresh();

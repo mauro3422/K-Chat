@@ -1,6 +1,7 @@
 import { C } from '../core/infra/DomContracts';
 import { IDebugManager } from '../types/debug';
 import { ToolCallPayload } from '../types/streaming';
+import { ICON_TOOLS } from '../core/ui/Icons';
 import type { StreamHandlerContext } from './ContentHandler';
 
 export class ToolCallRenderer {
@@ -37,19 +38,19 @@ export class ToolCallRenderer {
     const existing = wrapper.querySelector(`.${C.TC_ITEM}[data-tool="${toolName}"]`) as HTMLElement | null;
     if (existing) {
       existing.className = C.TC_ITEM + ' ' + status;
-      existing.innerHTML = status === 'ok' ? `&#10003; ${toolName}` : status === 'error' ? `&#10007; ${toolName}` : `⚡ ${toolName}`;
+      existing.innerHTML = status === 'ok' ? `${ICON_TOOLS} ${toolName} ✓` : status === 'error' ? `${ICON_TOOLS} ${toolName} ✗` : `${ICON_TOOLS} ${toolName}`;
     } else if (isIntermediate) {
       const pill = document.createElement('span');
       pill.className = C.TC_ITEM + ' ' + status;
       pill.dataset.tool = toolName;
       const spinner = status === 'calling' ? '<span class="tc-spinner"></span> ' : '';
-      pill.innerHTML = spinner + toolName;
+      pill.innerHTML = `${ICON_TOOLS} ${spinner}${toolName}`;
       wrapper.appendChild(pill);
     } else {
       const pill = document.createElement('span');
       pill.className = C.TC_ITEM + ' ' + status;
       pill.dataset.tool = toolName;
-      pill.innerHTML = status === 'ok' ? `&#10003; ${toolName}` : `&#10007; ${toolName}`;
+      pill.innerHTML = status === 'ok' ? `${ICON_TOOLS} ${toolName} ✓` : `${ICON_TOOLS} ${toolName} ✗`;
       wrapper.appendChild(pill);
     }
 

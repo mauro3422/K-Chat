@@ -169,10 +169,22 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     });
     dispatcher.on('error', (data) => {
       try {
-        const parsed = JSON.parse(data);
-        streamError = { type: parsed.type || 'unknown', message: parsed.message || 'Error desconocido' };
+        const raw = typeof data === 'string' ? data : JSON.stringify(data);
+        let parsed: Record<string, string>;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          parsed = { type: 'unknown', message: raw };
+        }
+        const errType = parsed.type || 'unknown';
+        const errMsg = parsed.message || (parsed.error ? (typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error)) : 'Error desconocido');
+        streamError = { type: errType, message: errMsg };
+        // Surface rate_limit/auth errors immediately
+        if (errType === 'rate_limit' || errType === 'auth' || errType === 'quota' || errType === 'insufficient_quota') {
+          this._handleStreamError(errType, errMsg);
+        }
       } catch {
-        streamError = { type: 'unknown', message: data };
+        streamError = { type: 'unknown', message: typeof data === 'string' ? data : 'Error de conexión' };
       }
       this._resetTimeout();
     });
@@ -220,7 +232,8 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         )) {
           return;
         }
-        this.debug?.logUI('stream_error', `Backend error: ${err}`);
+        const errMsg = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
+        this.debug?.logUI('stream_error', `Backend error: ${errMsg}`);
       }
 
       this.abortController = null;

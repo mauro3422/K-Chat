@@ -23,6 +23,8 @@ export interface SessionListEntry {
   node_role?: string;
   cluster_name?: string;
   source_url?: string;
+  source_mode?: string;
+  is_favorite?: boolean;
 }
 
 export class SessionList {
@@ -65,11 +67,12 @@ export class SessionList {
   renderSessions(sessions: SessionListEntry[], activeId: string): void {
     if (!this.sidebarEl) return;
 
-    this.logger.info('render_sessions', `count=${sessions.length} activeId=${activeId}`);
+    const localSessions = sessions.filter(s => (s.source_mode || 'local') !== 'peer');
+    this.logger.info('render_sessions', `total=${sessions.length} visible=${localSessions.length} activeId=${activeId}`);
     this.sidebarEl.innerHTML = '';
     const fragment = document.createDocumentFragment();
 
-    sessions.forEach((s) => {
+    localSessions.forEach((s) => {
       const isTelegram = s.id.startsWith('tele_');
       const label = s.name || s.id.substring(0, 8);
       const msgCount = s.count !== undefined ? s.count : 0;

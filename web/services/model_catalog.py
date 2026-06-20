@@ -85,6 +85,26 @@ def _modality_label(meta: dict[str, Any]) -> str:
     return "+".join(modalities)
 
 
+def format_model_json(model_id: str) -> dict:
+    """Return model metadata as a JSON-safe dict for the frontend dropdown."""
+    meta = get_model_metadata(model_id)
+    if not meta:
+        return {"id": model_id, "name": model_id, "caps": [], "ctx": None, "out": None}
+    caps = []
+    if meta.get("image"): caps.append("image")
+    if meta.get("video"): caps.append("video")
+    if meta.get("audio"): caps.append("audio")
+    if meta.get("reasoning"): caps.append("reasoning")
+    if meta.get("toolcall"): caps.append("toolcall")
+    return {
+        "id": model_id,
+        "name": meta.get("name") or model_id,
+        "ctx": _compact_ctx(meta.get("context")),
+        "out": _compact_ctx(meta.get("output")),
+        "caps": caps,
+    }
+
+
 def invalidate_model_cache() -> None:
     _load_registry.cache_clear()
 
@@ -99,16 +119,12 @@ def format_model_label(model_id: str) -> str:
     if not meta:
         return model_id
 
-    bits = []
+    name = meta.get('name') or model_id
     ctx = _compact_ctx(meta.get("context"))
-    if ctx:
-        bits.append(f"ctx {ctx}")
     out = _compact_ctx(meta.get("output"))
+    limits = []
+    if ctx:
+        limits.append(f"{ctx} ctx")
     if out:
-        bits.append(f"out {out}")
-    bits.append(_modality_label(meta))
-    if meta.get("reasoning"):
-        bits.append("razonamiento")
-    if meta.get("toolcall"):
-        bits.append("tools")
-    return f"{meta.get('name') or model_id} · " + " · ".join(bits)
+        limits.append(f"{out} out")
+    return (name + " · " + " · ".join(limits)) if limits else name

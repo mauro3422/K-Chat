@@ -124,8 +124,19 @@ def tail_logs(
     elif source == "client":
         entries.extend(_tail_logbus_logs(lines))
 
+    from datetime import datetime
     def _sort_key(entry: dict):
-        return entry.get("t") or entry.get("ts") or ""
+        val = entry.get("t") or entry.get("ts") or 0
+        if isinstance(val, (int, float)):
+            return float(val)
+        if isinstance(val, str):
+            try:
+                # Try ISO format
+                dt = datetime.fromisoformat(val.replace('Z', '+00:00'))
+                return dt.timestamp()
+            except (ValueError, TypeError):
+                pass
+        return 0.0
 
     merged = sorted(entries, key=_sort_key, reverse=True)[:lines]
 
