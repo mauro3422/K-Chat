@@ -168,7 +168,7 @@
         </table>
         {% if peer_memory_summary.stale_details %}
         <table class="diag-table" style="margin-top:12px">
-          <thead><tr><th>Peer desfasado</th><th>Delta rev</th><th>Cola</th><th>Fresh</th></tr></thead>
+          <thead><tr><th>Peer desfasado</th><th>Delta rev</th><th>Cola</th><th>Fresh</th><th>Razón</th></tr></thead>
           <tbody>
           {% for stale in peer_memory_summary.stale_details %}
             <tr>
@@ -176,6 +176,7 @@
               <td>{{ stale.revision_delta or 0 }}</td>
               <td>{{ stale.queue_size or 0 }}</td>
               <td>{{ 'sí' if stale.is_fresh else 'no' }}</td>
+              <td>{{ stale.stale_reason or 'unknown' }}</td>
             </tr>
           {% endfor %}
           </tbody>

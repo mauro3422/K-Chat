@@ -97,12 +97,20 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
                     aligned += 1
                 else:
                     stale += 1
+                    reasons: list[str] = []
+                    if peer_queue > 0:
+                        reasons.append("queue_pending")
+                    if not peer_fresh:
+                        reasons.append("not_fresh")
+                    if peer_revision < local_revision:
+                        reasons.append("revision_behind")
                     stale_details.append({
                         "peer_url": peer.get("peer_url", ""),
                         "revision_delta": max(0.0, local_revision - peer_revision),
                         "queue_size": peer_queue,
                         "is_fresh": peer_fresh,
                         "severity": (peer.get("compare_summary", {}) or {}).get("severity", "clean"),
+                        "stale_reason": "+".join(reasons) if reasons else "unknown",
                     })
             peer_memory = {
                 "peers": peers,
