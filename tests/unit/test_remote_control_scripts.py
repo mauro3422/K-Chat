@@ -57,6 +57,9 @@ def test_update_orders_preflight_backup_and_previous_commit() -> None:
     update_body = source[source.index("update() {") : source.index('\ncase "$ACTION"')]
     assert update_body.index("preflight") < update_body.index("backup")
     assert update_body.index("backup") < update_body.index('previous_commit="$(git rev-parse HEAD)"')
+    assert "npm ci &&" in update_body
+    assert "npm run build &&" in update_body
+    assert "service_control restart &&" in update_body
     assert update_body.index("git pull --ff-only") < update_body.index("npm run build")
 
 

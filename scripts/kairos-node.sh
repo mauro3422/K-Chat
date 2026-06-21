@@ -191,10 +191,10 @@ update() {
   printf '%s\n' "$previous_commit" > "$ROOT/.kairos/last-good-commit"
   git pull --ff-only
   if ! {
-    if [[ -x .venv/bin/pip ]]; then .venv/bin/pip install -r requirements.txt; fi
-    npm ci
-    npm run build
-    service_control restart
+    if [[ -x .venv/bin/pip ]]; then .venv/bin/pip install -r requirements.txt; fi &&
+    npm ci &&
+    npm run build &&
+    service_control restart &&
     wait_for_health
   }; then
     echo "Update falló; restaurando $previous_commit." >&2
