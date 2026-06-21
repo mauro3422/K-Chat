@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
+import time
 
 import pytest
 
@@ -27,6 +28,35 @@ def test_base_url_prefers_explicit_node_address_over_bind_host() -> None:
     bridge = NodeLanBridge(cfg, NodeCoordinator(cfg))
 
     assert bridge.base_url == "http://192.168.1.35:8000"
+
+
+def test_base_url_resolves_wildcard_bind_to_lan_address() -> None:
+    cfg = SimpleNamespace(host="0.0.0.0", port=8000, peer_urls="", node_base_url="", node_heartbeat_ttl=12.0)
+
+    bridge = NodeLanBridge(cfg, NodeCoordinator(cfg), lan_ip_resolver=lambda: "192.168.1.35")
+
+    assert bridge.base_url == "http://192.168.1.35:8000"
+
+
+def test_discovered_peers_are_deduplicated_and_expire() -> None:
+    cfg = SimpleNamespace(
+        host="127.0.0.1",
+        port=8000,
+        peer_urls="http://192.168.1.40:8000",
+        node_base_url="",
+        node_heartbeat_ttl=12.0,
+        lan_discovery_ttl=20.0,
+    )
+    bridge = NodeLanBridge(cfg, NodeCoordinator(cfg))
+
+    now = time.monotonic()
+    bridge.register_discovered_peer("http://192.168.1.40:8000/", seen_at=now)
+    bridge.register_discovered_peer("http://192.168.1.41:8000", seen_at=now)
+
+    bridge.prune_discovered_peers(now=now + 15.0)
+    assert bridge.peer_urls == ["http://192.168.1.40:8000", "http://192.168.1.41:8000"]
+    bridge.prune_discovered_peers(now=now + 21.0)
+    assert bridge.peer_urls == ["http://192.168.1.40:8000"]
 
 
 class _FakeResponse:

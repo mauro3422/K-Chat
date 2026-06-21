@@ -235,7 +235,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except Exception as e:
                 logger.warning("Embedding model preload failed (non-fatal): %s", e)
 
-    if getattr(cfg, "peer_urls", "").strip():
+    configured_peers = getattr(cfg, "peer_urls", "")
+    has_static_peers = isinstance(configured_peers, str) and bool(configured_peers.strip())
+    discovery_enabled = bool(getattr(cfg, "lan_discovery_enabled", True)) and not bool(cfg.testing)
+
+    if discovery_enabled:
+        from src.coordination.lan_discovery import LanDiscovery
+
+        app.state.lan_discovery = LanDiscovery(
+            cfg,
+            on_peer=app.state.node_bridge.register_discovered_peer,
+        )
+        app.state.lan_discovery_task = asyncio.create_task(app.state.lan_discovery.run())
+
+    if has_static_peers or discovery_enabled:
         async def _sync_node_heartbeats() -> None:
             try:
                 await app.state.node_bridge.broadcast_once()
@@ -315,6 +328,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await logbus.stop()
     except Exception:
         logger.warning("Failed to stop LogBus on shutdown", exc_info=True)
+    try:
+        discovery = getattr(app.state, "lan_discovery", None)
+        discovery_task = getattr(app.state, "lan_discovery_task", None)
+        if discovery is not None:
+            discovery.stop()
+        if discovery_task is not None:
+            discovery_task.cancel()
+            try:
+                await discovery_task
+            except asyncio.CancelledError:
+                pass
+    except Exception:
+        logger.warning("Failed to stop LAN discovery task on shutdown", exc_info=True)
     try:
         node_task = getattr(app.state, "node_bridge_task", None)
         if node_task is not None:

@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 LINUX_SCRIPT = ROOT / "scripts" / "kairos-node.sh"
 BOOTSTRAP_SCRIPT = ROOT / "scripts" / "bootstrap-linux-remote-control.sh"
 WINDOWS_SCRIPT = ROOT / "scripts" / "remote-kairos.ps1"
+WINDOWS_SERVICE_SCRIPT = ROOT / "scripts" / "kairos-windows-service.ps1"
 
 
 def test_linux_control_scripts_have_valid_bash_syntax() -> None:
@@ -75,16 +76,32 @@ def test_windows_control_has_valid_powershell_syntax() -> None:
     powershell = shutil.which("pwsh") or shutil.which("powershell")
     if powershell is None:
         pytest.skip("PowerShell is not available")
-    escaped = str(WINDOWS_SCRIPT).replace("'", "''")
-    command = (
-        "$errors=$null; "
-        f"[System.Management.Automation.Language.Parser]::ParseFile('{escaped}', [ref]$null, [ref]$errors) > $null; "
-        "if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }"
-    )
-    result = subprocess.run(
-        [powershell, "-NoProfile", "-Command", command],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
+    for script in (WINDOWS_SCRIPT, WINDOWS_SERVICE_SCRIPT):
+        escaped = str(script).replace("'", "''")
+        command = (
+            "$errors=$null; "
+            f"[System.Management.Automation.Language.Parser]::ParseFile('{escaped}', [ref]$null, [ref]$errors) > $null; "
+            "if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }"
+        )
+        result = subprocess.run(
+            [powershell, "-NoProfile", "-Command", command],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+
+def test_windows_service_is_persistent_and_has_bounded_shutdown() -> None:
+    source = WINDOWS_SERVICE_SCRIPT.read_text(encoding="utf-8")
+    assert "New-ScheduledTaskTrigger -AtLogOn" in source
+    assert "Register-ScheduledTask" in source
+    assert "--timeout-graceful-shutdown 8" in source
+    assert "-RestartCount 5" in source
+    assert "Kairos Discovery LAN" in source
+
+
+def test_linux_bootstrap_firewall_does_not_assume_one_subnet() -> None:
+    source = BOOTSTRAP_SCRIPT.read_text(encoding="utf-8")
+    assert "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16" in source
+    assert 'port 42429 proto udp' in source

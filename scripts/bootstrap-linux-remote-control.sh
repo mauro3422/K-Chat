@@ -22,9 +22,18 @@ sudo chown -R "$REMOTE_USER:$REMOTE_USER" "$REMOTE_HOME/.ssh"
 if systemctl list-unit-files --type=service | grep -q '^ssh.service'; then sudo systemctl enable --now ssh.service
 else sudo systemctl enable --now sshd.service; fi
 if command -v ufw >/dev/null 2>&1 && sudo ufw status | grep -q '^Status: active'; then
-  sudo ufw allow from 192.168.1.0/24 to any port 22 proto tcp
+  for network in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+    sudo ufw allow from "$network" to any port 22 proto tcp
+    sudo ufw allow from "$network" to any port 8000 proto tcp
+    sudo ufw allow from "$network" to any port 42429 proto udp
+  done
 elif command -v firewall-cmd >/dev/null 2>&1 && sudo firewall-cmd --state >/dev/null 2>&1; then
-  sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.1.0/24" port protocol="tcp" port="22" accept'; sudo firewall-cmd --reload
+  for network in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+    sudo firewall-cmd --permanent --add-rich-rule="rule family=\"ipv4\" source address=\"$network\" port protocol=\"tcp\" port=\"22\" accept"
+    sudo firewall-cmd --permanent --add-rich-rule="rule family=\"ipv4\" source address=\"$network\" port protocol=\"tcp\" port=\"8000\" accept"
+    sudo firewall-cmd --permanent --add-rich-rule="rule family=\"ipv4\" source address=\"$network\" port protocol=\"udp\" port=\"42429\" accept"
+  done
+  sudo firewall-cmd --reload
 fi
 SUDOERS_FILE="/etc/sudoers.d/kairos-remote-$REMOTE_USER"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$REMOTE_USER" | sudo tee "$SUDOERS_FILE" >/dev/null
@@ -41,7 +50,7 @@ Type=simple
 User=$REMOTE_USER
 WorkingDirectory=$ROOT
 EnvironmentFile=-$ROOT/.env
-ExecStart=$PYTHON -m uvicorn web.server:app --host 0.0.0.0 --port 8000
+ExecStart=$PYTHON -m uvicorn web.server:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 8
 Restart=always
 RestartSec=3
 [Install]

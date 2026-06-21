@@ -69,5 +69,5 @@ async def notify_event(request: Request) -> dict:
         except Exception:
             reflection.record(event_type, event_data if isinstance(event_data, dict) else {}, path="lan", last_error="broadcast_failed")
             logger.warning("LAN event broadcast failed for %s", event_type, exc_info=True)
-    logger.info("SSE notify: %s -> %d clients", event_type, len(bus._queues))
+    logger.debug("SSE notify: %s -> %d clients", event_type, len(getattr(bus, "_queues", {})))
     return {"ok": True, "type": event_type}

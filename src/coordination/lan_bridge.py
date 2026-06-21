@@ -12,6 +12,7 @@ import anyio
 import httpx
 
 from src.config_loader import Config
+from src.coordination.lan_discovery import detect_lan_ip
 from src.coordination.memory_write_queue import get_memory_write_queue, replay_pending_memory_writes
 from src.coordination.node_state import NodeCoordinator
 
@@ -54,15 +55,31 @@ class NodeLanBridge:
         coordinator: NodeCoordinator,
         *,
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
+        lan_ip_resolver: Callable[[], str] = detect_lan_ip,
     ) -> None:
         self._config = config
         self._coordinator = coordinator
-        self._peer_urls = parse_peer_urls(getattr(config, "peer_urls", ""))
+        self._static_peer_urls = parse_peer_urls(getattr(config, "peer_urls", ""))
+        self._discovered_peer_urls: dict[str, float] = {}
         self._client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=3.0))
+        self._lan_ip_resolver = lan_ip_resolver
 
     @property
     def peer_urls(self) -> list[str]:
-        return list(self._peer_urls)
+        self.prune_discovered_peers()
+        return list(dict.fromkeys([*self._static_peer_urls, *self._discovered_peer_urls]))
+
+    def register_discovered_peer(self, peer_url: str, seen_at: float | None = None) -> None:
+        normalized = peer_url.strip().rstrip("/")
+        if normalized and normalized != self.base_url:
+            self._discovered_peer_urls[normalized] = time.monotonic() if seen_at is None else seen_at
+
+    def prune_discovered_peers(self, now: float | None = None) -> None:
+        current = time.monotonic() if now is None else now
+        ttl = max(5.0, float(getattr(self._config, "lan_discovery_ttl", 20.0)))
+        self._discovered_peer_urls = {
+            peer: seen_at for peer, seen_at in self._discovered_peer_urls.items() if current - seen_at <= ttl
+        }
 
     @property
     def base_url(self) -> str:
@@ -70,6 +87,8 @@ class NodeLanBridge:
         if configured:
             return configured
         host = (self._config.host or "127.0.0.1").strip() or "127.0.0.1"
+        if host in {"0.0.0.0", "::", "[::]"}:
+            host = self._lan_ip_resolver()
         return f"http://{host}:{self._config.port}"
 
     @property
@@ -79,7 +98,8 @@ class NodeLanBridge:
 
     async def broadcast_once(self) -> HeartbeatResult:
         result = HeartbeatResult(peers=self.peer_urls)
-        if not self._peer_urls:
+        peers = self.peer_urls
+        if not peers:
             await self._coordinator.beat(metadata={"lan_bridge": "disabled"})
             return result
 
@@ -96,7 +116,7 @@ class NodeLanBridge:
         }
 
         async with self._client_factory() as client:
-            for peer in self._peer_urls:
+            for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "post", f"{peer}/api/node/heartbeat", json=payload)
                     data = response.json() if response.content else {}
@@ -123,7 +143,8 @@ class NodeLanBridge:
 
     async def broadcast_event(self, event_type: str, data: Any = None) -> HeartbeatResult:
         result = HeartbeatResult(peers=self.peer_urls)
-        if not self._peer_urls:
+        peers = self.peer_urls
+        if not peers:
             return result
 
         payload = {
@@ -137,7 +158,7 @@ class NodeLanBridge:
         }
 
         async with self._client_factory() as client:
-            for peer in self._peer_urls:
+            for peer in peers:
                 try:
                     await self._request_with_retry(client, "post", f"{peer}/api/node/event", json=payload)
                     result.sent += 1
@@ -148,7 +169,8 @@ class NodeLanBridge:
 
     async def request_memory_write(self, key: str, value: str, *, peer: str | None = None) -> dict[str, Any]:
         """Ask peers for permission to apply a memory write."""
-        if not self._peer_urls:
+        peers = self.peer_urls
+        if not peers:
             return {"ok": False, "granted": False, "queued": False, "peer": None, "error": "no peers configured"}
 
         payload = {
@@ -162,7 +184,7 @@ class NodeLanBridge:
         }
 
         async with self._client_factory() as client:
-            peers = [peer] if peer else self._peer_urls
+            peers = [peer] if peer else peers
             for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "post", f"{peer}/api/node/memory/request", json=payload)
@@ -175,11 +197,12 @@ class NodeLanBridge:
 
     async def request_memory_snapshot(self, *, key_pattern: str = "", peer: str | None = None) -> dict[str, Any]:
         """Ask a peer for a complete memory snapshot."""
-        if not self._peer_urls:
+        peers = self.peer_urls
+        if not peers:
             return {"ok": False, "peer": None, "error": "no peers configured"}
 
         async with self._client_factory() as client:
-            peers = [peer] if peer else self._peer_urls
+            peers = [peer] if peer else peers
             for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "get", f"{peer}/api/memory/diagnostics", params={"key_pattern": key_pattern})
@@ -192,7 +215,7 @@ class NodeLanBridge:
 
     async def request_peer_state(self, *, peer: str) -> dict[str, Any]:
         """Ask a specific peer for its local node state snapshot."""
-        if peer not in self._peer_urls:
+        if peer not in self.peer_urls:
             return {"ok": False, "peer": peer, "error": "peer not configured"}
 
         async with self._client_factory() as client:
@@ -207,7 +230,7 @@ class NodeLanBridge:
 
     async def request_peer_diagnostics(self, *, peer: str, key_pattern: str = "") -> dict[str, Any]:
         """Ask a specific peer for its full diagnostics snapshot."""
-        if peer not in self._peer_urls:
+        if peer not in self.peer_urls:
             return {"ok": False, "peer": peer, "error": "peer not configured"}
 
         async with self._client_factory() as client:
@@ -222,12 +245,13 @@ class NodeLanBridge:
 
     async def request_peer_memory_snapshots(self, *, key_pattern: str = "") -> dict[str, Any]:
         """Ask every peer for its memory diagnostics snapshot."""
-        if not self._peer_urls:
+        peers = self.peer_urls
+        if not peers:
             return {"ok": False, "peers": [], "snapshots": [], "errors": []}
 
         result: dict[str, Any] = {"ok": True, "peers": self.peer_urls, "snapshots": [], "errors": []}
         async with self._client_factory() as client:
-            for peer in self._peer_urls:
+            for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "get", f"{peer}/api/memory/diagnostics", params={"key_pattern": key_pattern})
                     data = response.json() if response.content else {}
@@ -243,12 +267,13 @@ class NodeLanBridge:
 
     async def request_session_directory(self, *, limit: int = 50) -> dict[str, Any]:
         """Ask peers for their session directory snapshots."""
-        if not self._peer_urls:
+        peers = self.peer_urls
+        if not peers:
             return {"ok": False, "peers": [], "sessions": [], "errors": []}
 
         result: dict[str, Any] = {"ok": True, "peers": self.peer_urls, "sessions": [], "errors": []}
         async with self._client_factory() as client:
-            for peer in self._peer_urls:
+            for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "get", f"{peer}/api/node/sessions", params={"limit": limit})
                     data = response.json() if response.content else {}
@@ -287,12 +312,13 @@ class NodeLanBridge:
         This intentionally targets /api/node/state instead of /api/node/sync/status
         so we can aggregate peer health without recursive peer fan-out.
         """
-        if not self._peer_urls:
+        peers = self.peer_urls
+        if not peers:
             return {"ok": False, "peers": [], "states": [], "errors": []}
 
         result: dict[str, Any] = {"ok": True, "peers": self.peer_urls, "states": [], "errors": []}
         async with self._client_factory() as client:
-            for peer in self._peer_urls:
+            for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "get", f"{peer}/api/node/state")
                     data = response.json() if response.content else {}
@@ -314,7 +340,7 @@ class NodeLanBridge:
             return []
 
         primary_peer = None
-        for peer in self._peer_urls:
+        for peer in self.peer_urls:
             for heartbeat in self._coordinator.snapshot().get("peers", []):
                 if heartbeat.get("base_url") == peer and heartbeat.get("role") == "primary":
                     primary_peer = peer

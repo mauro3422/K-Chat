@@ -60,6 +60,11 @@ class Config:
     peer_urls: str = ""
     node_base_url: str = ""
     node_heartbeat_ttl: float = 15.0
+    lan_discovery_enabled: bool = True
+    lan_discovery_group: str = "239.255.42.99"
+    lan_discovery_port: int = 42429
+    lan_discovery_interval: float = 5.0
+    lan_discovery_ttl: float = 20.0
 
 
 def _resolve_project_root() -> Path:
@@ -107,6 +112,11 @@ def load_config(overrides: dict | None = None) -> Config:
         peer_urls=os.getenv("KAIROS_PEER_URLS", ""),
         node_base_url=os.getenv("KAIROS_NODE_BASE_URL", ""),
         node_heartbeat_ttl=float(os.getenv("KAIROS_NODE_HEARTBEAT_TTL", "15.0")),
+        lan_discovery_enabled=os.getenv("KAIROS_LAN_DISCOVERY", "true").lower() in ("1", "true", "yes"),
+        lan_discovery_group=os.getenv("KAIROS_LAN_DISCOVERY_GROUP", "239.255.42.99"),
+        lan_discovery_port=int(os.getenv("KAIROS_LAN_DISCOVERY_PORT", "42429")),
+        lan_discovery_interval=float(os.getenv("KAIROS_LAN_DISCOVERY_INTERVAL", "5.0")),
+        lan_discovery_ttl=float(os.getenv("KAIROS_LAN_DISCOVERY_TTL", "20.0")),
     )
 
     if overrides:
