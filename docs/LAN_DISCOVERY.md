@@ -19,4 +19,10 @@ En Windows:
 .\scripts\kairos-windows-service.ps1 -Action Install
 ```
 
-En Linux, el instalador de control remoto crea la unidad de systemd con reinicio automático y un apagado gradual máximo de ocho segundos.
+En Linux:
+
+```bash
+./scripts/install-linux-user-service.sh
+```
+
+La unidad de systemd tiene reinicio automático y un apagado gradual máximo de ocho segundos.

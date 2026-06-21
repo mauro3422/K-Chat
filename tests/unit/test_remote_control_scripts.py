@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 LINUX_SCRIPT = ROOT / "scripts" / "kairos-node.sh"
 BOOTSTRAP_SCRIPT = ROOT / "scripts" / "bootstrap-linux-remote-control.sh"
+LINUX_SERVICE_SCRIPT = ROOT / "scripts" / "install-linux-user-service.sh"
 WINDOWS_SCRIPT = ROOT / "scripts" / "remote-kairos.ps1"
 WINDOWS_SERVICE_SCRIPT = ROOT / "scripts" / "kairos-windows-service.ps1"
 
@@ -18,7 +19,7 @@ def test_linux_control_scripts_have_valid_bash_syntax() -> None:
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("bash is not available")
-    for script in (LINUX_SCRIPT, BOOTSTRAP_SCRIPT):
+    for script in (LINUX_SCRIPT, BOOTSTRAP_SCRIPT, LINUX_SERVICE_SCRIPT):
         source = script.read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
         result = subprocess.run(
             [bash, "-n"],
@@ -106,3 +107,10 @@ def test_linux_bootstrap_firewall_does_not_assume_one_subnet() -> None:
     source = BOOTSTRAP_SCRIPT.read_text(encoding="utf-8")
     assert "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16" in source
     assert 'port 42429 proto udp' in source
+
+
+def test_linux_user_service_has_restart_and_bounded_shutdown() -> None:
+    source = LINUX_SERVICE_SCRIPT.read_text(encoding="utf-8")
+    assert "--timeout-graceful-shutdown 8" in source
+    assert "TimeoutStopSec=12" in source
+    assert 'systemctl --user enable --now "$SERVICE"' in source
