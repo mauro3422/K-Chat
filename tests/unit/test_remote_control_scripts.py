@@ -13,6 +13,7 @@ BOOTSTRAP_SCRIPT = ROOT / "scripts" / "bootstrap-linux-remote-control.sh"
 LINUX_SERVICE_SCRIPT = ROOT / "scripts" / "install-linux-user-service.sh"
 WINDOWS_SCRIPT = ROOT / "scripts" / "remote-kairos.ps1"
 WINDOWS_SERVICE_SCRIPT = ROOT / "scripts" / "kairos-windows-service.ps1"
+WINDOWS_RUNNER = ROOT / "scripts" / "run_windows_service.py"
 
 
 def test_linux_control_scripts_have_valid_bash_syntax() -> None:
@@ -97,10 +98,14 @@ def test_windows_service_is_persistent_and_has_bounded_shutdown() -> None:
     source = WINDOWS_SERVICE_SCRIPT.read_text(encoding="utf-8")
     assert "New-ScheduledTaskTrigger -AtLogOn" in source
     assert "Register-ScheduledTask" in source
-    assert "--timeout-graceful-shutdown 8" in source
     assert "-RestartCount 5" in source
     assert "Kairos Discovery LAN" in source
-    assert "Get-Command python.exe" in source
+    assert "run_windows_service.py" in source
+
+    runner = WINDOWS_RUNNER.read_text(encoding="utf-8")
+    assert "timeout_graceful_shutdown=8" in runner
+    assert "access_log=False" in runner
+    compile(runner, str(WINDOWS_RUNNER), "exec")
 
 
 def test_linux_bootstrap_firewall_does_not_assume_one_subnet() -> None:

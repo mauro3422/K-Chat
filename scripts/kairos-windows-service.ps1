@@ -9,11 +9,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Repo = (Resolve-Path -LiteralPath $Repo).Path
+$venvPythonw = Join-Path $Repo '.venv\Scripts\pythonw.exe'
 $venvPython = Join-Path $Repo '.venv\Scripts\python.exe'
 
 function Resolve-KairosPython {
+    if (Test-Path -LiteralPath $venvPythonw) { return $venvPythonw }
     if (Test-Path -LiteralPath $venvPython) { return $venvPython }
-    $command = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    $command = Get-Command pythonw.exe, python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $command) { throw 'No se encontró Python. Creá .venv o instalá Python.' }
     return $command.Source
 }
@@ -25,7 +27,8 @@ function Get-KairosTask {
 switch ($Action) {
     'Install' {
         $python = Resolve-KairosPython
-        $arguments = "-m uvicorn web.server:app --host 0.0.0.0 --port $Port --timeout-graceful-shutdown 8"
+        $runner = Join-Path $Repo 'scripts\run_windows_service.py'
+        $arguments = "`"$runner`" --repo `"$Repo`" --port $Port"
         $taskAction = New-ScheduledTaskAction -Execute $python -Argument $arguments -WorkingDirectory $Repo
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
         $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
