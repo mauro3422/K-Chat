@@ -435,6 +435,10 @@ def setup_logging(cfg) -> None:
             stream=sys.stderr,
         )
 
+    # httpx logs every successful LAN heartbeat at INFO. Keep transport
+    # failures visible while avoiding repetitive request noise.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     # Install JSONL handler for the whole "web" tree
     try:
         from web.services.file_logger import install_jsonl_handler

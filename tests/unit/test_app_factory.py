@@ -1,3 +1,4 @@
+import logging
 import pytest
 from unittest.mock import AsyncMock
 """Tests for app_factory.py"""
@@ -24,6 +25,13 @@ class TestAppFactory:
         app = create_app()
         assert app is not None
         assert app.title is not None
+
+    def test_setup_logging_suppresses_successful_httpx_requests(self):
+        from web.app_factory import setup_logging
+
+        setup_logging(MagicMock(log_level="INFO"))
+
+        assert logging.getLogger("httpx").level == logging.WARNING
 
     @pytest.mark.anyio
     async def test_app_has_static_mounted(self):
