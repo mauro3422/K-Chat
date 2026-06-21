@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import socket
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from src.coordination.lan_discovery import LanDiscovery
 
@@ -66,3 +68,24 @@ def test_discovery_normalizes_missing_cluster_name() -> None:
     payload = json.loads(discovery.announcement())
 
     assert payload["cluster"] == "kairos"
+
+
+def test_discovery_uses_resolved_lan_interface_for_multicast() -> None:
+    listener = MagicMock()
+    sender = MagicMock()
+    discovery = LanDiscovery(
+        _config(),
+        on_peer=lambda _url, _seen: None,
+        lan_ip_resolver=lambda: "192.168.1.35",
+    )
+
+    with patch("src.coordination.lan_discovery.socket.socket", side_effect=[listener, sender]):
+        discovery._open_sockets()
+
+    interface = socket.inet_aton("192.168.1.35")
+    listener.setsockopt.assert_any_call(
+        socket.IPPROTO_IP,
+        socket.IP_ADD_MEMBERSHIP,
+        socket.inet_aton("239.255.42.99") + interface,
+    )
+    sender.setsockopt.assert_any_call(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, interface)

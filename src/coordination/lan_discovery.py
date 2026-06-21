@@ -113,18 +113,26 @@ class LanDiscovery:
         return peer_url
 
     def _open_sockets(self) -> None:
+        lan_ip = self._lan_ip_resolver()
+        try:
+            interface = socket.inet_aton(lan_ip)
+        except OSError:
+            interface = socket.inet_aton("0.0.0.0")
+
         listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("", self.port))
-        membership = socket.inet_aton(self.group) + socket.inet_aton("0.0.0.0")
+        membership = socket.inet_aton(self.group) + interface
         listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
         listener.setblocking(False)
 
         sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         sender.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+        sender.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, interface)
         sender.setblocking(False)
         self._listener = listener
         self._sender = sender
+        logger.info("LAN discovery listening on %s:%d via %s", self.group, self.port, lan_ip)
 
     async def run(self) -> None:
         """Run until ``stop`` is called; socket failures remain non-fatal."""
