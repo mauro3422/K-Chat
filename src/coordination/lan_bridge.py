@@ -398,4 +398,3 @@ class NodeLanBridge:
                 await anyio.sleep(base_delay * (attempt + 1))
         assert last_exc is not None
         raise last_exc
-
