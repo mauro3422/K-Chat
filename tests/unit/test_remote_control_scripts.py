@@ -99,6 +99,7 @@ def test_windows_service_is_persistent_and_has_bounded_shutdown() -> None:
     assert "--timeout-graceful-shutdown 8" in source
     assert "-RestartCount 5" in source
     assert "Kairos Discovery LAN" in source
+    assert "Get-Command python.exe" in source
 
 
 def test_linux_bootstrap_firewall_does_not_assume_one_subnet() -> None:

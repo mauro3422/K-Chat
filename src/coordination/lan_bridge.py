@@ -127,6 +127,7 @@ class NodeLanBridge:
                         base_url=peer,
                         metadata={"roundtrip_ms": response.elapsed.total_seconds() * 1000 if response.elapsed else 0.0},
                     )
+                    await self._reconcile_primary(peer_state)
                     result.sent += 1
                     if peer_state.get("role") == "primary" and not await self._coordinator.is_primary():
                         try:
@@ -140,6 +141,21 @@ class NodeLanBridge:
                     result.failed += 1
                     result.errors.append({"peer": peer, "error": str(exc)})
         return result
+
+    async def _reconcile_primary(self, peer_state: dict[str, Any]) -> None:
+        """Resolve a temporary dual-primary state deterministically."""
+        if str(peer_state.get("role", "")).lower() != "primary" or not await self._coordinator.is_primary():
+            return
+        local_id = str(self._coordinator.node_id or "")
+        peer_id = str(peer_state.get("node_id") or "")
+        local_preferred = str(getattr(self._config, "node_role", "secondary")).lower() == "primary"
+        peer_preferred = str(peer_state.get("preferred_role", "")).lower() == "primary"
+        should_yield = (peer_preferred and not local_preferred) or (
+            peer_preferred == local_preferred and bool(peer_id) and peer_id < local_id
+        )
+        if should_yield:
+            await self._coordinator.demote()
+            logger.warning("Dual primary reconciled: %s yielded to %s", local_id, peer_id)
 
     async def broadcast_event(self, event_type: str, data: Any = None) -> HeartbeatResult:
         result = HeartbeatResult(peers=self.peer_urls)

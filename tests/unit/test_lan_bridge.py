@@ -189,6 +189,35 @@ async def test_broadcast_once_posts_peer_heartbeat_and_records_remote_state() ->
 
 
 @pytest.mark.anyio
+async def test_promoted_secondary_yields_when_preferred_primary_returns() -> None:
+    cfg = SimpleNamespace(
+        host="127.0.0.1",
+        port=8000,
+        peer_urls="http://peer-a:8000",
+        node_base_url="",
+        node_id="secondary-node",
+        node_role="secondary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=12.0,
+    )
+    coordinator = NodeCoordinator(cfg)
+    await coordinator.promote()
+    response = _FakeResponse({
+        "ok": True,
+        "state": {"node_id": "primary-node", "role": "primary", "preferred_role": "primary"},
+    })
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: _FakeClient({"http://peer-a:8000/api/node/heartbeat": response}),
+    )
+
+    await bridge.broadcast_once()
+
+    assert await coordinator.is_primary() is False
+
+
+@pytest.mark.anyio
 async def test_broadcast_event_posts_to_each_peer() -> None:
     cfg = MagicMock(
         host="127.0.0.1",

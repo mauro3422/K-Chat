@@ -148,6 +148,8 @@ async def node_state(request: Request) -> JSONResponse:
     coordinator = _get_coordinator(request)
     snapshot = coordinator.snapshot()
     snapshot["local_peer_count"] = len(snapshot.get("peers", []))
+    config = getattr(request.app.state, "config", None)
+    snapshot["preferred_role"] = str(getattr(config, "node_role", "secondary"))
     return JSONResponse(snapshot)
 
 
@@ -163,6 +165,8 @@ async def node_heartbeat(payload: NodeHeartbeatPayload, request: Request) -> JSO
         )
     else:
         snapshot = await coordinator.beat(metadata=payload.metadata)
+    config = getattr(request.app.state, "config", None)
+    snapshot["preferred_role"] = str(getattr(config, "node_role", "secondary"))
     return JSONResponse({"ok": True, "state": snapshot})
 
 

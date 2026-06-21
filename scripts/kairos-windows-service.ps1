@@ -9,13 +9,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Repo = (Resolve-Path -LiteralPath $Repo).Path
-$venvPythonw = Join-Path $Repo '.venv\Scripts\pythonw.exe'
 $venvPython = Join-Path $Repo '.venv\Scripts\python.exe'
 
 function Resolve-KairosPython {
-    if (Test-Path -LiteralPath $venvPythonw) { return $venvPythonw }
     if (Test-Path -LiteralPath $venvPython) { return $venvPython }
-    $command = Get-Command pythonw.exe, python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    $command = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $command) { throw 'No se encontró Python. Creá .venv o instalá Python.' }
     return $command.Source
 }
