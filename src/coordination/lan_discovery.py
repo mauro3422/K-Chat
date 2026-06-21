@@ -79,7 +79,7 @@ class LanDiscovery:
         payload = {
             "service": "kairos",
             "version": 1,
-            "cluster": str(getattr(self._config, "cluster_name", "kairos")),
+            "cluster": str(getattr(self._config, "cluster_name", "kairos") or "kairos"),
             "node_id": str(getattr(self._config, "node_id", "")),
             "role": str(getattr(self._config, "node_role", "secondary")),
             "port": int(getattr(self._config, "port", 8000)),
@@ -97,7 +97,8 @@ class LanDiscovery:
             return None
         if not isinstance(payload, dict) or payload.get("service") != "kairos" or payload.get("version") != 1:
             return None
-        if str(payload.get("cluster", "")) != str(getattr(self._config, "cluster_name", "kairos")):
+        local_cluster = str(getattr(self._config, "cluster_name", "kairos") or "kairos")
+        if str(payload.get("cluster", "")) != local_cluster:
             return None
         if str(payload.get("node_id", "")) == str(getattr(self._config, "node_id", "")):
             return None

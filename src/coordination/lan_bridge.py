@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -56,6 +55,7 @@ class NodeLanBridge:
         *,
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
         lan_ip_resolver: Callable[[], str] = detect_lan_ip,
+        on_primary_yield: Callable[[str], None] | None = None,
     ) -> None:
         self._config = config
         self._coordinator = coordinator
@@ -63,10 +63,10 @@ class NodeLanBridge:
         self._discovered_peer_urls: dict[str, float] = {}
         self._client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=3.0))
         self._lan_ip_resolver = lan_ip_resolver
+        self._on_primary_yield = on_primary_yield
 
     @property
     def peer_urls(self) -> list[str]:
-        self.prune_discovered_peers()
         return list(dict.fromkeys([*self._static_peer_urls, *self._discovered_peer_urls]))
 
     def register_discovered_peer(self, peer_url: str, seen_at: float | None = None) -> None:
@@ -97,6 +97,7 @@ class NodeLanBridge:
         return max(2.0, ttl / 2.0)
 
     async def broadcast_once(self) -> HeartbeatResult:
+        self.prune_discovered_peers()
         result = HeartbeatResult(peers=self.peer_urls)
         peers = self.peer_urls
         if not peers:
@@ -155,6 +156,8 @@ class NodeLanBridge:
         )
         if should_yield:
             await self._coordinator.demote()
+            if self._on_primary_yield is not None:
+                self._on_primary_yield("peer_primary_preferred")
             logger.warning("Dual primary reconciled: %s yielded to %s", local_id, peer_id)
 
     async def broadcast_event(self, event_type: str, data: Any = None) -> HeartbeatResult:
@@ -396,11 +399,3 @@ class NodeLanBridge:
         assert last_exc is not None
         raise last_exc
 
-    async def run_loop(self, stop_event: asyncio.Event | None = None) -> None:
-        stop = stop_event or asyncio.Event()
-        while not stop.is_set():
-            await self.broadcast_once()
-            try:
-                await asyncio.wait_for(stop.wait(), timeout=self.interval)
-            except asyncio.TimeoutError:
-                continue

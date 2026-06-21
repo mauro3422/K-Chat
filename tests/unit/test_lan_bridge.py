@@ -206,15 +206,18 @@ async def test_promoted_secondary_yields_when_preferred_primary_returns() -> Non
         "ok": True,
         "state": {"node_id": "primary-node", "role": "primary", "preferred_role": "primary"},
     })
+    yielded: list[str] = []
     bridge = NodeLanBridge(
         cfg,
         coordinator,
         client_factory=lambda: _FakeClient({"http://peer-a:8000/api/node/heartbeat": response}),
+        on_primary_yield=yielded.append,
     )
 
     await bridge.broadcast_once()
 
     assert await coordinator.is_primary() is False
+    assert yielded == ["peer_primary_preferred"]
 
 
 @pytest.mark.anyio

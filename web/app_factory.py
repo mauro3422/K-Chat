@@ -185,7 +185,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not hasattr(app.state, "node_coordinator"):
         app.state.node_coordinator = get_node_coordinator(cfg)
     if not hasattr(app.state, "node_bridge"):
-        app.state.node_bridge = NodeLanBridge(config=cfg, coordinator=app.state.node_coordinator)
+        app.state.node_bridge = NodeLanBridge(
+            config=cfg,
+            coordinator=app.state.node_coordinator,
+            on_primary_yield=lambda reason: app.state.failover_state.reset(reason),
+        )
     try:
         if await app.state.node_coordinator.is_primary():
             from src.coordination.memory_write_queue import apply_pending_memory_writes

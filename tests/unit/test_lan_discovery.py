@@ -58,3 +58,11 @@ def test_discovery_rejects_invalid_payload_and_port() -> None:
 
     assert discovery.handle_datagram(b"not-json", "192.168.1.40") is None
     assert discovery.handle_datagram(_packet(port=70000), "192.168.1.40") is None
+
+
+def test_discovery_normalizes_missing_cluster_name() -> None:
+    discovery = LanDiscovery(_config(cluster_name=None), on_peer=lambda _url, _seen: None)
+
+    payload = json.loads(discovery.announcement())
+
+    assert payload["cluster"] == "kairos"
