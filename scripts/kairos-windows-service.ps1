@@ -58,11 +58,15 @@ switch ($Action) {
         }
         Write-Output "Desinstalado: $TaskName"
     }
-    'Start' { Start-ScheduledTask -TaskName $TaskName }
+    'Start' {
+        Enable-ScheduledTask -TaskName $TaskName | Out-Null
+        Start-ScheduledTask -TaskName $TaskName
+    }
     'Stop' { Stop-ScheduledTask -TaskName $TaskName }
     'Restart' {
         Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 1
+        Enable-ScheduledTask -TaskName $TaskName | Out-Null
         Start-ScheduledTask -TaskName $TaskName
     }
     'Status' {

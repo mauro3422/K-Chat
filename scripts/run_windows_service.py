@@ -21,6 +21,7 @@ def main() -> None:
     sys.stdout = stream
     sys.stderr = stream
     os.chdir(root)
+    sys.path.insert(0, str(root))
 
     import uvicorn
 

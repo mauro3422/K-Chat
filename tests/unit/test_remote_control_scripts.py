@@ -101,6 +101,7 @@ def test_windows_service_is_persistent_and_has_bounded_shutdown() -> None:
     assert "-RestartCount 5" in source
     assert "Kairos Discovery LAN" in source
     assert "run_windows_service.py" in source
+    assert "Enable-ScheduledTask" in source
 
     runner = WINDOWS_RUNNER.read_text(encoding="utf-8")
     assert "timeout_graceful_shutdown=8" in runner
