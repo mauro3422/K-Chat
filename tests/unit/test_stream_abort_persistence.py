@@ -6,6 +6,7 @@ Stress test: aborto de stream + persistencia parcial.
 
 import json
 from unittest.mock import patch, MagicMock
+from src.core.orchestrator_contract import OrchestratorDeps
 
 
 class _AsyncIter:
@@ -18,6 +19,10 @@ class _AsyncIter:
             return next(self._items)
         except StopIteration:
             raise StopAsyncIteration
+
+
+def _mock_orch_deps():
+    return MagicMock()
 
 
 def _build_mock_bg_tasks():
@@ -39,7 +44,7 @@ async def test_generator_exit_saves_partial_message(mock_chat_stream, mock_save)
     ])
 
     bg = _build_mock_bg_tasks()
-    gen = build_stream_generator("ses-1", "Hola", [{"role": "system", "content": "test"}], "test-model", bg)()
+    gen = build_stream_generator("ses-1", "Hola", [{"role": "system", "content": "test"}], "test-model", bg, orchestrator_deps=_mock_orch_deps())()
 
     chunks = [await anext(gen) for _ in range(3)]
     data = [json.loads(c.strip()) for c in chunks]
@@ -55,7 +60,7 @@ async def test_generator_exit_saves_partial_message(mock_chat_stream, mock_save)
     assert "Hola mundo" in args[1]
     assert args[5] == "test-model"
     assert args[2] == "Pensando..."
-    bg.add_task.assert_not_called()
+    bg.add_task.assert_called_once()
 
 
 @patch("web.services.chat_stream.save_assistant_message")
@@ -70,7 +75,7 @@ async def test_complete_stream_saves_and_renames(mock_chat_stream, mock_save):
     ])
 
     bg = _build_mock_bg_tasks()
-    gen = build_stream_generator("ses-2", "Test", [{"role": "system", "content": "test"}], "test-model", bg)()
+    gen = build_stream_generator("ses-2", "Test", [{"role": "system", "content": "test"}], "test-model", bg, orchestrator_deps=_mock_orch_deps())()
     chunks = [chunk async for chunk in gen]
 
     assert len(chunks) == 2
@@ -84,8 +89,8 @@ async def test_complete_stream_saves_and_renames(mock_chat_stream, mock_save):
     assert args[1] == "Respuesta final."
     assert args[5] == "test-model"
 
-    bg.add_task.assert_called_once()
-    rename_args = bg.add_task.call_args[0]
+    assert bg.add_task.call_count == 2
+    rename_args = bg.add_task.call_args_list[0].args
     assert rename_args[0].__name__ == "auto_rename_session"
 
 
@@ -98,7 +103,7 @@ async def test_abort_before_any_content_no_save(mock_chat_stream, mock_save):
     mock_chat_stream.return_value = _AsyncIter([])
 
     bg = _build_mock_bg_tasks()
-    gen = build_stream_generator("ses-3", "Test", [{"role": "system", "content": "test"}], "test-model", bg)()
+    gen = build_stream_generator("ses-3", "Test", [{"role": "system", "content": "test"}], "test-model", bg, orchestrator_deps=_mock_orch_deps())()
     chunks = [chunk async for chunk in gen]
 
     assert len(chunks) == 1
@@ -107,7 +112,7 @@ async def test_abort_before_any_content_no_save(mock_chat_stream, mock_save):
     assert data["d"]["type"] == "empty_response"
 
     mock_save.assert_not_called()
-    bg.add_task.assert_not_called()
+    bg.add_task.assert_called_once()
 
 
 @patch("web.services.chat_stream.save_assistant_message")
@@ -122,7 +127,7 @@ async def test_abort_with_reasoning_only_saves_reasoning(mock_chat_stream, mock_
     ])
 
     bg = _build_mock_bg_tasks()
-    gen = build_stream_generator("ses-4", "Test", [{"role": "system", "content": "test"}], "test-model", bg)()
+    gen = build_stream_generator("ses-4", "Test", [{"role": "system", "content": "test"}], "test-model", bg, orchestrator_deps=_mock_orch_deps())()
 
     chunks = [await anext(gen) for _ in range(2)]
     data = [json.loads(c.strip()) for c in chunks]
@@ -151,14 +156,14 @@ async def test_second_stream_after_abort_works(mock_chat_stream, mock_save):
 
     bg = _build_mock_bg_tasks()
 
-    gen1 = build_stream_generator("ses-5", "Msg1", [{"role": "system", "content": "test"}], "m", bg)()
+    gen1 = build_stream_generator("ses-5", "Msg1", [{"role": "system", "content": "test"}], "m", bg, orchestrator_deps=_mock_orch_deps())()
     await anext(gen1)
     await gen1.aclose()
 
     assert mock_save.call_count == 1
     assert mock_save.call_args_list[0].args[1] == "Primera"
 
-    gen2 = build_stream_generator("ses-5", "Msg2", [{"role": "system", "content": "test"}], "m", bg)()
+    gen2 = build_stream_generator("ses-5", "Msg2", [{"role": "system", "content": "test"}], "m", bg, orchestrator_deps=_mock_orch_deps())()
     chunks = [chunk async for chunk in gen2]
 
     assert len(chunks) == 1
@@ -166,7 +171,7 @@ async def test_second_stream_after_abort_works(mock_chat_stream, mock_save):
 
     assert mock_save.call_count == 2
     assert mock_save.call_args_list[1].args[1] == "Segunda completa."
-    assert bg.add_task.call_count == 1
+    assert bg.add_task.call_count == 3
 
 
 if __name__ == "__main__":

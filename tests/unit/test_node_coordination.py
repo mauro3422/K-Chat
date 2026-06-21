@@ -64,27 +64,26 @@ async def test_node_router_exposes_state_and_heartbeat():
         patch("web.app_factory.deps.searxng_stop", return_value=None),
     ):
         app = create_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            state_response = client.get("/api/node/state")
+            assert state_response.status_code == 200
+            state = state_response.json()
+            assert state["node_id"] == "node-a"
+            assert state["role"] == "primary"
+            assert state["cluster_name"] == "kairos"
 
-    with TestClient(app, raise_server_exceptions=False) as client:
-        state_response = client.get("/api/node/state")
-        assert state_response.status_code == 200
-        state = state_response.json()
-        assert state["node_id"] == "node-a"
-        assert state["role"] == "primary"
-        assert state["cluster_name"] == "kairos"
+            hb_response = client.post(
+                "/api/node/heartbeat",
+                json={"node_id": "node-b", "role": "secondary", "base_url": "http://192.168.1.21:8000"},
+            )
+            assert hb_response.status_code == 200
+            hb = hb_response.json()
+            assert hb["ok"] is True
+            assert hb["state"]["peers"][0]["node_id"] == "node-b"
 
-        hb_response = client.post(
-            "/api/node/heartbeat",
-            json={"node_id": "node-b", "role": "secondary", "base_url": "http://192.168.1.21:8000"},
-        )
-        assert hb_response.status_code == 200
-        hb = hb_response.json()
-        assert hb["ok"] is True
-        assert hb["state"]["peers"][0]["node_id"] == "node-b"
-
-        promote_response = client.post("/api/node/promote")
-        assert promote_response.status_code == 200
-        assert promote_response.json()["state"]["role"] == "primary"
+            promote_response = client.post("/api/node/promote")
+            assert promote_response.status_code == 200
+            assert promote_response.json()["state"]["role"] == "primary"
 
 
 @pytest.mark.anyio
@@ -114,15 +113,14 @@ async def test_node_router_receives_event_and_publishes_bus():
     ):
         app = create_app()
         app.state.event_bus = fake_bus
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/node/event",
-            json={"type": "memory_updated", "data": {"session_id": "s1"}},
-        )
-        assert response.status_code == 200
-        assert response.json()["type"] == "memory_updated"
-        fake_bus.publish.assert_awaited_once()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/node/event",
+                json={"type": "memory_updated", "data": {"session_id": "s1"}},
+            )
+            assert response.status_code == 200
+            assert response.json()["type"] == "memory_updated"
+            fake_bus.publish.assert_awaited_once()
 
 
 @pytest.mark.anyio
@@ -181,15 +179,14 @@ async def test_node_event_marks_memory_revision_on_memory_updated_via_lan():
     ):
         app = create_app()
         app.state.event_bus = fake_bus
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/node/event",
-            json={"type": "memory_updated", "data": {"session_id": "s1"}, "source": {"node_id": "peer-a"}},
-        )
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
-        assert app.state.node_coordinator.snapshot()["last_memory_revision"] > 0
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/node/event",
+                json={"type": "memory_updated", "data": {"session_id": "s1"}, "source": {"node_id": "peer-a"}},
+            )
+            assert response.status_code == 200
+            assert response.json()["ok"] is True
+            assert app.state.node_coordinator.snapshot()["last_memory_revision"] > 0
 
 
 @pytest.mark.anyio
@@ -219,15 +216,14 @@ async def test_node_event_marks_memory_sync_on_memory_write_completed_via_lan():
     ):
         app = create_app()
         app.state.event_bus = fake_bus
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/node/event",
-            json={"type": "memory_write_completed", "data": {"key": "Preferencia"}, "source": {"node_id": "peer-a"}},
-        )
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
-        assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/node/event",
+                json={"type": "memory_write_completed", "data": {"key": "Preferencia"}, "source": {"node_id": "peer-a"}},
+            )
+            assert response.status_code == 200
+            assert response.json()["ok"] is True
+            assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
 
 
 @pytest.mark.anyio
@@ -257,15 +253,14 @@ async def test_node_event_marks_memory_revision_on_memory_updated():
     ):
         app = create_app()
         app.state.event_bus = fake_bus
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/events/notify",
-            json={"type": "memory_updated", "data": {"session_id": "s1"}, "source": {"node_id": "peer-a"}},
-        )
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
-        assert app.state.node_coordinator.snapshot()["last_memory_revision"] > 0
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/events/notify",
+                json={"type": "memory_updated", "data": {"session_id": "s1"}, "source": {"node_id": "peer-a"}},
+            )
+            assert response.status_code == 200
+            assert response.json()["ok"] is True
+            assert app.state.node_coordinator.snapshot()["last_memory_revision"] > 0
 
 
 @pytest.mark.anyio
@@ -295,15 +290,14 @@ async def test_node_notify_marks_memory_sync_on_memory_write_completed():
     ):
         app = create_app()
         app.state.event_bus = fake_bus
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/events/notify",
-            json={"type": "memory_write_completed", "data": {"key": "Preferencia"}, "source": {"node_id": "peer-a"}},
-        )
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
-        assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/events/notify",
+                json={"type": "memory_write_completed", "data": {"key": "Preferencia"}, "source": {"node_id": "peer-a"}},
+            )
+            assert response.status_code == 200
+            assert response.json()["ok"] is True
+            assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
 
 
 @pytest.mark.anyio
@@ -342,15 +336,14 @@ async def test_node_memory_snapshot_primary_returns_local_memory_snapshot():
         app.state.manage_memory_run = AsyncMock(return_value=json.dumps(compare_payload))
         app.state.event_bus = MagicMock()
         app.state.event_bus.publish = AsyncMock()
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/api/node/memory/snapshot?key_pattern=user:*")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["ok"] is True
-        assert body["compare"]["only_in_md"] == ["Preferencia"]
-        assert body["queue_path"]
-        assert body["source"]["mode"] != "peer"
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/node/memory/snapshot?key_pattern=user:*")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is True
+            assert body["compare"]["only_in_md"] == ["Preferencia"]
+            assert body["queue_path"]
+            assert body["source"]["mode"] != "peer"
 
 
 @pytest.mark.anyio
@@ -397,15 +390,14 @@ async def test_node_memory_snapshot_secondary_fetches_from_peer():
         app.state.node_bridge = fake_bridge
         app.state.event_bus = MagicMock()
         app.state.event_bus.publish = AsyncMock()
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/api/node/memory/snapshot?key_pattern=user:*")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["ok"] is True
-        assert body["queue_path"] == "/tmp/peer-queue.json"
-        assert body["source"]["mode"] == "peer"
-        fake_bridge.request_memory_snapshot.assert_awaited_once()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/node/memory/snapshot?key_pattern=user:*")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is True
+            assert body["queue_path"] == "/tmp/peer-queue.json"
+            assert body["source"]["mode"] == "peer"
+            fake_bridge.request_memory_snapshot.assert_awaited_once()
 
 
 @pytest.mark.anyio
@@ -421,26 +413,17 @@ async def test_node_diagnostics_combines_node_bridge_and_memory_snapshot():
         node_role="primary",
         cluster_name="kairos",
         node_heartbeat_ttl=10.0,
+        peer_urls="",
     )
-    fake_bridge = MagicMock()
-    fake_bridge.peer_urls = ["http://peer-a:8000"]
-    fake_bridge.base_url = "http://node-a:8000"
-    fake_bridge.broadcast_once = AsyncMock(return_value={"ok": True})
-    fake_bridge.request_memory_snapshot = AsyncMock()
-    fake_bridge.request_peer_states = AsyncMock(return_value={
-        "ok": True,
-        "peers": ["http://peer-a:8000"],
-        "states": [
-            {
-                "node_id": "peer-a",
-                "role": "primary",
-                "healthy": True,
-                "memory_is_fresh": True,
-                "peer_url": "http://peer-a:8000",
-            }
-        ],
-        "errors": [],
-    })
+    compare_payload = {
+        "only_in_md": ["Preferencia"],
+        "only_in_db": [],
+        "mismatched": [],
+        "rename_candidates": [],
+        "matched": 1,
+        "md_total": 1,
+        "db_total": 1,
+    }
 
     with (
         patch("web.app_factory.load_config", return_value=fake_config),
@@ -451,18 +434,16 @@ async def test_node_diagnostics_combines_node_bridge_and_memory_snapshot():
         patch("web.app_factory.deps.searxng_stop", return_value=None),
     ):
         app = create_app()
-        app.state.node_bridge = fake_bridge
+        app.state.manage_memory_run = AsyncMock(return_value=json.dumps(compare_payload))
         app.state.event_bus = MagicMock()
         app.state.event_bus.publish = AsyncMock()
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/api/node/diagnostics?key_pattern=user:*")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["ok"] is True
-        assert body["node"]["node_id"] == "node-a"
-        assert body["bridge"]["peer_urls"] == ["http://peer-a:8000"]
-        assert body["memory"]["ok"] is True
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/node/diagnostics?key_pattern=user:*")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is True
+            assert body["node"]["node_id"] == "node-a"
+            assert body["memory"]["ok"] is True
 
 
 @pytest.mark.anyio
@@ -489,20 +470,18 @@ async def test_node_sync_status_reports_queue_and_memory_state():
         patch("web.app_factory.deps.searxng_stop", return_value=None),
     ):
         app = create_app()
-
-    app.state.memory_write_queue.enqueue("Preferencia", "Python", source_node="node-b", reason="primary_unavailable")
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/api/node/sync/status")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["ok"] is True
-        assert body["node"]["role"] == "secondary"
-        assert body["bridge"]["peer_urls"] == []
-        assert body["cluster"]["peer_count"] == 0
-        assert body["queue"]["size"] == 1
-        assert body["queue"]["pending"][0]["key"] == "Preferencia"
-        assert body["sync"]["is_primary"] is False
+        app.state.memory_write_queue.enqueue("Preferencia", "Python", source_node="node-b", reason="primary_unavailable")
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/node/sync/status")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is True
+            assert body["node"]["role"] == "secondary"
+            assert body["bridge"]["peer_urls"] == []
+            assert body["cluster"]["peer_count"] == 0
+            assert body["queue"]["size"] == 1
+            assert body["queue"]["pending"][0]["key"] == "Preferencia"
+            assert body["sync"]["is_primary"] is False
 
 
 @pytest.mark.anyio
@@ -547,17 +526,15 @@ async def test_node_sync_status_includes_peer_states():
         patch("web.app_factory.deps.searxng_stop", return_value=None),
     ):
         app = create_app()
-
-    app.state.node_bridge = fake_bridge
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/api/node/sync/status")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["cluster"]["peer_count"] == 1
-        assert body["cluster"]["reachable_peers"] == 1
-        assert body["cluster"]["states"][0]["node_id"] == "peer-a"
-        assert body["cluster"]["states"][0]["healthy"] is True
+        app.state.node_bridge = fake_bridge
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/node/sync/status")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["cluster"]["peer_count"] == 1
+            assert body["cluster"]["reachable_peers"] == 1
+            assert body["cluster"]["states"][0]["node_id"] == "peer-a"
+            assert body["cluster"]["states"][0]["healthy"] is True
 
 
 @pytest.mark.anyio
@@ -588,19 +565,18 @@ async def test_node_memory_request_primary_applies_write():
         app = create_app()
         app.state.event_bus = fake_bus
         app.state.save_memory_run = AsyncMock(return_value="[OK] memory write approved by primary.")
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/node/memory/request",
-            json={"key": "Preferencia", "value": "Python", "source": {"node_id": "node-b"}},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["ok"] is True
-        assert body["granted"] is True
-        app.state.save_memory_run.assert_awaited_once()
-        assert fake_bus.publish.await_count == 2
-        assert app.state.node_coordinator.snapshot()["last_memory_revision"] > 0
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/node/memory/request",
+                json={"key": "Preferencia", "value": "Python", "source": {"node_id": "node-b"}},
+            )
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is True
+            assert body["granted"] is True
+            app.state.save_memory_run.assert_awaited_once()
+            assert fake_bus.publish.await_count == 2
+            assert app.state.node_coordinator.snapshot()["last_memory_revision"] > 0
 
 
 @pytest.mark.anyio
@@ -630,19 +606,18 @@ async def test_node_memory_request_secondary_queues_when_not_primary():
     ):
         app = create_app()
         app.state.event_bus = fake_bus
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/node/memory/request",
-            json={"key": "Preferencia", "value": "Python", "source": {"node_id": "node-b"}},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["queued"] is True
-        queue_response = client.get("/api/node/memory/queue")
-        assert queue_response.status_code == 200
-        assert queue_response.json()["pending"][0]["key"] == "Preferencia"
-        fake_bus.publish.assert_awaited_once()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/node/memory/request",
+                json={"key": "Preferencia", "value": "Python", "source": {"node_id": "node-b"}},
+            )
+            assert response.status_code == 200
+            body = response.json()
+            assert body["queued"] is True
+            queue_response = client.get("/api/node/memory/queue")
+            assert queue_response.status_code == 200
+            assert queue_response.json()["pending"][0]["key"] == "Preferencia"
+            fake_bus.publish.assert_awaited_once()
 
 
 @pytest.mark.anyio
@@ -673,25 +648,24 @@ async def test_node_promote_flushes_pending_memory_queue():
         app = create_app()
         app.state.event_bus = fake_bus
         app.state.save_memory_run = AsyncMock(return_value="[OK] memory write applied.")
+        with TestClient(app, raise_server_exceptions=False) as client:
+            client.post(
+                "/api/node/memory/request",
+                json={"key": "Preferencia", "value": "Python", "source": {"node_id": "node-b"}},
+            )
 
-    with TestClient(app, raise_server_exceptions=False) as client:
-        client.post(
-            "/api/node/memory/request",
-            json={"key": "Preferencia", "value": "Python", "source": {"node_id": "node-b"}},
-        )
+            with patch("web.routers.node.log_event") as mock_log:
+                promote_response = client.post("/api/node/promote")
+            assert promote_response.status_code == 200
+            assert promote_response.json()["applied"][0]["key"] == "Preferencia"
+            app.state.save_memory_run.assert_awaited_once()
+            assert fake_bus.publish.await_count >= 2
+            assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
+            mock_log.assert_called_once()
 
-        with patch("web.routers.node.log_event") as mock_log:
-            promote_response = client.post("/api/node/promote")
-        assert promote_response.status_code == 200
-        assert promote_response.json()["applied"][0]["key"] == "Preferencia"
-        app.state.save_memory_run.assert_awaited_once()
-        assert fake_bus.publish.await_count >= 2
-        assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
-        mock_log.assert_called_once()
-
-        queue_response = client.get("/api/node/memory/queue")
-        assert queue_response.status_code == 200
-        assert queue_response.json()["pending"] == []
+            queue_response = client.get("/api/node/memory/queue")
+            assert queue_response.status_code == 200
+            assert queue_response.json()["pending"] == []
 
 
 @pytest.mark.anyio
@@ -741,15 +715,14 @@ async def test_node_promote_recovers_persisted_memory_queue_after_restart(monkey
         app2 = create_app()
         app2.state.event_bus = fake_bus
         app2.state.save_memory_run = AsyncMock(return_value="[OK] memory write applied.")
-
-    with TestClient(app2, raise_server_exceptions=False) as client:
-        response = client.post("/api/node/promote")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["applied"][0]["key"] == "Preferencia"
-        app2.state.save_memory_run.assert_awaited_once()
-        assert app2.state.memory_write_queue.snapshot() == []
-        assert queue_path.exists()
+        with TestClient(app2, raise_server_exceptions=False) as client:
+            response = client.post("/api/node/promote")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["applied"][0]["key"] == "Preferencia"
+            app2.state.save_memory_run.assert_awaited_once()
+            assert app2.state.memory_write_queue.snapshot() == []
+            assert queue_path.exists()
 
 
 @pytest.mark.anyio
@@ -779,18 +752,16 @@ async def test_primary_startup_autoflushes_persisted_memory_queue(monkeypatch, t
         patch("web.app_factory.deps.searxng_stop", return_value=None),
     ):
         app = create_app()
+        app.state.memory_write_queue.enqueue("Preferencia", "Python", source_node="node-b", reason="primary_unavailable")
+        app.state.save_memory_run = AsyncMock(return_value="[OK] memory write applied.")
+        app.state.event_bus = MagicMock()
+        app.state.event_bus.publish = AsyncMock()
+        with TestClient(app, raise_server_exceptions=False):
+            pass
 
-    app.state.memory_write_queue.enqueue("Preferencia", "Python", source_node="node-b", reason="primary_unavailable")
-    app.state.save_memory_run = AsyncMock(return_value="[OK] memory write applied.")
-    app.state.event_bus = MagicMock()
-    app.state.event_bus.publish = AsyncMock()
-
-    with TestClient(app, raise_server_exceptions=False):
-        pass
-
-    app.state.save_memory_run.assert_awaited_once()
-    assert app.state.memory_write_queue.snapshot() == []
-    assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
+        app.state.save_memory_run.assert_awaited_once()
+        assert app.state.memory_write_queue.snapshot() == []
+        assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
 
 
 @pytest.mark.anyio
@@ -817,13 +788,11 @@ async def test_node_promote_rejects_when_leader_lease_is_busy():
         patch("web.app_factory.deps.searxng_stop", return_value=None),
     ):
         app = create_app()
-
-    app.state.leader_lease_manager.acquire("other-node", ttl=30.0, reason="busy")
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post("/api/node/promote")
-        assert response.status_code == 409
-        assert response.json()["error"] == "leader lease busy"
+        app.state.leader_lease_manager.acquire("other-node", ttl=30.0, reason="busy")
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post("/api/node/promote")
+            assert response.status_code == 409
+            assert response.json()["error"] == "leader lease busy"
 
 
 @pytest.mark.anyio
@@ -853,23 +822,21 @@ async def test_secondary_auto_promotes_when_primary_is_missing():
         patch("src.coordination.lan_bridge.NodeLanBridge.broadcast_once", new_callable=AsyncMock, return_value={"ok": True}),
     ):
         app = create_app()
+        app.state.event_bus = MagicMock()
+        app.state.event_bus.publish = AsyncMock()
+        app.state.node_bridge = MagicMock()
+        app.state.node_bridge.broadcast_once = AsyncMock(return_value={"ok": True})
+        with TestClient(app, raise_server_exceptions=False):
+            import anyio
+            import time
 
-    app.state.event_bus = MagicMock()
-    app.state.event_bus.publish = AsyncMock()
-    app.state.node_bridge = MagicMock()
-    app.state.node_bridge.broadcast_once = AsyncMock(return_value={"ok": True})
+            deadline = time.time() + 2.0
+            while time.time() < deadline:
+                if app.state.node_coordinator.role == "primary":
+                    break
+                await anyio.sleep(0.05)
 
-    with TestClient(app, raise_server_exceptions=False):
-        import anyio
-        import time
-
-        deadline = time.time() + 2.0
-        while time.time() < deadline:
-            if app.state.node_coordinator.role == "primary":
-                break
-            await anyio.sleep(0.05)
-
-        assert app.state.node_coordinator.role == "primary"
+            assert app.state.node_coordinator.role == "primary"
 
 
 @pytest.mark.anyio
@@ -898,13 +865,12 @@ async def test_node_failover_status_reports_state():
         patch("web.app_factory.deps.searxng_stop", return_value=None),
     ):
         app = create_app()
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/api/node/failover/status")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["ok"] is True
-        assert body["required_misses"] == 2
-        assert body["miss_count"] == 0
-        assert body["should_promote"] is False
-        assert body["node"]["node_id"] == "node-a"
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/node/failover/status")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is True
+            assert body["required_misses"] == 2
+            assert body["miss_count"] == 0
+            assert body["should_promote"] is False
+            assert body["node"]["node_id"] == "node-a"

@@ -40,7 +40,7 @@ async def test_fallback_switch_updates_system_prompt(mock_sleep):
         assert mock_api_call.call_count == 2
         assert mock_api_call.call_args_list[0].kwargs.get("model") == "big-pickle"
         assert mock_api_call.call_args_list[1].kwargs.get("model") == "deepseek-v4-flash-free"
-        mock_mark_and_refresh.assert_called_once_with("big-pickle", refresh=True, error=ANY)
+        mock_mark_and_refresh.assert_called_once_with("big-pickle", refresh=True, error=ANY, breaker=None, rate_store=None, registry=None)
         
         # Verify system prompt was updated
         assert "Active model: deepseek-v4-flash-free" in messages[0]["content"]

@@ -157,6 +157,7 @@ class TestTelegramClusterGate:
         fake_cluster = MagicMock(peer_urls="http://peer-a:8000", node_role="secondary")
         with (
             patch("sys.argv", ["telegram"]),
+            patch("channels.telegram.__main__._check_pid_lock", return_value=None),
             patch("channels.telegram.__main__.load_telegram_config", return_value=MagicMock(enabled=True)),
             patch("channels.telegram.__main__.load_config", return_value=fake_cluster),
             patch("channels.telegram.__main__.run_bot") as mock_run_bot,

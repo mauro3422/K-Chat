@@ -15,8 +15,8 @@ class TestOpenAIAdapterConstructor:
             call_kwargs = mock_openai.call_args.kwargs
             assert call_kwargs["api_key"] == "my-key"
             assert call_kwargs["base_url"] == "https://my.url"
-            assert "timeout" in call_kwargs
-            assert call_kwargs["max_retries"] == 0
+            assert "http_client" in call_kwargs
+            assert call_kwargs["max_retries"] == 2
 
     @pytest.mark.anyio
     async def test_provider_name(self):

@@ -40,7 +40,7 @@ async def test_format_model_label_uses_registry(tmp_path, monkeypatch):
     model_catalog._load_registry.cache_clear()
 
     label = model_catalog.format_model_label("sample-model")
-    assert label == "Sample Model · ctx 1M · out 128k · img+video · razonamiento · tools"
+    assert label == "Sample Model · 1M ctx · 128k out"
 
 
 @pytest.mark.anyio

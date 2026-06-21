@@ -39,6 +39,7 @@ export class CanvasOverlay implements ICanvasOverlay {
   private logger: ILogger;
   private animFrameId: number | null = null;
   private currentEffect: EffectType = 'none';
+  private _boundResize: (() => void) | null = null;
 
   // Rain
   private raindrops: Raindrop[] = [];
@@ -77,7 +78,8 @@ export class CanvasOverlay implements ICanvasOverlay {
     }
     this.ctx = this._canvas.getContext('2d');
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    this._boundResize = () => this.resize();
+    window.addEventListener('resize', this._boundResize);
     this.logger.info('init');
   }
 
@@ -166,6 +168,10 @@ export class CanvasOverlay implements ICanvasOverlay {
   destroy(): void {
     this.stopEffect();
     this.stopDrawMode();
+    if (this._boundResize) {
+      window.removeEventListener('resize', this._boundResize);
+      this._boundResize = null;
+    }
     this._canvas = null;
     this.ctx = null;
   }

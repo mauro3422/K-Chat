@@ -64,7 +64,7 @@ def test_windows_remote_control_maps_recovery_actions() -> None:
     source = WINDOWS_SCRIPT.read_text(encoding="utf-8")
     for action in ("Preflight", "Backup", "Rollback"):
         assert action in source
-    for command in ("'preflight'", "'backup'", "'restore'", "'rollback'"):
+    for command in ("'preflight'", "'backup'", "'Restore'", "'rollback'"):
         assert command in source
 
 

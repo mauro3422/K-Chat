@@ -7,7 +7,27 @@ from src.api.messages import save_message_record
 from src.memory.repos import MessageRecord, get_repos
 from src.api.session import ensure_session
 from src.core.history_rebuilder import rebuild_history
-from src.memory.schema import init_db
+import os
+
+from src.memory.conn_factory import configure_connection, create_raw_conn
+from src.memory.db_path import resolve_db_path
+
+
+async def init_db():
+    db_path = resolve_db_path()
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = await create_raw_conn(db_path)
+    await configure_connection(conn)
+    cursor = await conn.cursor()
+    await cursor.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER)")
+    await cursor.execute("SELECT MAX(version) AS version FROM schema_version")
+    row = await cursor.fetchone()
+    if row is None or row["version"] is None:
+        await cursor.execute("INSERT INTO schema_version (version) VALUES (0)")
+    await conn.commit()
+    await conn.close()
+    from src.memory.schema import init_db_for_path
+    await init_db_for_path(db_path)
 
 
 async def save_message(

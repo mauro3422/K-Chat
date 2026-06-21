@@ -91,6 +91,8 @@ def test_tools_openai_formats_correctly():
     registry.register("tool_b", lambda: "b", {
         "function": {"name": "tool_b", "description": "Does B"}
     })
+    # Prevent lazy build from discovering all package tools
+    registry._built = True
 
     result = registry.tools_openai
 
@@ -112,19 +114,22 @@ def test_tools_openai_returns_empty_list_when_no_tools():
 
 
 def test_build_skips_internal_modules():
+    import src.tools.registry as registry_mod
+
     registry = ToolRegistry()
     registry._built = False
     registry._package = "src.tools"
 
-    with patch("src.tools.registry.importlib.import_module") as mock_import:
-        mock_pkg = MagicMock()
-        mock_pkg.__file__ = "/fake/src/tools/__init__.py"
-        mock_import.return_value = mock_pkg
-
-        with patch("src.tools.registry.os.listdir", return_value=[
+    with patch.object(registry_mod, "os") as mock_os:
+        mock_os.path.dirname.return_value = "/fake/src/tools"
+        mock_os.listdir.return_value = [
             "__init__.py", "runner.py", "loader.py", "registry.py",
             "_helper.py", "actual_tool.py",
-        ]):
+        ]
+        with patch.object(registry_mod, "importlib") as mock_importlib:
+            mock_pkg = MagicMock()
+            mock_pkg.__file__ = "/fake/src/tools/__init__.py"
+            mock_importlib.import_module.return_value = mock_pkg
             registry.build()
 
     registry._built = True

@@ -159,7 +159,7 @@ class TestFormatMemoriesForPrompt:
         assert "short text" in output
         assert "90%" in output
         assert "mem_1" in output
-        assert "📖" in output
+        assert "🔍" in output
 
     def test_multiple_results_with_scores(self, several_results):
         output = format_memories_for_prompt(several_results)
@@ -173,7 +173,7 @@ class TestFormatMemoriesForPrompt:
 
     def test_with_query(self, a_result):
         output = format_memories_for_prompt([a_result], query="hello")
-        assert "búsqueda" in output
+        assert "search" in output
         assert "hello" in output
 
     def test_without_query(self, a_result):

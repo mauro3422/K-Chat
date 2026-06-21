@@ -34,22 +34,22 @@ async def test_telegram_notify_records_reflection_state_and_status_endpoint():
         app.state.event_bus = fake_bus
         app.state.node_bridge = fake_bridge
 
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/events/notify",
-            json={"type": "new_message", "data": {"session_id": "tele_1", "source": {"node_id": "peer-a"}}},
-        )
-        assert response.status_code == 200
-        assert response.json()["ok"] is True
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/events/notify",
+                json={"type": "new_message", "data": {"session_id": "tele_1", "source": {"node_id": "peer-a"}}},
+            )
+            assert response.status_code == 200
+            assert response.json()["ok"] is True
 
-        status = client.get("/api/telegram/status")
-        assert status.status_code == 200
-        body = status.json()
-        assert body["ok"] is True
-        assert body["has_recent_reflection"] is True
-        assert body["lan_total_sent"] == 2
-        assert body["last_event"]["event_type"] == "new_message"
-        assert body["last_event"]["path"] in {"notify", "lan"}
-        assert body["recent_count"] >= 2
-        fake_bridge.broadcast_event.assert_awaited_once()
-        assert fake_bus.publish.await_count >= 1
+            status = client.get("/api/telegram/status")
+            assert status.status_code == 200
+            body = status.json()
+            assert body["ok"] is True
+            assert body["has_recent_reflection"] is True
+            assert body["lan_total_sent"] == 2
+            assert body["last_event"]["event_type"] == "new_message"
+            assert body["last_event"]["path"] in {"notify", "lan"}
+            assert body["recent_count"] >= 2
+            fake_bridge.broadcast_event.assert_awaited_once()
+            assert fake_bus.publish.await_count >= 1

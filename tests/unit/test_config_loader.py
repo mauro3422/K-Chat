@@ -8,7 +8,7 @@ from src.config_loader import Config, load_config
 @pytest.fixture(autouse=True)
 def _no_dotenv_reload():
     """Prevent load_dotenv() from re-populating env vars during tests."""
-    _config_loader._dotenv_loaded = True
+    _config_loader._ensure_dotenv_loaded._loaded = True
     yield
 
 

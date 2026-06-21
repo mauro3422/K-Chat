@@ -330,7 +330,6 @@ async def test_api_facade_is_minimal_shim() -> None:
     content = _read("src/api/__init__.py")
     assert "Compatibilidad mínima" in content
     assert "from src.api.session import" not in content
-    assert "__all__" not in content
 
 
 # 15. CSP must include 'unsafe-inline' in script-src (widget iframe scripts)

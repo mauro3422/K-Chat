@@ -3,6 +3,7 @@
 Soporta rangos de líneas por archivo (ej: 'file.py:10-30').
 Sigue el patrón Lego: DEFINITION + run().
 """
+import asyncio
 import os
 import re
 from typing import Any
