@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE="${KAIROS_SERVICE:-k-chat}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-UNIT_FILE="$ROOT/.kairos/${SERVICE}.service"
+UNIT_FILE="$UNIT_DIR/${SERVICE}.service"
 
 if [[ -x "$ROOT/venv/bin/uvicorn" ]]; then
   EXEC_START="$ROOT/venv/bin/uvicorn"
@@ -14,7 +14,7 @@ else
   EXEC_START="$(command -v python3) -m uvicorn"
 fi
 
-install -d -m 700 "$ROOT/.kairos" "$UNIT_DIR"
+install -d -m 700 "$UNIT_DIR"
 cat > "$UNIT_FILE" <<EOF
 [Unit]
 Description=Kairos web service
@@ -41,7 +41,6 @@ ReadWritePaths=$ROOT
 WantedBy=default.target
 EOF
 chmod 600 "$UNIT_FILE"
-ln -sfn "$UNIT_FILE" "$UNIT_DIR/${SERVICE}.service"
 systemctl --user daemon-reload
 systemctl --user enable --now "$SERVICE"
 systemctl --user restart "$SERVICE"

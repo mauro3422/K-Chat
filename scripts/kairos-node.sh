@@ -84,6 +84,11 @@ backup() {
   require_command sqlite3
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   destination="$BACKUP_ROOT/$timestamp"
+  while [[ -e "$destination" ]]; do
+    sleep 1
+    timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    destination="$BACKUP_ROOT/$timestamp"
+  done
   install -d -m 700 "$BACKUP_ROOT" "$destination" "$destination/databases" "$destination/config"
   manifest="$destination/manifest.txt"
   {
@@ -136,8 +141,8 @@ restore_backup() {
   done < <(find "$source_root/databases" -type f \( -name '*.db' -o -name '*.sqlite' \))
 
   backup
-  service_control stop
   trap 'service_control start >/dev/null 2>&1 || true' RETURN
+  service_control stop
   while IFS= read -r -d '' source; do
     relative="${source#"$source_root/databases/"}"
     [[ "$relative" == data/* || "$relative" == memory/* ]] || {

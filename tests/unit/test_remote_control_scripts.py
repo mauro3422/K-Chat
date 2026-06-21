@@ -41,6 +41,7 @@ def test_linux_control_exposes_recovery_contract() -> None:
     assert 'install -d -m 700 "$BACKUP_ROOT" "$destination"' in source
     assert 'rollback_to "$previous_commit"' in source
     assert 'KAIROS_BACKUP_KEEP:-7' in source
+    assert 'while [[ -e "$destination" ]]' in source
     assert "preflight) preflight" in source
     assert "backup) backup" in source
     assert 'restore) restore_backup "${2:-}"' in source
@@ -106,6 +107,7 @@ def test_windows_service_is_persistent_and_has_bounded_shutdown() -> None:
     runner = WINDOWS_RUNNER.read_text(encoding="utf-8")
     assert "timeout_graceful_shutdown=8" in runner
     assert "access_log=False" in runner
+    assert "class RotatingTextStream" in runner
     compile(runner, str(WINDOWS_RUNNER), "exec")
 
 
@@ -120,3 +122,5 @@ def test_linux_user_service_has_restart_and_bounded_shutdown() -> None:
     assert "--timeout-graceful-shutdown 8" in source
     assert "TimeoutStopSec=12" in source
     assert 'systemctl --user enable --now "$SERVICE"' in source
+    assert 'UNIT_FILE="$UNIT_DIR/${SERVICE}.service"' in source
+    assert 'UNIT_FILE="$ROOT/.kairos/${SERVICE}.service"' not in source
