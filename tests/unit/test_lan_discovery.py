@@ -5,7 +5,7 @@ import socket
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from src.coordination.lan_discovery import LanDiscovery
+from src.coordination.lan_discovery import LanDiscovery, normalize_lan_peer_url
 
 
 def _config(**overrides):
@@ -89,3 +89,11 @@ def test_discovery_uses_resolved_lan_interface_for_multicast() -> None:
         socket.inet_aton("239.255.42.99") + interface,
     )
     sender.setsockopt.assert_any_call(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, interface)
+
+
+def test_peer_url_normalization_accepts_only_literal_lan_http_urls() -> None:
+    assert normalize_lan_peer_url("http://192.168.1.40:8000/path") == "http://192.168.1.40:8000"
+    assert normalize_lan_peer_url("https://192.168.1.40:8000") is None
+    assert normalize_lan_peer_url("http://example.com:8000") is None
+    assert normalize_lan_peer_url("http://8.8.8.8:8000") is None
+    assert normalize_lan_peer_url("not-a-url") is None

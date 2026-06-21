@@ -80,6 +80,7 @@ async def test_node_router_exposes_state_and_heartbeat():
             hb = hb_response.json()
             assert hb["ok"] is True
             assert hb["state"]["peers"][0]["node_id"] == "node-b"
+            assert app.state.node_bridge.peer_urls == ["http://192.168.1.21:8000"]
 
             promote_response = client.post("/api/node/promote")
             assert promote_response.status_code == 200

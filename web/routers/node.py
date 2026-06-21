@@ -12,6 +12,7 @@ from src.coordination.leader_lease import get_leader_lease_manager
 from src.coordination.memory_write_queue import apply_pending_memory_writes, get_memory_write_queue
 from src.coordination.node_state import NodeCoordinator, get_node_coordinator
 from src.coordination.lan_bridge import NodeLanBridge
+from src.coordination.lan_discovery import normalize_lan_peer_url
 from web.services.session_directory import session_summary_from_row
 from web.routers._memory_snapshot import build_memory_snapshot, relay_memory_event
 from web.services.event_bus import IEventBus, get_event_bus
@@ -157,10 +158,13 @@ async def node_state(request: Request) -> JSONResponse:
 async def node_heartbeat(payload: NodeHeartbeatPayload, request: Request) -> JSONResponse:
     coordinator = _get_coordinator(request)
     if payload.node_id:
+        peer_url = normalize_lan_peer_url(payload.base_url)
+        if peer_url:
+            _get_node_bridge(request).register_discovered_peer(peer_url)
         snapshot = await coordinator.record_peer_heartbeat(
             node_id=payload.node_id,
             role=payload.role,
-            base_url=payload.base_url,
+            base_url=peer_url or "",
             metadata=payload.metadata,
         )
     else:

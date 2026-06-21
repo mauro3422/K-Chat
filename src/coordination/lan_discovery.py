@@ -10,6 +10,7 @@ import socket
 import time
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 from src.config_loader import Config
 
@@ -44,6 +45,19 @@ def _is_lan_address(address: str) -> bool:
     except ValueError:
         return False
     return bool(ip.is_private or ip.is_link_local or ip.is_loopback)
+
+
+def normalize_lan_peer_url(raw_url: str) -> str | None:
+    """Return a canonical HTTP URL only when it targets a literal LAN address."""
+    try:
+        parsed = urlsplit(raw_url.strip())
+        host = parsed.hostname or ""
+        port = parsed.port
+    except (TypeError, ValueError):
+        return None
+    if parsed.scheme != "http" or not _is_lan_address(host) or port is None:
+        return None
+    return f"http://{host}:{port}"
 
 
 class LanDiscovery:
