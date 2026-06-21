@@ -15,6 +15,9 @@ else
 fi
 
 install -d -m 700 "$UNIT_DIR"
+if [[ -L "$UNIT_FILE" ]]; then
+  rm -f "$UNIT_FILE"
+fi
 cat > "$UNIT_FILE" <<EOF
 [Unit]
 Description=Kairos web service

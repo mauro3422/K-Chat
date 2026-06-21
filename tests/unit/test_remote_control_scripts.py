@@ -124,3 +124,4 @@ def test_linux_user_service_has_restart_and_bounded_shutdown() -> None:
     assert 'systemctl --user enable --now "$SERVICE"' in source
     assert 'UNIT_FILE="$UNIT_DIR/${SERVICE}.service"' in source
     assert 'UNIT_FILE="$ROOT/.kairos/${SERVICE}.service"' not in source
+    assert 'if [[ -L "$UNIT_FILE" ]]' in source
