@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
+from src.api.orchestrator import OrchestratorDeps
 from web.services.chat_stream import build_stream_generator
 from web.services.chat_stream_contract import StreamGeneratorDeps
 
@@ -29,7 +30,15 @@ async def test_build_stream_generator_uses_dependency_bundle():
 
     bg = MagicMock()
     bg.add_task = MagicMock()
-    gen_fn = build_stream_generator("ses-1", "Hola", [{"role": "system", "content": "test"}], "m", bg, deps=deps)
+    gen_fn = build_stream_generator(
+        "ses-1",
+        "Hola",
+        [{"role": "system", "content": "test"}],
+        "m",
+        bg,
+        deps=deps,
+        orchestrator_deps=OrchestratorDeps(repos=MagicMock()),
+    )
 
     chunks = [t async for t in gen_fn()]
 
