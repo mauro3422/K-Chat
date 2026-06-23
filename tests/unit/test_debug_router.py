@@ -49,10 +49,36 @@ class TestTrustedLanOrLocal:
         _trusted_lan_or_local(request)  # should not raise
 
     @pytest.mark.anyio
+    async def test_private_lan_ip_with_port_passes(self, monkeypatch):
+        monkeypatch.delenv("TESTING", raising=False)
+        request = MagicMock()
+        request.client.host = "192.168.1.35:51234"
+        request.headers = {}
+        _trusted_lan_or_local(request)  # should not raise
+
+    @pytest.mark.anyio
+    async def test_forwarded_private_lan_ip_from_trusted_proxy_passes(self, monkeypatch):
+        monkeypatch.delenv("TESTING", raising=False)
+        request = MagicMock()
+        request.client.host = "127.0.0.1"
+        request.headers = {"x-forwarded-for": "192.168.1.35"}
+        _trusted_lan_or_local(request)  # should not raise
+
+    @pytest.mark.anyio
     async def test_public_ip_raises_403(self, monkeypatch):
         monkeypatch.delenv("TESTING", raising=False)
         request = MagicMock()
         request.client.host = "8.8.8.8"
+        with pytest.raises(HTTPException) as exc:
+            _trusted_lan_or_local(request)
+        assert exc.value.status_code == 403
+
+    @pytest.mark.anyio
+    async def test_public_forwarded_ip_from_untrusted_proxy_raises_403(self, monkeypatch):
+        monkeypatch.delenv("TESTING", raising=False)
+        request = MagicMock()
+        request.client.host = "8.8.8.8"
+        request.headers = {"x-forwarded-for": "192.168.1.35"}
         with pytest.raises(HTTPException) as exc:
             _trusted_lan_or_local(request)
         assert exc.value.status_code == 403

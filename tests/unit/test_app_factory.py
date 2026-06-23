@@ -153,3 +153,22 @@ class TestAppFactory:
 
         mock_reset_web_state.assert_called_once()
         mock_stop.assert_awaited_once()
+
+    @pytest.mark.anyio
+    async def test_prime_verified_model_cache_uses_shared_registry_in_go_mode(self):
+        from fastapi import FastAPI
+        from web.app_factory import _prime_verified_model_cache
+
+        app = FastAPI()
+        app.state.config = MagicMock(llm_mode="go")
+        app.state.model_registry = MagicMock()
+        app.state.model_registry.get_all_models.return_value = ["model-a", "model-b"]
+
+        with (
+            patch("web.app_factory.ensure_registry_refreshed", new=AsyncMock()),
+            patch("web.app_factory.get_verified_models", new=AsyncMock()) as mock_get_verified,
+        ):
+            await _prime_verified_model_cache(app, timeout=0.1)
+
+        app.state.model_registry.set_verified_models.assert_called_once_with(["model-a", "model-b"])
+        mock_get_verified.assert_not_awaited()

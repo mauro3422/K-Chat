@@ -117,6 +117,32 @@ def _wire_llm_runtime_state(llm_container, app_state=None) -> None:
         app_state.model_registry = llm_container.get_model_registry()
 
 
+async def _prime_verified_model_cache(app: FastAPI, timeout: float = 10) -> None:
+    """Prime the shared model registry used by HTTP requests."""
+    from src.llm.model_registry import configure_model_registry
+
+    cfg = app.state.config
+    model_registry = app.state.model_registry
+    configure_model_registry(model_registry)
+
+    try:
+        await asyncio.wait_for(ensure_registry_refreshed(), timeout=timeout)
+    except Exception:
+        logger.warning("Registry refresh failed, will lazy-refresh on first request", exc_info=True)
+        return
+
+    if getattr(cfg, "llm_mode", "go") == "go":
+        verified = model_registry.get_all_models()
+        model_registry.set_verified_models(verified)
+        logger.info("Go mode: primed verified model cache with %d models", len(verified))
+        return
+
+    try:
+        await asyncio.wait_for(get_verified_models(config=cfg), timeout=timeout)
+    except Exception as e:
+        logger.warning("Failed to prime verified model cache: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     cfg = getattr(app.state, "config", None) or load_config()
@@ -213,18 +239,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         asyncio.create_task(_generate_skills_index())
 
         async def _prime_model_registry() -> None:
-            from src.llm.model_registry import configure_model_registry
-            # Sync ContextVar with the shared app instance so the background
-            # task populates the same registry that HTTP requests read from
-            configure_model_registry(app.state.model_registry)
-            try:
-                await asyncio.wait_for(get_verified_models(), timeout=10)
-            except Exception as e:
-                logger.warning("Failed to prime verified model cache: %s", e)
-            try:
-                await asyncio.wait_for(ensure_registry_refreshed(), timeout=10)
-            except Exception:
-                logger.warning("Registry refresh failed, will lazy-refresh on first request", exc_info=True)
+            await _prime_verified_model_cache(app)
 
         asyncio.create_task(_prime_model_registry())
 

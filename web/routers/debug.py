@@ -39,6 +39,41 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _parse_client_address(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    raw = (host or "").strip()
+    if not raw:
+        return None
+    if raw == "localhost":
+        raw = "127.0.0.1"
+    elif raw.startswith("["):
+        raw = raw[1:].split("]", 1)[0]
+    elif raw.count(":") == 1 and "." in raw:
+        raw = raw.rsplit(":", 1)[0]
+    if "%" in raw:
+        raw = raw.split("%", 1)[0]
+    try:
+        address = ipaddress.ip_address(raw)
+    except ValueError:
+        return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return address.ipv4_mapped
+    return address
+
+
+def _is_trusted_debug_address(host: str) -> bool:
+    address = _parse_client_address(host)
+    return bool(address and (address.is_loopback or address.is_private))
+
+
+def _debug_client_candidates(request: Request) -> list[str]:
+    host = request.client.host if request.client else "unknown"
+    candidates = [host]
+    forwarded_for = request.headers.get("x-forwarded-for", "") if hasattr(request, "headers") else ""
+    if forwarded_for and _is_trusted_debug_address(host):
+        candidates.extend(part.strip() for part in forwarded_for.split(",") if part.strip())
+    return candidates
+
+
 @router.get("/rate-limits")
 async def rate_limits(request: Request) -> dict:
     _trusted_lan_or_local(request)
@@ -94,14 +129,9 @@ def _trusted_lan_or_local(request: Request) -> None:
     if os.getenv("TESTING") == "true":
         return
     host = request.client.host if request.client else "unknown"
-    if host == "localhost":
-        return
-    try:
-        address = ipaddress.ip_address(host)
-        if address.is_loopback or address.is_private:
+    for candidate in _debug_client_candidates(request):
+        if _is_trusted_debug_address(candidate):
             return
-    except ValueError:
-        pass
     logger.warning("Debug endpoint access denied from %s", host)
     raise HTTPException(status_code=403, detail="Debug endpoint restricted to localhost or private LAN clients")
 

@@ -51,11 +51,11 @@ async def test_csp_includes_blob_for_img_src() -> None:
 
 async def test_lifespan_has_timeout_on_get_verified_models() -> None:
     content = _read("web/app_factory.py")
-    assert "get_verified_models()" in content, \
+    assert "_prime_verified_model_cache(app)" in content, \
         "Missing verified-model priming in lifespan!"
-    assert "await asyncio.wait_for(get_verified_models(), timeout=10)" in content, \
-        "Lifespan must await async get_verified_models() with timeout!"
-    assert "asyncio.wait_for(ensure_registry_refreshed(), timeout=10)" in content, \
+    assert "get_verified_models(config=cfg)" in content, \
+        "Zen-mode verified-model priming must pass the app config."
+    assert "asyncio.wait_for(ensure_registry_refreshed(), timeout=timeout)" in content, \
         "Missing timeout on ensure_registry_refreshed in lifespan!"
 
 
