@@ -117,6 +117,7 @@ async def sync(payload: MemoryMaintenancePayload, request: Request) -> JSONRespo
         operation="sync",
         dry_run=payload.dry_run,
         confirm=payload.confirm,
+        key_pattern=payload.key_pattern,
         _repos=_get_repos(request),
     )
     if not payload.dry_run:
@@ -133,6 +134,7 @@ async def repair(payload: MemoryMaintenancePayload, request: Request) -> JSONRes
         operation="repair",
         dry_run=payload.dry_run,
         confirm=payload.confirm,
+        key_pattern=payload.key_pattern,
         _repos=_get_repos(request),
     )
     if not payload.dry_run:

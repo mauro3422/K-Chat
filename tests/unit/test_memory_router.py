@@ -68,15 +68,16 @@ async def test_memory_sync_endpoint_calls_manage_memory():
         app.state.event_bus = AsyncMock()
         app.state.event_bus.publish = AsyncMock()
 
-    with TestClient(app, raise_server_exceptions=False) as client:
-        with patch("web.routers.memory.log_event") as mock_log:
-            response = client.post("/api/memory/sync", json={"dry_run": False, "confirm": True})
-        assert response.status_code == 200
-        assert response.json()["result"] == "[OK] sync"
-        app.state.manage_memory_run.assert_awaited_once()
-        assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
-        app.state.event_bus.publish.assert_awaited_once()
-        mock_log.assert_called_once()
+    client = TestClient(app, raise_server_exceptions=False)
+    with patch("web.routers.memory.log_event") as mock_log:
+        response = client.post("/api/memory/sync", json={"dry_run": False, "confirm": True, "key_pattern": "user:*"})
+    assert response.status_code == 200
+    assert response.json()["result"] == "[OK] sync"
+    app.state.manage_memory_run.assert_awaited_once()
+    assert app.state.manage_memory_run.await_args.kwargs["key_pattern"] == "user:*"
+    assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
+    app.state.event_bus.publish.assert_awaited_once()
+    mock_log.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -114,6 +115,43 @@ async def test_memory_sync_dry_run_does_not_mark_state():
         app.state.manage_memory_run.assert_awaited_once()
         assert app.state.node_coordinator.snapshot()["last_memory_sync"] == 0.0
         app.state.event_bus.publish.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_memory_repair_endpoint_passes_key_pattern_to_manage_memory():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="primary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+    )
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+        app.state.manage_memory_run = AsyncMock(return_value="[OK] repair")
+        app.state.event_bus = AsyncMock()
+        app.state.event_bus.publish = AsyncMock()
+
+    client = TestClient(app, raise_server_exceptions=False)
+    with patch("web.routers.memory.log_event"):
+        response = client.post("/api/memory/repair", json={"dry_run": False, "confirm": True, "key_pattern": "user:*"})
+    assert response.status_code == 200
+    assert response.json()["result"] == "[OK] repair"
+    app.state.manage_memory_run.assert_awaited_once()
+    assert app.state.manage_memory_run.await_args.kwargs["key_pattern"] == "user:*"
 
 
 @pytest.mark.anyio
@@ -187,8 +225,8 @@ async def test_memory_diagnostics_endpoint_reports_compare_and_freshness():
         app = create_app()
         app.state.manage_memory_run = AsyncMock(return_value=json.dumps(compare_payload))
         coordinator = NodeCoordinator(fake_config)
-        await coordinator.mark_memory_revision({"event": "test"})
         await coordinator.mark_memory_sync({"event": "seed"})
+        await coordinator.mark_memory_revision({"event": "test"})
         app.state.node_coordinator = coordinator
 
     with TestClient(app, raise_server_exceptions=False) as client:

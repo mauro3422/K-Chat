@@ -1,6 +1,7 @@
 import os
 import sys
 import sqlite3
+import tempfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -8,15 +9,16 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 # This ensures test DB isolation regardless of .env settings.
 # NOTE: the actual env vars read by the code are SESSIONS_DB_PATH (for sessions.db)
 # and KAIROS_MEMORY_DB_PATH (for memory.db), NOT "MEMORY_DB_PATH".
-os.environ["SESSIONS_DB_PATH"] = "/tmp/kairos_test_sessions.db"
-os.environ["KAIROS_MEMORY_DB_PATH"] = "/tmp/kairos_test_memory.db"
-os.environ["KAIROS_MEMORY_WRITE_QUEUE_PATH"] = "/tmp/kairos_test_memory_write_queue.json"
+_TEST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER", "main")
+_TEST_TMP = tempfile.gettempdir()
+os.environ["SESSIONS_DB_PATH"] = os.path.join(_TEST_TMP, f"kairos_test_{_TEST_WORKER_ID}_sessions.db")
+os.environ["KAIROS_MEMORY_DB_PATH"] = os.path.join(_TEST_TMP, f"kairos_test_{_TEST_WORKER_ID}_memory.db")
+os.environ["KAIROS_MEMORY_WRITE_QUEUE_PATH"] = os.path.join(_TEST_TMP, f"kairos_test_{_TEST_WORKER_ID}_memory_write_queue.json")
 os.environ["OPENCODE_ZEN_API_KEY"] = "test-key-for-tests"
 os.environ["SEARXNG_AUTO_START"] = "false"
 os.environ["TESTING"] = "true"
 
 import json
-import tempfile
 from unittest.mock import MagicMock
 
 import pytest

@@ -27,7 +27,7 @@ async def init_db_for_path(db_path: str) -> None:
         try:
             await cursor.execute("SELECT MAX(version) AS version FROM schema_version")
             row = await cursor.fetchone()
-            current = row["version"] if row else 0
+            current = row["version"] if row and row["version"] is not None else 0
         except Exception as e:
             logger.warning("Failed to read schema version, assuming 0: %s", e)
             current = 0

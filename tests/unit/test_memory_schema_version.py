@@ -4,6 +4,23 @@ import pytest
 
 
 @pytest.mark.anyio
+async def test_session_schema_treats_empty_version_table_as_zero(tmp_path):
+    database = tmp_path / "sessions.db"
+
+    from src.memory.schema import init_db_for_path
+
+    await init_db_for_path(str(database))
+
+    connection = sqlite3.connect(database)
+    version = connection.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    connection.close()
+
+    assert version is not None
+    assert "sessions" in tables
+
+
+@pytest.mark.anyio
 async def test_memory_schema_uses_independent_version_table(tmp_path, monkeypatch):
     database = tmp_path / "shared.db"
     connection = sqlite3.connect(database)

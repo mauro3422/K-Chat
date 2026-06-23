@@ -73,6 +73,9 @@
         <span class="diag-pill">Peers: {{ cluster.reachable_peers or 0 }}/{{ cluster.peer_count or 0 }}</span>
         <span class="diag-pill">Cola memoria: {{ memory.queue_size or 0 }}</span>
         <span class="diag-pill">Failover: {{ failover.last_action or 'idle' }}</span>
+        {% if key_pattern %}
+        <span class="diag-pill">Filtro: {{ key_pattern }}</span>
+        {% endif %}
       </div>
       <div class="diag-muted">Base URL: {{ bridge.base_url or 'n/a' }}</div>
       <div class="diag-actions">
@@ -239,6 +242,15 @@
       const remoteBody = document.getElementById('diag-remote-body');
       const remoteClose = document.getElementById('diag-remote-close');
       if (!shell || !statusEl || !remote || !remoteTitle || !remoteBody || !remoteClose) return;
+      const initialKeyPattern = {{ (key_pattern or '')|tojson }};
+      const urlParams = new URLSearchParams(window.location.search);
+      const keyPattern = urlParams.has('key_pattern') ? urlParams.get('key_pattern') || '' : initialKeyPattern;
+
+      function withKeyPattern(url) {
+        const target = new URL(url, window.location.origin);
+        target.searchParams.set('key_pattern', keyPattern);
+        return `${target.pathname}${target.search}`;
+      }
 
       function setStatus(text) {
         statusEl.textContent = text;
@@ -308,13 +320,17 @@
 
       async function refresh() {
         setStatus('Actualizando...');
-        const resp = await fetch('/api/diagnostics?key_pattern=', { cache: 'no-store' });
+        const resp = await fetch(withKeyPattern('/api/diagnostics'), { cache: 'no-store' });
         const data = await resp.json();
         if (!data || !data.ok) {
           setStatus('No se pudo leer el diagnóstico.');
           return;
         }
-        window.location.reload();
+        if (window.location.search.includes('key_pattern=') || !keyPattern) {
+          window.location.reload();
+        } else {
+          window.location.assign(withKeyPattern('/diagnostics'));
+        }
       }
 
       async function postJson(url, payload) {
@@ -331,7 +347,7 @@
       }
 
       async function loadPeerSnapshot(peerUrl, kind) {
-        const url = `/api/diagnostics/peer?peer_url=${encodeURIComponent(peerUrl)}&kind=${encodeURIComponent(kind)}`;
+        const url = withKeyPattern(`/api/diagnostics/peer?peer_url=${encodeURIComponent(peerUrl)}&kind=${encodeURIComponent(kind)}`);
         const resp = await fetch(url, { cache: 'no-store' });
         const data = await resp.json();
         if (!resp.ok || data.ok === false) {
@@ -366,13 +382,13 @@
           }
           if (action === 'sync') {
             setStatus('Sincronizando memoria...');
-            await postJson('/api/memory/sync', { dry_run: false, confirm: true, key_pattern: '', fmt: 'text' });
+            await postJson('/api/memory/sync', { dry_run: false, confirm: true, key_pattern: keyPattern, fmt: 'text' });
             await refresh();
             return;
           }
           if (action === 'repair') {
             setStatus('Reparando memoria...');
-            await postJson('/api/memory/repair', { dry_run: false, confirm: true, key_pattern: '', fmt: 'text' });
+            await postJson('/api/memory/repair', { dry_run: false, confirm: true, key_pattern: keyPattern, fmt: 'text' });
             await refresh();
             return;
           }

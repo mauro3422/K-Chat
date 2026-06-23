@@ -61,20 +61,23 @@ async def test_api_diagnostics_returns_unified_snapshot():
     app.state.node_bridge = fake_bridge
     app.state.manage_memory_run = AsyncMock(return_value='{"compare_summary": {"severity": "clean", "actions": [], "counts": {}, "has_conflicts": false}, "queue_size": 0, "queue_path": "", "memory": {"revision": 0, "sync": 0, "is_fresh": true}, "compare": {}}')
 
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/api/diagnostics")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["ok"] is True
-        assert body["node"]["node_id"] == "node-a"
-        assert body["bridge"]["base_url"] == "http://127.0.0.1:8000"
-        assert body["peer_memory"]["peers"][0]["peer_url"] == "http://peer-a:8000"
-        assert body["peer_memory"]["summary"]["peer_count"] == 1
-        assert body["peer_memory"]["summary"]["stale_peers"] == 1
-        assert body["peer_memory"]["summary"]["stale_details"][0]["stale_reason"] == "queue_pending+not_fresh"
-        assert body["peer_memory"]["summary"]["peer_diffs"][0]["compare_severity"] == "medium"
-        assert "memory" in body
-        assert "health" in body
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/api/diagnostics?key_pattern=user:*")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["node"]["node_id"] == "node-a"
+    assert body["bridge"]["base_url"] == "http://127.0.0.1:8000"
+    assert body["peer_memory"]["peers"][0]["peer_url"] == "http://peer-a:8000"
+    assert body["peer_memory"]["summary"]["peer_count"] == 1
+    assert body["peer_memory"]["summary"]["stale_peers"] == 1
+    assert body["peer_memory"]["summary"]["stale_details"][0]["stale_reason"] == "queue_pending+not_fresh"
+    assert body["peer_memory"]["summary"]["peer_diffs"][0]["compare_severity"] == "medium"
+    assert "memory" in body
+    assert "health" in body
+    fake_bridge.request_peer_memory_snapshots.assert_awaited_once_with(key_pattern="user:*")
+    app.state.manage_memory_run.assert_awaited_once()
+    assert app.state.manage_memory_run.await_args.kwargs["key_pattern"] == "user:*"
 
 
 @pytest.mark.anyio
@@ -134,14 +137,22 @@ async def test_diagnostics_page_contains_peer_action_links():
         app = create_app()
 
     app.state.node_bridge = fake_bridge
+    app.state.manage_memory_run = AsyncMock(return_value='{"only_in_md": [], "only_in_db": [], "mismatched": [], "rename_candidates": []}')
 
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/diagnostics")
-        assert response.status_code == 200
-        html = response.text
-        assert 'data-peer-url="http://peer-a:8000"' in html
-        assert 'data-peer-kind="diagnostics"' in html
-        assert 'data-peer-kind="memory"' in html
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/diagnostics?key_pattern=user:*")
+    assert response.status_code == 200
+    html = response.text
+    assert "Filtro: user:*" in html
+    assert 'const initialKeyPattern = "user:*";' in html
+    assert "fetch(withKeyPattern('/api/diagnostics')" in html
+    assert "withKeyPattern(`/api/diagnostics/peer?" in html
+    assert "key_pattern: keyPattern" in html
+    assert 'data-peer-url="http://peer-a:8000"' in html
+    assert 'data-peer-kind="diagnostics"' in html
+    assert 'data-peer-kind="memory"' in html
+    app.state.manage_memory_run.assert_awaited_once()
+    assert app.state.manage_memory_run.await_args.kwargs["key_pattern"] == "user:*"
 
 
 @pytest.mark.anyio
@@ -190,13 +201,18 @@ async def test_api_peer_diagnostics_proxies_allowed_peer():
 
     app.state.node_bridge = fake_bridge
 
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/api/diagnostics/peer?peer_url=http://peer-a:8000&kind=diagnostics")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["peer"] == "http://peer-a:8000"
-        assert body["snapshot"]["ok"] is True
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/api/diagnostics/peer?peer_url=http://peer-a:8000&kind=diagnostics&key_pattern=user:*")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["peer"] == "http://peer-a:8000"
+    assert body["snapshot"]["ok"] is True
+    fake_bridge.request_peer_diagnostics.assert_awaited_once_with(peer="http://peer-a:8000", key_pattern="user:*")
 
-        state_response = client.get("/api/diagnostics/peer?peer_url=http://peer-a:8000&kind=state")
-        assert state_response.status_code == 200
-        assert state_response.json()["state"]["node_id"] == "peer-a"
+    memory_response = client.get("/api/diagnostics/peer?peer_url=http://peer-a:8000&kind=memory&key_pattern=user:*")
+    assert memory_response.status_code == 200
+    fake_bridge.request_memory_snapshot.assert_awaited_once_with(key_pattern="user:*", peer="http://peer-a:8000")
+
+    state_response = client.get("/api/diagnostics/peer?peer_url=http://peer-a:8000&kind=state&key_pattern=user:*")
+    assert state_response.status_code == 200
+    assert state_response.json()["state"]["node_id"] == "peer-a"

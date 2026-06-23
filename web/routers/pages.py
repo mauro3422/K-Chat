@@ -245,9 +245,11 @@ async def sidebar(request: Request) -> HTMLResponse:
 
 @router.get("/diagnostics", response_class=HTMLResponse)
 async def diagnostics(request: Request) -> HTMLResponse:
-    snapshot = await build_diagnostics_snapshot(request, key_pattern=request.query_params.get("key_pattern", ""))
+    key_pattern = request.query_params.get("key_pattern", "")
+    snapshot = await build_diagnostics_snapshot(request, key_pattern=key_pattern)
     resp = templates.TemplateResponse(request, "diagnostics.html", {
         "snapshot": snapshot,
+        "key_pattern": key_pattern,
     })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp

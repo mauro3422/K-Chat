@@ -5,6 +5,13 @@ from unittest.mock import patch, MagicMock
 import dependencies.manage as manage
 
 
+@pytest.fixture(autouse=True)
+def reset_searxng_state():
+    manage.searxng_stop()
+    yield
+    manage.searxng_stop()
+
+
 @pytest.mark.anyio
 async def test_searxng_start_does_not_auto_install_by_default(monkeypatch):
     monkeypatch.setattr(manage, "searxng_is_installed", lambda: False)
