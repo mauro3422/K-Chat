@@ -1,7 +1,9 @@
 import pytest
 from unittest.mock import AsyncMock
+import logging
 import sqlite3
 from unittest.mock import MagicMock
+import aiosqlite
 
 from src.memory.migrations import (
     _migration_001_initial_schema,
@@ -15,8 +17,11 @@ from src.memory.migrations import (
     _migration_009_add_indexes,
     _migration_010_memory_index,
     _migration_011_cleanup_orphans,
+    _migration_019_memory_index_weight,
+    _migration_022_add_session_favorite,
     MIGRATIONS,
 )
+from src.memory.sqlite_engine import SQLiteEngine
 
 
 class TestMigration001InitialSchema:
@@ -182,6 +187,48 @@ class TestMigration011CleanupOrphans:
         engine = AsyncMock()
         await _migration_011_cleanup_orphans(conn, engine)
         assert engine.execute.call_count == 10
+
+
+class TestIdempotentAddColumnMigrations:
+    @pytest.mark.anyio
+    async def test_known_duplicate_columns_do_not_warn_on_rerun(self, caplog):
+        engine = SQLiteEngine()
+        conn = await aiosqlite.connect(":memory:")
+        try:
+            await engine.execute(conn, """
+                CREATE TABLE memory_index (
+                    session_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    value TEXT,
+                    updated_at TEXT
+                )
+            """)
+            await engine.execute(conn, """
+                CREATE TABLE sessions (
+                    session_id TEXT PRIMARY KEY,
+                    name TEXT DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            with caplog.at_level(logging.WARNING, logger="src.memory.migrations"):
+                await _migration_019_memory_index_weight(conn, engine)
+                await _migration_022_add_session_favorite(conn, engine)
+                await _migration_019_memory_index_weight(conn, engine)
+                await _migration_022_add_session_favorite(conn, engine)
+
+            memory_columns = {
+                row[1] for row in await (await engine.execute(conn, "PRAGMA table_info(memory_index)")).fetchall()
+            }
+            session_columns = {
+                row[1] for row in await (await engine.execute(conn, "PRAGMA table_info(sessions)")).fetchall()
+            }
+
+            assert "weight" in memory_columns
+            assert "is_favorite" in session_columns
+            assert caplog.records == []
+        finally:
+            await conn.close()
 
 
 class TestMigrationRegistry:

@@ -5,6 +5,31 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _pragma_column_name(row: Any) -> str:
+    try:
+        return row["name"]
+    except (TypeError, KeyError, IndexError):
+        return row[1]
+
+
+async def _column_exists(conn: Any, engine: Any, table: str, column: str) -> bool:
+    cursor = await engine.execute(conn, f"PRAGMA table_info({table})")
+    columns = {_pragma_column_name(row) for row in await cursor.fetchall()}
+    return column in columns
+
+
+async def _add_column_if_missing(conn: Any, engine: Any, table: str, column: str, definition: str) -> None:
+    if await _column_exists(conn, engine, table, column):
+        return
+
+    try:
+        await engine.execute(conn, f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column" in str(exc).lower():
+            return
+        raise
+
+
 async def _migration_001_initial_schema(conn: Any, engine: Any) -> None:
     await engine.execute(conn, '''
         CREATE TABLE IF NOT EXISTS messages (
@@ -336,10 +361,7 @@ async def _migration_018_auto_memories(conn: Any, engine: Any) -> None:
 
 async def _migration_019_memory_index_weight(conn: Any, engine: Any) -> None:
     """Add weight column to memory_index in sessions.db."""
-    try:
-        await engine.execute(conn, "ALTER TABLE memory_index ADD COLUMN weight REAL NOT NULL DEFAULT 1.0")
-    except Exception:
-        logger.warning("Column weight may already exist in memory_index", exc_info=True)
+    await _add_column_if_missing(conn, engine, "memory_index", "weight", "REAL NOT NULL DEFAULT 1.0")
 
 
 async def _migration_020_chat_journal_fk(conn: Any, engine: Any) -> None:
@@ -374,10 +396,7 @@ async def _migration_021_messages_session_created_index(conn: Any, engine: Any) 
 
 async def _migration_022_add_session_favorite(conn: Any, engine: Any) -> None:
     """Add is_favorite column to sessions table."""
-    try:
-        await engine.execute(conn, "ALTER TABLE sessions ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
-    except Exception:
-        logger.warning("Column is_favorite may already exist in sessions", exc_info=True)
+    await _add_column_if_missing(conn, engine, "sessions", "is_favorite", "INTEGER NOT NULL DEFAULT 0")
 
 
 async def _migration_023_memory_index_unique(conn: Any, engine: Any) -> None:
