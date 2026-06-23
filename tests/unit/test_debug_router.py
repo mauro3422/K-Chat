@@ -178,3 +178,43 @@ async def test_model_availability_uses_request_state(monkeypatch):
     assert result["models"]["alpha-free"]["tier"] == "free_ratelimited"
     assert result["models"]["alpha-free"]["status"] == "rate_limited"
     assert result["models"]["beta-go"]["status"] == "available"
+
+
+def test_model_availability_endpoint_allows_lan_client(monkeypatch):
+    monkeypatch.delenv("TESTING", raising=False)
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    class FakeRateStore:
+        def get_cooldown_remaining(self, model_id):
+            return None
+
+        def is_available(self, model_id):
+            return True
+
+        def is_unavailable(self, model_id):
+            return False
+
+        def summary(self):
+            return {"limited_count": 0}
+
+    class FakeRegistry:
+        def summary(self):
+            return {"total_models": 1, "tier_counts": {"go_standard": 1}}
+
+        def is_quota_exhausted(self):
+            return False
+
+    app = FastAPI()
+    app.include_router(router)
+    app.state.rate_limit_store = FakeRateStore()
+    app.state.model_registry = FakeRegistry()
+
+    with patch("web.routers.pages.get_available_model_ids", return_value=["beta-go"]), \
+         patch("web.routers.pages._get_model_tier", return_value="go_standard"), \
+         TestClient(app, client=("192.168.1.35", 51234), raise_server_exceptions=False) as client:
+        response = client.get("/models/availability")
+
+    assert response.status_code == 200
+    assert response.json()["models"]["beta-go"]["status"] == "available"
