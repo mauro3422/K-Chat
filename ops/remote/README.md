@@ -56,6 +56,23 @@ Use raw mode only when you need to test the exact user-facing chat path:
 python ops/remote/kairos_remote.py chat --node linux --message "hola" --raw-message
 ```
 
+## Codex task bridge
+
+When Mauro is working from the laptop, Kairos can delegate real work to Codex on
+the primary PC. This is a conversation-backed task, not automatic execution:
+Codex must claim it, work, and write the result back.
+
+```bash
+python ops/remote/kairos_remote.py task-create --node pc --title "Fix laptop health" --message "Investigate /health failing on the laptop"
+python ops/remote/kairos_remote.py task-list --node pc
+python ops/remote/kairos_remote.py task-show --node pc --task-id ctx-abc123
+python ops/remote/kairos_remote.py task-update --node pc --task-id ctx-abc123 --task-status running --message "Codex started"
+python ops/remote/kairos_remote.py task-update --node pc --task-id ctx-abc123 --task-status done --message "Fixed and pushed"
+```
+
+From inside Kairos, the `delegate_to_codex` tool creates the same task through
+`KAIROS_CODEX_BRIDGE_URL` or `KAIROS_PRIMARY_URL`.
+
 ## Design
 
 - SSH is the first operational transport.

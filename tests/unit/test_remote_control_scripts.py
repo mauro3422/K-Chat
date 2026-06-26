@@ -74,12 +74,14 @@ def test_update_orders_preflight_backup_and_previous_commit() -> None:
 
 def test_windows_remote_control_maps_recovery_actions() -> None:
     source = WINDOWS_SCRIPT.read_text(encoding="utf-8")
-    for action in ("Preflight", "Backup", "Pull", "Rollback", "Doctor", "ListNodes", "Chat"):
+    for action in ("Preflight", "Backup", "Pull", "Rollback", "Doctor", "ListNodes", "Chat", "TaskCreate", "TaskList", "TaskShow", "TaskUpdate"):
         assert action in source
     for command in ("'preflight'", "'backup'", "'Restore'", "'rollback'"):
         assert command in source
     assert "ops\\remote\\kairos_remote.py" in source
     assert "$args=@('chat','--node',$Node,'--message',$Message)" in source
+    assert "'task-create'" in source
+    assert "'task-update'" in source
     assert "Invoke-RemoteClient $args" in source
 
 
@@ -90,6 +92,8 @@ def test_remote_client_has_valid_python_syntax() -> None:
     assert "def action_doctor" in source
     assert "def action_chat" in source
     assert "CODEX_DELEGATION_GUIDE" in source
+    assert "task-create" in source
+    assert "task-update" in source
     assert "--raw-message" in source
     assert "ConnectTimeout=8" in source
 

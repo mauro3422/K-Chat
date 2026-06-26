@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Shell','Exec','Preflight','Backup','Pull','Restore','Update','Rollback','Restart','Status','Logs','FollowLogs','Health','Platform','Doctor','ListNodes','Chat')]
+    [ValidateSet('Shell','Exec','Preflight','Backup','Pull','Restore','Update','Rollback','Restart','Status','Logs','FollowLogs','Health','Platform','Doctor','ListNodes','Chat','TaskCreate','TaskList','TaskShow','TaskUpdate')]
     [string]$Action='Status',
     [string]$Node=$env:KAIROS_REMOTE_NODE,
     [string]$HostName=$env:KAIROS_LINUX_HOST,
@@ -9,6 +9,7 @@ param(
     [string]$Command='', [string]$BackupId='', [int]$Lines=150,
     [string]$IdentityFile="$HOME\.ssh\kairos_linux_ed25519",
     [string]$Message='', [string]$SessionId='', [string]$Model='',
+    [string]$Title='', [string]$TaskId='', [string]$TaskStatus='', [string]$Priority='normal',
     [switch]$RawMessage
 )
 $ErrorActionPreference='Stop'
@@ -50,6 +51,29 @@ switch($Action){
         if($SessionId){$args += @('--session-id',$SessionId)}
         if($Model){$args += @('--model',$Model)}
         if($RawMessage){$args += @('--raw-message')}
+        Invoke-RemoteClient $args
+    }
+    'TaskCreate' {
+        if(-not $Title){throw 'Pasa -Title para crear una tarea Codex.'}
+        if(-not $Message){throw 'Pasa -Message con el trabajo para Codex.'}
+        $args=@('task-create','--node',$Node,'--title',$Title,'--message',$Message,'--priority',$Priority)
+        if($SessionId){$args += @('--session-id',$SessionId)}
+        Invoke-RemoteClient $args
+    }
+    'TaskList' {
+        $args=@('task-list','--node',$Node,'--lines',"$Lines")
+        if($TaskStatus){$args += @('--task-status',$TaskStatus)}
+        Invoke-RemoteClient $args
+    }
+    'TaskShow' {
+        if(-not $TaskId){throw 'Pasa -TaskId.'}
+        Invoke-RemoteClient @('task-show','--node',$Node,'--task-id',$TaskId)
+    }
+    'TaskUpdate' {
+        if(-not $TaskId){throw 'Pasa -TaskId.'}
+        if(-not $TaskStatus){throw 'Pasa -TaskStatus.'}
+        $args=@('task-update','--node',$Node,'--task-id',$TaskId,'--task-status',$TaskStatus)
+        if($Message){$args += @('--message',$Message)}
         Invoke-RemoteClient $args
     }
     'Shell' {

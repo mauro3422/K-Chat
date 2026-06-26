@@ -208,15 +208,99 @@ def action_doctor(profile: NodeProfile) -> int:
     return 1 if failed else 0
 
 
-def action_http_get(profile: NodeProfile, path: str) -> int:
+def action_http_get(profile: NodeProfile, path: str, *, timeout: float = 12) -> int:
     url = profile.base_url + path
     try:
-        with urllib.request.urlopen(url, timeout=12) as response:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
             print(response.read().decode("utf-8", errors="replace"))
         return 0
     except urllib.error.URLError as exc:
         print(f"HTTP failed: {url}: {exc}", file=sys.stderr)
         return 1
+
+
+def _http_json(profile: NodeProfile, path: str, payload: dict[str, Any] | None = None, *, timeout: float = 20) -> dict[str, Any]:
+    url = profile.base_url + path
+    data = None
+    method = "GET"
+    headers = {"Accept": "application/json"}
+    if payload is not None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        method = "POST"
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        raw = response.read().decode("utf-8", errors="replace")
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        raise ValueError(f"unexpected JSON response from {url}")
+    return parsed
+
+
+def action_task_create(profile: NodeProfile, *, title: str, message: str, session_id: str = "", priority: str = "normal") -> int:
+    if not title.strip():
+        raise SystemExit("task-create requires --title")
+    if not message.strip():
+        raise SystemExit("task-create requires --message")
+    payload = {
+        "title": title,
+        "prompt": message,
+        "session_id": session_id,
+        "priority": priority,
+        "from_node": os.environ.get("KAIROS_NODE_ID", "codex-remote-client"),
+    }
+    try:
+        data = _http_json(profile, "/api/codex/tasks", payload)
+    except Exception as exc:
+        print(f"Task create failed: {exc}", file=sys.stderr)
+        return 1
+    task = data.get("task", {})
+    print(f"created {task.get('id')} status={task.get('status')} title={task.get('title')}")
+    return 0
+
+
+def action_task_list(profile: NodeProfile, *, status: str = "open", lines: int = 50) -> int:
+    path = f"/api/codex/tasks?{urllib.parse.urlencode({'status': status, 'limit': int(lines)})}"
+    try:
+        data = _http_json(profile, path)
+    except Exception as exc:
+        print(f"Task list failed: {exc}", file=sys.stderr)
+        return 1
+    tasks = data.get("tasks", [])
+    if not tasks:
+        print("No tasks.")
+        return 0
+    for task in tasks:
+        print(f"{task.get('id')}\t{task.get('status')}\t{task.get('priority')}\t{task.get('title')}")
+    return 0
+
+
+def action_task_show(profile: NodeProfile, *, task_id: str) -> int:
+    if not task_id:
+        raise SystemExit("task-show requires --task-id")
+    try:
+        data = _http_json(profile, f"/api/codex/tasks/{urllib.parse.quote(task_id)}")
+    except Exception as exc:
+        print(f"Task show failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(data.get("task", data), ensure_ascii=False, indent=2))
+    return 0
+
+
+def action_task_update(profile: NodeProfile, *, task_id: str, status: str, message: str = "") -> int:
+    if not task_id:
+        raise SystemExit("task-update requires --task-id")
+    if not status:
+        raise SystemExit("task-update requires --status")
+    payload = {"status": status, "message": message, "role": "codex", "source": "codex-remote-client", "claimed_by": "codex"}
+    try:
+        data = _http_json(profile, f"/api/codex/tasks/{urllib.parse.quote(task_id)}", payload)
+    except Exception as exc:
+        print(f"Task update failed: {exc}", file=sys.stderr)
+        return 1
+    task = data.get("task", {})
+    print(f"updated {task.get('id')} status={task.get('status')}")
+    return 0
 
 
 def delegated_message(message: str, *, raw_message: bool = False) -> str:
@@ -280,12 +364,34 @@ def action_chat(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Kairos remote multi-node control")
-    parser.add_argument("action", choices=["list", "doctor", "health", "pull", "restart", "status", "logs", "platform", "exec", "chat"])
+    parser.add_argument(
+        "action",
+        choices=[
+            "list",
+            "doctor",
+            "health",
+            "pull",
+            "restart",
+            "status",
+            "logs",
+            "platform",
+            "exec",
+            "chat",
+            "task-create",
+            "task-list",
+            "task-show",
+            "task-update",
+        ],
+    )
     parser.add_argument("--node", default=os.environ.get("KAIROS_REMOTE_NODE", "linux"))
     parser.add_argument("--config", default=os.environ.get("KAIROS_REMOTE_NODES_CONFIG", str(default_config_path())))
     parser.add_argument("--command", default="")
     parser.add_argument("--lines", type=int, default=150)
     parser.add_argument("--message", default="")
+    parser.add_argument("--title", default="")
+    parser.add_argument("--priority", default="normal")
+    parser.add_argument("--task-id", default="")
+    parser.add_argument("--task-status", default="")
     parser.add_argument("--session-id", default=f"remote-cli-{int(time.time())}")
     parser.add_argument("--model", default="")
     parser.add_argument("--raw-message", action="store_true", help="send the message without Codex delegation context")
@@ -324,6 +430,14 @@ def main(argv: list[str] | None = None) -> int:
             model=args.model,
             raw_message=args.raw_message,
         )
+    if args.action == "task-create":
+        return action_task_create(profile, title=args.title, message=args.message, session_id=args.session_id, priority=args.priority)
+    if args.action == "task-list":
+        return action_task_list(profile, status=args.task_status or "open", lines=args.lines)
+    if args.action == "task-show":
+        return action_task_show(profile, task_id=args.task_id)
+    if args.action == "task-update":
+        return action_task_update(profile, task_id=args.task_id, status=args.task_status, message=args.message)
     raise SystemExit(f"Unhandled action: {args.action}")
 
 
