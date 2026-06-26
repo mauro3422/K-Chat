@@ -8,7 +8,8 @@ param(
     [string]$RemoteRepo=$env:KAIROS_LINUX_REPO,
     [string]$Command='', [string]$BackupId='', [int]$Lines=150,
     [string]$IdentityFile="$HOME\.ssh\kairos_linux_ed25519",
-    [string]$Message='', [string]$SessionId='', [string]$Model=''
+    [string]$Message='', [string]$SessionId='', [string]$Model='',
+    [switch]$RawMessage
 )
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -48,6 +49,7 @@ switch($Action){
         $args=@('chat','--node',$Node,'--message',$Message)
         if($SessionId){$args += @('--session-id',$SessionId)}
         if($Model){$args += @('--model',$Model)}
+        if($RawMessage){$args += @('--raw-message')}
         Invoke-RemoteClient $args
     }
     'Shell' {

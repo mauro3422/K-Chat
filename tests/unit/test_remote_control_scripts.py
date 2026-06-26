@@ -3,6 +3,8 @@ from __future__ import annotations
 import shutil
 import subprocess
 import json
+import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -87,6 +89,8 @@ def test_remote_client_has_valid_python_syntax() -> None:
     assert "git pull --ff-only --autostash" in source
     assert "def action_doctor" in source
     assert "def action_chat" in source
+    assert "CODEX_DELEGATION_GUIDE" in source
+    assert "--raw-message" in source
     assert "ConnectTimeout=8" in source
 
 
@@ -97,6 +101,21 @@ def test_remote_nodes_example_shape() -> None:
     linux = data["nodes"]["linux"]
     for key in ("host", "user", "repo", "identityFile", "serviceUrl"):
         assert key in linux
+
+
+def test_remote_chat_wraps_codex_delegation_by_default() -> None:
+    spec = importlib.util.spec_from_file_location("kairos_remote_test", REMOTE_CLIENT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    wrapped = module.delegated_message("diagnostica health")
+
+    assert "Codex esta hablando con Kairos" in wrapped
+    assert wrapped.endswith("diagnostica health")
+    assert module.delegated_message("diagnostica health", raw_message=True) == "diagnostica health"
 
 
 def test_windows_control_has_valid_powershell_syntax() -> None:

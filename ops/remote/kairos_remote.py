@@ -23,6 +23,20 @@ from pathlib import Path
 from typing import Any
 
 
+CODEX_DELEGATION_GUIDE = """\
+[Contexto operativo remoto]
+Origen: Codex esta hablando con Kairos por el canal LAN/CLI para delegar una prueba, diagnostico o tarea tecnica.
+Modo esperado:
+- Responde breve, concreto y auditable.
+- Si se pide una prueba, devuelve resultado, evidencia minima y causa probable si falla.
+- No asumas que Mauro esta escribiendo directamente; puede ser Codex coordinando entre nodos.
+- Si falta contexto o permisos, dilo y propone el siguiente comando o chequeo.
+- No modifiques memoria, archivos ni configuracion salvo que el pedido lo diga de forma explicita.
+
+[Mensaje delegado]
+"""
+
+
 @dataclass(frozen=True)
 class NodeProfile:
     name: str
@@ -205,14 +219,27 @@ def action_http_get(profile: NodeProfile, path: str) -> int:
         return 1
 
 
-def action_chat(profile: NodeProfile, message: str, *, session_id: str, model: str = "") -> int:
+def delegated_message(message: str, *, raw_message: bool = False) -> str:
+    if raw_message:
+        return message
+    return CODEX_DELEGATION_GUIDE + message
+
+
+def action_chat(
+    profile: NodeProfile,
+    message: str,
+    *,
+    session_id: str,
+    model: str = "",
+    raw_message: bool = False,
+) -> int:
     if not message.strip():
         raise SystemExit("chat requires --message")
     params = urllib.parse.urlencode({"model": model}) if model else ""
     url = f"{profile.base_url}/chat/{urllib.parse.quote(session_id)}"
     if params:
         url += f"?{params}"
-    body = urllib.parse.urlencode({"message": message}).encode("utf-8")
+    body = urllib.parse.urlencode({"message": delegated_message(message, raw_message=raw_message)}).encode("utf-8")
     request = urllib.request.Request(
         url,
         data=body,
@@ -261,6 +288,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--message", default="")
     parser.add_argument("--session-id", default=f"remote-cli-{int(time.time())}")
     parser.add_argument("--model", default="")
+    parser.add_argument("--raw-message", action="store_true", help="send the message without Codex delegation context")
     return parser
 
 
@@ -289,7 +317,13 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("exec requires --command")
         return run_ssh(profile, args.command)
     if args.action == "chat":
-        return action_chat(profile, args.message, session_id=args.session_id, model=args.model)
+        return action_chat(
+            profile,
+            args.message,
+            session_id=args.session_id,
+            model=args.model,
+            raw_message=args.raw_message,
+        )
     raise SystemExit(f"Unhandled action: {args.action}")
 
 

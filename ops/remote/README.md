@@ -45,6 +45,17 @@ python ops/remote/kairos_remote.py logs --node linux --lines 200
 python ops/remote/kairos_remote.py chat --node linux --message "respondé solo pong"
 ```
 
+By default, `chat` wraps the message with a short Codex delegation guide. This
+lets the remote Kairos know that the request comes from an operator/agent doing
+LAN checks or task delegation, not necessarily from Mauro typing in the normal
+UI.
+
+Use raw mode only when you need to test the exact user-facing chat path:
+
+```bash
+python ops/remote/kairos_remote.py chat --node linux --message "hola" --raw-message
+```
+
 ## Design
 
 - SSH is the first operational transport.
