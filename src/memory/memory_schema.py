@@ -9,7 +9,6 @@ import os
 import sqlite3
 
 from src.memory.memory_db_path import resolve_memory_db_path
-from src.memory.migration_runner import run_pending_migrations
 from src.memory.lifecycle import mark_initialized
 
 logger = logging.getLogger(__name__)
@@ -485,7 +484,6 @@ async def init_memory_db() -> None:
                 conn.commit()
                 current = version
 
-        import asyncio
         await _run_migrations()
 
         conn.commit()

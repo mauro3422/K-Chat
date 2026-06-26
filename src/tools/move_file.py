@@ -80,7 +80,7 @@ def _sync_move_file(operation: str, source: str, dest: str) -> str:
     except shutil.Error as e:
         return f"[ERROR] Error de shutil: {e}"
     except PermissionError:
-        return f"[ERROR] Permiso denegado"
+        return "[ERROR] Permiso denegado"
     except OSError as e:
         return f"[ERROR] Error del sistema: {e}"
     except Exception as e:

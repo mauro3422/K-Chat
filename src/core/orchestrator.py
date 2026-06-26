@@ -7,7 +7,6 @@ from datetime import datetime
 from collections.abc import Callable, AsyncGenerator
 from typing import Any, TYPE_CHECKING
 
-from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
 from src.memory.types import DebugInfo
 from src.memory.repos import Repositories
 from src.core.orchestrator_contract import (
@@ -21,13 +20,7 @@ from src.core.services.tool_execution_service import ToolExecutionService
 from src.core.services.telemetry_service import TelemetryService
 
 if TYPE_CHECKING:
-    from src.core.services.retrieval_service import RetrievalService
-    from src.core.services.protocols import (
-        HistoryServiceProtocol,
-        LLMServiceProtocol,
-        ToolExecutionServiceProtocol,
-        TelemetryServiceProtocol,
-    )
+    pass
 
 logger: logging.Logger = logging.getLogger(__name__)
 

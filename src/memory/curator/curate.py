@@ -517,7 +517,7 @@ async def main():
     for p in tr.get("patterns", []):
         print(f"  [{p['type']}] {p}")
 
-    print(f"\n=== Curator ===")
+    print("\n=== Curator ===")
     for e in r["entries"]:
         print(f"  [{e['key']}] {e['value'][:80]}")
     print(f"Saved: {r['saved']}")

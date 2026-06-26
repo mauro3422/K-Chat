@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any
 import httpx
 from src.utils.async_utils import sleep

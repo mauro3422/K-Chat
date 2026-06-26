@@ -5,7 +5,6 @@ they reach the curator LLM. Zero tokens, pure rules.
 """
 
 import re
-from typing import Any
 
 # Minimum character length for an exchange to be kept
 _MIN_CHARS = 50

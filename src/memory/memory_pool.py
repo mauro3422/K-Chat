@@ -5,7 +5,6 @@ independent and allow syncing memory.db across devices.
 """
 
 import os
-import asyncio
 import aiosqlite
 from contextvars import ContextVar
 from typing import Any

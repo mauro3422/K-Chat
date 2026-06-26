@@ -11,7 +11,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Any, Generator, Optional
+from typing import Any, Generator
 
 import sqlite_vec
 

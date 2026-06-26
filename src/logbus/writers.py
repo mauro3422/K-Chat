@@ -56,7 +56,6 @@ class JsonlWriter(BaseWriter):
         return os.path.join(self._log_dir, f"logbus_{today}.jsonl")
 
     def _serialize(self, event: LogEvent) -> str:
-        from datetime import datetime
         return json.dumps({
             "ts": event.ts,
             "level": event.level,

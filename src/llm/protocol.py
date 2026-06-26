@@ -1,5 +1,5 @@
 from __future__ import annotations
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable, Union
 

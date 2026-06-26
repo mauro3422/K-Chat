@@ -5,9 +5,6 @@ Sigue el patron Lego: DEFINITION + run().
 import ast
 import logging
 import os
-import re
-import asyncio
-from collections import defaultdict
 from typing import Any
 from pathlib import Path
 
@@ -210,7 +207,7 @@ def _sync_impact(name: str, path: str, include_internal: bool) -> str:
     callers = _find_callers(name, project_root, resolved, include_internal=include_internal)
     lines = [f"\n🎯 IMPACT ANALYSIS — {name} @ {rel_path}\n"]
     if signature:
-        lines.append(f"📌 Firma actual:")
+        lines.append("📌 Firma actual:")
         lines.append(f"   {signature}")
         lines.append("")
     if not callers:
@@ -262,26 +259,9 @@ async def run(**kwargs: Any) -> str:
     if not path:
         return "[ERROR] Proporciona el path del archivo donde está definida."
     return await run_in_thread(_sync_impact, name, path, include_internal)
-    if err:
-        return err
-
-    if not os.path.isfile(resolved):
-        return f"[ERROR] '{path}' no es un archivo."
-
-    project_root = _find_project_root(resolved)
-    rel_path = os.path.relpath(resolved, project_root)
-
-    # Get current signature
-    signature = _get_function_signature(resolved, name)
-
-    # Find all callers
-    callers = _find_callers(name, project_root, resolved, include_internal=include_internal)
-
-    # Build output
-    lines = [f"\n🎯 IMPACT ANALYSIS — {name} @ {rel_path}\n"]
 
     if signature:
-        lines.append(f"📌 Firma actual:")
+        lines.append("📌 Firma actual:")
         lines.append(f"   {signature}")
         lines.append("")
 

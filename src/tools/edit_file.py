@@ -1,6 +1,5 @@
 import os
 import logging
-import shutil
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
@@ -84,7 +83,7 @@ def _lineno_safety(lines: list[str], n: int) -> int:
 
 def _edit_file_sync(path: str, start_line: int, end_line: int | None, new_content: str) -> str:
     """Sync function: toda la lógica de edición con I/O. Corre en to_thread."""
-    from src.tools._preflight import preflight_check, create_backup, postflight_check, rollback
+    from src.tools._preflight import rollback
 
     if not os.path.isfile(path):
         return f"[ERROR] El archivo '{path}' no existe."
@@ -120,7 +119,6 @@ def _edit_file_sync(path: str, start_line: int, end_line: int | None, new_conten
             result_lines = original_lines[:start-1] + original_lines[end:]
             deleted_defs = []
             try:
-                import ast
                 for line in ''.join(original_lines[start-1:end]).splitlines():
                     stripped = line.strip()
                     if stripped.startswith('def ') or stripped.startswith('async def '):
@@ -168,7 +166,7 @@ def _edit_file_sync(path: str, start_line: int, end_line: int | None, new_conten
     summary += f"\n   Lineas resultantes: {len(result_lines)} ({diff:+d})"
 
     if pf["ok"]:
-        summary += f"\n   ✅ Post-flight OK"
+        summary += "\n   ✅ Post-flight OK"
     elif pf["warnings"]:
         for w in pf["warnings"][:3]:
             summary += f"\n   ⚡ {w}"

@@ -3,10 +3,7 @@
 Sigue el patron Lego: DEFINITION + run().
 """
 import ast
-import logging
 import os
-import re
-import asyncio
 from collections import defaultdict
 from typing import Any
 from pathlib import Path
@@ -14,7 +11,7 @@ from pathlib import Path
 from src.tools._path_helpers import resolve_and_validate_path
 from src.utils.async_utils import run_in_thread
 
-from src.tools._arch_checker import check_file, Violation, Rule, DEFAULT_RULES
+from src.tools._arch_checker import check_file
 
 
 DEFINITION: dict[str, Any] = {
@@ -295,7 +292,7 @@ def _sync_dependency_graph(path: str, target_file: str, verbose: bool) -> str:
         for v in all_violations:
             lines.append(f"   {v}")
     else:
-        lines.append(f"\n🟢 Sin violaciones arquitectónicas")
+        lines.append("\n🟢 Sin violaciones arquitectónicas")
     dep_pairs = set()
     for result in results:
         src = result["file"]

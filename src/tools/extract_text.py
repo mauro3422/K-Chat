@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
-import asyncio
 from typing import Any
 from src.utils.async_utils import run_in_thread
 
@@ -266,7 +264,7 @@ def _sync_extract_text(files: list[str]) -> str:
         if output:
             final.extend(output)
         if errors:
-            final.append(f"\n### Errores\n" + "\n".join(errors))
+            final.append("\n### Errores\n" + "\n".join(errors))
 
         return "\n\n".join(final) if final else "No se pudo extraer texto de ningún archivo."
     except Exception as e:

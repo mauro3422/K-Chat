@@ -2,12 +2,9 @@
 
 Sigue el patron Lego: DEFINITION + run().
 """
-import ast
 import fnmatch
 import logging
 import os
-import sys
-from pathlib import Path
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path

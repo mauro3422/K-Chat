@@ -14,7 +14,6 @@ Zero framework imports. Pure Python Lego.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import threading
 import time

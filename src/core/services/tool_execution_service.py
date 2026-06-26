@@ -1,4 +1,4 @@
-from typing import Any, Generator, Callable, AsyncGenerator
+from typing import Any, Callable, AsyncGenerator
 from src.core.services.protocols import ToolExecutionServiceProtocol
 from src.core.tool_loop import ToolLoopProtocol, run_tool_loop_streaming, run_tool_loop_sync
 from src.tools.runner import run_parallel_tools

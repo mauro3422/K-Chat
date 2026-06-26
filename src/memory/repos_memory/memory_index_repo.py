@@ -44,7 +44,6 @@ class GlobalMemoryIndexRepository:
     async def _ensure_table(self, conn: Any) -> None:
         """Ensure the memory_index table exists (lazy init)."""
         try:
-            import sqlite3
             cur = await conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='memory_index'"
             )

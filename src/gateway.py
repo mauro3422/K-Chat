@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import importlib
 import logging
 import os
 import signal
@@ -126,7 +125,7 @@ def _cleanup_orphans() -> None:
 # ── Service Starters ────────────────────────────────────────────────────
 
 def _start_searxng(verbose: bool) -> bool:
-    if not os.environ.get("SEARXNG_AUTO_START", "false").lower() in ("1", "true"):
+    if os.environ.get("SEARXNG_AUTO_START", "false").lower() not in ("1", "true"):
         return False
     from dependencies import manage as deps
     err = deps.searxng_start()
@@ -200,7 +199,7 @@ def _stop_all() -> None:
         return
     _shutdown = True
 
-    from src.gateway_log import log_shutdown, log_event, configure_logbus
+    from src.gateway_log import log_shutdown
     uptime = time.time() - _start_time
 
     for name, info in _services.items():
@@ -365,8 +364,8 @@ def main() -> None:
     except Exception:
         logger.warning("Failed to initialize LogBus", exc_info=True)
     try:
-        from src.logbus import get_logbus
-        configure_logbus(get_logbus())
+        from src.logbus import configure_logbus
+        configure_logbus()
     except Exception:
         logger.warning("Failed to configure LogBus", exc_info=True)
 

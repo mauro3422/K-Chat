@@ -8,7 +8,6 @@ Uses retrieval_log, entity mentions, and tool_calls to find:
 Dry run: python3 -m src.memory.curator.tracer --dry
 """
 
-import json
 import logging
 import sqlite3
 import sys

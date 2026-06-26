@@ -5,7 +5,6 @@ Usa _validators.py para validación de sintaxis.
 Ejecuta en subprocess aislado con restricciones de seguridad.
 Auto-detecta y corrige errores comunes de sintaxis.
 """
-import asyncio
 import json
 import logging
 import os

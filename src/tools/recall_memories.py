@@ -110,7 +110,6 @@ async def run(**kwargs) -> str:
 
 async def _fallback_vector_search(query: str, limit: int, source: str, min_score: float) -> str:
     """Fallback to simple vector search when HybridRetriever is unavailable."""
-    import asyncio
     from src.memory.embeddings.service import generate_embedding
     from src.memory.memory_db_path import resolve_memory_db_path
     from src.memory.vector.store import VectorStore

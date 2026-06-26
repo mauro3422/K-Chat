@@ -1,5 +1,31 @@
 # Changelog — K-Chat
 
+## [2026-06-26] - v0.2.0 — Codex task bridge, LAN remote control y failover fixes
+
+### Nuevas capacidades
+
+- **Codex Task Bridge**: Nuevo sistema de delegación LAN. Servicio `codex_task_bridge.py` + router `codex.py` + tool `delegate_to_codex.py` — permite delegar tareas entre agentes en la red LAN, con contexto de delegación en mensajes remotos.
+- **LAN Remote Control**: Sistema completo con smoke tests (`scripts/lan_field_smoke.py`), nodos configurables, script PowerShell y cliente remoto Python. Incluye failover de modelos sobre LAN.
+- **Descubrimiento LAN dinámico**: Nodos se descubren sin IPs fijas mediante `lan_discovery.py` con bind a interfaz activa y aprendizaje recíproco de peers.
+
+### Correcciones
+
+- Reconciliación de primarias duales tras failover LAN
+- Estabilización de líder LAN
+- Migraciones de memoria idempotentes
+- Servicio Windows sin ventana de consola, tarea oculta restartable
+- Lockfile Linux atómico, symlink legacy migrado
+- Sanitizer frontend mejorado, logs LAN transport silenciados
+
+### Tests
+
+- **test_codex_task_bridge.py**: 53 assertions
+- **test_debug_router.py**: 40 assertions — LAN debug endpoint regression
+- **test_lan_discovery.py**, **test_lan_bridge.py**: ~145 assertions combinados
+- **test_remote_control_scripts.py**: scripts de servicio Linux/Windows
+- **test_backup_restore_script.py**: 76 assertions de integración
+- **test_app_factory.py**: 27 assertions — debug access y registry priming
+
 ## [2026-06-19] - Coordinación LAN, memoria compartida y observabilidad viva
 
 ### Nuevas capacidades

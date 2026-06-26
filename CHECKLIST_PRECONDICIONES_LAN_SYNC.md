@@ -1,6 +1,8 @@
-# Checklist de precondiciones — puente LAN y memoria compartida
+# ✅ Checklist de precondiciones — puente LAN y memoria compartida (COMPLETADO)
 
-Fecha: 2026-06-19
+Fecha: 2026-06-19 → Completado en v0.1.0/v0.2.0
+
+> Nota: Todas las precondiciones de esta lista fueron satisfechas durante la implementación de LAN sync, federación de sesiones, y coordinación entre nodos (v0.0.64 → v0.2.0). Este documento se mantiene como referencia arquitectónica.
 
 Objetivo:
 

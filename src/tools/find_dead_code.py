@@ -5,8 +5,6 @@ Sigue el patron Lego: DEFINITION + run().
 import ast
 import logging
 import os
-import re
-import asyncio
 from collections import defaultdict
 from typing import Any
 from pathlib import Path
@@ -16,7 +14,6 @@ from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
 
-from src.tools._path_helpers import resolve_and_validate_path
 
 
 DEFINITION: dict[str, Any] = {
@@ -351,7 +348,7 @@ def _sync_find_dead_code(path: str, dead_imports: bool, exclude_tests: bool, qui
         lines.append("")
     if not has_issues:
         lines.append("✅ No se encontró código muerto ni imports no utilizados.")
-    lines.append(f"\n📈 RESUMEN:")
+    lines.append("\n📈 RESUMEN:")
     lines.append(f"   📁 Archivos analizados: {len(results)}")
     lines.append(f"   💀 Funciones/clases sin referencias: {total_dead}")
     lines.append(f"   ⚠️  Imports no utilizados: {total_unused_imports}")

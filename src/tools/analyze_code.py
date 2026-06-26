@@ -4,9 +4,6 @@ Sigue el patron Lego: DEFINITION + run().
 """
 import ast
 import os
-import re
-import asyncio
-from collections import Counter, defaultdict
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
@@ -245,7 +242,7 @@ def _format_function_deep(
             'Try', 'Raise', 'With', 'AsyncFor', 'AsyncWith'
         )]
         if key_lines:
-            lines_out.append(f"   ├── Estructura:")
+            lines_out.append("   ├── Estructura:")
             for kl in key_lines[:15]:
                 lines_out.append(f"   │   L:{kl['line']:<5} {kl['snippet']}")
 
@@ -257,11 +254,11 @@ def _format_function_deep(
         external_calls = [c for c in calls if c not in internal_calls]
 
         if internal_calls:
-            lines_out.append(f"   ├── ⚡ Llama a funciones del archivo:")
+            lines_out.append("   ├── ⚡ Llama a funciones del archivo:")
             for c in internal_calls[:10]:
                 lines_out.append(f"   │   ├── {c['name']}() ← L:{c['line']}")
         if external_calls:
-            lines_out.append(f"   ├── 🔗 Llama a externos/builtins:")
+            lines_out.append("   ├── 🔗 Llama a externos/builtins:")
             for c in external_calls[:8]:
                 lines_out.append(f"   │   ├── {c['name']}() ← L:{c['line']}")
 
@@ -275,7 +272,7 @@ def _format_summary(
     call_graph: dict[str, list[dict[str, Any]]],
 ) -> str:
     """Formatea resumen general del archivo."""
-    lines_out = [f"\n📊 MÉTRICAS GENERALES"]
+    lines_out = ["\n📊 MÉTRICAS GENERALES"]
 
     # Totales
     total_lines = len(content_lines)
@@ -295,7 +292,7 @@ def _format_summary(
 
     # Funciones listado
     if funcs:
-        lines_out.append(f"\n📦 FUNCIONES")
+        lines_out.append("\n📦 FUNCIONES")
         complexity_warnings = []
         for f_node, is_async in sorted(funcs, key=lambda x: x[0].lineno):
             name = f_node.name
@@ -331,14 +328,14 @@ def _format_summary(
 
         # Complexity warnings section
         if complexity_warnings:
-            lines_out.append(f"\n⚠️  COMPLEJIDAD ALTA (cc > 10)")
+            lines_out.append("\n⚠️  COMPLEJIDAD ALTA (cc > 10)")
             for wname, wcc, wlc in sorted(complexity_warnings, key=lambda x: -x[1]):
                 lines_out.append(f"   {_complexity_label(wcc)}  {wname} ({wlc} lines)")
 
     # Clases
     # Clases
     if classes:
-        lines_out.append(f"\n📦 CLASES")
+        lines_out.append("\n📦 CLASES")
         for cls_node in sorted(classes, key=lambda x: x.lineno):
             name = cls_node.name
             start = cls_node.lineno
@@ -349,7 +346,7 @@ def _format_summary(
 
     # Call graph simplificado
     if funcs:
-        lines_out.append(f"\n📈 FLUJO DE LLAMADAS")
+        lines_out.append("\n📈 FLUJO DE LLAMADAS")
         all_names = {f[0].name for f in funcs}
         for f_node, _ in sorted(funcs, key=lambda x: x[0].lineno):
             name = f_node.name

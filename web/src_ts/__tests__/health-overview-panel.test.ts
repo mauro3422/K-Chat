@@ -19,7 +19,7 @@ describe('HealthOverviewPanel', () => {
 
   it('renders a unified node health summary', () => {
     const apiClient = new ApiClient();
-    const logger = { warn: vi.fn() } as unknown as { warn: (label: string, detail?: unknown) => void };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const panel = new HealthOverviewPanel(apiClient, logger);
     panel.init();
     panel.render({
@@ -64,7 +64,7 @@ describe('HealthOverviewPanel', () => {
       }),
     });
     const apiClient = new ApiClient();
-    const logger = { warn: vi.fn() } as unknown as { warn: (label: string, detail?: unknown) => void };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const panel = new HealthOverviewPanel(apiClient, logger);
     panel.init();
 

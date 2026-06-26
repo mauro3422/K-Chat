@@ -204,7 +204,7 @@ def _format_match(filepath: str, data: dict) -> str:
 
         # Separador entre matches
         if m != data['matches'][-1]:
-            lines.append(f"   ┃")
+            lines.append("   ┃")
 
     return '\n'.join(lines)
 

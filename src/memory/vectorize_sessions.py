@@ -7,7 +7,6 @@ Or imported:           await vectorize_all_sessions()
 import asyncio
 import json
 import logging
-import os
 import sys
 import re
 from typing import Any, Optional

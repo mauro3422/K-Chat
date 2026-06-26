@@ -1,6 +1,6 @@
 # Roadmap — K-Chat (Kairos)
 
-> Current version: **v0.0.55** (2026-06-13)
+> Current version: **v0.2.0** (2026-06-26)
 
 ## Philosophy
 
@@ -235,31 +235,98 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Systemd services**: `k-chat.service`, `k-chat-watchdog.service`, `k-chat-telegram.service`.
 - [x] **Config extendida**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `WATCHDOG_INTERVAL` en `.env`.
 
+### v0.0.57 — Lego Architecture: Deep Decoupling (2026-06-14)
+- [x] **Tools↔context cycle broken**: `tools/` y `context/` ya no se importan mutuamente
+- [x] **Arch analysis tools**: `analyze_code` con cyclomatic complexity, AST graph, cross-references
+- [x] **Post-hooks**: validación arquitectónica post-commit via `_arch_checker.py`
+- [x] **Skills modularizados**: `skills/` directory con SkillRegistry, auto-descubrimiento desacoplado
+- [x] **pytest-testmon integrado**: tests incrementales, `gitignore` para testmondata
+
+### v0.0.58 — File Attachments + Go Mode Models (2026-06-14)
+- [x] **File Attachments UI**: subida de archivos en frontend con previsualización
+- [x] **Go Mode Models**: selector de modelos con tiers Go/Free/Zen
+- [x] **Rate limit tracker**: límites visibles en UI + anti-regression tests
+
+### v0.0.59 — AGENTS.md cleanup + Architecture Constraints (2026-06-14)
+- [x] **AGENTS.md reescrito**: reglas claras de arquitectura, constraints no-negociables
+- [x] **Lego constraints documentadas**: sin singletons globales, sin acoplamiento ascendente
+- [x] **Tool docs actualizadas**: alineadas con el registry real
+
+### v0.0.60 — Memory System Overhaul (2026-06-16)
+- [x] **RRF retrieval fix**: fusión rank-recíproca corregida para resultados híbridos
+- [x] **Entity graph**: extracción y linking de entidades en memoria
+- [x] **Batch embeddings**: procesamiento por lotes con fastembed
+- [x] **Curator/Gardener/Tracer**: sistema de curación nocturna, poda de DBs
+- [x] **Sesiones favoritas**: sistema de favoritos + síntesis nocturna
+- [x] **Sistema de auto-inyección de memorias**: retrieval contextual antes de cada respuesta
+
+### v0.0.61 — TS Frontend Migration + Model Selector (2026-06-17)
+- [x] **Model Selector UI**: dropdown con SVGs de capacidades (razonamiento, tools, imagen, video, audio)
+- [x] **Tier system**: Go Premium/Standard/Económico, Free — indicadores por color
+- [x] **Dynamic ModelRegistry**: sin modelos hardcodeados, descubrimiento en runtime
+- [x] **Real-time availability**: status dots con ping por modelo
+- [x] **Desacople arquitectónico**: 4 Lego blocks backend, composition root, DI Fase 1-2
+- [x] **TS frontend base**: migración de módulos JS → TS con bridge shims
+
+### v0.0.62 — Stream + Debug migrados a TS (2026-06-17)
+- [x] **Stream migration**: 7 bridge shims (stream-dispatcher, stream-fetcher, content-handler, tool-call-renderer, retry-handler, stream-orchestrator, log-ui)
+- [x] **Debug unificado**: DebugManager.ts con logs backend/UI/stream/widgets, copy buttons, stream duration
+- [x] **Vite config**: 7 nuevas TS entries, build 22 assets en 108ms
+- [x] **96/96 TS tests pasando**
+
+### v0.0.63 — Reranker ONNX + Notificaciones (2026-06-17)
+- [x] **Reranker ONNX**: fastembed reemplaza PyTorch (~700MB → ~10MB, 4-5ms por inferencia)
+- [x] **Sistema de notificaciones**: evento `"notification"` en NDJSON/SSE
+- [x] **Retrieval sin auto-referencia**: filtro `exclude_source_key` para evitar duplicar MEMORY.md
+- [x] **Contador de exchanges**: solo cuenta mensajes `role='user'`
+- [x] **Recencia de memorias**: `last_accessed` y `query_count` actualizados en cada búsqueda
+
+### v0.0.64 — Lifecycle Reset + Singleton Elimination (2026-06-18)
+- [x] **18 módulos con configure_*/reset_***: LLM, Memory, Infra, Web — singleton elimination completa
+- [x] **Bugs críticos corregidos**: corrutinas sin consumir, failover loop infinito, rate limiter global
+- [x] **DI Composition Root**: SkillRegistry, RateLimiter, ToolRegistry a `app.state`
+- [x] **Crash recovery extraído**: `context/crash_recovery.py` con detección de crash loop
+- [x] **Memory upward coupling eliminado**: curator y archive sin imports de capas superiores
+
+### v0.1.0 — Custom Model Selector + LAN Sync (2026-06-20)
+- [x] **Model selector custom**: SVGs de capacidades, gutter drag (160-500px), dropdown inteligente
+- [x] **LAN Sync / Federación**: coordinación de nodos, failover, health panels, peer memory
+- [x] **Diagnóstico interactivo**: páginas de diagnóstico con memoria de pares, health overview
+- [x] **DI Composition Root (Fase 3)**: singletons a `app.state`, LLM container, connection pool
+- [x] **Multi-device SSE**: `KAIROS_WEB_URL` multi-URL, notificaciones a todos los dispositivos
+- [x] **Telegram channel**: refactor completo con arquitectura Lego, reflexión entre UIs
+
+### v0.1.1 — Test Stabilization (2026-06-20)
+- [x] **74 backend failures fixed**: CanvasOverlay listener leak, import fixes, mock corrections
+- [x] **fastembed instalado**: desbloquea 12 tests de embedding_service + reranker
+- [x] **TestClient en context manager**: lifespan y mocks DI funcionando correctamente
+- [x] **319 tests totales**: 16 suites, todos pasando
+
+### v0.2.0 — Codex Task Bridge + LAN Remote Control (2026-06-26)
+- [x] **Codex Task Bridge**: delegación de tareas entre agentes en LAN (`codex_task_bridge.py`, `delegate_to_codex.py`)
+- [x] **LAN Remote Control**: sistema completo con smoke tests, nodos configurables, failover de modelos
+- [x] **Descubrimiento LAN dinámico**: nodos se descubren sin IPs fijas, bind a interfaz activa
+- [x] **Windows/Linux service hardening**: sin ventana de consola, restartable, lockfile atómico
+- [x] **Idempotent memory migrations**: migraciones de esquema sin efectos secundarios
+
 ## Próximas features
 
 | Priority | Area | What | Status |
 |----------|------|------|--------|
-| 1 | **UI modular + layout movible** | CSS partido en temas, gutter redimensionable, sidebar colapsable, layout responsive guardado en memoria | ✅ |
-| 2 | **memory_search + list_memories** | Tools para consultar `MEMORY.md` de forma semántica (ahora con cache fresco) | 🔥 |
-| 3 | **Auto-exploration + Docs sync** | Kairos analiza la arquitectura actual y sincroniza docs/ con el código real | 🔥 |
-| 4 | **Inyección inteligente de memoria** | Sistema que inyecta recuerdos relevantes contextualmente antes de cada respuesta, basado en el tópico de la conversación | 📋 |
-| 5 | **Split DB: sessions.db vs memory.db** | Separar base actual en 2 archivos: sessions.db (local) + memory.db (sync). MEMORY.md como source of truth | 🔥 |
-| 6 | **Syncthing para sync multi-dispositivo** | MEMORY.md + memory.db sincronizados entre PC y laptop. Sessions.db local a cada máquina | 🔥 |
-| 7 | **Telegram voice → ASR** | Conectar mensajes de voz de Telegram con el bridge ASR de DuckSugar | 📋 |
-| 8 | **Widget Events → AI** | Widgets enviando acciones del usuario de vuelta al AI como contexto inyectado | 📋 |
-| 9 | **Cross-Session Topic Tracer** | Rastreo de temas a través de múltiples sesiones (ahora con MEMORY.md confiable) | 📋 |
-| 10 | **Temas visuales** | Matrix rain sidebar, fondos anime, burbujas custom, iconos temáticos, switcher de temas en UI | 📋 |
-| 11 | **Session Export** | Exportar sesiones a Markdown o JSON | 📋 |
-| 12 | **Scheduled Tasks** | Tareas programadas (cron-like) para automatizaciones | 📋 |
-| 13 | **Notturnal Agent + Memory Cells** | Sistema de células background que curan memoria cuando el sistema está idle: Entity Extractor, Embedding Generator, Session Miner, Cross-Session Tracer | 📋 |
-| 14 | **Proactive Insights** | Insights proactivos basados en patrones de uso | 📋 |
-| 15 | **Resolución de primario en LAN** | Detectar otro server activo en LAN y negociar modo primario/lectura para evitar duplicación de writes | 📋 |
-| 16 | **Discord Bot** | Segundo channel adapter siguiendo el patrón `channels/` | 📋 |
-| 17 | **Widget versioning UI** | Mostrar versión actual del widget en toolbar sin fetch separado | 📋 |
-| 18 | **Registro de dispositivos del usuario** | Guardar specs y config de cada dispositivo donde corre K-Chat para contexto del agente | 📋 |
-
-> **Hecho**: Stream heartbeat (20s backend + 10s tools), cache de contexto invalidado (v0.0.53), watchdog auto-recuperación (v0.0.56), Telegram channel (v0.0.56)
-> **Hecho**: Stream heartbeat (20s backend + 10s tools), cache de contexto invalidado (v0.0.53), watchdog auto-recuperación (v0.0.56), Telegram channel (v0.0.56)
+| 1 | **Auto-exploration + Docs sync** | Kairos analiza la arquitectura actual y sincroniza docs/ con el código real | 🔥 |
+| 2 | **Syncthing para sync multi-dispositivo** | MEMORY.md + memory.db sincronizados entre PC y laptop. Sessions.db local a cada máquina | ✅ |
+| 3 | **Telegram voice → ASR** | Conectar mensajes de voz de Telegram con el bridge ASR de DuckSugar | 📋 |
+| 4 | **Widget Events → AI** | Widgets enviando acciones del usuario de vuelta al AI como contexto inyectado | 📋 |
+| 5 | **Cross-Session Topic Tracer** | Rastreo de temas a través de múltiples sesiones (ahora con MEMORY.md confiable) | 📋 |
+| 6 | **Temas visuales** | Matrix rain sidebar, fondos anime, burbujas custom, iconos temáticos, switcher de temas en UI | 📋 |
+| 7 | **Session Export** | Exportar sesiones a Markdown o JSON | 📋 |
+| 8 | **Scheduled Tasks** | Tareas programadas (cron-like) para automatizaciones | 📋 |
+| 9 | **Notturnal Agent + Memory Cells** | Sistema de cells background: Entity Extractor, Embedding Generator, Session Miner, Cross-Session Tracer | 📋 |
+| 10 | **Proactive Insights** | Insights proactivos basados en patrones de uso | 📋 |
+| 11 | **Discord Bot** | Segundo channel adapter siguiendo el patrón `channels/` | 📋 |
+| 12 | **Widget versioning UI** | Mostrar versión actual del widget en toolbar sin fetch separado | 📋 |
+| 13 | **Registro de dispositivos del usuario** | Guardar specs y config de cada dispositivo donde corre K-Chat para contexto del agente | 📋 |
+| 14 | **Delegación remota fuera de LAN** | Codex bridge con transporte SSH/TLS para delegación fuera de casa | 📋 |
 
 ## Architecture Decisions
 | Memory | 3 capas: MEMORY.md + memory.db (SQLite+sqlite-vec) + sessions.db (SQLite local) | PostgreSQL / sqlite-vec solo / todo en una DB |

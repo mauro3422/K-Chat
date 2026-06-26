@@ -19,7 +19,7 @@ describe('MemoryStatusPanel', () => {
 
   it('renders memory sync summary and actions', () => {
     const apiClient = new ApiClient();
-    const logger = { warn: vi.fn() } as unknown as { warn: (label: string, detail?: unknown) => void };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const panel = new MemoryStatusPanel(apiClient, logger);
     panel.init();
     panel.render({
@@ -52,7 +52,7 @@ describe('MemoryStatusPanel', () => {
     const apiClient = {
       memoryDiagnostics,
     } as unknown as ApiClient;
-    const logger = { warn: vi.fn() } as unknown as { warn: (label: string, detail?: unknown) => void };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const panel = new MemoryStatusPanel(apiClient, logger);
     panel.init();
 

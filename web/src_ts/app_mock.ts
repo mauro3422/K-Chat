@@ -316,7 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const MIN_SIDEBAR_WIDTH = 160;
   const MAX_SIDEBAR_WIDTH = 500;
 
-  function onGutterDown(e) {
+  function onGutterDown(e: MouseEvent) {
     if (sidebarEl?.classList.contains('collapsed')) return;
     isDragging = true;
     gutterEl?.classList.add('dragging');
@@ -325,7 +325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     e.preventDefault();
   }
 
-  function onGutterMove(e) {
+  function onGutterMove(e: MouseEvent) {
     if (!isDragging || !sidebarEl) return;
     const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, e.clientX));
     sidebarEl.style.width = newWidth + 'px';
@@ -342,8 +342,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (gutterEl) {
     gutterEl.addEventListener('mousedown', onGutterDown);
-    gutterEl.addEventListener('touchstart', (e) => {
-      if (sidebarEl?.classList.contains('collapsed')) return;
+    gutterEl.addEventListener('touchstart', (e: TouchEvent) => {
+      if (!sidebarEl || sidebarEl.classList.contains('collapsed')) return;
       isDragging = true;
       gutterEl.classList.add('dragging');
       document.body.style.userSelect = 'none';

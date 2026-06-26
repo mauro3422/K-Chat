@@ -5,7 +5,6 @@ Sigue el patrón Lego: DEFINITION + run().
 """
 import os
 import logging
-import asyncio
 from typing import Any
 
 from src.tools._path_helpers import resolve_and_validate_path
@@ -163,7 +162,7 @@ def _sync_validate(files: list[str], directory: str | None, pattern: str, arch_c
                     for v in all_violations:
                         summary += f"   {v}\n"
                 else:
-                    summary += f"\n🏛️ ARCHITECTURE CHECK — ✅ Sin violaciones arquitectónicas\n"
+                    summary += "\n🏛️ ARCHITECTURE CHECK — ✅ Sin violaciones arquitectónicas\n"
         except Exception:
             logger.warning("Failed to run arch check", exc_info=True)
 

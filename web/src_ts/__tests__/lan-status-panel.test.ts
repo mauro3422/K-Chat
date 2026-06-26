@@ -19,7 +19,7 @@ describe('LanStatusPanel', () => {
 
   it('renders a cluster summary and peer list', () => {
     const apiClient = new ApiClient();
-    const logger = { warn: vi.fn() } as unknown as { warn: (label: string, detail?: unknown) => void };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const panel = new LanStatusPanel(apiClient, logger);
     panel.init();
     panel.render({
@@ -52,7 +52,7 @@ describe('LanStatusPanel', () => {
     const apiClient = {
       syncStatus,
     } as unknown as ApiClient;
-    const logger = { warn: vi.fn() } as unknown as { warn: (label: string, detail?: unknown) => void };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const panel = new LanStatusPanel(apiClient, logger);
     panel.init();
 

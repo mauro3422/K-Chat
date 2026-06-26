@@ -6,6 +6,8 @@ from typing import Any
 
 from src.core.services.protocols import TelemetryServiceProtocol
 
+logger = logging.getLogger(__name__)
+
 class TelemetryService(TelemetryServiceProtocol):
     """Service to track system metrics and log them in a structured JSON format."""
     

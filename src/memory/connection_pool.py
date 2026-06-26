@@ -1,10 +1,13 @@
 import asyncio
+import logging
 import os
 from contextvars import ContextVar
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 from src.memory.db_path import resolve_db_path
-from src.memory.conn_factory import create_raw_conn, configure_connection
+from src.memory.conn_factory import create_raw_conn
 
 
 class ConnectionPool:
