@@ -78,6 +78,14 @@ class _AsyncListIterator:
         return item
 
 
+class _AsyncErrorIterator:
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise Exception("Model big-pickle is not supported")
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -596,6 +604,23 @@ class TestChatStream:
         assert messages[0]["content"] == "Now backup"
         assert mock_api_call._api_call.call_count == 2
         mock_failover.assert_called_once_with("gpt-4", refresh=True, error=ANY, breaker=None, rate_store=None, registry=None)
+
+    @pytest.mark.anyio
+    async def test_retries_when_stream_fails_while_reading_first_chunk(self, mock_models, mock_policy, mock_api_call, mock_retry, mock_failover):
+        mock_models.is_model_failed.return_value = False
+        mock_retry.return_value = False
+        mock_failover.return_value = "deepseek-v4-flash-free"
+
+        delta = _make_delta(content="Recovered")
+        chunk = _make_chunk(delta)
+        mock_api_call._api_call.side_effect = [_AsyncErrorIterator(), _AsyncListIterator([chunk])]
+
+        gen = chat_stream([{"role": "user", "content": "Hi"}], model="big-pickle")
+        results, _ = await _collect(gen)
+
+        assert results == ["Recovered"]
+        assert mock_api_call._api_call.call_count == 2
+        mock_failover.assert_called_once_with("big-pickle", refresh=True, error=ANY, breaker=None, rate_store=None, registry=None)
 
     @pytest.mark.anyio
     async def test_updates_debug(self, mock_models, mock_policy, mock_api_call):

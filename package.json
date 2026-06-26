@@ -11,6 +11,8 @@
     "test:js": "vitest run",
     "test:ts": "vitest run --config vitest.ts.config.js",
     "test:py": "python -m pytest tests/ -v",
+    "smoke:lan": "python scripts/lan_field_smoke.py",
+    "remote:kairos": "python ops/remote/kairos_remote.py",
     "test:e2e": "npx playwright test",
     "test": "npm run test:py && npm run test:js && npm run test:e2e && npm run lint"
   },

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import json
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,8 @@ LINUX_SERVICE_SCRIPT = ROOT / "scripts" / "install-linux-user-service.sh"
 WINDOWS_SCRIPT = ROOT / "scripts" / "remote-kairos.ps1"
 WINDOWS_SERVICE_SCRIPT = ROOT / "scripts" / "kairos-windows-service.ps1"
 WINDOWS_RUNNER = ROOT / "scripts" / "run_windows_service.py"
+REMOTE_CLIENT = ROOT / "ops" / "remote" / "kairos_remote.py"
+REMOTE_NODES_EXAMPLE = ROOT / "ops" / "remote" / "nodes.example.json"
 
 
 def test_linux_control_scripts_have_valid_bash_syntax() -> None:
@@ -69,10 +72,31 @@ def test_update_orders_preflight_backup_and_previous_commit() -> None:
 
 def test_windows_remote_control_maps_recovery_actions() -> None:
     source = WINDOWS_SCRIPT.read_text(encoding="utf-8")
-    for action in ("Preflight", "Backup", "Rollback"):
+    for action in ("Preflight", "Backup", "Pull", "Rollback", "Doctor", "ListNodes", "Chat"):
         assert action in source
     for command in ("'preflight'", "'backup'", "'Restore'", "'rollback'"):
         assert command in source
+    assert "ops\\remote\\kairos_remote.py" in source
+    assert "$args=@('chat','--node',$Node,'--message',$Message)" in source
+    assert "Invoke-RemoteClient $args" in source
+
+
+def test_remote_client_has_valid_python_syntax() -> None:
+    source = REMOTE_CLIENT.read_text(encoding="utf-8")
+    compile(source, str(REMOTE_CLIENT), "exec")
+    assert "git pull --ff-only --autostash" in source
+    assert "def action_doctor" in source
+    assert "def action_chat" in source
+    assert "ConnectTimeout=8" in source
+
+
+def test_remote_nodes_example_shape() -> None:
+    data = json.loads(REMOTE_NODES_EXAMPLE.read_text(encoding="utf-8"))
+    assert "nodes" in data
+    assert "linux" in data["nodes"]
+    linux = data["nodes"]["linux"]
+    for key in ("host", "user", "repo", "identityFile", "serviceUrl"):
+        assert key in linux
 
 
 def test_windows_control_has_valid_powershell_syntax() -> None:

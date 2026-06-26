@@ -76,6 +76,28 @@ El objetivo es que una instancia coordine, la otra acompañe y ambas vean el mis
 
 Usala cuando quieras confirmar el sistema en vivo y no solo por tests.
 
+### Prueba automatizada de dos nodos
+
+Con ambos servidores levantados, corré desde cualquiera de las máquinas:
+
+```bash
+npm run smoke:lan -- http://192.168.1.40:8000
+```
+
+También podés configurarlo por entorno:
+
+```bash
+KAIROS_LAN_PRIMARY_URL=http://127.0.0.1:8000 KAIROS_LAN_SECONDARY_URL=http://192.168.1.40:8000 npm run smoke:lan
+```
+
+La prueba valida `/health`, `/api/node/state`, heartbeats cruzados, `/api/node/sync/status`, `/api/node/failover/status` y una escritura de memoria de sonda visible desde el otro nodo. Por defecto limpia la sonda al final. Para opciones avanzadas, como ejecutar la promoción manual de la secundaria, usá el script directo:
+
+```bash
+python scripts/lan_field_smoke.py --primary-url http://127.0.0.1:8000 --secondary-url http://192.168.1.40:8000 --promote-secondary
+```
+
+Sin `--promote-secondary`, la prueba solo valida que el failover no pida promoción en estado sano.
+
 ### Antes de empezar
 
 - Elegí una PC como primaria inicial.

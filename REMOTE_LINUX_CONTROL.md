@@ -47,20 +47,35 @@ Abrir otra terminal y usar:
 ```powershell
 .\scripts\remote-kairos.ps1 -Action Preflight
 .\scripts\remote-kairos.ps1 -Action Backup
+.\scripts\remote-kairos.ps1 -Action Pull
 .\scripts\remote-kairos.ps1 -Action Restore -BackupId 20260620T205426Z
 .\scripts\remote-kairos.ps1 -Action Update
 .\scripts\remote-kairos.ps1 -Action Rollback
 .\scripts\remote-kairos.ps1 -Action Logs -Lines 200
 .\scripts\remote-kairos.ps1 -Action Health
+.\scripts\remote-kairos.ps1 -Action Doctor
+.\scripts\remote-kairos.ps1 -Action Chat -Message 'respondé solo pong'
 .\scripts\remote-kairos.ps1 -Action Shell
 .\scripts\remote-kairos.ps1 -Action Exec -Command 'cualquier comando autorizado'
 ```
+
+El wrapper de PowerShell delega en el cliente portable:
+
+```bash
+python ops/remote/kairos_remote.py list
+python ops/remote/kairos_remote.py doctor --node linux
+python ops/remote/kairos_remote.py chat --node linux --message "respondé solo pong"
+```
+
+La configuración multi-nodo vive localmente en `.kairos/remote-nodes.json`. Usar `ops/remote/nodes.example.json` como plantilla. Si ese archivo no existe, se mantienen como fallback las variables `KAIROS_LINUX_HOST`, `KAIROS_LINUX_USER` y `KAIROS_LINUX_REPO`.
 
 ## Flujo robusto de actualización
 
 `Preflight` valida comandos requeridos, repositorio limpio, upstream, espacio libre, servicio, puerto, salud y coordinación LAN. Las advertencias de salud no bloquean una actualización reparadora.
 
 `Backup` crea copias consistentes de todas las bases SQLite mediante `.backup`, además de `MEMORY.md`, `.env` y la configuración local. Los respaldos quedan con permisos privados en `.kairos/backups/`; por defecto se conservan los siete más recientes.
+
+`Pull` ejecuta `git pull --ff-only --autostash` en el repo remoto. Es el camino rápido para traer código cuando `MEMORY.md` está sucio por curación local. Después de cambios Python o frontend, reiniciar el servicio.
 
 `Restore` recupera las bases de datos y `MEMORY.md` de un respaldo concreto. Antes valida la integridad SQLite, crea automáticamente otro backup del estado actual, detiene el servicio, reemplaza los datos de forma atómica y solo termina cuando `/health` vuelve a responder. No restaura `.env` ni la configuración de control para no cortar el acceso remoto.
 

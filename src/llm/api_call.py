@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import copy
 from typing import Any
 
 from src.llm.retry import execute_with_retry
@@ -11,12 +12,19 @@ logger: logging.Logger = logging.getLogger(__name__)
 def _resolve_provider(
     provider: LLMProvider | None = None,
     provider_fn: Any | None = None,
+    model_name: str = "",
 ) -> LLMProvider:
     if provider is not None:
         return provider
     if provider_fn is not None:
         return provider_fn()
     from src.llm.providers import create_provider
+    if model_name.endswith("-free"):
+        from src._config import resolve_config
+
+        cfg = copy.copy(resolve_config())
+        cfg.llm_mode = "zen"
+        return create_provider(cfg)
     return create_provider()
 
 
@@ -26,8 +34,8 @@ async def _api_call(
     **kwargs: Any,
 ) -> Any:
     """Wrapper over provider with exponential backoff retry logic."""
-    prov = _resolve_provider(provider, provider_fn)
     model_name = kwargs.get("model", "unknown-model")
+    prov = _resolve_provider(provider, provider_fn, model_name=model_name)
     is_stream = kwargs.get("stream", False)
     req = UnifiedRequest(
         messages=kwargs.get("messages", []),

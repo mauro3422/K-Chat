@@ -304,3 +304,103 @@ class TestMarkAndRefresh:
         mock_mark.assert_called_once_with("big-pickle")
         mock_switch.assert_called_once_with("big-pickle")
         assert result == "fallback"
+
+    @patch("src.llm.failover.models.is_model_failed", return_value=False)
+    @patch("src.llm.failover.models.mark_model_failed")
+    @patch("src.llm.failover.discovery.get_verified_models", new_callable=AsyncMock)
+    @pytest.mark.anyio
+    async def test_not_supported_go_model_falls_back_to_deepseek_free(
+        self, mock_verify, mock_mark, mock_failed
+    ):
+        class FakeRegistry:
+            def __init__(self):
+                self.removed = []
+
+            def get_verified_models(self):
+                return ["big-pickle", "deepseek-v4-flash-free", "mimo-v2.5-free"]
+
+            def get_free_candidates(self):
+                return ["mimo-v2.5-free", "deepseek-v4-flash-free"]
+
+            def get_all_models(self):
+                return ["big-pickle", "deepseek-v4-flash-free", "mimo-v2.5-free"]
+
+            def remove_verified_model(self, model):
+                self.removed.append(model)
+
+        class FakeRateStore:
+            def __init__(self):
+                self.unavailable = []
+
+            def mark_unavailable(self, model):
+                self.unavailable.append(model)
+
+            def is_unavailable(self, model):
+                return model in self.unavailable
+
+            def is_rate_limited(self, model):
+                return False
+
+        class FakeBreaker:
+            def record_failure(self, model):
+                self.failed = model
+
+        registry = FakeRegistry()
+        rate_store = FakeRateStore()
+
+        result = _mark_and_refresh(
+            "big-pickle",
+            error=Exception("Model big-pickle is not supported"),
+            breaker=FakeBreaker(),
+            rate_store=rate_store,
+            registry=registry,
+        )
+
+        assert result == "deepseek-v4-flash-free"
+        assert registry.removed == ["big-pickle"]
+        assert rate_store.unavailable == ["big-pickle"]
+        mock_mark.assert_called_once_with("big-pickle")
+
+    @patch("src.llm.failover.models.is_model_failed", return_value=False)
+    @patch("src.llm.failover.models.mark_model_failed")
+    @patch("src.llm.failover.discovery.get_verified_models", new_callable=AsyncMock)
+    @pytest.mark.anyio
+    async def test_not_supported_model_prefers_deepseek_go_before_free(
+        self, mock_verify, mock_mark, mock_failed
+    ):
+        class FakeRegistry:
+            def get_verified_models(self):
+                return ["big-pickle", "deepseek-v4-flash", "deepseek-v4-flash-free"]
+
+            def get_free_candidates(self):
+                return ["deepseek-v4-flash-free"]
+
+            def get_all_models(self):
+                return ["big-pickle", "deepseek-v4-flash", "deepseek-v4-flash-free"]
+
+            def remove_verified_model(self, model):
+                pass
+
+        class FakeRateStore:
+            def mark_unavailable(self, model):
+                pass
+
+            def is_unavailable(self, model):
+                return False
+
+            def is_rate_limited(self, model):
+                return False
+
+        class FakeBreaker:
+            def record_failure(self, model):
+                pass
+
+        result = _mark_and_refresh(
+            "big-pickle",
+            error=Exception("Model big-pickle is not supported"),
+            breaker=FakeBreaker(),
+            rate_store=FakeRateStore(),
+            registry=FakeRegistry(),
+        )
+
+        assert result == "deepseek-v4-flash"

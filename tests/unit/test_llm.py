@@ -1,4 +1,5 @@
 from unittest.mock import ANY, patch, MagicMock, AsyncMock
+from types import SimpleNamespace
 
 import pytest
 
@@ -71,3 +72,29 @@ async def test_api_call_retries_on_rate_limit(mock_sleep, mock_execute_with_retr
         await _api_call(provider_fn=lambda: mock_provider, model="big-pickle", messages=[])
 
     assert mock_provider.chat.call_count == 3
+
+
+@pytest.mark.anyio
+@patch("src.llm.api_call.execute_with_retry")
+async def test_free_model_uses_zen_provider_even_in_go_mode(mock_execute_with_retry):
+    created_configs = []
+    mock_provider = MagicMock()
+    mock_provider.chat = AsyncMock(return_value=MagicMock())
+
+    async def fake_retry(fn, *args, **kwargs):
+        return await fn()
+
+    def fake_create_provider(config=None):
+        created_configs.append(config)
+        return mock_provider
+
+    cfg = SimpleNamespace(llm_mode="go")
+    mock_execute_with_retry.side_effect = fake_retry
+
+    with patch("src._config.resolve_config", return_value=cfg), patch(
+        "src.llm.providers.create_provider", side_effect=fake_create_provider
+    ):
+        await _api_call(model="deepseek-v4-flash-free", messages=[])
+
+    assert created_configs[0].llm_mode == "zen"
+    mock_provider.chat.assert_awaited_once()

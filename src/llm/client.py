@@ -313,17 +313,40 @@ async def chat_stream(
 ) -> AsyncGenerator[Any, None]:
     debug = kwargs.pop("debug", None)
     model = _resolve_model(messages, model, build_prompt_fn, default_model_fn=default_model_fn)
-    stream = await _try_stream(model, messages, build_prompt_fn, breaker=breaker, rate_store=rate_store, registry=registry, **kwargs)
+    retried_after_read_error = False
 
-    stats = SimpleNamespace(chunk_count=0, has_content=False, has_reasoning=False)
-    async for item in _process_chunks(
-        stream, reasoning_output, tool_calls_output, tagged, debug, stats
-    ):
-        yield item
+    while True:
+        stream = await _try_stream(model, messages, build_prompt_fn, breaker=breaker, rate_store=rate_store, registry=registry, **kwargs)
 
-    if stats.chunk_count == 0:
-        logger.warning("Empty stream: no chunks received from model %s", model)
-    elif not stats.has_content and not stats.has_reasoning:
-        logger.warning("Stream with %d chunks but no content or reasoning from model %s", stats.chunk_count, model)
-    else:
-        logger.info("Stream completed: %d chunks, has_content=%s, has_reasoning=%s", stats.chunk_count, stats.has_content, stats.has_reasoning)
+        stats = SimpleNamespace(chunk_count=0, has_content=False, has_reasoning=False)
+        try:
+            async for item in _process_chunks(
+                stream, reasoning_output, tool_calls_output, tagged, debug, stats
+            ):
+                yield item
+        except Exception as e:
+            if retried_after_read_error or stats.has_content or stats.has_reasoning:
+                raise
+            retried_after_read_error = True
+            next_model = _mark_and_refresh(
+                model,
+                refresh=not is_rate_limit_error(e),
+                error=e,
+                breaker=breaker,
+                rate_store=rate_store,
+                registry=registry,
+            )
+            if next_model == model:
+                raise
+            _update_system_prompt(messages, next_model, build_prompt_fn)
+            logger.info("Switching stream after read error to: %s", next_model)
+            model = next_model
+            continue
+
+        if stats.chunk_count == 0:
+            logger.warning("Empty stream: no chunks received from model %s", model)
+        elif not stats.has_content and not stats.has_reasoning:
+            logger.warning("Stream with %d chunks but no content or reasoning from model %s", stats.chunk_count, model)
+        else:
+            logger.info("Stream completed: %d chunks, has_content=%s, has_reasoning=%s", stats.chunk_count, stats.has_content, stats.has_reasoning)
+        return
