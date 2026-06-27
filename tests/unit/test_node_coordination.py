@@ -539,6 +539,112 @@ async def test_node_sync_status_includes_peer_states():
 
 
 @pytest.mark.anyio
+async def test_node_runtime_reports_normal_primary_state():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="primary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+        peer_urls="",
+    )
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/node/runtime")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is True
+            assert body["mode"] == "normal"
+            assert body["memory"]["write"]["can_write"] is True
+            assert body["memory"]["write"]["mode"] == "local_primary"
+
+
+@pytest.mark.anyio
+async def test_node_runtime_reports_fallback_when_secondary_lost_primary():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="secondary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+        peer_urls="",
+    )
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/node/runtime")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is False
+            assert body["mode"] == "fallback"
+            assert "primary_not_recent" in body["reasons"]
+            assert body["memory"]["write"]["mode"] == "queue_until_primary"
+
+
+@pytest.mark.anyio
+async def test_node_runtime_reports_degraded_when_memory_is_not_fresh():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="primary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+        peer_urls="",
+    )
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+        await app.state.node_coordinator.mark_memory_revision({"test": "dirty_memory"})
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/api/node/runtime")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is False
+            assert body["mode"] == "degraded"
+            assert "memory_not_fresh" in body["reasons"]
+            assert body["memory"]["is_fresh"] is False
+
+
+@pytest.mark.anyio
 async def test_node_memory_request_primary_applies_write():
     from fastapi.testclient import TestClient
     from web.app_factory import create_app

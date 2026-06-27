@@ -19,6 +19,7 @@ Este documento resume cómo operar el estado actual del sistema entre dos instan
 
 - `GET /health` — salud general con coordinación, sync y failover.
 - `GET /api/node/state` — estado local del nodo.
+- `GET /api/node/runtime` — estado operativo resumido: `normal`, `degraded` o `fallback`.
 - `GET /api/node/diagnostics` — diagnóstico unificado de nodo, bridge y memoria.
 - `GET /api/node/sync/status` — cola, lease y frescura de memoria.
 - `GET /api/node/failover/status` — estado observable de failover.
@@ -63,6 +64,7 @@ Este documento resume cómo operar el estado actual del sistema entre dos instan
 ## Criterio de operación sana
 
 - `health.status == ok`
+- `runtime.mode == normal`
 - `sync.memory_is_fresh == true`
 - `failover.should_promote == false` salvo caída real
 - `telegram.has_recent_reflection == true` cuando hubo actividad reciente
@@ -90,7 +92,7 @@ También podés configurarlo por entorno:
 KAIROS_LAN_PRIMARY_URL=http://127.0.0.1:8000 KAIROS_LAN_SECONDARY_URL=http://192.168.1.40:8000 npm run smoke:lan
 ```
 
-La prueba valida `/health`, `/api/node/state`, heartbeats cruzados, `/api/node/sync/status`, `/api/node/failover/status` y una escritura de memoria de sonda visible desde el otro nodo. Por defecto limpia la sonda al final. Para opciones avanzadas, como ejecutar la promoción manual de la secundaria, usá el script directo:
+La prueba valida `/health`, `/api/node/state`, `/api/node/runtime`, heartbeats cruzados, `/api/node/sync/status`, `/api/node/failover/status` y una escritura de memoria de sonda visible desde el otro nodo. Por defecto limpia la sonda al final. Para opciones avanzadas, como ejecutar la promoción manual de la secundaria, usá el script directo:
 
 ```bash
 python scripts/lan_field_smoke.py --primary-url http://127.0.0.1:8000 --secondary-url http://192.168.1.40:8000 --promote-secondary
@@ -125,6 +127,7 @@ OK: health, node state, heartbeats, sync, memory visibility and failover status 
 1. Levantá la primaria y verificá:
    - `GET /health`
    - `GET /api/node/state`
+   - `GET /api/node/runtime`
    - `GET /api/node/sync/status`
 2. Levantá la secundaria y verificá que:
    - vea a la primaria en `cluster.states`
@@ -150,6 +153,7 @@ OK: health, node state, heartbeats, sync, memory visibility and failover status 
 ### Criterio de aprobado
 
 - `health.status == ok`
+- `runtime.mode == normal`
 - `sync.memory_is_fresh == true`
 - no hay doble escritura de memoria
 - `sessions.db` sigue separado por máquina
@@ -163,6 +167,7 @@ Primaria:
 ```bash
 curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/api/node/state
+curl http://127.0.0.1:8000/api/node/runtime
 curl http://127.0.0.1:8000/api/node/sync/status
 curl http://127.0.0.1:8000/api/node/failover/status
 ```
@@ -172,6 +177,7 @@ Secundaria:
 ```bash
 curl http://192.168.1.40:8000/health
 curl http://192.168.1.40:8000/api/node/state
+curl http://192.168.1.40:8000/api/node/runtime
 curl http://192.168.1.40:8000/api/node/sync/status
 curl http://192.168.1.40:8000/api/node/failover/status
 curl http://192.168.1.40:8000/api/telegram/status

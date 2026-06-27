@@ -218,6 +218,8 @@ def doctor_hint(name: str, detail: str = "", stdout: str = "", stderr: str = "")
         return "Kairos HTTP no esta sano: revisar servicio, puerto 8000, .env y logs."
     if name == "node_state":
         return "El nodo no expone estado LAN: revisar KAIROS_NODE_ID/KAIROS_NODE_ROLE y reiniciar."
+    if name == "node_runtime":
+        return "El runtime del nodo no esta normal: revisar modo, reasons, peers y cola de memoria."
     if name == "sync_status":
         return "La sync LAN no esta sana: revisar KAIROS_PEER_URLS, memoria fresca y cola pendiente."
     if name == "failover_status":
@@ -258,6 +260,8 @@ def _http_check(profile: NodeProfile, name: str, path: str, *, timeout: float = 
         ok = data.get("status") == "ok"
     if name == "node_state":
         ok = bool(data.get("node_id")) and data.get("healthy") is True
+    if name == "node_runtime":
+        ok = data.get("mode") == "normal"
     if name == "sync_status":
         ok = data.get("ok") is True and data.get("sync", {}).get("memory_is_fresh") is True
     if name == "failover_status":
@@ -280,6 +284,7 @@ def collect_doctor_checks(profile: NodeProfile) -> list[DoctorCheck]:
         _ssh_check(profile, "python", f"cd {bash_quote(profile.repo)} && (venv/bin/python --version || .venv/bin/python --version || python3 --version)", timeout=20),
         _http_check(profile, "health", "/health"),
         _http_check(profile, "node_state", "/api/node/state"),
+        _http_check(profile, "node_runtime", "/api/node/runtime"),
         _http_check(profile, "sync_status", "/api/node/sync/status"),
         _http_check(profile, "failover_status", "/api/node/failover/status"),
     ]

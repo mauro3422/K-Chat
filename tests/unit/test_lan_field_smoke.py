@@ -69,6 +69,8 @@ def common_responses(primary_role: str = "primary", secondary_role: str = "secon
         ("GET", "secondary", "/api/node/state"): healthy_state(secondary_id, secondary_role, primary_id),
         ("POST", "primary", "/api/node/heartbeat"): {"ok": True},
         ("POST", "secondary", "/api/node/heartbeat"): {"ok": True},
+        ("GET", "primary", "/api/node/runtime"): {"ok": True, "mode": "normal"},
+        ("GET", "secondary", "/api/node/runtime"): {"ok": True, "mode": "normal"},
         ("GET", "primary", "/api/node/sync/status"): {
             "ok": True,
             "sync": {"memory_is_fresh": True},

@@ -302,7 +302,15 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
 
     sync_status: dict[str, dict[str, Any]] = {}
     failover_status: dict[str, dict[str, Any]] = {}
+    runtime_status: dict[str, dict[str, Any]] = {}
     for node in (primary, secondary):
+        runtime_payload, runtime_failure = request_step(client, "GET", node, "/api/node/runtime", "node runtime reachable")
+        if runtime_failure:
+            steps.append(runtime_failure)
+        else:
+            runtime_status[node.name] = runtime_payload or {}
+            steps.append(expect(runtime_status[node.name].get("mode") == "normal", "node runtime mode == normal", node=node.name, hint=failure_hint("node runtime", data=runtime_status[node.name]), data=runtime_status[node.name]))
+
         sync_payload, sync_failure = request_step(client, "GET", node, "/api/node/sync/status", "sync status reachable")
         if sync_failure:
             steps.append(sync_failure)

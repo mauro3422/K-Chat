@@ -94,6 +94,48 @@ async def _peer_cluster_state(request: Request) -> dict:
     }
 
 
+def _runtime_mode(snapshot: dict, cluster: dict, queue_size: int, failover: dict) -> tuple[str, list[str]]:
+    reasons: list[str] = []
+    role = str(snapshot.get("role", "secondary"))
+    healthy = snapshot.get("healthy") is True
+    has_recent_primary = snapshot.get("has_recent_primary") is True
+    memory_is_fresh = snapshot.get("memory_is_fresh") is True
+    peer_count = int(cluster.get("peer_count", 0) or 0)
+    reachable_peers = int(cluster.get("reachable_peers", 0) or 0)
+
+    if not healthy:
+        reasons.append("local_heartbeat_stale")
+    if not memory_is_fresh:
+        reasons.append("memory_not_fresh")
+    if queue_size > 0:
+        reasons.append("memory_queue_pending")
+    if peer_count > 0 and reachable_peers == 0:
+        reasons.append("configured_peers_unreachable")
+    if failover.get("should_promote") is True:
+        reasons.append("failover_should_promote")
+    if role == "secondary" and not has_recent_primary:
+        reasons.append("primary_not_recent")
+
+    fallback_reasons = {"failover_should_promote", "primary_not_recent"}
+    if any(reason in fallback_reasons for reason in reasons):
+        return "fallback", reasons
+    if reasons:
+        return "degraded", reasons
+    return "normal", ["healthy"]
+
+
+def _memory_write_mode(snapshot: dict, mode: str) -> dict:
+    role = str(snapshot.get("role", "secondary"))
+    has_recent_primary = snapshot.get("has_recent_primary") is True
+    if role == "primary":
+        return {"can_write": True, "mode": "local_primary", "target": "local"}
+    if has_recent_primary:
+        return {"can_write": False, "mode": "delegate_to_primary", "target": "peer_primary"}
+    if mode == "fallback":
+        return {"can_write": False, "mode": "queue_until_primary", "target": "local_queue"}
+    return {"can_write": False, "mode": "read_only_secondary", "target": "none"}
+
+
 class NodeHeartbeatPayload(BaseModel):
     node_id: str = Field(default="")
     role: str = Field(default="secondary")
@@ -152,6 +194,67 @@ async def node_state(request: Request) -> JSONResponse:
     config = getattr(request.app.state, "config", None)
     snapshot["preferred_role"] = str(getattr(config, "node_role", "secondary"))
     return JSONResponse(snapshot)
+
+
+@router.get("/runtime")
+async def node_runtime(request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    snapshot = coordinator.snapshot()
+    config = getattr(request.app.state, "config", None)
+    snapshot["preferred_role"] = str(getattr(config, "node_role", "secondary"))
+    snapshot["local_peer_count"] = len(snapshot.get("peers", []))
+
+    bridge = _get_node_bridge(request)
+    queue = _get_memory_queue(request)
+    lease_manager = _get_leader_lease_manager(request)
+    cluster = await _peer_cluster_state(request)
+    failover = _get_failover_state(request).snapshot()
+    queue_size = len(queue)
+    lease = lease_manager.snapshot()
+    mode, reasons = _runtime_mode(snapshot, cluster, queue_size, failover)
+
+    return JSONResponse(
+        {
+            "ok": mode == "normal",
+            "mode": mode,
+            "reasons": reasons,
+            "node": {
+                "node_id": snapshot.get("node_id", ""),
+                "role": snapshot.get("role", ""),
+                "preferred_role": snapshot.get("preferred_role", ""),
+                "platform": snapshot.get("node_platform", ""),
+                "cluster_name": snapshot.get("cluster_name", ""),
+                "healthy": snapshot.get("healthy", False),
+            },
+            "bridge": {
+                "base_url": bridge.base_url,
+                "peer_urls": bridge.peer_urls,
+            },
+            "peers": {
+                "configured": cluster.get("peer_count", 0),
+                "reachable": cluster.get("reachable_peers", 0),
+                "unreachable": cluster.get("unreachable_peers", 0),
+                "states": cluster.get("states", []),
+                "errors": cluster.get("errors", []),
+            },
+            "memory": {
+                "is_fresh": snapshot.get("memory_is_fresh", False),
+                "last_revision": snapshot.get("last_memory_revision", 0.0),
+                "last_sync": snapshot.get("last_memory_sync", 0.0),
+                "queue_size": queue_size,
+                "queue_path": getattr(queue, "persistence_path", ""),
+                "lease": lease.to_dict() if lease else None,
+                "write": _memory_write_mode(snapshot, mode),
+            },
+            "failover": {
+                "should_promote": failover.get("should_promote", False),
+                "miss_count": failover.get("miss_count", 0),
+                "required_misses": failover.get("required_misses", 0),
+                "last_action": failover.get("last_action", ""),
+                "last_reason": failover.get("last_reason", ""),
+            },
+        }
+    )
 
 
 @router.post("/heartbeat")
