@@ -31,7 +31,7 @@ from scripts.lan_field_smoke import (  # noqa: E402
 )
 
 
-DEFAULT_TIMEOUT = 30.0
+DEFAULT_TIMEOUT = 60.0
 DEFAULT_FAILOVER_TIMEOUT = 90.0
 DEFAULT_RECOVERY_TIMEOUT = 90.0
 
@@ -131,16 +131,28 @@ def run_drill(args: argparse.Namespace) -> list[Step]:
 
         probe_key = args.probe_key or f"lan_failover_drill:{int(time.time())}"
         probe_value = f"{args.probe_value} ({time.strftime('%Y-%m-%d %H:%M:%S')})"
-        write_response = client.request(
-            "POST",
-            secondary,
-            "/api/node/memory/request",
-            payload={
-                "key": probe_key,
-                "value": probe_value,
-                "source": {"node_id": "lan-failover-drill", "role": "test", "base_url": ""},
-            },
-        )
+        try:
+            write_response = client.request(
+                "POST",
+                secondary,
+                "/api/node/memory/request",
+                payload={
+                    "key": probe_key,
+                    "value": probe_value,
+                    "source": {"node_id": "lan-failover-drill", "role": "test", "base_url": ""},
+                },
+            )
+        except Exception as exc:
+            steps.append(
+                expect(
+                    False,
+                    "failover memory write queued for replay",
+                    node="secondary",
+                    detail=str(exc),
+                    hint="La secondary promovida no respondio a tiempo al write; revisar carga, locks de memoria y logs.",
+                )
+            )
+            return steps
         steps.append(
             expect(
                 write_response.get("ok") is True

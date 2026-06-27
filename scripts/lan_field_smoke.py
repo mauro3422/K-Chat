@@ -74,6 +74,8 @@ class Client:
             raise RuntimeError(f"HTTP {exc.code} {url}: {raw[:500]}") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"cannot reach {url}: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise RuntimeError(f"timed out reaching {url}") from exc
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"invalid JSON from {url}: {exc}") from exc
 
