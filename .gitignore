@@ -61,6 +61,7 @@ TOOLS.md
 .kairos/invalidate_cache
 .kairos/last-good-commit
 .kairos/backups/
+.kairos/codex-bridge/
 MEMORY.md.local-backup-*
 
 # Scratch scripts
