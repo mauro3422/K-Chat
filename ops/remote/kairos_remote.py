@@ -56,6 +56,26 @@ class NodeProfile:
         return (self.service_url or f"http://{self.host}:8000").rstrip("/")
 
 
+@dataclass(frozen=True)
+class DoctorCheck:
+    name: str
+    ok: bool
+    detail: str = ""
+    hint: str = ""
+    stdout: str = ""
+    stderr: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "ok": self.ok,
+            "detail": self.detail,
+            "hint": self.hint,
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+        }
+
+
 def _expand_path(value: str) -> str:
     return os.path.expandvars(os.path.expanduser(value))
 
@@ -180,31 +200,129 @@ def action_list(profiles: dict[str, NodeProfile]) -> int:
     return 0
 
 
-def action_doctor(profile: NodeProfile) -> int:
-    print(f"node={profile.name}")
-    print(f"target={profile.target}")
-    print(f"repo={profile.repo}")
-    print(f"identity={profile.identity_file}")
-    print(f"url={profile.base_url}")
+def doctor_hint(name: str, detail: str = "", stdout: str = "", stderr: str = "") -> str:
+    text = f"{name} {detail} {stdout} {stderr}".lower()
+    if name == "profile":
+        return "Revisar .kairos/remote-nodes.json o variables KAIROS_LINUX_*."
+    if "permission denied" in text or "publickey" in text:
+        return "SSH no autentica: revisar identityFile, permisos de la clave y authorized_keys del nodo."
+    if "could not resolve" in text or "timed out" in text or "connection refused" in text or "no route" in text:
+        return "No hay conexion al nodo: revisar IP, red LAN, puerto SSH/firewall y que la laptop este encendida."
+    if name == "repo":
+        return "Repo remoto no esta listo: revisar ruta repo, rama, git status y conflictos locales."
+    if name == "script":
+        return "Falta scripts/kairos-node.sh ejecutable: hacer git pull y chmod +x si corresponde."
+    if name == "python":
+        return "Python/venv remoto no esta listo: revisar venv, version Python y dependencias."
+    if name == "health":
+        return "Kairos HTTP no esta sano: revisar servicio, puerto 8000, .env y logs."
+    if name == "node_state":
+        return "El nodo no expone estado LAN: revisar KAIROS_NODE_ID/KAIROS_NODE_ROLE y reiniciar."
+    if name == "sync_status":
+        return "La sync LAN no esta sana: revisar KAIROS_PEER_URLS, memoria fresca y cola pendiente."
+    if name == "failover_status":
+        return "Failover dudoso: revisar lease de liderazgo, misses de heartbeat y rol configurado."
+    return "Revisar salida del check y repetir doctor despues de corregir."
+
+
+def _short(text: str, limit: int = 1200) -> str:
+    clean = text.strip()
+    return clean if len(clean) <= limit else clean[: limit - 3] + "..."
+
+
+def _ssh_check(profile: NodeProfile, name: str, command: str, *, timeout: int = 30) -> DoctorCheck:
+    try:
+        result = capture_ssh(profile, command, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        detail = f"timeout after {exc.timeout}s"
+        return DoctorCheck(name=name, ok=False, detail=detail, hint=doctor_hint(name, detail))
+    except OSError as exc:
+        detail = str(exc)
+        return DoctorCheck(name=name, ok=False, detail=detail, hint=doctor_hint(name, detail))
+    stdout = _short(result.stdout or "")
+    stderr = _short(result.stderr or "")
+    ok = result.returncode == 0
+    detail = "ok" if ok else f"exit={result.returncode}"
+    return DoctorCheck(name=name, ok=ok, detail=detail, hint="" if ok else doctor_hint(name, detail, stdout, stderr), stdout=stdout, stderr=stderr)
+
+
+def _http_check(profile: NodeProfile, name: str, path: str, *, timeout: float = 8) -> DoctorCheck:
+    url = profile.base_url + path
+    try:
+        data = _http_json(profile, path, timeout=timeout)
+    except Exception as exc:
+        detail = f"{url}: {exc}"
+        return DoctorCheck(name=name, ok=False, detail=detail, hint=doctor_hint(name, detail))
+    ok = bool(data.get("ok", True))
+    if name == "health":
+        ok = data.get("status") == "ok"
+    if name == "node_state":
+        ok = bool(data.get("node_id")) and data.get("healthy") is True
+    if name == "sync_status":
+        ok = data.get("ok") is True and data.get("sync", {}).get("memory_is_fresh") is True
+    if name == "failover_status":
+        ok = data.get("ok") is True and data.get("should_promote") is False
+    rendered = json.dumps(data, ensure_ascii=False, sort_keys=True)
+    return DoctorCheck(name=name, ok=ok, detail="ok" if ok else "unexpected response", hint="" if ok else doctor_hint(name, stdout=rendered), stdout=_short(rendered))
+
+
+def collect_doctor_checks(profile: NodeProfile) -> list[DoctorCheck]:
     checks = [
-        ("ssh", "printf 'ssh=ok\\n'; uname -a"),
-        ("repo", f"test -d {bash_quote(profile.repo)} && cd {bash_quote(profile.repo)} && git status --short --branch"),
-        ("script", f"test -x {bash_quote(profile.repo)}/scripts/kairos-node.sh && echo script=ok"),
-        ("python", f"cd {bash_quote(profile.repo)} && (venv/bin/python --version || .venv/bin/python --version || python3 --version)"),
-        ("health", remote_script(profile, "health")),
-        ("platform", remote_script(profile, "platform")),
+        DoctorCheck(
+            name="profile",
+            ok=bool(profile.host and profile.user and profile.repo and profile.identity_file and Path(profile.identity_file).exists()),
+            detail=f"target={profile.target} repo={profile.repo} url={profile.base_url}",
+            hint="" if Path(profile.identity_file).exists() else doctor_hint("profile"),
+        ),
+        _ssh_check(profile, "ssh", "printf 'ssh=ok\\n'; uname -a", timeout=20),
+        _ssh_check(profile, "repo", f"test -d {bash_quote(profile.repo)} && cd {bash_quote(profile.repo)} && git status --short --branch", timeout=30),
+        _ssh_check(profile, "script", f"test -x {bash_quote(profile.repo)}/scripts/kairos-node.sh && echo script=ok", timeout=20),
+        _ssh_check(profile, "python", f"cd {bash_quote(profile.repo)} && (venv/bin/python --version || .venv/bin/python --version || python3 --version)", timeout=20),
+        _http_check(profile, "health", "/health"),
+        _http_check(profile, "node_state", "/api/node/state"),
+        _http_check(profile, "sync_status", "/api/node/sync/status"),
+        _http_check(profile, "failover_status", "/api/node/failover/status"),
     ]
-    failed = 0
-    for label, command in checks:
-        print(f"\n[{label}]")
-        result = capture_ssh(profile, command, timeout=30)
-        if result.stdout:
-            print(result.stdout.rstrip())
-        if result.stderr:
-            print(result.stderr.rstrip(), file=sys.stderr)
-        if result.returncode != 0:
-            failed += 1
-            print(f"{label}=failed exit={result.returncode}", file=sys.stderr)
+    return checks
+
+
+def print_doctor_report(profile: NodeProfile, checks: list[DoctorCheck]) -> None:
+    failed = [check for check in checks if not check.ok]
+    print(f"Kairos remote doctor: {len(checks) - len(failed)}/{len(checks)} checks passed")
+    print(f"node={profile.name} target={profile.target} repo={profile.repo} url={profile.base_url}")
+    for check in checks:
+        status = "OK" if check.ok else "FAIL"
+        print(f"\n[{status}] {check.name}: {check.detail}")
+        if check.stdout:
+            print(check.stdout)
+        if check.stderr:
+            print(check.stderr, file=sys.stderr)
+        if check.hint:
+            print(f"likely: {check.hint}")
+    if failed:
+        print("\nNext checks:")
+        print("- Ejecutar doctor despues de corregir el primer FAIL de la lista.")
+        print("- Si falla health pero SSH funciona, revisar logs/restart del servicio Kairos.")
+        print("- Si falla sync/failover, revisar KAIROS_PEER_URLS y correr scripts/lan_field_smoke.py.")
+
+
+def action_doctor(profile: NodeProfile, *, json_output: bool = False) -> int:
+    checks = collect_doctor_checks(profile)
+    failed = [check for check in checks if not check.ok]
+    if json_output:
+        payload = {
+            "ok": not failed,
+            "node": profile.name,
+            "target": profile.target,
+            "repo": profile.repo,
+            "url": profile.base_url,
+            "passed": len(checks) - len(failed),
+            "total": len(checks),
+            "checks": [check.to_dict() for check in checks],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print_doctor_report(profile, checks)
     return 1 if failed else 0
 
 
@@ -395,6 +513,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--session-id", default=f"remote-cli-{int(time.time())}")
     parser.add_argument("--model", default="")
     parser.add_argument("--raw-message", action="store_true", help="send the message without Codex delegation context")
+    parser.add_argument("--json", action="store_true", help="emit machine-readable JSON for supported actions")
     return parser
 
 
@@ -405,7 +524,7 @@ def main(argv: list[str] | None = None) -> int:
         return action_list(profiles)
     profile = require_profile(profiles, args.node)
     if args.action == "doctor":
-        return action_doctor(profile)
+        return action_doctor(profile, json_output=args.json)
     if args.action == "health":
         return action_http_get(profile, "/health")
     if args.action == "pull":

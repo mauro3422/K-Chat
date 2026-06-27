@@ -21,6 +21,16 @@ REMOTE_CLIENT = ROOT / "ops" / "remote" / "kairos_remote.py"
 REMOTE_NODES_EXAMPLE = ROOT / "ops" / "remote" / "nodes.example.json"
 
 
+def load_remote_client_module():
+    spec = importlib.util.spec_from_file_location("kairos_remote_test", REMOTE_CLIENT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_linux_control_scripts_have_valid_bash_syntax() -> None:
     bash = shutil.which("bash")
     if bash is None:
@@ -95,6 +105,7 @@ def test_remote_client_has_valid_python_syntax() -> None:
     assert "task-create" in source
     assert "task-update" in source
     assert "--raw-message" in source
+    assert "--json" in source
     assert "ConnectTimeout=8" in source
 
 
@@ -108,18 +119,52 @@ def test_remote_nodes_example_shape() -> None:
 
 
 def test_remote_chat_wraps_codex_delegation_by_default() -> None:
-    spec = importlib.util.spec_from_file_location("kairos_remote_test", REMOTE_CLIENT)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    module = load_remote_client_module()
 
     wrapped = module.delegated_message("diagnostica health")
 
     assert "Codex esta hablando con Kairos" in wrapped
     assert wrapped.endswith("diagnostica health")
     assert module.delegated_message("diagnostica health", raw_message=True) == "diagnostica health"
+
+
+def test_remote_doctor_report_can_emit_json(monkeypatch, capsys, tmp_path) -> None:
+    module = load_remote_client_module()
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("fake", encoding="utf-8")
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.40",
+        user="maurol",
+        repo="/home/maurol/dev/K-Chat",
+        identity_file=str(identity),
+        service_url="http://192.168.1.40:8000",
+    )
+
+    monkeypatch.setattr(
+        module,
+        "collect_doctor_checks",
+        lambda _profile: [
+            module.DoctorCheck(name="profile", ok=True, detail="ok"),
+            module.DoctorCheck(name="health", ok=False, detail="degraded", hint="revisar health"),
+        ],
+    )
+
+    assert module.action_doctor(profile, json_output=True) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["ok"] is False
+    assert payload["passed"] == 1
+    assert payload["total"] == 2
+    assert payload["checks"][1]["hint"] == "revisar health"
+
+
+def test_remote_doctor_hint_names_common_lan_failures() -> None:
+    module = load_remote_client_module()
+
+    assert "SSH no autentica" in module.doctor_hint("ssh", stderr="Permission denied (publickey)")
+    assert "KAIROS_PEER_URLS" in module.doctor_hint("sync_status")
+    assert "puerto SSH" in module.doctor_hint("ssh", detail="connection refused")
 
 
 def test_windows_control_has_valid_powershell_syntax() -> None:

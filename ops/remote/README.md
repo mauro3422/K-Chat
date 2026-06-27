@@ -38,12 +38,18 @@ KAIROS_LINUX_BASE_URL
 ```bash
 python ops/remote/kairos_remote.py list
 python ops/remote/kairos_remote.py doctor --node linux
+python ops/remote/kairos_remote.py doctor --node linux --json
 python ops/remote/kairos_remote.py health --node linux
 python ops/remote/kairos_remote.py pull --node linux
 python ops/remote/kairos_remote.py restart --node linux
 python ops/remote/kairos_remote.py logs --node linux --lines 200
 python ops/remote/kairos_remote.py chat --node linux --message "respondé solo pong"
 ```
+
+`doctor` is the main field check for remote operations. It validates the node
+profile, SSH, repo state, control script, Python, `/health`, node state, sync and
+failover. Human output includes a `likely` line when something fails; `--json`
+emits the same checks as structured data for a future Kairos tool.
 
 By default, `chat` wraps the message with a short Codex delegation guide. This
 lets the remote Kairos know that the request comes from an operator/agent doing

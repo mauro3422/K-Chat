@@ -10,7 +10,8 @@ param(
     [string]$IdentityFile="$HOME\.ssh\kairos_linux_ed25519",
     [string]$Message='', [string]$SessionId='', [string]$Model='',
     [string]$Title='', [string]$TaskId='', [string]$TaskStatus='', [string]$Priority='normal',
-    [switch]$RawMessage
+    [switch]$RawMessage,
+    [switch]$Json
 )
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -34,7 +35,11 @@ function Quote-Bash([string]$Value){
 
 switch($Action){
     'ListNodes' { Invoke-RemoteClient @('list') }
-    'Doctor' { Invoke-RemoteClient @('doctor','--node',$Node) }
+    'Doctor' {
+        $args=@('doctor','--node',$Node)
+        if($Json){$args += @('--json')}
+        Invoke-RemoteClient $args
+    }
     'Health' { Invoke-RemoteClient @('health','--node',$Node) }
     'Pull' { Invoke-RemoteClient @('pull','--node',$Node) }
     'Restart' { Invoke-RemoteClient @('restart','--node',$Node) }
