@@ -34,6 +34,7 @@ class Step:
     ok: bool
     detail: str = ""
     node: str = ""
+    hint: str = ""
     data: dict[str, Any] = field(default_factory=dict)
 
 
@@ -95,8 +96,52 @@ def short_json(data: Any, limit: int = 360) -> str:
     return rendered if len(rendered) <= limit else rendered[: limit - 3] + "..."
 
 
-def expect(condition: bool, name: str, *, node: str = "", detail: str = "", data: dict[str, Any] | None = None) -> Step:
-    return Step(name=name, ok=condition, node=node, detail=detail, data=data or {})
+def expect(
+    condition: bool,
+    name: str,
+    *,
+    node: str = "",
+    detail: str = "",
+    hint: str = "",
+    data: dict[str, Any] | None = None,
+) -> Step:
+    return Step(name=name, ok=condition, node=node, detail=detail, hint=hint, data=data or {})
+
+
+def failure_hint(name: str, detail: str = "", data: dict[str, Any] | None = None) -> str:
+    text = f"{name} {detail} {short_json(data or {}, limit=220)}".lower()
+    if "cannot reach" in text or "timed out" in text or "connection refused" in text:
+        return "El nodo no responde por LAN: revisar IP/puerto, firewall y que el servidor este levantado."
+    if "health" in name and ("database" in text or "degraded" in text):
+        return "El health no esta sano: revisar /health del nodo y logs del proceso Kairos."
+    if "node state" in name:
+        return "El nodo no expone identidad estable: revisar KAIROS_NODE_ID, KAIROS_NODE_ROLE y reiniciar."
+    if "role" in name or "topology" in name:
+        return "La topologia esperada es una primary y una secondary: revisar KAIROS_NODE_ROLE en ambos .env."
+    if "heartbeat" in name:
+        return "Los heartbeats no cruzan: revisar KAIROS_PEER_URLS, base_url LAN y reiniciar ambos nodos."
+    if "sync" in name or "snapshot" in name or "memory" in name:
+        return "La memoria no esta fresca o no se replica: revisar /api/node/sync/status y conflictos de memoria."
+    if "failover" in name or "promote" in name:
+        return "El failover esta dudoso: revisar /api/node/failover/status y el lease de liderazgo."
+    return "Revisar el endpoint indicado y comparar con RUNBOOK_LAN_SYNC.md."
+
+
+def request_step(
+    client: Client,
+    method: str,
+    node: Node,
+    path: str,
+    name: str,
+    *,
+    payload: dict[str, Any] | None = None,
+    params: dict[str, str] | None = None,
+) -> tuple[dict[str, Any] | None, Step | None]:
+    try:
+        return client.request(method, node, path, payload=payload, params=params), None
+    except Exception as exc:
+        detail = str(exc)
+        return None, expect(False, name, node=node.name, detail=detail, hint=failure_hint(name, detail))
 
 
 def get_path(data: dict[str, Any], path: str, default: Any = None) -> Any:
@@ -121,6 +166,10 @@ def find_primary(primary_state: dict[str, Any], secondary_state: dict[str, Any])
     if secondary_state.get("role") == "primary":
         return secondary_state
     return primary_state
+
+
+def role_summary(states: dict[str, dict[str, Any]]) -> dict[str, str]:
+    return {name: str(state.get("role", "")).strip() for name, state in states.items()}
 
 
 def wait_for_snapshot_match(
@@ -155,26 +204,35 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
     health: dict[str, dict[str, Any]] = {}
     states: dict[str, dict[str, Any]] = {}
     for node in (primary, secondary):
-        try:
-            health[node.name] = client.request("GET", node, "/health")
-            steps.append(expect(health[node.name].get("status") == "ok", "health.status == ok", node=node.name, data=health[node.name]))
-        except Exception as exc:
-            steps.append(expect(False, "health reachable", node=node.name, detail=str(exc)))
+        payload, failure = request_step(client, "GET", node, "/health", "health reachable")
+        if failure:
+            steps.append(failure)
             return steps
-
-        try:
-            states[node.name] = client.request("GET", node, "/api/node/state")
-            steps.append(
-                expect(
-                    bool(states[node.name].get("node_id")) and states[node.name].get("healthy") is True,
-                    "node state healthy with node_id",
-                    node=node.name,
-                    data=states[node.name],
-                )
+        health[node.name] = payload or {}
+        steps.append(
+            expect(
+                health[node.name].get("status") == "ok",
+                "health.status == ok",
+                node=node.name,
+                hint=failure_hint("health.status == ok", data=health[node.name]),
+                data=health[node.name],
             )
-        except Exception as exc:
-            steps.append(expect(False, "node state reachable", node=node.name, detail=str(exc)))
+        )
+
+        payload, failure = request_step(client, "GET", node, "/api/node/state", "node state reachable")
+        if failure:
+            steps.append(failure)
             return steps
+        states[node.name] = payload or {}
+        steps.append(
+            expect(
+                bool(states[node.name].get("node_id")) and states[node.name].get("healthy") is True,
+                "node state healthy with node_id",
+                node=node.name,
+                hint=failure_hint("node state healthy with node_id", data=states[node.name]),
+                data=states[node.name],
+            )
+        )
 
     primary_id = str(states["primary"].get("node_id", "")).strip()
     secondary_id = str(states["secondary"].get("node_id", "")).strip()
@@ -183,6 +241,26 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
             bool(primary_id and secondary_id and primary_id != secondary_id),
             "distinct node ids",
             detail=f"primary={primary_id!r} secondary={secondary_id!r}",
+            hint=failure_hint("node state healthy with node_id"),
+        )
+    )
+    roles = role_summary(states)
+    steps.append(
+        expect(
+            sorted(roles.values()) == ["primary", "secondary"],
+            "topology has one primary and one secondary",
+            detail=short_json(roles),
+            hint=failure_hint("topology role mismatch", data=roles),
+            data={"roles": roles},
+        )
+    )
+    steps.append(
+        expect(
+            states["primary"].get("role") == "primary" and states["secondary"].get("role") == "secondary",
+            "provided URLs match primary/secondary roles",
+            detail=short_json(roles),
+            hint="Si las URLs estan invertidas, pasalas como: python scripts/lan_field_smoke.py --primary-url URL_PRIMARY --secondary-url URL_SECONDARY.",
+            data={"roles": roles},
         )
     )
 
@@ -207,30 +285,42 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
         ),
     ]
     for target, payload in heartbeat_payloads:
-        try:
-            response = client.request("POST", target, "/api/node/heartbeat", payload=payload)
-            steps.append(expect(response.get("ok") is True, "heartbeat accepted", node=target.name, data=response))
-        except Exception as exc:
-            steps.append(expect(False, "heartbeat accepted", node=target.name, detail=str(exc)))
+        response, failure = request_step(client, "POST", target, "/api/node/heartbeat", "heartbeat accepted", payload=payload)
+        if failure:
+            steps.append(failure)
+            continue
+        steps.append(expect((response or {}).get("ok") is True, "heartbeat accepted", node=target.name, hint=failure_hint("heartbeat accepted", data=response), data=response or {}))
 
-    states["primary"] = client.request("GET", primary, "/api/node/state")
-    states["secondary"] = client.request("GET", secondary, "/api/node/state")
-    steps.append(expect(secondary_id in peer_ids(states["primary"]), "primary recorded secondary heartbeat", node="primary", data=states["primary"]))
-    steps.append(expect(primary_id in peer_ids(states["secondary"]), "secondary recorded primary heartbeat", node="secondary", data=states["secondary"]))
+    for node in (primary, secondary):
+        payload, failure = request_step(client, "GET", node, "/api/node/state", "node state reachable after heartbeat")
+        if failure:
+            steps.append(failure)
+        else:
+            states[node.name] = payload or {}
+    steps.append(expect(secondary_id in peer_ids(states["primary"]), "primary recorded secondary heartbeat", node="primary", hint=failure_hint("heartbeat recorded", data=states["primary"]), data=states["primary"]))
+    steps.append(expect(primary_id in peer_ids(states["secondary"]), "secondary recorded primary heartbeat", node="secondary", hint=failure_hint("heartbeat recorded", data=states["secondary"]), data=states["secondary"]))
 
     sync_status: dict[str, dict[str, Any]] = {}
     failover_status: dict[str, dict[str, Any]] = {}
     for node in (primary, secondary):
-        sync_status[node.name] = client.request("GET", node, "/api/node/sync/status")
+        sync_payload, sync_failure = request_step(client, "GET", node, "/api/node/sync/status", "sync status reachable")
+        if sync_failure:
+            steps.append(sync_failure)
+            continue
+        sync_status[node.name] = sync_payload or {}
         sync = sync_status[node.name].get("sync", {})
         cluster = sync_status[node.name].get("cluster", {})
-        steps.append(expect(sync_status[node.name].get("ok") is True, "sync status ok", node=node.name, data=sync_status[node.name]))
-        steps.append(expect(sync.get("memory_is_fresh") is True, "sync.memory_is_fresh == true", node=node.name, data=sync_status[node.name]))
-        steps.append(expect(int(cluster.get("reachable_peers", 0)) >= 1, "cluster has reachable peer", node=node.name, data=sync_status[node.name]))
+        steps.append(expect(sync_status[node.name].get("ok") is True, "sync status ok", node=node.name, hint=failure_hint("sync status ok", data=sync_status[node.name]), data=sync_status[node.name]))
+        steps.append(expect(sync.get("memory_is_fresh") is True, "sync.memory_is_fresh == true", node=node.name, hint=failure_hint("sync.memory_is_fresh", data=sync_status[node.name]), data=sync_status[node.name]))
+        steps.append(expect(int(cluster.get("reachable_peers", 0)) >= 1, "cluster has reachable peer", node=node.name, hint=failure_hint("heartbeat cluster peer", data=sync_status[node.name]), data=sync_status[node.name]))
 
-        failover_status[node.name] = client.request("GET", node, "/api/node/failover/status")
-        steps.append(expect(failover_status[node.name].get("ok") is True, "failover status ok", node=node.name, data=failover_status[node.name]))
-        steps.append(expect(failover_status[node.name].get("should_promote") is False, "failover should_promote == false", node=node.name, data=failover_status[node.name]))
+        failover_payload, failover_failure = request_step(client, "GET", node, "/api/node/failover/status", "failover status reachable")
+        if failover_failure:
+            steps.append(failover_failure)
+            continue
+        failover_status[node.name] = failover_payload or {}
+        steps.append(expect(failover_status[node.name].get("ok") is True, "failover status ok", node=node.name, hint=failure_hint("failover status ok", data=failover_status[node.name]), data=failover_status[node.name]))
+        steps.append(expect(failover_status[node.name].get("should_promote") is False, "failover should_promote == false", node=node.name, hint=failure_hint("failover should_promote", data=failover_status[node.name]), data=failover_status[node.name]))
 
     if args.skip_write:
         return steps
@@ -253,7 +343,8 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
         )
         steps.append(expect(write_response.get("ok") is True and write_response.get("granted") is True, "memory write granted on primary", node=writer.name, data=write_response))
     except Exception as exc:
-        steps.append(expect(False, "memory write granted on primary", node=writer.name, detail=str(exc)))
+        detail = str(exc)
+        steps.append(expect(False, "memory write granted on primary", node=writer.name, detail=detail, hint=failure_hint("memory write granted on primary", detail)))
         return steps
 
     try:
@@ -265,7 +356,8 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
         )
         steps.append(expect(sync_response.get("ok") is True, "memory sync endpoint ok", node=writer.name, data=sync_response))
     except Exception as exc:
-        steps.append(expect(False, "memory sync endpoint ok", node=writer.name, detail=str(exc)))
+        detail = str(exc)
+        steps.append(expect(False, "memory sync endpoint ok", node=writer.name, detail=detail, hint=failure_hint("memory sync endpoint ok", detail)))
 
     matched, snapshot = wait_for_snapshot_match(client, reader, probe_key, attempts=args.sync_attempts, delay=args.sync_delay)
     source_mode = get_path(snapshot, "source.mode", "")
@@ -275,10 +367,11 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
             "secondary can see probe memory",
             node=reader.name,
             detail=f"source.mode={source_mode!r}",
+            hint=failure_hint("memory snapshot can see probe", data=snapshot),
             data=snapshot,
         )
     )
-    steps.append(expect(get_path(snapshot, "memory.is_fresh", False) is True, "probe memory snapshot is fresh", node=reader.name, data=snapshot))
+    steps.append(expect(get_path(snapshot, "memory.is_fresh", False) is True, "probe memory snapshot is fresh", node=reader.name, hint=failure_hint("memory snapshot fresh", data=snapshot), data=snapshot))
 
     if args.promote_secondary:
         target = secondary
@@ -287,7 +380,8 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
             role = get_path(promote, "state.role", "")
             steps.append(expect(promote.get("ok") is True and role == "primary", "manual failover promote secondary", node=target.name, data=promote))
         except Exception as exc:
-            steps.append(expect(False, "manual failover promote secondary", node=target.name, detail=str(exc)))
+            detail = str(exc)
+            steps.append(expect(False, "manual failover promote secondary", node=target.name, detail=detail, hint=failure_hint("manual failover promote secondary", detail)))
     else:
         steps.append(expect(True, "manual failover promote secondary skipped", detail="use --promote-secondary to execute it"))
 
@@ -305,7 +399,8 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
             )
             steps.append(expect(cleanup.get("ok") is True, "probe cleanup requested", node=writer.name, data=cleanup))
         except Exception as exc:
-            steps.append(expect(False, "probe cleanup requested", node=writer.name, detail=str(exc)))
+            detail = str(exc)
+            steps.append(expect(False, "probe cleanup requested", node=writer.name, detail=detail, hint=failure_hint("probe cleanup requested", detail)))
 
     return steps
 
@@ -327,6 +422,9 @@ def print_report(steps: list[Step]) -> None:
         print(prefix)
         if step.detail:
             print(f"  detail: {step.detail}")
+        hint = step.hint or failure_hint(step.name, step.detail, step.data)
+        if hint:
+            print(f"  likely: {hint}")
         if step.data:
             print(f"  data: {short_json(step.data)}")
 

@@ -98,6 +98,20 @@ python scripts/lan_field_smoke.py --primary-url http://127.0.0.1:8000 --secondar
 
 Sin `--promote-secondary`, la prueba solo valida que el failover no pida promoción en estado sano.
 
+El reporte esta pensado para campo:
+
+- si todo pasa, imprime una linea de resumen y `OK`;
+- si algo falla, lista cada check roto con `detail`, `likely` y una muestra corta del JSON recibido;
+- si las URLs estan invertidas, lo marca como error de topologia aunque los nodos respondan;
+- si no queres tocar memoria durante un diagnostico, usa `--skip-write`.
+
+Ejemplo de salida sana:
+
+```text
+LAN field smoke: 27/27 checks passed
+OK: health, node state, heartbeats, sync, memory visibility and failover status passed.
+```
+
 ### Antes de empezar
 
 - Elegí una PC como primaria inicial.
