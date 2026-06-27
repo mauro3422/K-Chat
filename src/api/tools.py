@@ -1,5 +1,7 @@
 """Tool history and widget helpers."""
 
+from src.tools._widget_helpers import sanitize_widget_id
+
 from src.memory.repos import Repositories
 
 

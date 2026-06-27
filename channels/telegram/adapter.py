@@ -467,6 +467,12 @@ async def process_message(
             )
         yield f"__error__:{e}"
 
+    finally:
+        # ── Background vectorization (same as web UI path) ────────────
+        asyncio.create_task(_vectorize_telegram_session(
+            session_id, _late_imports,
+        ))
+
 
 # ─── Session management ────────────────────────────────────────────────
 
@@ -673,6 +679,55 @@ async def _persist_partial_conversation(
                      session_id, len(partial_text))
     except Exception as e:
         logger.warning("Failed to persist partial TG conversation: %s", e)
+
+
+async def _vectorize_telegram_session(
+    session_id: str,
+    li: _LazyImports,
+) -> None:
+    """Background task: vectorize Telegram session after stream completes.
+
+    Same pipeline as the web UI's ``_vectorize_session`` in
+    ``web/services/chat_stream.py``. Runs silently — failures are logged
+    but never block the response.
+    """
+    try:
+        import importlib
+        repos = li.get_repos()
+        _vs = importlib.import_module("src.memory.vectorize_sessions").vectorize_session
+        heuristic_mod = importlib.import_module("src.memory.clustering.heuristic")
+        relations_mod = importlib.import_module("src.memory.clustering.relations")
+        linker_mod = importlib.import_module("src.memory.entity.linker")
+        resolve_memory_db_path = importlib.import_module("src.memory.memory_db_path").resolve_memory_db_path
+        HeuristicClusterer = heuristic_mod.HeuristicClusterer
+        flush_clusters_to_db = heuristic_mod.flush_clusters_to_db
+        detect_relations = relations_mod.detect_relations
+        flush_relations_to_db = relations_mod.flush_relations_to_db
+        EntityLinker = linker_mod.EntityLinker
+        flush_entities_to_db = linker_mod.flush_entities_to_db
+        flush_entity_relations_to_db = linker_mod.flush_relations_to_db
+        flush_entity_mentions_to_db = linker_mod.flush_entity_mentions_to_db
+
+        db_path = resolve_memory_db_path()
+        clusterer = HeuristicClusterer()
+        linker = EntityLinker()
+
+        count, noise, mappings, _ = await _vs(
+            session_id, clusterer=clusterer, repos=repos, linker=linker,
+        )
+        if count > 0:
+            await flush_clusters_to_db(clusterer, db_path, mappings=mappings)
+            cluster_dicts = [c.as_dict for c in clusterer.clusters.values()]
+            relations = detect_relations(cluster_dicts)
+            if relations:
+                await flush_relations_to_db(relations, db_path)
+            await flush_entities_to_db(linker, db_path)
+            await flush_entity_relations_to_db(linker, db_path)
+            await flush_entity_mentions_to_db(linker, db_path)
+            logger.info("Vectorized TG session %s: %d exchanges (%d noise, %d clusters, %d entities)",
+                        session_id, count, noise, len(clusterer.clusters), len(linker.get_entities()))
+    except Exception:
+        logger.exception("Failed to vectorize TG session %s (non-fatal)", session_id)
 
 
 class _LazyImports:

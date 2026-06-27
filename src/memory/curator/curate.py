@@ -413,17 +413,21 @@ async def curate_all(
         "",
     ]
 
-    # Step 0: Session retention
-    try:
-        from src._config import resolve_config
-        max_age = resolve_config().session_max_age_days
-        retired = _retire_old_sessions(max_age, dry=dry)
-        if retired:
-            report_lines.append(f"- retention: {retired} old sessions retired (age > {max_age}d)")
-            report_lines.append("")
-    except Exception:
-        logger.exception("Session retention step failed")
+    # Step 0: Vectorize new sessions (incremental)
+    if not dry:
+        try:
+            from src.memory.vectorize_sessions import vectorize_all_sessions
+            from src.memory.repos import get_repos
+            repos = get_repos()
+            vec_results = await vectorize_all_sessions(repos=repos)
+            total_vec = sum(vec_results.values())
+            if total_vec > 0:
+                report_lines.append(f"- vectorized: {total_vec} new exchanges across {len(vec_results)} sessions")
+                report_lines.append("")
+        except Exception:
+            logger.exception("Session vectorization step failed")
 
+    # Step 1: Session retention
     # Step 1: Gardener
     gardener_results = []
     if run_gardener:

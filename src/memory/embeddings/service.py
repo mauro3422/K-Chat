@@ -1,13 +1,13 @@
 """Embedding service using fastembed (sentence-transformers via ONNX).
 
-The active embedding model is kept on a context-local service instance so the
-runtime can inject or reset it explicitly without a process-wide singleton.
-The model stays lazy-loaded and can be unloaded after idle time.
+The active embedding model lives as a module-level singleton so that all
+threads and asyncio contexts share the same loaded model.  The model is
+thread-safe (RLock inside EmbeddingService) and loads lazily on the first
+call, then stays resident for the life of the process.
 """
 
 from __future__ import annotations
 
-from contextvars import ContextVar
 import logging
 import threading
 import time
@@ -106,19 +106,25 @@ class EmbeddingService:
 
 IDLE_TIMEOUT: float = 999999.0  # Nunca descargar de RAM
 
-_current_service: ContextVar[EmbeddingService | None] = ContextVar(
-    "kairos_embedding_service",
-    default=None,
-)
+_service: EmbeddingService | None = None
+_service_lock: threading.Lock = threading.Lock()
 
 
 def get_service() -> EmbeddingService:
-    """Get the context-local embedding service."""
-    service = _current_service.get()
-    if service is None:
-        service = EmbeddingService()
-        _current_service.set(service)
-    return service
+    """Get or create the shared embedding service (module-level singleton).
+
+    The EmbeddingService is thread-safe (uses RLock internally), so a single
+    instance can be shared safely across all threads and asyncio contexts.
+    This avoids reloading the ONNX model on every call, which was the previous
+    behaviour with per-context ContextVar (each thread call loaded the model
+    from disk again).
+    """
+    global _service
+    if _service is None:
+        with _service_lock:
+            if _service is None:
+                _service = EmbeddingService()
+    return _service
 
 
 def configure_model(model: Optional[TextEmbedding]) -> None:
@@ -127,9 +133,9 @@ def configure_model(model: Optional[TextEmbedding]) -> None:
 
 
 def reset_model() -> None:
-    """Replace the current context service with a fresh lazy instance."""
-    _current_service.set(EmbeddingService())
-
+    """Replace the shared service with a fresh lazy instance."""
+    global _service
+    _service = EmbeddingService()
 
 def get_model() -> Optional[TextEmbedding]:
     """Get or initialize the embedding model through the active service."""
