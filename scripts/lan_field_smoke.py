@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-DEFAULT_TIMEOUT = 5.0
+DEFAULT_TIMEOUT = 30.0
 
 
 @dataclass(frozen=True)

@@ -3,11 +3,18 @@ param(
     [ValidateSet('Install','Uninstall','Start','Stop','Restart','Status')]
     [string]$Action = 'Status',
     [string]$TaskName = 'KairosWeb',
-    [string]$Repo = (Split-Path -Parent $PSScriptRoot),
+    [string]$Repo = '',
     [int]$Port = 8000
 )
 
 $ErrorActionPreference = 'Stop'
+if(-not $Repo){
+    $scriptRoot = $PSScriptRoot
+    if(-not $scriptRoot){
+        $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    $Repo = Split-Path -Parent $scriptRoot
+}
 $Repo = (Resolve-Path -LiteralPath $Repo).Path
 $venvPythonw = Join-Path $Repo '.venv\Scripts\pythonw.exe'
 $venvPython = Join-Path $Repo '.venv\Scripts\python.exe'

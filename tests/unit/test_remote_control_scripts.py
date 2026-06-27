@@ -203,6 +203,16 @@ def test_windows_service_is_persistent_and_has_bounded_shutdown() -> None:
     compile(runner, str(WINDOWS_RUNNER), "exec")
 
 
+def test_windows_service_repo_default_is_resolved_after_param_binding() -> None:
+    source = WINDOWS_SERVICE_SCRIPT.read_text(encoding="utf-8")
+    param_block = source.split("param(", 1)[1].split("\n)\n", 1)[0]
+
+    assert "[string]$Repo = ''" in param_block
+    assert "if(-not $Repo)" in source
+    assert "$MyInvocation.MyCommand.Path" in source
+    assert "[string]$Repo = (Split-Path -Parent $PSScriptRoot)" not in source
+
+
 def test_linux_bootstrap_firewall_does_not_assume_one_subnet() -> None:
     source = BOOTSTRAP_SCRIPT.read_text(encoding="utf-8")
     assert "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16" in source
