@@ -126,7 +126,10 @@ def _runtime_mode(snapshot: dict, cluster: dict, queue_size: int, failover: dict
 
 def _memory_write_mode(snapshot: dict, mode: str) -> dict:
     role = str(snapshot.get("role", "secondary"))
+    preferred_role = str(snapshot.get("preferred_role", "secondary"))
     has_recent_primary = snapshot.get("has_recent_primary") is True
+    if role == "primary" and preferred_role != "primary":
+        return {"can_write": True, "mode": "temporary_primary_replay", "target": "local_then_peer_primary"}
     if role == "primary":
         return {"can_write": True, "mode": "local_primary", "target": "local"}
     if has_recent_primary:
@@ -317,6 +320,8 @@ async def node_event(payload: NodeEventPayload, request: Request) -> JSONRespons
 @router.post("/memory/request")
 async def memory_request(payload: NodeMemoryWritePayload, request: Request) -> JSONResponse:
     coordinator = _get_coordinator(request)
+    config = getattr(request.app.state, "config", None)
+    preferred_role = str(getattr(config, "node_role", "secondary"))
     if not await coordinator.is_primary():
         queue = _get_memory_queue(request)
         queued = queue.enqueue(payload.key, payload.value, source_node=str(payload.source.get("node_id", "")), reason="primary_unavailable")
@@ -333,6 +338,15 @@ async def memory_request(payload: NodeMemoryWritePayload, request: Request) -> J
         _force_local_write=True,
     )
     if result.startswith("[OK]"):
+        replay_request = None
+        if preferred_role != "primary":
+            queue = _get_memory_queue(request)
+            replay_request = queue.enqueue(
+                payload.key,
+                payload.value,
+                source_node=coordinator.node_id,
+                reason="failover_replay_to_preferred_primary",
+            )
         await coordinator.mark_memory_revision({"event": "memory_request", "key": payload.key})
         await coordinator.mark_memory_sync({"event": "memory_request", "key": payload.key})
         completion_event = {
@@ -350,7 +364,11 @@ async def memory_request(payload: NodeMemoryWritePayload, request: Request) -> J
             await bridge.broadcast_event("memory_write_completed", completion_event)
         except Exception:
             pass
-    return JSONResponse({"ok": True, "granted": True, "queued": False, "status": "completed", "result": result})
+    response = {"ok": True, "granted": True, "queued": False, "status": "completed", "result": result}
+    if result.startswith("[OK]") and preferred_role != "primary":
+        response["replay_queued"] = True
+        response["replay_request"] = replay_request.to_dict() if replay_request is not None else None
+    return JSONResponse(response)
 
 
 @router.get("/memory/queue")

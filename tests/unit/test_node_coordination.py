@@ -687,6 +687,91 @@ async def test_node_memory_request_primary_applies_write():
 
 
 @pytest.mark.anyio
+async def test_promoted_secondary_queues_successful_memory_write_for_preferred_primary():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="secondary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+    )
+    fake_bus = MagicMock()
+    fake_bus.publish = AsyncMock()
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+        app.state.event_bus = fake_bus
+        app.state.save_memory_run = AsyncMock(return_value="[OK] memory write applied.")
+        with TestClient(app, raise_server_exceptions=False) as client:
+            promote_response = client.post("/api/node/promote")
+            assert promote_response.status_code == 200
+
+            response = client.post(
+                "/api/node/memory/request",
+                json={"key": "Preferencia", "value": "Python", "source": {"node_id": "field-drill"}},
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["granted"] is True
+            assert body["replay_queued"] is True
+            assert body["replay_request"]["reason"] == "failover_replay_to_preferred_primary"
+            queue_response = client.get("/api/node/memory/queue")
+            assert queue_response.status_code == 200
+            assert queue_response.json()["pending"][0]["key"] == "Preferencia"
+            app.state.save_memory_run.assert_awaited()
+
+
+@pytest.mark.anyio
+async def test_node_runtime_reports_temporary_primary_replay_mode():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="secondary",
+        cluster_name="kairos",
+        peer_urls="",
+        node_heartbeat_ttl=10.0,
+    )
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            promote_response = client.post("/api/node/promote")
+            assert promote_response.status_code == 200
+
+            response = client.get("/api/node/runtime")
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["memory"]["write"]["can_write"] is True
+            assert body["memory"]["write"]["mode"] == "temporary_primary_replay"
+
+
+@pytest.mark.anyio
 async def test_node_memory_request_secondary_queues_when_not_primary():
     from fastapi.testclient import TestClient
     from web.app_factory import create_app

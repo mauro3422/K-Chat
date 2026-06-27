@@ -221,6 +221,44 @@ async def test_promoted_secondary_yields_when_preferred_primary_returns() -> Non
 
 
 @pytest.mark.anyio
+async def test_promoted_secondary_replays_queued_writes_when_preferred_primary_returns(tmp_path: Path) -> None:
+    cfg = SimpleNamespace(
+        host="127.0.0.1",
+        port=8000,
+        peer_urls="http://peer-a:8000",
+        node_base_url="",
+        node_id="secondary-node",
+        node_role="secondary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=12.0,
+    )
+    coordinator = NodeCoordinator(cfg)
+    await coordinator.promote()
+    queue = MemoryWriteQueue(persistence_path=str(tmp_path / "queue.json"))
+    queue.enqueue("Preferencia", "Python", source_node="secondary-node", reason="failover_replay_to_preferred_primary")
+    response = _FakeResponse({
+        "ok": True,
+        "state": {"node_id": "primary-node", "role": "primary", "preferred_role": "primary"},
+    })
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: _FakeClient({"http://peer-a:8000/api/node/heartbeat": response}),
+    )
+    mock_request = AsyncMock(return_value={"ok": True, "granted": True, "queued": False})
+
+    with (
+        patch("src.coordination.lan_bridge.get_memory_write_queue", return_value=queue),
+        patch.object(NodeLanBridge, "request_memory_write", new=mock_request),
+    ):
+        await bridge.broadcast_once()
+
+    assert await coordinator.is_primary() is False
+    assert queue.snapshot() == []
+    mock_request.assert_awaited_once()
+
+
+@pytest.mark.anyio
 async def test_broadcast_event_posts_to_each_peer() -> None:
     cfg = MagicMock(
         host="127.0.0.1",
