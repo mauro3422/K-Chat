@@ -18,6 +18,7 @@ WINDOWS_SCRIPT = ROOT / "scripts" / "remote-kairos.ps1"
 WINDOWS_SERVICE_SCRIPT = ROOT / "scripts" / "kairos-windows-service.ps1"
 WINDOWS_RUNNER = ROOT / "scripts" / "run_windows_service.py"
 LAN_FAILOVER_DRILL = ROOT / "scripts" / "lan_failover_drill.py"
+LAN_FIELD_SMOKE = ROOT / "scripts" / "lan_field_smoke.py"
 REMOTE_CLIENT = ROOT / "ops" / "remote" / "kairos_remote.py"
 REMOTE_NODES_EXAMPLE = ROOT / "ops" / "remote" / "nodes.example.json"
 
@@ -92,6 +93,7 @@ def test_windows_remote_control_maps_recovery_actions() -> None:
     assert "ops\\remote\\kairos_remote.py" in source
     assert "$args=@('chat','--node',$Node,'--message',$Message)" in source
     assert "'lan-doctor'" in source
+    assert "'preflight'" in source
     assert "'task-create'" in source
     assert "'task-update'" in source
     assert "'kairos-python'" in source
@@ -105,6 +107,7 @@ def test_remote_client_has_valid_python_syntax() -> None:
     assert "def action_doctor" in source
     assert "def action_lan_doctor" in source
     assert "lan-doctor" in source
+    assert "preflight" in source
     assert "def action_chat" in source
     assert "CODEX_DELEGATION_GUIDE" in source
     assert "task-create" in source
@@ -125,6 +128,13 @@ def test_lan_failover_drill_has_valid_python_syntax_and_guardrail() -> None:
     assert "--allow-service-control" in source
     assert "primary service emergency start" in source
     assert "temporary_primary_replay" in source
+
+
+def test_lan_field_smoke_restores_memory_file_by_default() -> None:
+    source = LAN_FIELD_SMOKE.read_text(encoding="utf-8")
+    compile(source, str(LAN_FIELD_SMOKE), "exec")
+    assert "restore_memory_file_snapshot" in source
+    assert "--no-restore-memory-file" in source
 
 
 def test_remote_nodes_example_shape() -> None:

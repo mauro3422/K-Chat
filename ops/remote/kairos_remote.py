@@ -755,6 +755,7 @@ def build_parser() -> argparse.ArgumentParser:
             "list",
             "doctor",
             "lan-doctor",
+            "preflight",
             "health",
             "pull",
             "restart",
@@ -796,7 +797,7 @@ def main(argv: list[str] | None = None) -> int:
     profile = require_profile(profiles, args.node)
     if args.action == "doctor":
         return action_doctor(profile, json_output=args.json)
-    if args.action == "lan-doctor":
+    if args.action in {"lan-doctor", "preflight"}:
         return action_lan_doctor(profile, primary_url=args.primary_url, secondary_url=args.secondary_url, json_output=args.json)
     if args.action == "health":
         return action_http_get(profile, "/health")

@@ -16,6 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -197,6 +198,28 @@ def wait_for_snapshot_match(
     return False, last
 
 
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def read_memory_file_snapshot() -> bytes | None:
+    path = repo_root() / "MEMORY.md"
+    if not path.exists():
+        return None
+    return path.read_bytes()
+
+
+def restore_memory_file_snapshot(snapshot: bytes | None) -> bool:
+    if snapshot is None:
+        return False
+    path = repo_root() / "MEMORY.md"
+    current = path.read_bytes() if path.exists() else b""
+    if current == snapshot:
+        return False
+    path.write_bytes(snapshot)
+    return True
+
+
 def run_smoke(args: argparse.Namespace) -> list[Step]:
     client = Client(timeout=args.timeout)
     primary = Node("primary", normalize_url(args.primary_url))
@@ -335,6 +358,7 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
     if args.skip_write:
         return steps
 
+    memory_file_snapshot = None if args.keep_probe or args.no_restore_memory_file else read_memory_file_snapshot()
     probe_key = args.probe_key or f"lan_field_smoke:{int(time.time())}"
     probe_value = f"{args.probe_value} ({time.strftime('%Y-%m-%d %H:%M:%S')})"
     writer = primary if states["primary"].get("role") == "primary" else secondary
@@ -436,6 +460,10 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
             detail = str(exc)
             steps.append(expect(False, "probe cleanup requested", node=writer.name, detail=detail, hint=failure_hint("probe cleanup requested", detail)))
 
+    restored = restore_memory_file_snapshot(memory_file_snapshot)
+    if restored:
+        steps.append(expect(True, "local MEMORY.md restored after probe", detail="probe sync modified text file order"))
+
     return steps
 
 
@@ -501,6 +529,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--probe-value", default=os.getenv("KAIROS_LAN_SMOKE_PROBE_VALUE", "LAN field smoke probe"))
     parser.add_argument("--skip-write", action="store_true", help="Skip the memory write/sync probe.")
     parser.add_argument("--keep-probe", action="store_true", help="Keep the probe memory entry after the run.")
+    parser.add_argument("--no-restore-memory-file", action="store_true", help="Do not restore local MEMORY.md after the probe cleanup.")
     parser.add_argument("--promote-secondary", action="store_true", help="Actually POST /api/node/promote on the secondary node.")
     return parser
 

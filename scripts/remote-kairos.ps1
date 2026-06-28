@@ -49,6 +49,13 @@ switch($Action){
         if($Json){$args += @('--json')}
         Invoke-RemoteClient $args
     }
+    'Preflight' {
+        $args=@('preflight','--node',$Node)
+        if($PrimaryUrl){$args += @('--primary-url',$PrimaryUrl)}
+        if($SecondaryUrl){$args += @('--secondary-url',$SecondaryUrl)}
+        if($Json){$args += @('--json')}
+        Invoke-RemoteClient $args
+    }
     'Health' { Invoke-RemoteClient @('health','--node',$Node) }
     'Pull' { Invoke-RemoteClient @('pull','--node',$Node) }
     'Restart' { Invoke-RemoteClient @('restart','--node',$Node) }
@@ -103,7 +110,6 @@ switch($Action){
     }
     default {
         $legacy=switch($Action){
-            'Preflight' {'preflight'}
             'Backup' {'backup'}
             'Restore' {if(-not $BackupId){throw 'Pasá -BackupId con el identificador del backup.'}; "restore $(Quote-Bash $BackupId)"}
             'Update' {'update'}
