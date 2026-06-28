@@ -85,12 +85,13 @@ def test_update_orders_preflight_backup_and_previous_commit() -> None:
 
 def test_windows_remote_control_maps_recovery_actions() -> None:
     source = WINDOWS_SCRIPT.read_text(encoding="utf-8")
-    for action in ("Preflight", "Backup", "Pull", "Rollback", "Doctor", "ListNodes", "Chat", "TaskCreate", "TaskList", "TaskShow", "TaskUpdate"):
+    for action in ("Preflight", "Backup", "Pull", "Rollback", "Doctor", "LanDoctor", "ListNodes", "Chat", "TaskCreate", "TaskList", "TaskShow", "TaskUpdate"):
         assert action in source
     for command in ("'preflight'", "'backup'", "'Restore'", "'rollback'"):
         assert command in source
     assert "ops\\remote\\kairos_remote.py" in source
     assert "$args=@('chat','--node',$Node,'--message',$Message)" in source
+    assert "'lan-doctor'" in source
     assert "'task-create'" in source
     assert "'task-update'" in source
     assert "Invoke-RemoteClient $args" in source
@@ -101,6 +102,8 @@ def test_remote_client_has_valid_python_syntax() -> None:
     compile(source, str(REMOTE_CLIENT), "exec")
     assert "git pull --ff-only --autostash" in source
     assert "def action_doctor" in source
+    assert "def action_lan_doctor" in source
+    assert "lan-doctor" in source
     assert "def action_chat" in source
     assert "CODEX_DELEGATION_GUIDE" in source
     assert "task-create" in source
@@ -125,6 +128,42 @@ def test_remote_nodes_example_shape() -> None:
     linux = data["nodes"]["linux"]
     for key in ("host", "user", "repo", "identityFile", "serviceUrl"):
         assert key in linux
+
+
+def test_lan_doctor_report_can_emit_json(monkeypatch, capsys, tmp_path) -> None:
+    module = load_remote_client_module()
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("fake", encoding="utf-8")
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.40",
+        user="maurol",
+        repo="/home/maurol/dev/K-Chat",
+        identity_file=str(identity),
+        service_url="http://192.168.1.40:8000",
+    )
+
+    monkeypatch.setattr(
+        module,
+        "collect_lan_doctor_checks",
+        lambda _profile, *, primary_url, secondary_url: [
+            module.DoctorCheck(name="local_health", ok=True, detail=primary_url),
+            module.DoctorCheck(name="lan_smoke", ok=False, detail=secondary_url, hint="revisar smoke"),
+        ],
+    )
+
+    assert module.action_lan_doctor(
+        profile,
+        primary_url="http://primary:8000",
+        secondary_url="http://secondary:8000",
+        json_output=True,
+    ) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["ok"] is False
+    assert payload["primary_url"] == "http://primary:8000"
+    assert payload["secondary_url"] == "http://secondary:8000"
+    assert payload["checks"][1]["hint"] == "revisar smoke"
 
 
 def test_remote_chat_wraps_codex_delegation_by_default() -> None:

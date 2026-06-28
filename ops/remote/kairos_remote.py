@@ -360,6 +360,141 @@ def _http_json(profile: NodeProfile, path: str, payload: dict[str, Any] | None =
     return parsed
 
 
+def _http_json_url(url: str, *, timeout: float = 20) -> dict[str, Any]:
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        raw = response.read().decode("utf-8", errors="replace")
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        raise ValueError(f"unexpected JSON response from {url}")
+    return parsed
+
+
+def _local_command_check(name: str, command: list[str], *, timeout: int = 30) -> DoctorCheck:
+    try:
+        result = subprocess.run(command, cwd=repo_root(), text=True, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        detail = f"timeout after {exc.timeout}s"
+        return DoctorCheck(name=name, ok=False, detail=detail, hint="El comando local no termino a tiempo.")
+    except OSError as exc:
+        detail = str(exc)
+        return DoctorCheck(name=name, ok=False, detail=detail, hint="No se pudo ejecutar el comando local.")
+    stdout = _short(result.stdout or "")
+    stderr = _short(result.stderr or "")
+    ok = result.returncode == 0
+    detail = "ok" if ok else f"exit={result.returncode}"
+    return DoctorCheck(name=name, ok=ok, detail=detail, hint="" if ok else "Revisar repo local y salida del comando.", stdout=stdout, stderr=stderr)
+
+
+def _local_http_check(name: str, base_url: str, path: str, *, timeout: float = 8) -> DoctorCheck:
+    url = base_url.rstrip("/") + path
+    try:
+        data = _http_json_url(url, timeout=timeout)
+    except Exception as exc:
+        detail = f"{url}: {exc}"
+        return DoctorCheck(name=name, ok=False, detail=detail, hint="El nodo local no responde por HTTP: revisar servicio, IP/puerto y firewall.")
+    ok = bool(data.get("ok", True))
+    if name == "local_health":
+        ok = data.get("status") == "ok"
+    if name == "local_runtime":
+        ok = data.get("mode") == "normal"
+    rendered = json.dumps(data, ensure_ascii=False, sort_keys=True)
+    return DoctorCheck(name=name, ok=ok, detail="ok" if ok else "unexpected response", hint="" if ok else "El nodo local responde pero no esta en estado normal.", stdout=_short(rendered))
+
+
+def _smoke_check(primary_url: str, secondary_url: str, *, timeout: int = 180) -> DoctorCheck:
+    command = [
+        sys.executable,
+        str(repo_root() / "scripts" / "lan_field_smoke.py"),
+        "--primary-url",
+        primary_url.rstrip("/"),
+        "--secondary-url",
+        secondary_url.rstrip("/"),
+        "--sync-attempts",
+        "4",
+        "--sync-delay",
+        "1",
+    ]
+    try:
+        result = subprocess.run(command, cwd=repo_root(), text=True, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        detail = f"timeout after {exc.timeout}s"
+        return DoctorCheck(name="lan_smoke", ok=False, detail=detail, hint="El smoke LAN quedo colgado: revisar locks de memoria y salud de ambos servicios.")
+    stdout = _short(result.stdout or "", limit=2000)
+    stderr = _short(result.stderr or "", limit=1200)
+    ok = result.returncode == 0
+    return DoctorCheck(
+        name="lan_smoke",
+        ok=ok,
+        detail="ok" if ok else f"exit={result.returncode}",
+        hint="" if ok else "Smoke LAN fallo: leer el reporte corto y corregir el primer failure.",
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+def collect_lan_doctor_checks(profile: NodeProfile, *, primary_url: str, secondary_url: str) -> list[DoctorCheck]:
+    checks = [
+        _local_command_check("local_git", ["git", "status", "--short", "--branch"]),
+        _local_command_check("local_head", ["git", "rev-parse", "--short", "HEAD"]),
+        _local_http_check("local_health", primary_url, "/health"),
+        _local_http_check("local_runtime", primary_url, "/api/node/runtime"),
+    ]
+    checks.extend(
+        DoctorCheck(
+            name=f"remote_{check.name}",
+            ok=check.ok,
+            detail=check.detail,
+            hint=check.hint,
+            stdout=check.stdout,
+            stderr=check.stderr,
+        )
+        for check in collect_doctor_checks(profile)
+    )
+    checks.append(_smoke_check(primary_url, secondary_url))
+    return checks
+
+
+def print_lan_doctor_report(profile: NodeProfile, checks: list[DoctorCheck], *, primary_url: str, secondary_url: str) -> None:
+    failed = [check for check in checks if not check.ok]
+    print(f"Kairos LAN doctor: {len(checks) - len(failed)}/{len(checks)} checks passed")
+    print(f"primary={primary_url.rstrip('/')} secondary={secondary_url.rstrip('/')} remote_node={profile.name}")
+    for check in checks:
+        status = "OK" if check.ok else "FAIL"
+        print(f"\n[{status}] {check.name}: {check.detail}")
+        if check.stdout:
+            print(check.stdout)
+        if check.stderr:
+            print(check.stderr, file=sys.stderr)
+        if check.hint:
+            print(f"likely: {check.hint}")
+    if failed:
+        print("\nNext checks:")
+        print("- Corregir el primer FAIL; suele arrastrar los siguientes.")
+        print("- Si remote_* falla pero local esta OK, correr doctor remoto del nodo.")
+        print("- Si lan_smoke falla, revisar el reporte corto del smoke.")
+
+
+def action_lan_doctor(profile: NodeProfile, *, primary_url: str, secondary_url: str, json_output: bool = False) -> int:
+    primary = primary_url.rstrip("/") or os.environ.get("KAIROS_LAN_PRIMARY_URL", "http://127.0.0.1:8000").rstrip("/")
+    secondary = secondary_url.rstrip("/") or profile.base_url
+    checks = collect_lan_doctor_checks(profile, primary_url=primary, secondary_url=secondary)
+    failed = [check for check in checks if not check.ok]
+    if json_output:
+        payload = {
+            "ok": not failed,
+            "primary_url": primary,
+            "secondary_url": secondary,
+            "remote_node": profile.name,
+            "passed": len(checks) - len(failed),
+            "total": len(checks),
+            "checks": [check.to_dict() for check in checks],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print_lan_doctor_report(profile, checks, primary_url=primary, secondary_url=secondary)
+    return 1 if failed else 0
+
+
 def action_task_create(profile: NodeProfile, *, title: str, message: str, session_id: str = "", priority: str = "normal") -> int:
     if not title.strip():
         raise SystemExit("task-create requires --title")
@@ -492,6 +627,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[
             "list",
             "doctor",
+            "lan-doctor",
             "health",
             "pull",
             "restart",
@@ -508,6 +644,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--node", default=os.environ.get("KAIROS_REMOTE_NODE", "linux"))
     parser.add_argument("--config", default=os.environ.get("KAIROS_REMOTE_NODES_CONFIG", str(default_config_path())))
+    parser.add_argument("--primary-url", default=os.environ.get("KAIROS_LAN_PRIMARY_URL", "http://127.0.0.1:8000"))
+    parser.add_argument("--secondary-url", default=os.environ.get("KAIROS_LAN_SECONDARY_URL", ""))
     parser.add_argument("--command", default="")
     parser.add_argument("--lines", type=int, default=150)
     parser.add_argument("--message", default="")
@@ -530,6 +668,8 @@ def main(argv: list[str] | None = None) -> int:
     profile = require_profile(profiles, args.node)
     if args.action == "doctor":
         return action_doctor(profile, json_output=args.json)
+    if args.action == "lan-doctor":
+        return action_lan_doctor(profile, primary_url=args.primary_url, secondary_url=args.secondary_url, json_output=args.json)
     if args.action == "health":
         return action_http_get(profile, "/health")
     if args.action == "pull":

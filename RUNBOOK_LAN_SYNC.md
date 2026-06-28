@@ -100,6 +100,27 @@ python scripts/lan_field_smoke.py --primary-url http://127.0.0.1:8000 --secondar
 
 Sin `--promote-secondary`, la prueba solo valida que el failover no pida promoción en estado sano.
 
+### Diagnostico LAN de un solo comando
+
+Para una mirada completa desde la PC grande hacia la laptop:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\remote-kairos.ps1 -Action LanDoctor -HostName 192.168.1.40 -PrimaryUrl http://127.0.0.1:8000 -SecondaryUrl http://192.168.1.40:8000
+```
+
+Tambien se puede correr directo en Python:
+
+```bash
+python ops/remote/kairos_remote.py lan-doctor --node linux --primary-url http://127.0.0.1:8000 --secondary-url http://192.168.1.40:8000
+```
+
+`lan-doctor` junta en un reporte:
+
+- git local;
+- health/runtime local;
+- doctor remoto por SSH + HTTP;
+- smoke LAN no destructivo.
+
 El reporte esta pensado para campo:
 
 - si todo pasa, imprime una linea de resumen y `OK`;
@@ -110,7 +131,7 @@ El reporte esta pensado para campo:
 Ejemplo de salida sana:
 
 ```text
-LAN field smoke: 27/27 checks passed
+LAN field smoke: 29/29 checks passed
 OK: health, node state, heartbeats, sync, memory visibility and failover status passed.
 ```
 

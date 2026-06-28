@@ -1,12 +1,14 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Shell','Exec','Preflight','Backup','Pull','Restore','Update','Rollback','Restart','Status','Logs','FollowLogs','Health','Platform','Doctor','ListNodes','Chat','TaskCreate','TaskList','TaskShow','TaskUpdate')]
+    [ValidateSet('Shell','Exec','Preflight','Backup','Pull','Restore','Update','Rollback','Restart','Status','Logs','FollowLogs','Health','Platform','Doctor','LanDoctor','ListNodes','Chat','TaskCreate','TaskList','TaskShow','TaskUpdate')]
     [string]$Action='Status',
     [string]$Node=$env:KAIROS_REMOTE_NODE,
     [string]$HostName=$env:KAIROS_LINUX_HOST,
     [string]$User=$env:KAIROS_LINUX_USER,
     [string]$RemoteRepo=$env:KAIROS_LINUX_REPO,
     [string]$Command='', [string]$BackupId='', [int]$Lines=150,
+    [string]$PrimaryUrl=$env:KAIROS_LAN_PRIMARY_URL,
+    [string]$SecondaryUrl=$env:KAIROS_LAN_SECONDARY_URL,
     [string]$IdentityFile="$HOME\.ssh\kairos_linux_ed25519",
     [string]$Message='', [string]$SessionId='', [string]$Model='',
     [string]$Title='', [string]$TaskId='', [string]$TaskStatus='', [string]$Priority='normal',
@@ -37,6 +39,13 @@ switch($Action){
     'ListNodes' { Invoke-RemoteClient @('list') }
     'Doctor' {
         $args=@('doctor','--node',$Node)
+        if($Json){$args += @('--json')}
+        Invoke-RemoteClient $args
+    }
+    'LanDoctor' {
+        $args=@('lan-doctor','--node',$Node)
+        if($PrimaryUrl){$args += @('--primary-url',$PrimaryUrl)}
+        if($SecondaryUrl){$args += @('--secondary-url',$SecondaryUrl)}
         if($Json){$args += @('--json')}
         Invoke-RemoteClient $args
     }
