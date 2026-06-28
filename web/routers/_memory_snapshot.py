@@ -136,7 +136,13 @@ async def relay_memory_event(request: Request, event_type: str, event_data: Any)
             await coordinator.mark_memory_revision({"event": event_type, "source": source})
         except Exception:
             pass
-    elif event_type in {"memory_synced", "memory_repaired", "memory_write_completed"}:
+    elif event_type == "memory_write_completed":
+        try:
+            await coordinator.mark_memory_revision({"event": event_type, "source": source})
+            await coordinator.mark_memory_sync({"event": event_type, "source": source})
+        except Exception:
+            pass
+    elif event_type in {"memory_synced", "memory_repaired"}:
         try:
             await coordinator.mark_memory_sync({"event": event_type, "source": source})
         except Exception:

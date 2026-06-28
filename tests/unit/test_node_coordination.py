@@ -191,7 +191,7 @@ async def test_node_event_marks_memory_revision_on_memory_updated_via_lan():
 
 
 @pytest.mark.anyio
-async def test_node_event_marks_memory_sync_on_memory_write_completed_via_lan():
+async def test_node_event_marks_memory_revision_and_sync_on_memory_write_completed_via_lan():
     from fastapi.testclient import TestClient
     from web.app_factory import create_app
 
@@ -224,7 +224,9 @@ async def test_node_event_marks_memory_sync_on_memory_write_completed_via_lan():
             )
             assert response.status_code == 200
             assert response.json()["ok"] is True
-            assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
+            snapshot = app.state.node_coordinator.snapshot()
+            assert snapshot["last_memory_revision"] > 0
+            assert snapshot["last_memory_sync"] > 0
 
 
 @pytest.mark.anyio
@@ -265,7 +267,7 @@ async def test_node_event_marks_memory_revision_on_memory_updated():
 
 
 @pytest.mark.anyio
-async def test_node_notify_marks_memory_sync_on_memory_write_completed():
+async def test_node_notify_marks_memory_revision_and_sync_on_memory_write_completed():
     from fastapi.testclient import TestClient
     from web.app_factory import create_app
 
@@ -298,7 +300,9 @@ async def test_node_notify_marks_memory_sync_on_memory_write_completed():
             )
             assert response.status_code == 200
             assert response.json()["ok"] is True
-            assert app.state.node_coordinator.snapshot()["last_memory_sync"] > 0
+            snapshot = app.state.node_coordinator.snapshot()
+            assert snapshot["last_memory_revision"] > 0
+            assert snapshot["last_memory_sync"] > 0
 
 
 @pytest.mark.anyio
