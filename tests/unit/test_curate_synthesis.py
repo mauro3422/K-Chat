@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -33,3 +35,54 @@ async def test_curate_all_passes_sessions_db_to_daily_synthesis():
 
     synth.assert_awaited_once_with(db_path="sessions.db")
     assert result["synthesis_path"] == "memory/synthesis/2026/06/27.md"
+
+
+@pytest.mark.anyio
+async def test_curate_sessions_skips_unchanged_cataloged_session(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+
+    conn = sqlite3.connect(sessions_db)
+    conn.execute("CREATE TABLE sessions (session_id TEXT PRIMARY KEY, name TEXT, created_at TEXT)")
+    conn.execute(
+        "INSERT INTO sessions (session_id, name, created_at) VALUES (?, ?, ?)",
+        ("s1", "Test", datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+    conn = sqlite3.connect(memory_db)
+    conn.execute(
+        """
+        CREATE TABLE vec_meta (
+            rowid INTEGER PRIMARY KEY,
+            source TEXT,
+            source_key TEXT,
+            exchange_idx INTEGER,
+            text TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO vec_meta (source, source_key, exchange_idx, text)
+        VALUES ('session', 's1', 1, ?)
+        """,
+        ("Mauro quiere evitar duplicar trabajo semantico en las curaciones.",),
+    )
+    conn.commit()
+    conn.close()
+
+    llm_call = AsyncMock(return_value="NO_NEW_INFO")
+
+    with (
+        patch("src.memory.curator.curate._get_sessions_db_path", return_value=str(sessions_db)),
+        patch("src.memory.curator.curate._get_memory_db_path", return_value=str(memory_db)),
+        patch("src.memory.curator.curate._get_memory_context", return_value=""),
+    ):
+        first = await curate.curate_sessions(days=1, dry=False, llm_call_fn=llm_call)
+        second = await curate.curate_sessions(days=1, dry=False, llm_call_fn=llm_call)
+
+    assert first == []
+    assert second == []
+    assert llm_call.await_count == 1

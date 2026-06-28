@@ -16,8 +16,10 @@ import threading
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 
+from src.memory.content_hash import content_hash
 from src.memory.operations._helpers import _get_memory_md_path, _parse_memory_md, _write_memory_md
 from src.memory.repos_memory.memory_index_repo import GlobalMemoryIndexRepository
+from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 from src.utils.async_utils import run_in_thread
 
 logger = logging.getLogger(__name__)
@@ -143,6 +145,14 @@ def _get_sessions_db_path() -> str:
 
 # ── Core logic ──────────────────────────────────────────────────────
 
+def _get_processing_catalog() -> MemoryProcessingCatalogRepository | None:
+    try:
+        return MemoryProcessingCatalogRepository(_get_memory_db_path())
+    except Exception:
+        logger.debug("memory_processing_catalog unavailable", exc_info=True)
+        return None
+
+
 def parse_resp(text: str) -> list[dict[str, str]]:
     entries: list[dict[str, str]] = []
     key = None
@@ -248,6 +258,7 @@ async def curate_sessions(
 
     sessions_db = _get_sessions_db_path()
     mem_db = _get_memory_db_path()
+    catalog = None if dry else _get_processing_catalog()
 
     conn = sqlite3.connect(sessions_db)
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
@@ -275,19 +286,55 @@ async def curate_sessions(
         if dry:
             continue
 
+        prompt_body = "\n---\n".join(t[:400] for t in texts)
         prompt = (
             f"Session: {name or sid[:12]}\n\n"
-            + "\n---\n".join(t[:400] for t in texts)
+            + prompt_body
             + "\n\nExtract new info or NO_NEW_INFO"
         )
+        digest = content_hash(prompt)
+        if catalog and catalog.is_processed(
+            source="session",
+            source_key=sid,
+            item_idx=-1,
+            stage="curated",
+            content_hash=digest,
+        ):
+            logger.info("Skipping unchanged curated session %s", sid)
+            continue
+
         context = _get_memory_context()
         system_prompt = f"EXISTING MEMORIES:\n{context}\n\n{CURATOR_PROMPT}" if context else CURATOR_PROMPT
         try:
             resp = await llm_call_fn(system_prompt, prompt)
-            if "NO_NEW_INFO" not in resp:
-                entries.extend(parse_resp(resp))
+            parsed = [] if "NO_NEW_INFO" in resp else parse_resp(resp)
+            if catalog:
+                catalog.mark(
+                    source="session",
+                    source_key=sid,
+                    item_idx=-1,
+                    stage="curated",
+                    content_hash=digest,
+                    status="processed",
+                    processor="curate_sessions",
+                    reason="no_new_info" if not parsed else "entries_extracted",
+                    metadata={"entries": len(parsed), "texts": len(texts)},
+                )
+            entries.extend(parsed)
         except Exception:
             logger.exception("LLM call failed for session %s", sid)
+            if catalog:
+                catalog.mark(
+                    source="session",
+                    source_key=sid,
+                    item_idx=-1,
+                    stage="curated",
+                    content_hash=digest,
+                    status="failed",
+                    processor="curate_sessions",
+                    reason="llm_call_failed",
+                    metadata={"texts": len(texts)},
+                )
 
     return entries
 

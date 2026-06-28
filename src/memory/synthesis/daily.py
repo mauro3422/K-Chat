@@ -12,7 +12,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from src.memory.content_hash import content_hash
 from src.memory.memory_db_path import resolve_memory_db_path
+from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 
 logger = logging.getLogger(__name__)
 
@@ -250,8 +252,38 @@ async def generate_daily_synthesis(db_path: str, output_dir: str = "memory/synth
     report_path = os.path.join(abs_output_dir, y, m, f"{d}.md")
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
 
+    report_text = "\n".join(lines)
+    digest = content_hash(report_text, limit=100000)
+    catalog = MemoryProcessingCatalogRepository(mem_db)
+    if os.path.exists(report_path) and catalog.is_processed(
+        source="daily_synthesis",
+        source_key=date_str,
+        item_idx=-1,
+        stage="generated",
+        content_hash=digest,
+    ):
+        logger.info("Daily synthesis unchanged for %s", date_str)
+        return report_path
+
     with open(report_path, "w") as f:
-        f.write("\n".join(lines))
+        f.write(report_text)
+
+    catalog.mark(
+        source="daily_synthesis",
+        source_key=date_str,
+        item_idx=-1,
+        stage="generated",
+        content_hash=digest,
+        status="processed",
+        processor="generate_daily_synthesis",
+        metadata={
+            "sessions": len(sessions),
+            "messages": total_messages,
+            "memory_entries": len(memory_entries),
+            "entities": len(entities),
+            "clusters": len(clusters),
+        },
+    )
 
     logger.info("Daily synthesis saved to %s", report_path)
     return report_path

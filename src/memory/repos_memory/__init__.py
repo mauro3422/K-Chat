@@ -11,6 +11,7 @@ from typing import Optional
 
 from src.memory.repos_memory.entity_repo import EntityRepository
 from src.memory.repos_memory.memory_index_repo import GlobalMemoryIndexRepository
+from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
 from src.memory.retrieval.hybrid_retriever import HybridRetriever
 from src.memory.vector.store import VectorStore
@@ -28,6 +29,7 @@ class MemoryRepositories:
     entity_graph: Optional[EntityRepository] = field(default=None)
     hybrid_retriever: Optional[HybridRetriever] = field(default=None)
     work_catalog: Optional[MemoryWorkCatalogRepository] = field(default=None)
+    processing_catalog: Optional[MemoryProcessingCatalogRepository] = field(default=None)
 
     def __post_init__(self) -> None:
         from src.memory.memory_db_path import resolve_memory_db_path
@@ -39,6 +41,8 @@ class MemoryRepositories:
             self.hybrid_retriever = HybridRetriever(resolve_memory_db_path())
         if self.work_catalog is None:
             self.work_catalog = MemoryWorkCatalogRepository(resolve_memory_db_path())
+        if self.processing_catalog is None:
+            self.processing_catalog = MemoryProcessingCatalogRepository(resolve_memory_db_path())
 
 
 def get_memory_repos() -> MemoryRepositories:
@@ -49,6 +53,7 @@ def get_memory_repos() -> MemoryRepositories:
 __all__ = [
     "EntityRepository",
     "GlobalMemoryIndexRepository",
+    "MemoryProcessingCatalogRepository",
     "MemoryWorkCatalogRepository",
     "MemoryRepositories",
     "get_memory_repos",
