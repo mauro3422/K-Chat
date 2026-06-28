@@ -46,6 +46,9 @@ class NodeProfile:
     identity_file: str
     port: int = 22
     service_url: str = ""
+    expected_node_id: str = ""
+    expected_role: str = ""
+    aliases: tuple[str, ...] = ()
 
     @property
     def target(self) -> str:
@@ -97,6 +100,13 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _profile_from_mapping(name: str, raw: dict[str, Any]) -> NodeProfile:
+    aliases = raw.get("aliases", ())
+    if isinstance(aliases, str):
+        aliases = (aliases,)
+    elif isinstance(aliases, list):
+        aliases = tuple(str(alias).strip() for alias in aliases if str(alias).strip())
+    else:
+        aliases = ()
     return NodeProfile(
         name=name,
         host=str(raw.get("host", "")).strip(),
@@ -105,6 +115,9 @@ def _profile_from_mapping(name: str, raw: dict[str, Any]) -> NodeProfile:
         identity_file=_expand_path(str(raw.get("identity_file") or raw.get("identityFile") or "")),
         port=int(raw.get("port") or 22),
         service_url=str(raw.get("service_url") or raw.get("serviceUrl") or "").strip(),
+        expected_node_id=str(raw.get("expected_node_id") or raw.get("expectedNodeId") or "").strip(),
+        expected_role=str(raw.get("expected_role") or raw.get("expectedRole") or "").strip(),
+        aliases=aliases,
     )
 
 
@@ -117,11 +130,15 @@ def fallback_profile(name: str = "linux") -> NodeProfile:
         identity_file=_expand_path(os.environ.get("KAIROS_LINUX_IDENTITY", r"~/.ssh/kairos_linux_ed25519")),
         port=int(os.environ.get("KAIROS_LINUX_SSH_PORT", "22") or 22),
         service_url=os.environ.get("KAIROS_LINUX_BASE_URL", "").strip(),
+        expected_node_id=os.environ.get("KAIROS_LINUX_EXPECTED_NODE_ID", "").strip(),
+        expected_role=os.environ.get("KAIROS_LINUX_EXPECTED_ROLE", "secondary").strip(),
+        aliases=("laptop", "secondary"),
     )
 
 
 def load_profiles(config_path: Path) -> dict[str, NodeProfile]:
     profiles: dict[str, NodeProfile] = {}
+    aliases: dict[str, NodeProfile] = {}
     if config_path.exists():
         data = _load_json(config_path)
         nodes = data.get("nodes", data)
@@ -129,18 +146,23 @@ def load_profiles(config_path: Path) -> dict[str, NodeProfile]:
             raise ValueError("remote nodes config must contain an object named 'nodes'")
         for name, raw in nodes.items():
             if isinstance(raw, dict):
-                profiles[str(name)] = _profile_from_mapping(str(name), raw)
+                profile = _profile_from_mapping(str(name), raw)
+                profiles[str(name)] = profile
+                for alias in profile.aliases:
+                    aliases.setdefault(alias, profile)
     fallback = fallback_profile()
     if fallback.host and fallback.user:
-        profiles.setdefault(fallback.name, fallback)
+        profile = profiles.setdefault(fallback.name, fallback)
+        for alias in fallback.aliases:
+            aliases.setdefault(alias, profile)
+    for alias, profile in aliases.items():
+        profiles.setdefault(alias, profile)
     return profiles
 
 
 def require_profile(profiles: dict[str, NodeProfile], name: str) -> NodeProfile:
     if name in profiles:
         profile = profiles[name]
-    elif len(profiles) == 1:
-        profile = next(iter(profiles.values()))
     else:
         available = ", ".join(sorted(profiles)) or "none"
         raise SystemExit(f"Unknown node '{name}'. Available nodes: {available}. Config: {default_config_path()}")
@@ -207,9 +229,22 @@ def remote_python_command(profile: NodeProfile, args: str = "") -> str:
 
 
 def action_list(profiles: dict[str, NodeProfile]) -> int:
+    seen: set[int] = set()
     for name in sorted(profiles):
         profile = profiles[name]
-        print(f"{name}\thost={profile.host}\tuser={profile.user}\trepo={profile.repo}\turl={profile.base_url}")
+        marker = id(profile)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        alias_names = sorted(alias for alias, candidate in profiles.items() if candidate is profile and alias != profile.name)
+        alias_text = f"\taliases={','.join(alias_names)}" if alias_names else ""
+        expected = []
+        if profile.expected_node_id:
+            expected.append(f"node_id={profile.expected_node_id}")
+        if profile.expected_role:
+            expected.append(f"role={profile.expected_role}")
+        expected_text = f"\texpected={','.join(expected)}" if expected else ""
+        print(f"{profile.name}\thost={profile.host}\tuser={profile.user}\trepo={profile.repo}\turl={profile.base_url}{alias_text}{expected_text}")
     return 0
 
 
@@ -263,24 +298,49 @@ def _ssh_check(profile: NodeProfile, name: str, command: str, *, timeout: int = 
 
 def _http_check(profile: NodeProfile, name: str, path: str, *, timeout: float = 8) -> DoctorCheck:
     url = profile.base_url + path
-    try:
-        data = _http_json(profile, path, timeout=timeout)
-    except Exception as exc:
-        detail = f"{url}: {exc}"
-        return DoctorCheck(name=name, ok=False, detail=detail, hint=doctor_hint(name, detail))
-    ok = bool(data.get("ok", True))
-    if name == "health":
-        ok = data.get("status") == "ok"
-    if name == "node_state":
-        ok = bool(data.get("node_id")) and data.get("healthy") is True
-    if name == "node_runtime":
-        ok = data.get("mode") == "normal"
-    if name == "sync_status":
-        ok = data.get("ok") is True and data.get("sync", {}).get("memory_is_fresh") is True
-    if name == "failover_status":
-        ok = data.get("ok") is True and data.get("should_promote") is False
-    rendered = json.dumps(data, ensure_ascii=False, sort_keys=True)
-    return DoctorCheck(name=name, ok=ok, detail="ok" if ok else "unexpected response", hint="" if ok else doctor_hint(name, stdout=rendered), stdout=_short(rendered))
+    attempts = 3 if name in {"node_runtime", "sync_status", "failover_status"} else 1
+    last_check: DoctorCheck | None = None
+    for attempt in range(attempts):
+        try:
+            data = _http_json(profile, path, timeout=timeout)
+        except Exception as exc:
+            detail = f"{url}: {exc}"
+            last_check = DoctorCheck(name=name, ok=False, detail=detail, hint=doctor_hint(name, detail))
+        else:
+            ok = bool(data.get("ok", True))
+            if name == "health":
+                ok = data.get("status") == "ok"
+            if name == "node_state":
+                ok = bool(data.get("node_id")) and data.get("healthy") is True
+                expected_errors = _node_identity_errors(profile, data)
+                if expected_errors:
+                    ok = False
+            if name == "node_runtime":
+                ok = data.get("mode") == "normal"
+            if name == "sync_status":
+                ok = data.get("ok") is True and data.get("sync", {}).get("memory_is_fresh") is True
+            if name == "failover_status":
+                ok = data.get("ok") is True and data.get("should_promote") is False
+            rendered = json.dumps(data, ensure_ascii=False, sort_keys=True)
+            detail = "ok" if ok else "unexpected response"
+            if name == "node_state" and not ok:
+                expected_errors = _node_identity_errors(profile, data)
+                if expected_errors:
+                    detail = "; ".join(expected_errors)
+            last_check = DoctorCheck(name=name, ok=ok, detail=detail, hint="" if ok else doctor_hint(name, stdout=rendered), stdout=_short(rendered))
+        if last_check.ok or attempt == attempts - 1:
+            return last_check
+        time.sleep(1)
+    raise AssertionError("unreachable")
+
+
+def _node_identity_errors(profile: NodeProfile, data: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if profile.expected_node_id and data.get("node_id") != profile.expected_node_id:
+        errors.append(f"expected node_id={profile.expected_node_id} got {data.get('node_id')}")
+    if profile.expected_role and data.get("role") != profile.expected_role:
+        errors.append(f"expected role={profile.expected_role} got {data.get('role')}")
+    return errors
 
 
 def collect_doctor_checks(profile: NodeProfile) -> list[DoctorCheck]:
@@ -358,7 +418,7 @@ def action_http_get(profile: NodeProfile, path: str, *, timeout: float = 12) -> 
         with urllib.request.urlopen(url, timeout=timeout) as response:
             print(response.read().decode("utf-8", errors="replace"))
         return 0
-    except urllib.error.URLError as exc:
+    except Exception as exc:
         print(f"HTTP failed: {url}: {exc}", file=sys.stderr)
         return 1
 
@@ -412,7 +472,15 @@ def _local_command_check(name: str, command: list[str], *, timeout: int = 30) ->
     return DoctorCheck(name=name, ok=ok, detail=detail, hint="" if ok else "Revisar repo local y salida del comando.", stdout=stdout, stderr=stderr)
 
 
-def _local_http_check(name: str, base_url: str, path: str, *, timeout: float = 8) -> DoctorCheck:
+def _local_http_check(
+    name: str,
+    base_url: str,
+    path: str,
+    *,
+    timeout: float = 8,
+    expected_node_id: str = "",
+    expected_role: str = "",
+) -> DoctorCheck:
     url = base_url.rstrip("/") + path
     try:
         data = _http_json_url(url, timeout=timeout)
@@ -422,10 +490,37 @@ def _local_http_check(name: str, base_url: str, path: str, *, timeout: float = 8
     ok = bool(data.get("ok", True))
     if name == "local_health":
         ok = data.get("status") == "ok"
+    if name == "local_node_state":
+        ok = bool(data.get("node_id")) and data.get("healthy") is True
+        expected_errors = _expected_identity_errors(
+            expected_node_id=expected_node_id,
+            expected_role=expected_role,
+            data=data,
+        )
+        if expected_errors:
+            ok = False
     if name == "local_runtime":
         ok = data.get("mode") == "normal"
     rendered = json.dumps(data, ensure_ascii=False, sort_keys=True)
-    return DoctorCheck(name=name, ok=ok, detail="ok" if ok else "unexpected response", hint="" if ok else "El nodo local responde pero no esta en estado normal.", stdout=_short(rendered))
+    detail = "ok" if ok else "unexpected response"
+    if name == "local_node_state" and not ok:
+        expected_errors = _expected_identity_errors(
+            expected_node_id=expected_node_id,
+            expected_role=expected_role,
+            data=data,
+        )
+        if expected_errors:
+            detail = "; ".join(expected_errors)
+    return DoctorCheck(name=name, ok=ok, detail=detail, hint="" if ok else "El nodo local responde pero no esta en estado normal.", stdout=_short(rendered))
+
+
+def _expected_identity_errors(*, expected_node_id: str, expected_role: str, data: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if expected_node_id and data.get("node_id") != expected_node_id:
+        errors.append(f"expected node_id={expected_node_id} got {data.get('node_id')}")
+    if expected_role and data.get("role") != expected_role:
+        errors.append(f"expected role={expected_role} got {data.get('role')}")
+    return errors
 
 
 def _smoke_check(primary_url: str, secondary_url: str, *, timeout: int = 180) -> DoctorCheck:
@@ -464,6 +559,7 @@ def collect_lan_doctor_checks(profile: NodeProfile, *, primary_url: str, seconda
         _local_command_check("local_git", ["git", "status", "--short", "--branch"]),
         _local_command_check("local_head", ["git", "rev-parse", "--short", "HEAD"]),
         _local_http_check("local_health", primary_url, "/health"),
+        _local_http_check("local_node_state", primary_url, "/api/node/state", expected_role="primary"),
         _local_http_check("local_runtime", primary_url, "/api/node/runtime"),
     ]
     checks.extend(

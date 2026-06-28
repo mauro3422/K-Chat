@@ -131,8 +131,33 @@ def test_remote_nodes_example_shape() -> None:
     assert "nodes" in data
     assert "linux" in data["nodes"]
     linux = data["nodes"]["linux"]
-    for key in ("host", "user", "repo", "identityFile", "serviceUrl"):
+    for key in ("host", "user", "repo", "identityFile", "serviceUrl", "aliases", "expectedNodeId", "expectedRole"):
         assert key in linux
+    assert "laptop" in linux["aliases"]
+    assert linux["expectedRole"] == "secondary"
+
+
+def test_remote_client_resolves_explicit_aliases_but_not_unknown_single_profile(monkeypatch) -> None:
+    module = load_remote_client_module()
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.40",
+        user="maurol",
+        repo="/home/maurol/dev/K-Chat",
+        identity_file=__file__,
+        aliases=("laptop", "secondary"),
+    )
+    profiles = {
+        "linux": profile,
+        "laptop": profile,
+        "secondary": profile,
+    }
+
+    assert module.require_profile(profiles, "laptop") is profile
+    with pytest.raises(SystemExit) as exc:
+        module.require_profile(profiles, "primary")
+
+    assert "Unknown node 'primary'" in str(exc.value)
 
 
 def test_lan_doctor_report_can_emit_json(monkeypatch, capsys, tmp_path) -> None:
@@ -169,6 +194,38 @@ def test_lan_doctor_report_can_emit_json(monkeypatch, capsys, tmp_path) -> None:
     assert payload["primary_url"] == "http://primary:8000"
     assert payload["secondary_url"] == "http://secondary:8000"
     assert payload["checks"][1]["hint"] == "revisar smoke"
+
+
+def test_remote_node_state_detects_profile_identity_mismatch(monkeypatch, tmp_path) -> None:
+    module = load_remote_client_module()
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("fake", encoding="utf-8")
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.40",
+        user="maurol",
+        repo="/home/maurol/dev/K-Chat",
+        identity_file=str(identity),
+        service_url="http://192.168.1.40:8000",
+        expected_node_id="pc-secundaria",
+        expected_role="secondary",
+    )
+
+    monkeypatch.setattr(
+        module,
+        "_http_json",
+        lambda _profile, _path, timeout=8: {
+            "node_id": "pc-principal",
+            "role": "primary",
+            "healthy": True,
+        },
+    )
+
+    check = module._http_check(profile, "node_state", "/api/node/state")
+
+    assert check.ok is False
+    assert "expected node_id=pc-secundaria" in check.detail
+    assert "expected role=secondary" in check.detail
 
 
 def test_remote_chat_wraps_codex_delegation_by_default() -> None:

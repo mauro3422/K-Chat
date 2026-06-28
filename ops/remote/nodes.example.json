@@ -6,7 +6,10 @@
       "repo": "/home/maurol/dev/K-Chat",
       "identityFile": "~/.ssh/kairos_linux_ed25519",
       "port": 22,
-      "serviceUrl": "http://192.168.1.40:8000"
+      "serviceUrl": "http://192.168.1.40:8000",
+      "aliases": ["laptop", "secondary"],
+      "expectedNodeId": "pc-secundaria",
+      "expectedRole": "secondary"
     },
     "pc-grande": {
       "host": "192.168.1.35",
@@ -14,7 +17,10 @@
       "repo": "C:/Dev/Kairos",
       "identityFile": "~/.ssh/kairos_pc_grande_ed25519",
       "port": 22,
-      "serviceUrl": "http://192.168.1.35:8000"
+      "serviceUrl": "http://192.168.1.35:8000",
+      "aliases": ["primary"],
+      "expectedNodeId": "pc-principal",
+      "expectedRole": "primary"
     }
   }
 }
