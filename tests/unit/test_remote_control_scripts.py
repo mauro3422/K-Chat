@@ -85,7 +85,7 @@ def test_update_orders_preflight_backup_and_previous_commit() -> None:
 
 def test_windows_remote_control_maps_recovery_actions() -> None:
     source = WINDOWS_SCRIPT.read_text(encoding="utf-8")
-    for action in ("Preflight", "Backup", "Pull", "Rollback", "Doctor", "LanDoctor", "ListNodes", "Chat", "TaskCreate", "TaskList", "TaskShow", "TaskUpdate"):
+    for action in ("Preflight", "Backup", "Pull", "Rollback", "Doctor", "LanDoctor", "ListNodes", "KairosPython", "Chat", "TaskCreate", "TaskList", "TaskShow", "TaskUpdate"):
         assert action in source
     for command in ("'preflight'", "'backup'", "'Restore'", "'rollback'"):
         assert command in source
@@ -94,6 +94,7 @@ def test_windows_remote_control_maps_recovery_actions() -> None:
     assert "'lan-doctor'" in source
     assert "'task-create'" in source
     assert "'task-update'" in source
+    assert "'kairos-python'" in source
     assert "Invoke-RemoteClient $args" in source
 
 
@@ -108,6 +109,10 @@ def test_remote_client_has_valid_python_syntax() -> None:
     assert "CODEX_DELEGATION_GUIDE" in source
     assert "task-create" in source
     assert "task-update" in source
+    assert "kairos-python" in source
+    assert "def remote_python_command" in source
+    assert "fastembed=ok" in source
+    assert "venv/bin/python" in source
     assert "--raw-message" in source
     assert "--json" in source
     assert "ConnectTimeout=8" in source
@@ -275,3 +280,13 @@ def test_linux_user_service_has_restart_and_bounded_shutdown() -> None:
     assert 'UNIT_FILE="$UNIT_DIR/${SERVICE}.service"' in source
     assert 'UNIT_FILE="$ROOT/.kairos/${SERVICE}.service"' not in source
     assert 'if [[ -L "$UNIT_FILE" ]]' in source
+    assert 'EXEC_START="$ROOT/venv/bin/python -m uvicorn"' in source
+    assert source.index('"$ROOT/venv/bin/python"') < source.index('"$ROOT/.venv/bin/python"')
+
+
+def test_linux_bootstrap_prefers_repo_venv_python() -> None:
+    source = BOOTSTRAP_SCRIPT.read_text(encoding="utf-8")
+    assert 'PYTHON="$ROOT/venv/bin/python"' in source
+    assert 'PYTHON="$ROOT/.venv/bin/python"' in source
+    assert 'PYTHON="$(command -v python3)"' in source
+    assert source.index('PYTHON="$ROOT/venv/bin/python"') < source.index('PYTHON="$ROOT/.venv/bin/python"')

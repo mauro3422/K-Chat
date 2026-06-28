@@ -6,8 +6,8 @@ SERVICE="${KAIROS_SERVICE:-k-chat}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT_FILE="$UNIT_DIR/${SERVICE}.service"
 
-if [[ -x "$ROOT/venv/bin/uvicorn" ]]; then
-  EXEC_START="$ROOT/venv/bin/uvicorn"
+if [[ -x "$ROOT/venv/bin/python" ]]; then
+  EXEC_START="$ROOT/venv/bin/python -m uvicorn"
 elif [[ -x "$ROOT/.venv/bin/python" ]]; then
   EXEC_START="$ROOT/.venv/bin/python -m uvicorn"
 else

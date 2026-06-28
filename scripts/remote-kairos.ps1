@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Shell','Exec','Preflight','Backup','Pull','Restore','Update','Rollback','Restart','Status','Logs','FollowLogs','Health','Platform','Doctor','LanDoctor','ListNodes','Chat','TaskCreate','TaskList','TaskShow','TaskUpdate')]
+    [ValidateSet('Shell','Exec','KairosPython','Preflight','Backup','Pull','Restore','Update','Rollback','Restart','Status','Logs','FollowLogs','Health','Platform','Doctor','LanDoctor','ListNodes','Chat','TaskCreate','TaskList','TaskShow','TaskUpdate')]
     [string]$Action='Status',
     [string]$Node=$env:KAIROS_REMOTE_NODE,
     [string]$HostName=$env:KAIROS_LINUX_HOST,
@@ -58,6 +58,10 @@ switch($Action){
     'Exec' {
         if(-not $Command){throw 'Pasá -Command para ejecutar una orden remota.'}
         Invoke-RemoteClient @('exec','--node',$Node,'--command',$Command)
+    }
+    'KairosPython' {
+        if(-not $Command){throw 'Pasá -Command con el script/argumentos para ejecutar con el Python de Kairos remoto.'}
+        Invoke-RemoteClient @('kairos-python','--node',$Node,'--command',$Command)
     }
     'Chat' {
         if(-not $Message){throw 'Pasá -Message para enviar una consulta remota.'}

@@ -38,7 +38,13 @@ fi
 SUDOERS_FILE="/etc/sudoers.d/kairos-remote-$REMOTE_USER"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$REMOTE_USER" | sudo tee "$SUDOERS_FILE" >/dev/null
 sudo chmod 440 "$SUDOERS_FILE"; sudo visudo -cf "$SUDOERS_FILE"
-PYTHON="$ROOT/.venv/bin/python"; [[ -x "$PYTHON" ]] || PYTHON="$(command -v python3)"
+PYTHON="$ROOT/venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+  PYTHON="$ROOT/.venv/bin/python"
+fi
+if [[ ! -x "$PYTHON" ]]; then
+  PYTHON="$(command -v python3)"
+fi
 if [[ "$SERVICE_SCOPE" == "system" ]]; then
   sudo tee "/etc/systemd/system/${SERVICE}.service" >/dev/null <<EOF
 [Unit]

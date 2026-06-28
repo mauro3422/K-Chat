@@ -193,6 +193,19 @@ def remote_script(profile: NodeProfile, action: str) -> str:
     return f"cd {bash_quote(profile.repo)} && ./scripts/kairos-node.sh {action}"
 
 
+def remote_python_bootstrap() -> str:
+    return (
+        'KAIROS_PY="$(if [ -x venv/bin/python ]; then printf %s venv/bin/python; '
+        'elif [ -x .venv/bin/python ]; then printf %s .venv/bin/python; '
+        'else command -v python3; fi)"'
+    )
+
+
+def remote_python_command(profile: NodeProfile, args: str = "") -> str:
+    suffix = f" {args}" if args else ""
+    return f"cd {bash_quote(profile.repo)} && {remote_python_bootstrap()} && \"$KAIROS_PY\"{suffix}"
+
+
 def action_list(profiles: dict[str, NodeProfile]) -> int:
     for name in sorted(profiles):
         profile = profiles[name]
@@ -281,7 +294,15 @@ def collect_doctor_checks(profile: NodeProfile) -> list[DoctorCheck]:
         _ssh_check(profile, "ssh", "printf 'ssh=ok\\n'; uname -a", timeout=20),
         _ssh_check(profile, "repo", f"test -d {bash_quote(profile.repo)} && cd {bash_quote(profile.repo)} && git status --short --branch", timeout=30),
         _ssh_check(profile, "script", f"test -x {bash_quote(profile.repo)}/scripts/kairos-node.sh && echo script=ok", timeout=20),
-        _ssh_check(profile, "python", f"cd {bash_quote(profile.repo)} && (venv/bin/python --version || .venv/bin/python --version || python3 --version)", timeout=20),
+        _ssh_check(
+            profile,
+            "python",
+            remote_python_command(
+                profile,
+                "--version && \"$KAIROS_PY\" -c \"import fastembed; print('fastembed=ok')\"",
+            ),
+            timeout=20,
+        ),
         _http_check(profile, "health", "/health"),
         _http_check(profile, "node_state", "/api/node/state"),
         _http_check(profile, "node_runtime", "/api/node/runtime"),
@@ -340,6 +361,12 @@ def action_http_get(profile: NodeProfile, path: str, *, timeout: float = 12) -> 
     except urllib.error.URLError as exc:
         print(f"HTTP failed: {url}: {exc}", file=sys.stderr)
         return 1
+
+
+def action_kairos_python(profile: NodeProfile, command: str) -> int:
+    if not command.strip():
+        raise SystemExit("kairos-python requires --command, for example: --command \"scripts/memory_audit.py\"")
+    return run_ssh(profile, remote_python_command(profile, command))
 
 
 def _http_json(profile: NodeProfile, path: str, payload: dict[str, Any] | None = None, *, timeout: float = 20) -> dict[str, Any]:
@@ -635,6 +662,7 @@ def build_parser() -> argparse.ArgumentParser:
             "logs",
             "platform",
             "exec",
+            "kairos-python",
             "chat",
             "task-create",
             "task-list",
@@ -686,6 +714,8 @@ def main(argv: list[str] | None = None) -> int:
         if not args.command:
             raise SystemExit("exec requires --command")
         return run_ssh(profile, args.command)
+    if args.action == "kairos-python":
+        return action_kairos_python(profile, args.command)
     if args.action == "chat":
         return action_chat(
             profile,

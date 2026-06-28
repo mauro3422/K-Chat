@@ -43,6 +43,7 @@ python ops/remote/kairos_remote.py health --node linux
 python ops/remote/kairos_remote.py pull --node linux
 python ops/remote/kairos_remote.py restart --node linux
 python ops/remote/kairos_remote.py logs --node linux --lines 200
+python ops/remote/kairos_remote.py kairos-python --node linux --command "scripts/memory_audit.py"
 python ops/remote/kairos_remote.py chat --node linux --message "respondé solo pong"
 ```
 
@@ -50,6 +51,12 @@ python ops/remote/kairos_remote.py chat --node linux --message "respondé solo p
 profile, SSH, repo state, control script, Python, `/health`, node state, sync and
 failover. Human output includes a `likely` line when something fails; `--json`
 emits the same checks as structured data for a future Kairos tool.
+
+For Python scripts on a remote node, prefer `kairos-python` instead of `exec`
+with a raw `python` command. It runs inside the repo and resolves the interpreter
+in this order: `venv/bin/python`, `.venv/bin/python`, then `python3`. The doctor
+also imports `fastembed`, so it fails early if the selected interpreter cannot
+run the embedding stack.
 
 By default, `chat` wraps the message with a short Codex delegation guide. This
 lets the remote Kairos know that the request comes from an operator/agent doing
