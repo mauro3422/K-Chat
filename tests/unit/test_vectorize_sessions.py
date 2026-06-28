@@ -2,8 +2,45 @@
 
 from __future__ import annotations
 
+import hashlib
+import sqlite3
+from types import SimpleNamespace
+
+import pytest
+
 from src.memory.noise_filter import is_noise
-from src.memory.vectorize_sessions import _normalize_for_dedup, group_into_exchanges
+from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
+from src.memory.vectorize_sessions import _normalize_for_dedup, group_into_exchanges, vectorize_session
+
+
+class _FakeStore:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+        self.inserts: list[dict] = []
+
+    def _get_conn(self) -> sqlite3.Connection:
+        return self.conn
+
+    def insert(self, embedding, **kwargs) -> int:
+        rowid = 100 + len(self.inserts)
+        self.inserts.append(kwargs)
+        self.conn.execute(
+            """
+            INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (
+                rowid,
+                kwargs["source"],
+                kwargs["source_key"],
+                kwargs["exchange_idx"],
+                kwargs["text"],
+                kwargs["hash"],
+                kwargs["content_hash"],
+            ),
+        )
+        self.conn.commit()
+        return rowid
 
 
 class TestGroupIntoExchanges:
@@ -78,3 +115,120 @@ class TestIsNoise:
         )
         noisy, reason = is_noise(text, role="user")
         assert noisy is False
+
+
+@pytest.mark.asyncio
+async def test_vectorize_session_catalog_marks_cross_session_dedup(tmp_path, monkeypatch):
+    text = (
+        "User: Explain how a distributed memory catalog avoids duplicated embedding work "
+        "between two Kairos nodes.\n"
+        "Assistant: It tracks each logical source item separately from the physical vector row."
+    )
+    text_hash = hashlib.md5(_normalize_for_dedup(text[:4000]).encode()).hexdigest()
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        """
+        CREATE TABLE vec_meta (
+            rowid INTEGER PRIMARY KEY,
+            source TEXT,
+            source_key TEXT,
+            exchange_idx INTEGER,
+            text TEXT,
+            hash TEXT,
+            content_hash TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+        VALUES (7, 'session', 'session-a', 0, ?, ?, ?, datetime('now'))
+        """,
+        (text, text_hash, text_hash),
+    )
+    conn.commit()
+    store = _FakeStore(conn)
+    catalog = MemoryWorkCatalogRepository(str(tmp_path / "memory.db"))
+    repos = SimpleNamespace(memory=SimpleNamespace(work_catalog=catalog))
+
+    async def fake_get_session_messages(session_id, repos=None):
+        return [
+            {"role": "user", "content": text.split("\nAssistant: ")[0].removeprefix("User: "), "created_at": "now"},
+            {"role": "assistant", "content": text.split("\nAssistant: ")[1], "created_at": "now"},
+        ]
+
+    monkeypatch.setattr("src.memory.vectorize_sessions.get_session_messages", fake_get_session_messages)
+
+    count, noise_count, mappings, entities = await vectorize_session("session-b", repos=repos, store=store)
+    assert count == 1
+    assert noise_count == 0
+    assert store.inserts == []
+
+    row = catalog.get(source="session", source_key="session-b", item_idx=0)
+    assert row is not None
+    assert row["status"] == "deduped"
+    assert row["vec_rowid"] == 7
+
+    count, noise_count, mappings, entities = await vectorize_session("session-b", repos=repos, store=store)
+    assert count == 0
+    assert noise_count == 0
+    assert store.inserts == []
+
+
+@pytest.mark.asyncio
+async def test_vectorize_session_catalog_does_not_trust_legacy_exchange_idx(tmp_path, monkeypatch):
+    old_text = "User: old question about memory.\nAssistant: old answer."
+    new_text = (
+        "User: Explain why exchange indexes alone are not enough for memory freshness.\n"
+        "Assistant: The content hash must match, otherwise the previous vector is stale."
+    )
+    old_hash = hashlib.md5(_normalize_for_dedup(old_text[:4000]).encode()).hexdigest()
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        """
+        CREATE TABLE vec_meta (
+            rowid INTEGER PRIMARY KEY,
+            source TEXT,
+            source_key TEXT,
+            exchange_idx INTEGER,
+            text TEXT,
+            hash TEXT,
+            content_hash TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+        VALUES (8, 'session', 'session-b', 0, ?, ?, ?, datetime('now'))
+        """,
+        (old_text, old_hash, old_hash),
+    )
+    conn.commit()
+    store = _FakeStore(conn)
+    catalog = MemoryWorkCatalogRepository(str(tmp_path / "memory.db"))
+    repos = SimpleNamespace(memory=SimpleNamespace(work_catalog=catalog))
+
+    async def fake_get_session_messages(session_id, repos=None):
+        return [
+            {"role": "user", "content": new_text.split("\nAssistant: ")[0].removeprefix("User: "), "created_at": "now"},
+            {"role": "assistant", "content": new_text.split("\nAssistant: ")[1], "created_at": "now"},
+        ]
+
+    monkeypatch.setattr("src.memory.vectorize_sessions.get_session_messages", fake_get_session_messages)
+    monkeypatch.setattr(
+        "src.memory.embeddings.service.generate_embeddings_batch",
+        lambda texts: [[0.1] * 384 for _ in texts],
+    )
+
+    count, noise_count, mappings, entities = await vectorize_session("session-b", repos=repos, store=store)
+    assert count == 1
+    assert noise_count == 0
+    assert len(store.inserts) == 1
+
+    row = catalog.get(source="session", source_key="session-b", item_idx=0)
+    assert row is not None
+    assert row["status"] == "embedded"
+    assert row["vec_rowid"] == 100

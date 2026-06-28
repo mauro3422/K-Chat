@@ -111,6 +111,33 @@ class VectorStore:
             conn.execute("CREATE INDEX idx_vec_meta_hash ON vec_meta (hash)")
         if "idx_vec_meta_content_hash" not in existing:
             conn.execute("CREATE INDEX idx_vec_meta_content_hash ON vec_meta (content_hash)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS memory_work_catalog (
+                source TEXT NOT NULL,
+                source_key TEXT NOT NULL,
+                item_idx INTEGER NOT NULL,
+                content_hash TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                vec_rowid INTEGER,
+                reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                metadata TEXT NOT NULL DEFAULT '{}',
+                PRIMARY KEY (source, source_key, item_idx)
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_status
+            ON memory_work_catalog (status, updated_at)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_hash
+            ON memory_work_catalog (content_hash)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_vec
+            ON memory_work_catalog (vec_rowid)
+        """)
         conn.commit()
 
     # --- CRUD operations ---

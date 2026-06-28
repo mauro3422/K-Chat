@@ -401,6 +401,42 @@ def _migration_012_content_hash(conn: sqlite3.Connection, engine) -> None:
     logger.info("content_hash column added to vec_meta")
 
 
+def _migration_013_memory_work_catalog(conn: sqlite3.Connection, engine) -> None:
+    """Track memory processing work units separately from vector rows.
+
+    vec_meta stores unique embeddings. memory_work_catalog stores source
+    provenance, including items covered by an existing deduplicated vector.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS memory_work_catalog (
+            source TEXT NOT NULL,
+            source_key TEXT NOT NULL,
+            item_idx INTEGER NOT NULL,
+            content_hash TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            vec_rowid INTEGER,
+            reason TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            metadata TEXT NOT NULL DEFAULT '{}',
+            PRIMARY KEY (source, source_key, item_idx)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_status
+        ON memory_work_catalog (status, updated_at)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_hash
+        ON memory_work_catalog (content_hash)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_vec
+        ON memory_work_catalog (vec_rowid)
+    """)
+    logger.info("memory_work_catalog table created")
+
+
 def _migration_011_vec_keywords_covering_index(conn: sqlite3.Connection, engine) -> None:
     """Add covering index on (word, rowid, score) for keyword_search performance.
 
@@ -430,6 +466,7 @@ _MEMORY_MIGRATIONS = (
     _migration_010_relevance_metadata,
     _migration_011_vec_keywords_covering_index,
     _migration_012_content_hash,
+    _migration_013_memory_work_catalog,
 )
 
 

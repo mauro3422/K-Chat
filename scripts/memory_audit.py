@@ -130,6 +130,40 @@ def _source_counts(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
+def _catalog_summary(conn: sqlite3.Connection) -> dict[str, Any]:
+    if not _table_exists(conn, "memory_work_catalog"):
+        return {
+            "exists": False,
+            "total": 0,
+            "by_status": {},
+            "pending": 0,
+            "missing_vec_links": 0,
+        }
+    by_status = {
+        str(row["status"]): int(row["count"])
+        for row in conn.execute(
+            "SELECT status, COUNT(1) AS count FROM memory_work_catalog GROUP BY status"
+        ).fetchall()
+    }
+    missing_vec_links = conn.execute(
+        """
+        SELECT COUNT(1)
+        FROM memory_work_catalog c
+        LEFT JOIN vec_meta m ON m.rowid = c.vec_rowid
+        WHERE c.status IN ('embedded', 'deduped')
+          AND c.vec_rowid IS NOT NULL
+          AND m.rowid IS NULL
+        """
+    ).fetchone()[0]
+    return {
+        "exists": True,
+        "total": _count(conn, "memory_work_catalog"),
+        "by_status": by_status,
+        "pending": by_status.get("pending", 0),
+        "missing_vec_links": int(missing_vec_links or 0),
+    }
+
+
 def _audit_sessions(sessions_conn: sqlite3.Connection, memory_conn: sqlite3.Connection) -> tuple[list[SessionAudit], list[dict[str, Any]]]:
     if not _table_exists(sessions_conn, "sessions") or not _table_exists(sessions_conn, "messages"):
         return [], []
@@ -141,6 +175,7 @@ def _audit_sessions(sessions_conn: sqlite3.Connection, memory_conn: sqlite3.Conn
     audits: list[SessionAudit] = []
 
     has_vec_meta = _table_exists(memory_conn, "vec_meta")
+    has_catalog = _table_exists(memory_conn, "memory_work_catalog")
     for session in sessions:
         session_id = str(session["session_id"])
         messages = sessions_conn.execute(
@@ -171,10 +206,26 @@ def _audit_sessions(sessions_conn: sqlite3.Connection, memory_conn: sqlite3.Conn
             for row in vector_rows
             if str(row["content_hash"] or row["hash"] or "")
         }
+        covered_hashes = set(vector_hashes)
+        if has_catalog:
+            catalog_rows = memory_conn.execute(
+                """
+                SELECT item_idx, content_hash, status
+                FROM memory_work_catalog
+                WHERE source='session' AND source_key=?
+                  AND status IN ('embedded', 'deduped', 'noise')
+                """,
+                (session_id,),
+            ).fetchall()
+            covered_hashes.update(
+                str(row["content_hash"])
+                for row in catalog_rows
+                if str(row["content_hash"] or "")
+            )
         missing = [
             f"{idx}:{digest[:12]}"
             for idx, digest in current_hashes.items()
-            if digest not in vector_hashes
+            if digest not in covered_hashes
         ]
         stale = []
         current_digest_set = set(current_hashes.values())
@@ -266,6 +317,7 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
                 "memory_vec_meta": _count(memory_conn, "vec_meta"),
                 "legacy_session_vec_meta": legacy_vector_count,
             },
+            "catalog": _catalog_summary(memory_conn),
             "vector_sources": _source_counts(memory_conn),
             "duplicates": {
                 "hash_groups": _duplicate_groups(memory_conn, "hash"),
@@ -293,6 +345,13 @@ def print_text_report(report: dict[str, Any]) -> None:
     print("Kairos memory audit")
     print(f"sessions={counts['sessions']} messages={counts['messages']} memory_entries={counts['memory_index']}")
     print(f"vectors={counts['memory_vec_meta']} sources={json.dumps(report['vector_sources'], sort_keys=True)}")
+    catalog = report["catalog"]
+    if catalog["exists"]:
+        print(
+            "catalog: "
+            f"units={catalog['total']} statuses={json.dumps(catalog['by_status'], sort_keys=True)} "
+            f"pending={catalog['pending']} missing_vec_links={catalog['missing_vec_links']}"
+        )
     print(
         "issues: "
         f"missing_sessions={summary['sessions_with_missing_vectors']} "

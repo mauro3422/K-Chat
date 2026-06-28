@@ -94,50 +94,42 @@ Pero `src/memory/synthesis/daily.py` espera que `db_path` sea `sessions.db` para
 5. Sintesis no idempotente: los reportes/checkpoints se guardan por fecha, pero no hay marca clara de inputs exactos incluidos.
 6. Borrado demasiado amplio: `VectorStore.delete_by_source(source_key)` borraba por `source_key` sin filtrar `source`, con riesgo de borrar una sesion si una memoria compartia la misma key o viceversa.
 
-## Diseno propuesto: catalogo de trabajo de memoria
+## Catalogo de trabajo de memoria
 
-Agregar a `memory/kairos_curated_memory.db` una tabla liviana, no acoplada al transporte LAN:
+Primer corte aplicado en `memory/kairos_curated_memory.db`:
 
 ```sql
 CREATE TABLE memory_work_catalog (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_type TEXT NOT NULL,
-    source_node_id TEXT NOT NULL DEFAULT '',
-    source_key TEXT NOT NULL DEFAULT '',
-    source_message_id TEXT NOT NULL DEFAULT '',
-    source_exchange_idx INTEGER NOT NULL DEFAULT -1,
-    content_hash TEXT NOT NULL,
-    content_len INTEGER NOT NULL DEFAULT 0,
-    model_id TEXT NOT NULL DEFAULT '',
-    model_version TEXT NOT NULL DEFAULT '',
-    pipeline TEXT NOT NULL,
-    pipeline_version TEXT NOT NULL DEFAULT '1',
-    status TEXT NOT NULL DEFAULT 'done',
-    vector_rowid INTEGER,
-    result_key TEXT NOT NULL DEFAULT '',
-    error TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL,
+    source_key TEXT NOT NULL,
+    item_idx INTEGER NOT NULL,
+    content_hash TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    vec_rowid INTEGER,
+    reason TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(source_type, source_node_id, source_key, source_exchange_idx, pipeline, content_hash)
+    metadata TEXT NOT NULL DEFAULT '{}',
+    PRIMARY KEY (source, source_key, item_idx)
 );
 ```
 
-`source_type` inicial:
+Este corte mantiene el catalogo chico a proposito:
 
-- `memory_entry`: una entrada de `MEMORY.md`/`memory_index`.
-- `session_exchange`: exchange user+assistant de `sessions.db`.
-- `session_snapshot`: resumen derivado de una sesion remota.
-- `curation_cluster`: cluster usado por curator.
-- `daily_synthesis`: reporte generado.
+- `vec_meta` sigue siendo la tabla fisica de embeddings unicos.
+- `memory_work_catalog` registra que una unidad logica ya fue cubierta.
+- Si un exchange nuevo tiene el mismo `content_hash` que otro ya embebido, se marca como `deduped` y referencia el `vec_rowid` existente.
+- Si es ruido o texto demasiado corto, se marca como `noise` para no intentarlo infinitamente.
 
-`pipeline` inicial:
+Extension prevista para el siguiente corte:
 
-- `embed`;
-- `keywords`;
-- `entities`;
-- `cluster`;
-- `curate`;
-- `synthesis`.
+- `source_node_id`;
+- `pipeline`;
+- `pipeline_version`;
+- `model_id`;
+- `model_version`;
+- `result_key`;
+- `stale/replaced_by`.
 
 ## Cambio de criterio
 
@@ -227,8 +219,12 @@ Estado del primer corte:
 - [x] `curate_all()` pasa `sessions.db` a daily synthesis.
 - [x] `scripts/memory_audit.py` genera reporte solo lectura.
 - [x] `VectorStore.delete_by_source()` acepta `source` para borrar solo `memory` o solo `session`.
-- [ ] `memory_work_catalog` pendiente.
-- [ ] Decision incremental por `content_hash` pendiente.
+- [x] `memory_work_catalog` creado con migracion y repo dedicado.
+- [x] `vectorize_session()` registra `embedded`, `deduped` y `noise`.
+- [x] El auditor muestra resumen del catalogo y usa catalogo para evitar falsos faltantes por dedup.
+- [x] Test de idempotencia: si una sesion B reutiliza el embedding de sesion A por `content_hash`, la segunda pasada ya no reprocesa.
+- [ ] Decision incremental completa por `content_hash + pipeline + model_id` pendiente.
+- [ ] Registro de `save_memory` y curator/synthesis en catalogo pendiente.
 
 ## Criterio de aprobado
 

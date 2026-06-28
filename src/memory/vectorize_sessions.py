@@ -289,6 +289,62 @@ def _get_last_vectorized_idx(store: Any, session_id: str) -> int:
     return row[0] if row else -1
 
 
+def _get_work_catalog(repos: Any = None) -> Any:
+    if repos is not None and getattr(repos, "memory", None) is not None:
+        catalog = getattr(repos.memory, "work_catalog", None)
+        if catalog is not None:
+            return catalog
+    try:
+        from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
+        return MemoryWorkCatalogRepository()
+    except Exception:
+        logger.debug("memory_work_catalog unavailable", exc_info=True)
+        return None
+
+
+def _catalog_is_processed(catalog: Any, session_id: str, idx: int, text_hash: str) -> bool:
+    if catalog is None:
+        return False
+    try:
+        return bool(catalog.is_processed(
+            source="session",
+            source_key=session_id,
+            item_idx=idx,
+            content_hash=text_hash,
+        ))
+    except Exception:
+        logger.debug("Failed to read memory work catalog", exc_info=True)
+        return False
+
+
+def _catalog_mark(
+    catalog: Any,
+    session_id: str,
+    idx: int,
+    text_hash: str,
+    status: str,
+    *,
+    vec_rowid: int | None = None,
+    reason: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    if catalog is None:
+        return
+    try:
+        catalog.mark(
+            source="session",
+            source_key=session_id,
+            item_idx=idx,
+            content_hash=text_hash,
+            status=status,
+            vec_rowid=vec_rowid,
+            reason=reason,
+            metadata=metadata,
+        )
+    except Exception:
+        logger.debug("Failed to write memory work catalog", exc_info=True)
+
+
 async def vectorize_session(session_id: str, dry_run: bool = False,
                             clusterer: Any = None, repos: Any = None,
                             store: Any = None,
@@ -337,17 +393,22 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
 
     try:
         last_idx = _get_last_vectorized_idx(store, session_id)
+        catalog = _get_work_catalog(repos)
 
         # ── Phase 1: Extract metadata, collect candidates for batch embedding ──
         candidates: list[tuple[int, dict[str, Any], str, str, list[tuple[str, float]], list]] = []
 
         for idx, exchange in enumerate(exchanges):
-            if idx <= last_idx:
+            if catalog is None and idx <= last_idx:
                 continue
             try:
                 text = exchange["text"]
+                text_hash = hashlib.md5(_normalize_for_dedup(text[:4000]).encode()).hexdigest()
+                if _catalog_is_processed(catalog, session_id, idx, text_hash):
+                    continue
                 if len(text) < 30:
                     noise_count += 1
+                    _catalog_mark(catalog, session_id, idx, text_hash, "noise", reason="short_text")
                     continue
 
                 kws = extract_keywords(text, top_k=5)
@@ -358,11 +419,18 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
 
                 if noise:
                     noise_count += 1
+                    _catalog_mark(
+                        catalog,
+                        session_id,
+                        idx,
+                        text_hash,
+                        "noise",
+                        reason=reason,
+                        metadata={"keywords": [w for w, _ in kws]},
+                    )
                     continue
 
                 add_to_global_corpus(text)
-
-                text_hash = hashlib.md5(_normalize_for_dedup(text[:4000]).encode()).hexdigest()
 
                 # Check against DB first (persistent dedup via content_hash)
                 try:
@@ -370,6 +438,17 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                         "SELECT rowid FROM vec_meta WHERE content_hash = ?", (text_hash,)
                     ).fetchone()
                     if existing is not None:
+                        existing_rowid = existing[0]
+                        _catalog_mark(
+                            catalog,
+                            session_id,
+                            idx,
+                            text_hash,
+                            "deduped",
+                            vec_rowid=existing_rowid,
+                            reason="content_hash",
+                            metadata={"keywords": [w for w, _ in kws]},
+                        )
                         logger.debug("Hash collision — skipping duplicate exchange (hash=%s)", text_hash[:12])
                         count += 1
                         entities_list.append({
@@ -379,7 +458,7 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                         if linker is not None and entities:
                             linker.link_exchange(
                                 entities, session_id,
-                                exchange_rowid=existing[0],
+                                exchange_rowid=existing_rowid,
                                 exchange_text=text,
                             )
                         continue
@@ -388,6 +467,16 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
 
                 # Then check in-memory set
                 if text_hash in seen_hashes:
+                    _catalog_mark(
+                        catalog,
+                        session_id,
+                        idx,
+                        text_hash,
+                        "deduped",
+                        reason="batch_content_hash",
+                        metadata={"keywords": [w for w, _ in kws]},
+                    )
+                    count += 1
                     logger.debug("In-memory hash collision — skipping (hash=%s)", text_hash[:12])
                     continue
                 seen_hashes.add(text_hash)
@@ -420,6 +509,15 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                         metadata=metadata,
                         hash=text_hash,
                         content_hash=text_hash,
+                    )
+                    _catalog_mark(
+                        catalog,
+                        session_id,
+                        idx,
+                        text_hash,
+                        "embedded",
+                        vec_rowid=rowid,
+                        metadata={"keywords": [w for w, _ in kws]},
                     )
 
                     if rowid and kws:
