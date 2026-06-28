@@ -112,6 +112,7 @@ def test_remote_client_has_valid_python_syntax() -> None:
     assert "kairos-python" in source
     assert "def remote_python_command" in source
     assert "fastembed=ok" in source
+    assert "scripts/memory_audit.py" in source
     assert "venv/bin/python" in source
     assert "--raw-message" in source
     assert "--json" in source
@@ -275,6 +276,7 @@ def test_remote_doctor_hint_names_common_lan_failures() -> None:
     assert "SSH no autentica" in module.doctor_hint("ssh", stderr="Permission denied (publickey)")
     assert "KAIROS_PEER_URLS" in module.doctor_hint("sync_status")
     assert "puerto SSH" in module.doctor_hint("ssh", detail="connection refused")
+    assert "Auditoria de memoria" in module.doctor_hint("memory_audit")
 
 
 def test_windows_control_has_valid_powershell_syntax() -> None:

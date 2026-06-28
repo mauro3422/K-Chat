@@ -272,6 +272,8 @@ def doctor_hint(name: str, detail: str = "", stdout: str = "", stderr: str = "")
         return "La sync LAN no esta sana: revisar KAIROS_PEER_URLS, memoria fresca y cola pendiente."
     if name == "failover_status":
         return "Failover dudoso: revisar lease de liderazgo, misses de heartbeat y rol configurado."
+    if name == "memory_audit" or name.endswith("_memory_audit"):
+        return "Auditoria de memoria fallo: revisar sesiones/vectores/catalogos y correr scripts/memory_audit.py para ver el detalle."
     return "Revisar salida del check y repetir doctor despues de corregir."
 
 
@@ -363,6 +365,7 @@ def collect_doctor_checks(profile: NodeProfile) -> list[DoctorCheck]:
             ),
             timeout=20,
         ),
+        _ssh_check(profile, "memory_audit", remote_python_command(profile, "scripts/memory_audit.py"), timeout=60),
         _http_check(profile, "health", "/health"),
         _http_check(profile, "node_state", "/api/node/state"),
         _http_check(profile, "node_runtime", "/api/node/runtime"),
@@ -558,6 +561,7 @@ def collect_lan_doctor_checks(profile: NodeProfile, *, primary_url: str, seconda
     checks = [
         _local_command_check("local_git", ["git", "status", "--short", "--branch"]),
         _local_command_check("local_head", ["git", "rev-parse", "--short", "HEAD"]),
+        _local_command_check("local_memory_audit", [sys.executable, "scripts/memory_audit.py"], timeout=60),
         _local_http_check("local_health", primary_url, "/health"),
         _local_http_check("local_node_state", primary_url, "/api/node/state", expected_role="primary"),
         _local_http_check("local_runtime", primary_url, "/api/node/runtime"),
