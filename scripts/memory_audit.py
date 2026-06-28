@@ -12,6 +12,7 @@ import json
 import re
 import sqlite3
 import sys
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -64,8 +65,8 @@ def _normalize_for_dedup(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
-def _content_hash(text: str) -> str:
-    return hashlib.md5(_normalize_for_dedup(text[:4000]).encode("utf-8")).hexdigest()
+def _content_hash(text: str, *, limit: int = 4000) -> str:
+    return hashlib.md5(_normalize_for_dedup(text[:limit]).encode("utf-8")).hexdigest()
 
 
 def _group_into_exchanges(messages: list[sqlite3.Row]) -> list[dict[str, Any]]:
@@ -162,6 +163,140 @@ def _catalog_summary(conn: sqlite3.Connection) -> dict[str, Any]:
         "pending": by_status.get("pending", 0),
         "missing_vec_links": int(missing_vec_links or 0),
     }
+
+
+def _processing_catalog_summary(
+    sessions_conn: sqlite3.Connection,
+    memory_conn: sqlite3.Connection,
+    *,
+    root: str,
+) -> dict[str, Any]:
+    if not _table_exists(memory_conn, "memory_processing_catalog"):
+        return {
+            "exists": False,
+            "total": 0,
+            "by_stage_status": {},
+            "pending": 0,
+            "failed": 0,
+            "stale": 0,
+            "stale_rows": [],
+        }
+
+    rows = memory_conn.execute(
+        """
+        SELECT source, source_key, item_idx, stage, content_hash, status,
+               processor, reason, updated_at
+        FROM memory_processing_catalog
+        ORDER BY updated_at DESC
+        """
+    ).fetchall()
+    by_stage_status: dict[str, dict[str, int]] = {}
+    pending = 0
+    failed = 0
+    stale_rows: list[dict[str, Any]] = []
+    for row in rows:
+        stage = str(row["stage"])
+        status = str(row["status"])
+        by_stage_status.setdefault(stage, {})
+        by_stage_status[stage][status] = by_stage_status[stage].get(status, 0) + 1
+        if status == "pending":
+            pending += 1
+        if status == "failed":
+            failed += 1
+
+        expected_hash = _expected_processing_hash(
+            sessions_conn,
+            memory_conn,
+            root=root,
+            source=str(row["source"]),
+            source_key=str(row["source_key"]),
+            stage=stage,
+        )
+        row_hash = str(row["content_hash"] or "")
+        if expected_hash and row_hash and expected_hash != row_hash:
+            stale_rows.append({
+                "source": str(row["source"]),
+                "source_key": str(row["source_key"]),
+                "item_idx": int(row["item_idx"]),
+                "stage": stage,
+                "status": status,
+                "hash": row_hash[:12],
+                "expected_hash": expected_hash[:12],
+                "updated_at": str(row["updated_at"]),
+            })
+
+    return {
+        "exists": True,
+        "total": len(rows),
+        "by_stage_status": by_stage_status,
+        "pending": pending,
+        "failed": failed,
+        "stale": len(stale_rows),
+        "stale_rows": stale_rows[:50],
+    }
+
+
+def _expected_processing_hash(
+    sessions_conn: sqlite3.Connection,
+    memory_conn: sqlite3.Connection,
+    *,
+    root: str,
+    source: str,
+    source_key: str,
+    stage: str,
+) -> str:
+    if source == "session" and stage == "curated":
+        return _expected_curated_session_hash(sessions_conn, memory_conn, source_key)
+    if source == "daily_synthesis" and stage == "generated":
+        return _expected_daily_synthesis_hash(root, source_key)
+    return ""
+
+
+def _expected_curated_session_hash(
+    sessions_conn: sqlite3.Connection,
+    memory_conn: sqlite3.Connection,
+    session_id: str,
+) -> str:
+    if not _table_exists(sessions_conn, "sessions") or not _table_exists(memory_conn, "vec_meta"):
+        return ""
+    session = sessions_conn.execute(
+        "SELECT name FROM sessions WHERE session_id=?",
+        (session_id,),
+    ).fetchone()
+    if session is None:
+        return ""
+    texts = memory_conn.execute(
+        """
+        SELECT text
+        FROM vec_meta
+        WHERE source='session'
+          AND source_key=?
+          AND length(text) > 30
+        ORDER BY exchange_idx DESC
+        LIMIT 8
+        """,
+        (session_id,),
+    ).fetchall()
+    text_values = [str(row["text"]) for row in texts if str(row["text"] or "")]
+    if not text_values:
+        return ""
+    prompt = (
+        f"Session: {str(session['name'] or '') or session_id[:12]}\n\n"
+        + "\n---\n".join(text[:400] for text in text_values)
+        + "\n\nExtract new info or NO_NEW_INFO"
+    )
+    return _content_hash(prompt)
+
+
+def _expected_daily_synthesis_hash(root: str, date_str: str) -> str:
+    parts = date_str.split("-")
+    if len(parts) != 3:
+        return ""
+    y, m, d = parts
+    report_path = Path(root) / "memory" / "synthesis" / y / m / f"{d}.md"
+    if not report_path.exists():
+        return ""
+    return _content_hash(report_path.read_text(encoding="utf-8", errors="replace"), limit=100000)
 
 
 def _audit_sessions(sessions_conn: sqlite3.Connection, memory_conn: sqlite3.Connection) -> tuple[list[SessionAudit], list[dict[str, Any]]]:
@@ -284,7 +419,7 @@ def _latest_synthesis(root: str) -> dict[str, Any]:
 
 
 def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
-    with _connect_readonly(sessions_db) as sessions_conn, _connect_readonly(memory_db) as memory_conn:
+    with closing(_connect_readonly(sessions_db)) as sessions_conn, closing(_connect_readonly(memory_db)) as memory_conn:
         session_audits, orphan_vectors = _audit_sessions(sessions_conn, memory_conn)
         stale_sessions = [audit for audit in session_audits if audit.stale_vectors]
         missing_sessions = [audit for audit in session_audits if audit.missing_hashes]
@@ -306,9 +441,13 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
 
         legacy_vector_tables = _table_exists(sessions_conn, "vec_meta")
         legacy_vector_count = _count(sessions_conn, "vec_meta") if legacy_vector_tables else 0
+        processing_catalog = _processing_catalog_summary(sessions_conn, memory_conn, root=root)
 
         return {
-            "ok": not stale_sessions and not orphan_vectors,
+            "ok": not stale_sessions
+            and not orphan_vectors
+            and processing_catalog["failed"] == 0
+            and processing_catalog["stale"] == 0,
             "paths": {"sessions_db": sessions_db, "memory_db": memory_db},
             "counts": {
                 "sessions": _count(sessions_conn, "sessions"),
@@ -318,6 +457,7 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
                 "legacy_session_vec_meta": legacy_vector_count,
             },
             "catalog": _catalog_summary(memory_conn),
+            "processing_catalog": processing_catalog,
             "vector_sources": _source_counts(memory_conn),
             "duplicates": {
                 "hash_groups": _duplicate_groups(memory_conn, "hash"),
@@ -328,6 +468,8 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
                 "sessions_with_missing_vectors": len(missing_sessions),
                 "sessions_with_stale_vectors": len(stale_sessions),
                 "orphan_vector_sources": len(orphan_vectors),
+                "processing_failed": processing_catalog["failed"],
+                "processing_stale": processing_catalog["stale"],
             },
             "orphan_vectors": orphan_vectors,
             "synthesis": _latest_synthesis(root),
@@ -352,13 +494,22 @@ def print_text_report(report: dict[str, Any]) -> None:
             f"units={catalog['total']} statuses={json.dumps(catalog['by_status'], sort_keys=True)} "
             f"pending={catalog['pending']} missing_vec_links={catalog['missing_vec_links']}"
         )
+    processing = report["processing_catalog"]
+    if processing["exists"]:
+        print(
+            "processing: "
+            f"units={processing['total']} stages={json.dumps(processing['by_stage_status'], sort_keys=True)} "
+            f"pending={processing['pending']} failed={processing['failed']} stale={processing['stale']}"
+        )
     print(
         "issues: "
         f"missing_sessions={summary['sessions_with_missing_vectors']} "
         f"stale_sessions={summary['sessions_with_stale_vectors']} "
         f"orphan_sources={summary['orphan_vector_sources']} "
         f"dup_hash_groups={report['duplicates']['hash_groups']} "
-        f"dup_content_hash_groups={report['duplicates']['content_hash_groups']}"
+        f"dup_content_hash_groups={report['duplicates']['content_hash_groups']} "
+        f"processing_failed={summary['processing_failed']} "
+        f"processing_stale={summary['processing_stale']}"
     )
     if report["legacy"]["sessions_db_has_vec_meta"]:
         print(f"legacy: sessions.db has vec_meta with {report['legacy']['sessions_db_vec_meta_count']} rows")
@@ -390,6 +541,15 @@ def print_text_report(report: dict[str, Any]) -> None:
         print("Orphan vectors:")
         for item in report["orphan_vectors"][:12]:
             print(f"- {item['source_key']}: count={item['count']} max_exchange_idx={item['max_exchange_idx']}")
+
+    if processing.get("stale_rows"):
+        print("")
+        print("Processing catalog stale rows:")
+        for item in processing["stale_rows"][:12]:
+            print(
+                f"- {item['stage']} {item['source']}:{item['source_key']} "
+                f"hash={item['hash']} expected={item['expected_hash']} status={item['status']}"
+            )
 
 
 def build_parser() -> argparse.ArgumentParser:
