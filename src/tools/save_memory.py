@@ -4,6 +4,7 @@ import os
 import threading
 from typing import Any
 
+from src.memory.content_hash import memory_hashes
 from src.memory.operations._helpers import _parse_memory_md, _write_memory_md
 from src.coordination.memory_lease import get_memory_lease_manager
 from src.coordination.memory_write_queue import get_memory_write_queue
@@ -308,10 +309,13 @@ async def _retry_delete_embedding(key: str, store: Any, max_retries: int = 3) ->
 
 async def _embed_and_store(key: str, value: str, store: Any) -> None:
     """Generate embedding for a memory entry and store it in sqlite-vec."""
-    import hashlib
-
     from src.memory.embeddings.service import generate_embedding
     from src.memory.keywords.extractor import extract_keywords
+
+    raw_hash, content_hash = memory_hashes(value)
+    if await run_in_thread(_memory_embedding_is_current, key, raw_hash, content_hash, store):
+        logger.debug("Embedding already current for key: %s", key)
+        return
 
     vec = await run_in_thread(generate_embedding, value)
     if all(v == 0.0 for v in vec):
@@ -320,7 +324,6 @@ async def _embed_and_store(key: str, value: str, store: Any) -> None:
             key,
         )
 
-    text_hash = hashlib.md5(value.encode()).hexdigest()
     try:
         store.delete_by_source(key, source="memory")
         rowid = store.insert(
@@ -328,7 +331,8 @@ async def _embed_and_store(key: str, value: str, store: Any) -> None:
             source="memory",
             source_key=key,
             text=value[:2000],
-            hash=text_hash,
+            hash=raw_hash,
+            content_hash=content_hash,
         )
     except Exception as e:
         raise RuntimeError(f"vector_store insert failed: {e}") from e
@@ -353,3 +357,34 @@ async def _delete_embedding(key: str, store: Any) -> None:
     deleted = store.delete_by_source(key, source="memory")
     if deleted:
         logger.debug("Embedding deleted for key: %s", key)
+
+
+def _memory_embedding_is_current(key: str, raw_hash: str, content_hash: str, store: Any) -> bool:
+    try:
+        conn = store._get_conn()
+        row = conn.execute(
+            """
+            SELECT rowid
+            FROM vec_meta
+            WHERE source = 'memory'
+              AND source_key = ?
+              AND (
+                content_hash = ?
+                OR hash = ?
+                OR hash = ?
+              )
+            LIMIT 1
+            """,
+            (key, content_hash, content_hash, raw_hash),
+        ).fetchone()
+        if row is None:
+            return False
+        conn.execute(
+            "UPDATE vec_meta SET hash = ?, content_hash = ? WHERE rowid = ?",
+            (raw_hash, content_hash, int(row[0])),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        logger.debug("Failed to check current memory embedding for %s", key, exc_info=True)
+        return False

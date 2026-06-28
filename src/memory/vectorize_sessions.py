@@ -8,24 +8,20 @@ import asyncio
 import json
 import logging
 import sys
-import re
 from typing import Any, Optional
 
 import aiosqlite
 
 # Reuse the jaccard function from clustering module
 from src.memory.clustering.heuristic import jaccard_similarity
+from src.memory.content_hash import normalize_for_content_hash
 
 logger = logging.getLogger(__name__)
 
 
 def _normalize_for_dedup(text: str) -> str:
     """Normalize text before hashing: lowercase, collapse whitespace, strip code blocks."""
-    text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-    text = re.sub(r'`[^`]+`', '', text)
-    text = text.lower().strip()
-    text = re.sub(r'\s+', ' ', text)
-    return text
+    return normalize_for_content_hash(text)
 
 
 async def get_all_sessions(repos: Any = None) -> list[dict[str, Any]]:

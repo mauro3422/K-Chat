@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import sqlite3
 from typing import Any
 
+from src.memory.content_hash import memory_hashes
 from src.memory.operations._helpers import (
     _get_memory_db,
     _memory_db,
@@ -13,6 +13,38 @@ from src.memory.operations._helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _find_existing_memory_vector(store: Any, key: str, raw_hash: str, content_hash: str) -> int | None:
+    try:
+        conn = store._get_conn()
+        row = conn.execute(
+            """
+            SELECT rowid
+            FROM vec_meta
+            WHERE source = 'memory'
+              AND source_key = ?
+              AND (
+                content_hash = ?
+                OR hash = ?
+                OR hash = ?
+              )
+            LIMIT 1
+            """,
+            (key, content_hash, content_hash, raw_hash),
+        ).fetchone()
+        if row is None:
+            return None
+        rowid = int(row[0])
+        conn.execute(
+            "UPDATE vec_meta SET hash = ?, content_hash = ? WHERE rowid = ?",
+            (raw_hash, content_hash, rowid),
+        )
+        conn.commit()
+        return rowid
+    except Exception:
+        logger.debug("Failed to check existing memory vector for %s", key, exc_info=True)
+        return None
 
 
 async def _reindex_memories(dry_run: bool = False, repos: Any = None) -> str:
@@ -26,23 +58,35 @@ async def _reindex_memories(dry_run: bool = False, repos: Any = None) -> str:
 
     store = mem.vector_store
     count = 0
+    skipped = 0
     errors = 0
     from src.memory.embeddings.service import generate_embedding
 
     for entry in all_mem:
         key = entry["key"]
         value = entry["value"]
+        raw_hash, content_hash = memory_hashes(value)
         try:
+            if _find_existing_memory_vector(store, key, raw_hash, content_hash) is not None:
+                skipped += 1
+                continue
             store.delete_by_source(key, source="memory")
             vec = await asyncio.to_thread(generate_embedding, value)
-            store.insert(vec, source="memory", source_key=key, text=value[:500], hash=hashlib.md5(value[:4000].encode()).hexdigest())
+            store.insert(
+                vec,
+                source="memory",
+                source_key=key,
+                text=value[:500],
+                hash=raw_hash,
+                content_hash=content_hash,
+            )
             count += 1
         except Exception as e:
             logger.warning("Error reindexando %s: %s", key, e)
             errors += 1
 
     total = store.count()
-    return f"Reindexadas {count} entradas ({errors} errores). Total vectores: {total}."
+    return f"Reindexadas {count} entradas ({skipped} sin cambios, {errors} errores). Total vectores: {total}."
 
 
 async def _reindex_sessions(dry_run: bool = False, repos: Any = None) -> str:
