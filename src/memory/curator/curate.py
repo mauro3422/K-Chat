@@ -480,8 +480,8 @@ async def curate_all(
     if not dry:
         try:
             from src.memory.synthesis.daily import generate_daily_synthesis
-            mem_db = _get_memory_db_path()
-            synthesis_path = await generate_daily_synthesis(db_path=mem_db)
+            sessions_db = _get_sessions_db_path()
+            synthesis_path = await generate_daily_synthesis(db_path=sessions_db)
             logger.info("Daily synthesis → %s", synthesis_path)
             try:
                 await save_memory_fn(

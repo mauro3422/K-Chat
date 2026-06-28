@@ -33,7 +33,7 @@ async def _reindex_memories(dry_run: bool = False, repos: Any = None) -> str:
         key = entry["key"]
         value = entry["value"]
         try:
-            store.delete_by_source(key)
+            store.delete_by_source(key, source="memory")
             vec = await asyncio.to_thread(generate_embedding, value)
             store.insert(vec, source="memory", source_key=key, text=value[:500], hash=hashlib.md5(value[:4000].encode()).hexdigest())
             count += 1

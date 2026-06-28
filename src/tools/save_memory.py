@@ -295,7 +295,7 @@ async def _retry_delete_embedding(key: str, store: Any, max_retries: int = 3) ->
     """Try delete embedding with backoff."""
     for attempt in range(max_retries):
         try:
-            deleted = store.delete_by_source(key)
+            deleted = store.delete_by_source(key, source="memory")
             if deleted:
                 logger.debug("Embedding deleted for key: %s", key)
             return
@@ -322,7 +322,7 @@ async def _embed_and_store(key: str, value: str, store: Any) -> None:
 
     text_hash = hashlib.md5(value.encode()).hexdigest()
     try:
-        store.delete_by_source(key)
+        store.delete_by_source(key, source="memory")
         rowid = store.insert(
             vec,
             source="memory",
@@ -350,6 +350,6 @@ async def _embed_and_store(key: str, value: str, store: Any) -> None:
 
 async def _delete_embedding(key: str, store: Any) -> None:
     """Remove embedding for a deleted memory key."""
-    deleted = store.delete_by_source(key)
+    deleted = store.delete_by_source(key, source="memory")
     if deleted:
         logger.debug("Embedding deleted for key: %s", key)

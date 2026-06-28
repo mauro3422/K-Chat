@@ -92,6 +92,19 @@ class TestVectorStore:
         assert deleted == 2
         assert vector_store.count() == 1
 
+    def test_delete_by_source_can_scope_to_source_type(self, vector_store):
+        vec = [0.1] * 384
+        vector_store.insert(vec, source="memory", source_key="shared", text="memory")
+        vector_store.insert(vec, source="session", source_key="shared", text="session")
+
+        deleted = vector_store.delete_by_source("shared", source="memory")
+
+        assert deleted == 1
+        assert vector_store.count() == 1
+        conn = vector_store._get_conn()
+        remaining = conn.execute("SELECT source FROM vec_meta WHERE source_key = ?", ["shared"]).fetchone()
+        assert remaining[0] == "session"
+
     def test_count(self, vector_store):
         assert vector_store.count() == 0
         vec = [0.1] * 384

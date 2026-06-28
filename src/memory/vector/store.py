@@ -260,18 +260,24 @@ class VectorStore:
             conn.commit()
         return cursor.rowcount > 0
 
-    def delete_by_source(self, source_key: str) -> int:
-        """Delete all entries for a given source_key (e.g., a session or memory key)."""
+    def delete_by_source(self, source_key: str, source: str = "") -> int:
+        """Delete entries for a source key, optionally scoped by source type.
+
+        Scoping matters because memory keys and session IDs share the same
+        ``source_key`` column. Callers that know the domain should pass
+        ``source='memory'`` or ``source='session'``.
+        """
         with self._lock:
             conn = self._get_conn()
-            rows = conn.execute(
-                "SELECT rowid FROM vec_meta WHERE source_key = ?", [source_key]
-            ).fetchall()
+            where_sql = "source_key = ?"
+            params: list = [source_key]
+            if source:
+                where_sql += " AND source = ?"
+                params.append(source)
+            rows = conn.execute(f"SELECT rowid FROM vec_meta WHERE {where_sql}", params).fetchall()
             for (rowid,) in rows:
                 conn.execute("DELETE FROM vec_entries WHERE rowid = ?", [rowid])
-            deleted = conn.execute(
-                "DELETE FROM vec_meta WHERE source_key = ?", [source_key]
-            ).rowcount
+            deleted = conn.execute(f"DELETE FROM vec_meta WHERE {where_sql}", params).rowcount
             conn.commit()
             return deleted
 

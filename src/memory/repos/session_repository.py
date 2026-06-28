@@ -80,7 +80,7 @@ class SessionRepository(_BaseRepository):
         # ── Step 2: Clean up memory.db embeddings for this session ────
         try:
             if repos.memory and repos.memory.vector_store:
-                deleted = repos.memory.vector_store.delete_by_source(session_id)
+                deleted = repos.memory.vector_store.delete_by_source(session_id, source="session")
                 if deleted:
                     logger.info("Cleaned %d embeddings for deleted session %s",
                                 deleted, session_id[:12])
