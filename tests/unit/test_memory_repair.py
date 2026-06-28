@@ -4,6 +4,7 @@ import sqlite3
 
 from scripts.memory_audit import _content_hash
 from scripts.memory_repair import apply_catalog_repairs, plan_repairs, prune_stale_vectors
+from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
 
 
 def _init_sessions_db(path, *, session_id="s1", user="Tell me about distributed memory catalogs.", assistant="They use content hashes to avoid duplicate work."):
@@ -171,3 +172,38 @@ def test_memory_repair_prunes_only_planned_stale_vectors(tmp_path):
         assert conn.execute("SELECT rowid FROM vec_keywords ORDER BY rowid").fetchall() == [(9,)]
     finally:
         conn.close()
+
+
+def test_memory_repair_detects_and_fixes_broken_catalog_link(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    digest = _content_hash(_exchange_text())
+    conn = sqlite3.connect(memory_db)
+    conn.execute(
+        """
+        INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+        VALUES (9, 'session', 's1', 0, ?, ?, ?, '2026-06-27T10:00:02')
+        """,
+        (_exchange_text(), digest, digest),
+    )
+    conn.commit()
+    conn.close()
+    catalog = MemoryWorkCatalogRepository(str(memory_db))
+    catalog.mark(
+        source="session",
+        source_key="s1",
+        item_idx=0,
+        content_hash=digest,
+        status="embedded",
+        vec_rowid=8,
+        reason="old_row",
+    )
+
+    report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
+    assert report.counts == {"broken_catalog_link": 1, "catalog_embedded": 1}
+
+    assert apply_catalog_repairs(memory_db=str(memory_db), report=report) == 1
+    report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
+    assert report.counts == {}

@@ -112,6 +112,13 @@ def _find_vec_by_hash(conn: sqlite3.Connection, content_hash: str) -> sqlite3.Ro
     ).fetchone()
 
 
+def _vec_row_exists(conn: sqlite3.Connection, rowid: int) -> bool:
+    if not _table_exists(conn, "vec_meta"):
+        return False
+    row = conn.execute("SELECT 1 FROM vec_meta WHERE rowid = ?", (rowid,)).fetchone()
+    return row is not None
+
+
 def _catalog_row(conn: sqlite3.Connection, session_id: str, idx: int) -> sqlite3.Row | None:
     if not _table_exists(conn, "memory_work_catalog"):
         return None
@@ -166,7 +173,19 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
                     "deduped",
                     "noise",
                 }:
-                    continue
+                    vec_rowid = catalog["vec_rowid"]
+                    if vec_rowid is None or str(catalog["status"]) == "noise" or _vec_row_exists(memory_conn, int(vec_rowid)):
+                        continue
+                    report.actions.append(RepairAction(
+                        action="broken_catalog_link",
+                        source="session",
+                        source_key=session_id,
+                        item_idx=idx,
+                        content_hash=digest,
+                        status=str(catalog["status"]),
+                        vec_rowid=int(vec_rowid),
+                        reason="catalog_vec_row_missing",
+                    ))
 
                 if len(text) < 30:
                     report.actions.append(RepairAction(
@@ -313,7 +332,8 @@ def print_text_report(report: RepairReport, *, applied: bool) -> None:
         f"catalog_deduped={counts.get('catalog_deduped', 0)} "
         f"catalog_noise={counts.get('catalog_noise', 0)} "
         f"missing_vector={counts.get('missing_vector', 0)} "
-        f"stale_vector={counts.get('stale_vector', 0)}"
+        f"stale_vector={counts.get('stale_vector', 0)} "
+        f"broken_catalog_link={counts.get('broken_catalog_link', 0)}"
     )
     if applied:
         print(f"applied_catalog_rows={report.applied_catalog_rows}")
@@ -322,7 +342,7 @@ def print_text_report(report: RepairReport, *, applied: bool) -> None:
     if report.pruned_stale_vectors:
         print(f"pruned_stale_vectors={report.pruned_stale_vectors}")
 
-    interesting = [a for a in report.actions if a.action in {"missing_vector", "stale_vector"}]
+    interesting = [a for a in report.actions if a.action in {"missing_vector", "stale_vector", "broken_catalog_link"}]
     if interesting:
         print("")
         print("Remaining work:")
@@ -389,7 +409,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print_text_report(report, applied=args.apply)
 
-    if args.strict and (report.counts.get("missing_vector", 0) or report.counts.get("stale_vector", 0)):
+    if args.strict and (
+        report.counts.get("missing_vector", 0)
+        or report.counts.get("stale_vector", 0)
+        or report.counts.get("broken_catalog_link", 0)
+    ):
         return 1
     return 0
 
