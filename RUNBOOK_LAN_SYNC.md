@@ -1,4 +1,4 @@
-# Runbook operativo — LAN, memoria y failover
+﻿# Runbook operativo — LAN, memoria y failover
 
 Este documento resume cómo operar el estado actual del sistema entre dos instancias de Kairos sin perder de vista qué está compartido y qué queda local.
 
@@ -27,6 +27,14 @@ Este documento resume cómo operar el estado actual del sistema entre dos instan
 - `GET /api/memory/diagnostics` — comparación memoria.md vs memory.db.
 - `GET /api/memory/conflicts` — resumen accionable de conflictos.
 - `GET /api/telegram/status` — estado de reflejo de Telegram.
+
+`/api/node/runtime` y `/api/node/sync/status` incluyen `observability` para leer rapido el estado fino de memoria:
+
+- `revision_age_seconds`: antiguedad de la ultima revision de memoria.
+- `sync_age_seconds`: antiguedad del ultimo sync confirmado.
+- `sync_lag_seconds`: diferencia entre sync y revision. Si queda negativa, hay memoria pendiente de sincronizar.
+- `queue_size`, `queue_oldest_age_seconds` y `queue_reasons`: cola local de escrituras pendientes.
+- `lease.active`, `lease.owner_node_id` y `lease.expires_in_seconds`: quien tiene el liderazgo temporal de escritura.
 
 ## Flujo normal
 
@@ -133,6 +141,7 @@ Ejemplo de salida sana:
 ```text
 LAN field smoke: 29/29 checks passed
 OK: health, node state, heartbeats, sync, memory visibility and failover status passed.
+Memory probe: primary -> secondary, key=lan_field_smoke:..., write=35.0ms, api_write=12.0ms, sync=40.0ms, visible=1005.0ms, writer_queue=0, reader_queue=0, lease_active=False
 ```
 
 ### Antes de empezar
@@ -236,3 +245,4 @@ Con eso, el arranque queda automático:
 4. `/health` y `/api/node/state` reflejan la relación sin tocar nada a mano.
 
 Si cambiaste código, sí: `git pull` alcanza para traer la versión nueva, pero después hay que reiniciar el servidor para cargar el nuevo Python. Si solo cambiaste `.env`, también reiniciá para que tome la configuración.
+

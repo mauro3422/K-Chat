@@ -339,8 +339,15 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
     probe_value = f"{args.probe_value} ({time.strftime('%Y-%m-%d %H:%M:%S')})"
     writer = primary if states["primary"].get("role") == "primary" else secondary
     reader = secondary if writer.name == "primary" else primary
+    memory_summary: dict[str, Any] = {
+        "_summary": True,
+        "writer": writer.name,
+        "reader": reader.name,
+        "probe_key": probe_key,
+    }
 
     try:
+        write_started = time.perf_counter()
         write_response = client.request(
             "POST",
             writer,
@@ -351,6 +358,8 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
                 "source": {"node_id": "lan-field-smoke", "role": "test", "base_url": ""},
             },
         )
+        memory_summary["write_ms"] = round((time.perf_counter() - write_started) * 1000, 1)
+        memory_summary["reported_write_ms"] = write_response.get("duration_ms")
         steps.append(expect(write_response.get("ok") is True and write_response.get("granted") is True, "memory write granted on primary", node=writer.name, data=write_response))
     except Exception as exc:
         detail = str(exc)
@@ -358,19 +367,24 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
         return steps
 
     try:
+        sync_started = time.perf_counter()
         sync_response = client.request(
             "POST",
             writer,
             "/api/memory/sync",
             payload={"dry_run": False, "confirm": True, "key_pattern": probe_key, "fmt": "text"},
         )
+        memory_summary["sync_ms"] = round((time.perf_counter() - sync_started) * 1000, 1)
         steps.append(expect(sync_response.get("ok") is True, "memory sync endpoint ok", node=writer.name, data=sync_response))
     except Exception as exc:
         detail = str(exc)
         steps.append(expect(False, "memory sync endpoint ok", node=writer.name, detail=detail, hint=failure_hint("memory sync endpoint ok", detail)))
 
+    visibility_started = time.perf_counter()
     matched, snapshot = wait_for_snapshot_match(client, reader, probe_key, attempts=args.sync_attempts, delay=args.sync_delay)
+    memory_summary["visibility_ms"] = round((time.perf_counter() - visibility_started) * 1000, 1)
     source_mode = get_path(snapshot, "source.mode", "")
+    memory_summary["source_mode"] = source_mode
     steps.append(
         expect(
             matched,
@@ -382,6 +396,16 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
         )
     )
     steps.append(expect(get_path(snapshot, "memory.is_fresh", False) is True, "probe memory snapshot is fresh", node=reader.name, hint=failure_hint("memory snapshot fresh", data=snapshot), data=snapshot))
+
+    for node in (writer, reader):
+        try:
+            status = client.request("GET", node, "/api/node/sync/status")
+            observability = status.get("observability", {})
+            memory_summary[f"{node.name}_queue_size"] = observability.get("queue_size")
+            memory_summary[f"{node.name}_lease_active"] = get_path(observability, "lease.active", False)
+        except Exception as exc:
+            memory_summary[f"{node.name}_observability_error"] = str(exc)
+    steps.append(expect(True, "memory probe observability", data=memory_summary))
 
     if args.promote_secondary:
         target = secondary
@@ -421,6 +445,22 @@ def print_report(steps: list[Step]) -> None:
     print(f"LAN field smoke: {passed}/{len(steps)} checks passed")
     if not failures:
         print("OK: health, node state, heartbeats, sync, memory visibility and failover status passed.")
+        for step in steps:
+            if step.data.get("_summary"):
+                data = step.data
+                reported = data.get("reported_write_ms")
+                reported_text = f", api_write={reported}ms" if reported is not None else ""
+                print(
+                    "Memory probe: "
+                    f"{data.get('writer')} -> {data.get('reader')}, "
+                    f"key={data.get('probe_key')}, "
+                    f"write={data.get('write_ms')}ms{reported_text}, "
+                    f"sync={data.get('sync_ms')}ms, "
+                    f"visible={data.get('visibility_ms')}ms, "
+                    f"writer_queue={data.get(str(data.get('writer')) + '_queue_size')}, "
+                    f"reader_queue={data.get(str(data.get('reader')) + '_queue_size')}, "
+                    f"lease_active={data.get(str(data.get('writer')) + '_lease_active')}"
+                )
         return
 
     print("")

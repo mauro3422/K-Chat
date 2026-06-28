@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -139,6 +141,40 @@ def _memory_write_mode(snapshot: dict, mode: str) -> dict:
     return {"can_write": False, "mode": "read_only_secondary", "target": "none"}
 
 
+def _age_seconds(timestamp: float, now: float) -> float | None:
+    if timestamp <= 0:
+        return None
+    return max(0.0, round(now - timestamp, 3))
+
+
+def _lease_observability(lease, now: float) -> dict:
+    if lease is None:
+        return {"active": False, "owner_node_id": "", "reason": "", "expires_in_seconds": None}
+    lease_data = lease.to_dict()
+    expires_at = float(lease_data.get("expires_at", 0.0) or 0.0)
+    return {
+        "active": expires_at > now,
+        "owner_node_id": str(lease_data.get("owner_node_id", "")),
+        "reason": str(lease_data.get("reason", "")),
+        "expires_in_seconds": round(expires_at - now, 3) if expires_at else None,
+    }
+
+
+def _memory_observability(snapshot: dict, queue, lease, now: float) -> dict:
+    revision = float(snapshot.get("last_memory_revision", 0.0) or 0.0)
+    sync = float(snapshot.get("last_memory_sync", 0.0) or 0.0)
+    pending = queue.snapshot()
+    return {
+        "revision_age_seconds": _age_seconds(revision, now),
+        "sync_age_seconds": _age_seconds(sync, now),
+        "sync_lag_seconds": round(sync - revision, 3) if revision or sync else 0.0,
+        "queue_size": len(queue),
+        "queue_oldest_age_seconds": _age_seconds(float(pending[0].get("requested_at", 0.0) or 0.0), now) if pending else None,
+        "queue_reasons": sorted({str(item.get("reason", "")) for item in pending if isinstance(item, dict) and item.get("reason")}),
+        "lease": _lease_observability(lease, now),
+    }
+
+
 class NodeHeartbeatPayload(BaseModel):
     node_id: str = Field(default="")
     role: str = Field(default="secondary")
@@ -214,6 +250,7 @@ async def node_runtime(request: Request) -> JSONResponse:
     failover = _get_failover_state(request).snapshot()
     queue_size = len(queue)
     lease = lease_manager.snapshot()
+    now = time.time()
     mode, reasons = _runtime_mode(snapshot, cluster, queue_size, failover)
 
     return JSONResponse(
@@ -248,6 +285,7 @@ async def node_runtime(request: Request) -> JSONResponse:
                 "queue_path": getattr(queue, "persistence_path", ""),
                 "lease": lease.to_dict() if lease else None,
                 "write": _memory_write_mode(snapshot, mode),
+                "observability": _memory_observability(snapshot, queue, lease, now),
             },
             "failover": {
                 "should_promote": failover.get("should_promote", False),
@@ -331,12 +369,14 @@ async def memory_request(payload: NodeMemoryWritePayload, request: Request) -> J
         )
         return JSONResponse({"ok": True, "granted": False, "queued": True, "request": queued.to_dict()})
 
+    started = time.perf_counter()
     result = await _get_save_memory_run(request)(
         key=payload.key,
         value=payload.value,
         _repos=getattr(request.app.state, "repos", None),
         _force_local_write=True,
     )
+    duration_ms = round((time.perf_counter() - started) * 1000, 3)
     if result.startswith("[OK]"):
         replay_request = None
         if preferred_role != "primary":
@@ -364,7 +404,7 @@ async def memory_request(payload: NodeMemoryWritePayload, request: Request) -> J
             await bridge.broadcast_event("memory_write_completed", completion_event)
         except Exception:
             pass
-    response = {"ok": True, "granted": True, "queued": False, "status": "completed", "result": result}
+    response = {"ok": True, "granted": True, "queued": False, "status": "completed", "duration_ms": duration_ms, "result": result}
     if result.startswith("[OK]") and preferred_role != "primary":
         response["replay_queued"] = True
         response["replay_request"] = replay_request.to_dict() if replay_request is not None else None
@@ -402,6 +442,7 @@ async def sync_status(request: Request) -> JSONResponse:
     bridge = _get_node_bridge(request)
     cluster = await _peer_cluster_state(request)
     snapshot = coordinator.snapshot()
+    now = time.time()
     return JSONResponse(
         {
             "ok": True,
@@ -425,6 +466,7 @@ async def sync_status(request: Request) -> JSONResponse:
                 "last_memory_revision": snapshot.get("last_memory_revision", 0.0),
                 "last_memory_sync": snapshot.get("last_memory_sync", 0.0),
             },
+            "observability": _memory_observability(snapshot, queue, lease, now),
         }
     )
 

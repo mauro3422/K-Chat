@@ -483,6 +483,10 @@ async def test_node_sync_status_reports_queue_and_memory_state():
             assert body["queue"]["size"] == 1
             assert body["queue"]["pending"][0]["key"] == "Preferencia"
             assert body["sync"]["is_primary"] is False
+            assert body["observability"]["queue_size"] == 1
+            assert body["observability"]["queue_oldest_age_seconds"] is not None
+            assert body["observability"]["queue_reasons"] == ["primary_unavailable"]
+            assert body["observability"]["lease"]["active"] is False
 
 
 @pytest.mark.anyio
@@ -571,6 +575,9 @@ async def test_node_runtime_reports_normal_primary_state():
             assert body["mode"] == "normal"
             assert body["memory"]["write"]["can_write"] is True
             assert body["memory"]["write"]["mode"] == "local_primary"
+            assert body["memory"]["observability"]["queue_size"] == 0
+            assert body["memory"]["observability"]["queue_reasons"] == []
+            assert body["memory"]["observability"]["lease"]["active"] is False
 
 
 @pytest.mark.anyio
@@ -681,6 +688,7 @@ async def test_node_memory_request_primary_applies_write():
             body = response.json()
             assert body["ok"] is True
             assert body["granted"] is True
+            assert body["duration_ms"] >= 0
             app.state.save_memory_run.assert_awaited_once()
             assert fake_bus.publish.await_count == 2
             assert app.state.node_coordinator.snapshot()["last_memory_revision"] > 0

@@ -132,3 +132,63 @@ def test_print_report_includes_likely_hint(capsys):
 
     captured = capsys.readouterr()
     assert "likely: Revisar KAIROS_PEER_URLS." in captured.out
+
+
+def test_print_report_includes_memory_probe_summary(capsys):
+    lan_field_smoke.print_report([
+        lan_field_smoke.Step(name="health.status == ok", ok=True),
+        lan_field_smoke.Step(
+            name="memory probe observability",
+            ok=True,
+            data={
+                "_summary": True,
+                "writer": "primary",
+                "reader": "secondary",
+                "probe_key": "lan_field_smoke:1",
+                "write_ms": 12.3,
+                "reported_write_ms": 4.5,
+                "sync_ms": 20.1,
+                "visibility_ms": 100.0,
+                "primary_queue_size": 0,
+                "secondary_queue_size": 0,
+                "primary_lease_active": False,
+            },
+        ),
+    ])
+
+    captured = capsys.readouterr()
+    assert "Memory probe: primary -> secondary" in captured.out
+    assert "key=lan_field_smoke:1" in captured.out
+    assert "api_write=4.5ms" in captured.out
+
+
+def test_run_smoke_collects_memory_observability_summary(monkeypatch):
+    responses = common_responses()
+    responses.update({
+        ("POST", "primary", "/api/node/memory/request"): {"ok": True, "granted": True, "duration_ms": 3.0},
+        ("POST", "primary", "/api/memory/sync"): {"ok": True},
+        ("GET", "secondary", "/api/node/memory/snapshot"): {
+            "source": {"mode": "peer"},
+            "memory": {"is_fresh": True},
+            "compare": {"only_in_md": [], "only_in_db": [], "mismatched": []},
+        },
+    })
+    for node in ("primary", "secondary"):
+        responses[("GET", node, "/api/node/sync/status")] = {
+            "ok": True,
+            "sync": {"memory_is_fresh": True},
+            "cluster": {"reachable_peers": 1},
+            "observability": {"queue_size": 0, "lease": {"active": False}},
+        }
+    fake = FakeClient(responses)
+    monkeypatch.setattr(lan_field_smoke, "Client", lambda timeout: fake)
+
+    steps = lan_field_smoke.run_smoke(smoke_args(skip_write=False, probe_key="lan_field_smoke:test"))
+    summary = next(step for step in steps if step.name == "memory probe observability")
+
+    assert all(step.ok for step in steps)
+    assert summary.data["writer"] == "primary"
+    assert summary.data["reader"] == "secondary"
+    assert summary.data["reported_write_ms"] == 3.0
+    assert summary.data["primary_queue_size"] == 0
+    assert summary.data["secondary_queue_size"] == 0
