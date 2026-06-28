@@ -235,7 +235,7 @@ Estado del segundo corte:
 - [x] `--prune-stale` elimina solo los rowids stale detectados por el plan y sus enlaces asociados.
 - [x] Detecta catalogos que apuntan a un `vec_rowid` inexistente y los repara contra el vector actual por `content_hash`.
 - [x] En PC grande, el auditor quedo sin `missing_sessions` ni `stale_sessions`.
-- [ ] Resolver tablas vectoriales legacy en `sessions.db`.
+- [x] Resolver tablas vectoriales legacy en `sessions.db` con backup previo y limpieza controlada.
 - [ ] Ejecutar el mismo repair en laptop despues del pull.
 
 ## Criterio de aprobado
