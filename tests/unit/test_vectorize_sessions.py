@@ -232,3 +232,89 @@ async def test_vectorize_session_catalog_does_not_trust_legacy_exchange_idx(tmp_
     assert row is not None
     assert row["status"] == "embedded"
     assert row["vec_rowid"] == 100
+
+
+@pytest.mark.asyncio
+async def test_vectorize_session_can_fill_targeted_gap_with_existing_later_index(tmp_path, monkeypatch):
+    texts = [
+        (
+            "User: Explain how targeted memory repair fills an old missing exchange.\n"
+            "Assistant: It embeds the exact exchange index instead of trusting max index cursors."
+        ),
+        (
+            "User: Explain why unrelated exchanges must remain untouched during repair.\n"
+            "Assistant: The repair plan limits vectorization to the explicitly missing indexes."
+        ),
+        (
+            "User: Explain why later vectors can hide earlier gaps in a session.\n"
+            "Assistant: A max exchange index cursor can skip older missing vectors."
+        ),
+    ]
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        """
+        CREATE TABLE vec_meta (
+            rowid INTEGER PRIMARY KEY,
+            source TEXT,
+            source_key TEXT,
+            exchange_idx INTEGER,
+            text TEXT,
+            hash TEXT,
+            content_hash TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    later_hash = hashlib.md5(_normalize_for_dedup(texts[2][:4000]).encode()).hexdigest()
+    conn.execute(
+        """
+        INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+        VALUES (9, 'session', 'session-gap', 2, ?, ?, ?, datetime('now'))
+        """,
+        (texts[2], later_hash, later_hash),
+    )
+    conn.commit()
+    store = _FakeStore(conn)
+    catalog = MemoryWorkCatalogRepository(str(tmp_path / "memory.db"))
+    broken_hash = hashlib.md5(_normalize_for_dedup(texts[0][:4000]).encode()).hexdigest()
+    catalog.mark(
+        source="session",
+        source_key="session-gap",
+        item_idx=0,
+        content_hash=broken_hash,
+        status="embedded",
+        vec_rowid=8,
+        reason="old_row",
+    )
+    repos = SimpleNamespace(memory=SimpleNamespace(work_catalog=catalog))
+
+    async def fake_get_session_messages(session_id, repos=None):
+        messages = []
+        for text in texts:
+            user_text, assistant_text = text.split("\nAssistant: ")
+            messages.extend([
+                {"role": "user", "content": user_text.removeprefix("User: "), "created_at": "now"},
+                {"role": "assistant", "content": assistant_text, "created_at": "now"},
+            ])
+        return messages
+
+    monkeypatch.setattr("src.memory.vectorize_sessions.get_session_messages", fake_get_session_messages)
+    monkeypatch.setattr(
+        "src.memory.embeddings.service.generate_embeddings_batch",
+        lambda texts_to_embed: [[0.1] * 384 for _ in texts_to_embed],
+    )
+
+    count, noise_count, mappings, entities = await vectorize_session(
+        "session-gap",
+        repos=repos,
+        store=store,
+        exchange_indexes={0},
+    )
+    assert count == 1
+    assert noise_count == 0
+    assert [insert["exchange_idx"] for insert in store.inserts] == [0]
+
+    row = catalog.get(source="session", source_key="session-gap", item_idx=0)
+    assert row is not None
+    assert row["status"] == "embedded"
+    assert row["vec_rowid"] == 100

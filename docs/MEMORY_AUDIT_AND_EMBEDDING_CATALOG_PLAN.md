@@ -231,6 +231,7 @@ Estado del segundo corte:
 - [x] `scripts/memory_repair.py` planifica reparaciones en modo solo lectura por defecto.
 - [x] `--apply` backfillea filas inferibles de `memory_work_catalog` sin borrar ni recalcular.
 - [x] `--vectorize-missing` revectoriza sesiones con exchanges sin vector actual.
+- [x] `--vectorize-missing` vectoriza indices puntuales para no saltar huecos antiguos por `MAX(exchange_idx)`.
 - [x] `--prune-stale` elimina solo los rowids stale detectados por el plan y sus enlaces asociados.
 - [x] Detecta catalogos que apuntan a un `vec_rowid` inexistente y los repara contra el vector actual por `content_hash`.
 - [x] En PC grande, el auditor quedo sin `missing_sessions` ni `stale_sessions`.

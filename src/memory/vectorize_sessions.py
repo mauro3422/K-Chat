@@ -348,7 +348,8 @@ def _catalog_mark(
 async def vectorize_session(session_id: str, dry_run: bool = False,
                             clusterer: Any = None, repos: Any = None,
                             store: Any = None,
-                            linker: Any = None) -> tuple[int, int, list[dict[str, Any]], list[list[tuple[str, str, float]]]]:
+                            linker: Any = None,
+                            exchange_indexes: list[int] | set[int] | None = None) -> tuple[int, int, list[dict[str, Any]], list[list[tuple[str, str, float]]]]:
     """Vectorize all exchanges in a single session.
 
     Pipeline completo por exchange: keywords → noise filter → embed → cluster.
@@ -374,9 +375,12 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
 
     messages = await get_session_messages(session_id, repos=repos)
     exchanges = group_into_exchanges(messages)
+    target_indexes = set(exchange_indexes) if exchange_indexes is not None else None
 
     if dry_run:
-        return len(exchanges), 0, [], []
+        if target_indexes is None:
+            return len(exchanges), 0, [], []
+        return len([idx for idx in range(len(exchanges)) if idx in target_indexes]), 0, [], []
 
     count = 0
     noise_count = 0
@@ -399,12 +403,14 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
         candidates: list[tuple[int, dict[str, Any], str, str, list[tuple[str, float]], list]] = []
 
         for idx, exchange in enumerate(exchanges):
+            if target_indexes is not None and idx not in target_indexes:
+                continue
             if catalog is None and idx <= last_idx:
                 continue
             try:
                 text = exchange["text"]
                 text_hash = hashlib.md5(_normalize_for_dedup(text[:4000]).encode()).hexdigest()
-                if _catalog_is_processed(catalog, session_id, idx, text_hash):
+                if target_indexes is None and _catalog_is_processed(catalog, session_id, idx, text_hash):
                     continue
                 if len(text) < 30:
                     noise_count += 1

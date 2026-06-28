@@ -314,11 +314,19 @@ async def vectorize_missing(report: RepairReport) -> dict[str, int]:
     from src.memory.repos import get_repos
     from src.memory.vectorize_sessions import vectorize_session
 
-    session_ids = sorted({action.source_key for action in report.actions if action.action == "missing_vector"})
+    targets: dict[str, set[int]] = {}
+    for action in report.actions:
+        if action.action == "missing_vector":
+            targets.setdefault(action.source_key, set()).add(action.item_idx)
+
     results: dict[str, int] = {}
     repos = get_repos()
-    for session_id in session_ids:
-        count, _noise_count, _mappings, _entities = await vectorize_session(session_id, repos=repos)
+    for session_id, indexes in sorted(targets.items()):
+        count, _noise_count, _mappings, _entities = await vectorize_session(
+            session_id,
+            repos=repos,
+            exchange_indexes=indexes,
+        )
         results[session_id] = count
     return results
 
