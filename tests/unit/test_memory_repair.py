@@ -207,3 +207,32 @@ def test_memory_repair_detects_and_fixes_broken_catalog_link(tmp_path):
     assert apply_catalog_repairs(memory_db=str(memory_db), report=report) == 1
     report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
     assert report.counts == {}
+
+
+def test_memory_repair_backfills_memory_vector_catalog_rows(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    digest = _content_hash("2026-06-29 10:00 | Mauro prefers cataloged save_memory embeddings.")
+    conn = sqlite3.connect(memory_db)
+    conn.execute(
+        """
+        INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+        VALUES (11, 'memory', 'user:workflow', 0, ?, ?, '', '2026-06-29T10:00:02')
+        """,
+        ("2026-06-29 10:00 | Mauro prefers cataloged save_memory embeddings.", digest),
+    )
+    conn.commit()
+    conn.close()
+
+    report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
+    assert report.counts == {"missing_vector": 1, "catalog_memory_embedded": 1}
+
+    assert apply_catalog_repairs(memory_db=str(memory_db), report=report) == 1
+    catalog = MemoryWorkCatalogRepository(str(memory_db))
+    row = catalog.get(source="memory", source_key="user:workflow", item_idx=0)
+    assert row is not None
+    assert row["status"] == "embedded"
+    assert row["vec_rowid"] == 11
+    assert row["content_hash"] == digest

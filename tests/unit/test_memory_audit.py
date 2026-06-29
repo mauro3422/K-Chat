@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from scripts.memory_audit import _content_hash, run_audit
+from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
 
 
 def _init_sessions_db(path):
@@ -167,6 +168,15 @@ def test_memory_audit_reports_processing_catalog_statuses(tmp_path):
     )
     conn.commit()
     conn.close()
+    MemoryWorkCatalogRepository(str(memory_db)).mark(
+        source="session",
+        source_key="s1",
+        item_idx=0,
+        content_hash=exchange_digest,
+        status="embedded",
+        vec_rowid=1,
+        reason="test_fixture",
+    )
 
     report = run_audit(sessions_db=str(sessions_db), memory_db=str(memory_db), root=str(tmp_path))
 
@@ -249,3 +259,29 @@ def test_memory_audit_scores_curated_memory_quality(tmp_path):
     assert quality["probe"] == 1
     assert quality["avg_quality_score"] < 1.0
     assert report["summary"]["curated_low_signal"] == 1
+
+
+def test_memory_audit_reports_uncataloged_memory_vectors(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    digest = _content_hash("2026-06-29 10:00 | Save memory embeddings must be cataloged.")
+
+    conn = sqlite3.connect(memory_db)
+    conn.execute(
+        """
+        INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+        VALUES (4, 'memory', 'user:sync', 0, ?, ?, '', '2026-06-29T10:00:00')
+        """,
+        ("2026-06-29 10:00 | Save memory embeddings must be cataloged.", digest),
+    )
+    conn.commit()
+    conn.close()
+
+    report = run_audit(sessions_db=str(sessions_db), memory_db=str(memory_db), root=str(tmp_path))
+
+    assert report["ok"] is False
+    assert report["catalog"]["uncataloged_vectors"] == 1
+    assert report["catalog"]["uncataloged_by_source"] == {"memory": 1}
+    assert report["summary"]["uncataloged_vectors"] == 1

@@ -120,16 +120,73 @@ def _vec_row_exists(conn: sqlite3.Connection, rowid: int) -> bool:
 
 
 def _catalog_row(conn: sqlite3.Connection, session_id: str, idx: int) -> sqlite3.Row | None:
+    return _catalog_row_for(conn, source="session", source_key=session_id, item_idx=idx)
+
+
+def _catalog_row_for(conn: sqlite3.Connection, *, source: str, source_key: str, item_idx: int) -> sqlite3.Row | None:
     if not _table_exists(conn, "memory_work_catalog"):
         return None
     return conn.execute(
         """
         SELECT content_hash, status, vec_rowid
         FROM memory_work_catalog
-        WHERE source='session' AND source_key=? AND item_idx=?
+        WHERE source=? AND source_key=? AND item_idx=?
         """,
-        (session_id, idx),
+        (source, source_key, item_idx),
     ).fetchone()
+
+
+def _content_hash_from_vec(row: sqlite3.Row) -> str:
+    return str(row["content_hash"] or row["hash"] or "")
+
+
+def _plan_memory_vector_catalog_repairs(memory_conn: sqlite3.Connection, report: RepairReport) -> None:
+    if not _table_exists(memory_conn, "vec_meta"):
+        return
+
+    rows = memory_conn.execute(
+        """
+        SELECT rowid, source_key, exchange_idx, hash, content_hash
+        FROM vec_meta
+        WHERE source='memory'
+        ORDER BY rowid ASC
+        """
+    ).fetchall()
+    for row in rows:
+        source_key = str(row["source_key"] or "")
+        item_idx = int(row["exchange_idx"] or 0)
+        digest = _content_hash_from_vec(row)
+        if not source_key or not digest:
+            continue
+        catalog = _catalog_row_for(memory_conn, source="memory", source_key=source_key, item_idx=item_idx)
+        if catalog and str(catalog["content_hash"]) == digest and str(catalog["status"]) in {
+            "embedded",
+            "deduped",
+            "noise",
+        }:
+            vec_rowid = catalog["vec_rowid"]
+            if vec_rowid is None or _vec_row_exists(memory_conn, int(vec_rowid)):
+                continue
+            report.actions.append(RepairAction(
+                action="broken_catalog_link",
+                source="memory",
+                source_key=source_key,
+                item_idx=item_idx,
+                content_hash=digest,
+                status=str(catalog["status"]),
+                vec_rowid=int(vec_rowid),
+                reason="catalog_vec_row_missing",
+            ))
+        report.actions.append(RepairAction(
+            action="catalog_memory_embedded",
+            source="memory",
+            source_key=source_key,
+            item_idx=item_idx,
+            content_hash=digest,
+            status="embedded",
+            vec_rowid=int(row["rowid"]),
+            reason="existing_memory_vector",
+        ))
 
 
 def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
@@ -253,6 +310,7 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
                         content_hash=digest,
                         reason="no_matching_vector",
                     ))
+        _plan_memory_vector_catalog_repairs(memory_conn, report)
     return report
 
 
@@ -260,7 +318,7 @@ def apply_catalog_repairs(*, memory_db: str, report: RepairReport) -> int:
     catalog = MemoryWorkCatalogRepository(memory_db)
     applied = 0
     for action in report.actions:
-        if action.action not in {"catalog_embedded", "catalog_deduped", "catalog_noise"}:
+        if action.action not in {"catalog_embedded", "catalog_deduped", "catalog_noise", "catalog_memory_embedded"}:
             continue
         catalog.mark(
             source=action.source,
@@ -337,6 +395,7 @@ def print_text_report(report: RepairReport, *, applied: bool) -> None:
     print(
         "planned: "
         f"catalog_embedded={counts.get('catalog_embedded', 0)} "
+        f"catalog_memory_embedded={counts.get('catalog_memory_embedded', 0)} "
         f"catalog_deduped={counts.get('catalog_deduped', 0)} "
         f"catalog_noise={counts.get('catalog_noise', 0)} "
         f"missing_vector={counts.get('missing_vector', 0)} "

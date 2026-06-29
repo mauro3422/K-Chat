@@ -133,12 +133,40 @@ def _source_counts(conn: sqlite3.Connection) -> dict[str, int]:
 
 def _catalog_summary(conn: sqlite3.Connection) -> dict[str, Any]:
     if not _table_exists(conn, "memory_work_catalog"):
+        uncataloged_rows = []
+        if _table_exists(conn, "vec_meta"):
+            uncataloged_rows = conn.execute(
+                """
+                SELECT rowid, source, source_key, exchange_idx,
+                       COALESCE(NULLIF(content_hash, ''), hash, '') AS content_hash
+                FROM vec_meta
+                WHERE source IN ('memory', 'session')
+                  AND COALESCE(NULLIF(content_hash, ''), hash, '') != ''
+                ORDER BY source, source_key, exchange_idx
+                """
+            ).fetchall()
+        uncataloged_by_source: dict[str, int] = {}
+        for row in uncataloged_rows:
+            source = str(row["source"] or "")
+            uncataloged_by_source[source] = uncataloged_by_source.get(source, 0) + 1
         return {
             "exists": False,
             "total": 0,
             "by_status": {},
             "pending": 0,
             "missing_vec_links": 0,
+            "uncataloged_vectors": len(uncataloged_rows),
+            "uncataloged_by_source": uncataloged_by_source,
+            "uncataloged_samples": [
+                {
+                    "rowid": row["rowid"],
+                    "source": str(row["source"] or ""),
+                    "source_key": str(row["source_key"] or ""),
+                    "item_idx": int(row["exchange_idx"] or 0),
+                    "hash": str(row["content_hash"] or "")[:12],
+                }
+                for row in uncataloged_rows[:20]
+            ],
         }
     by_status = {
         str(row["status"]): int(row["count"])
@@ -156,12 +184,47 @@ def _catalog_summary(conn: sqlite3.Connection) -> dict[str, Any]:
           AND m.rowid IS NULL
         """
     ).fetchone()[0]
+    uncataloged_rows = []
+    if _table_exists(conn, "vec_meta"):
+        uncataloged_rows = conn.execute(
+            """
+            SELECT v.rowid, v.source, v.source_key, v.exchange_idx,
+                   COALESCE(NULLIF(v.content_hash, ''), v.hash, '') AS content_hash
+            FROM vec_meta v
+            LEFT JOIN memory_work_catalog c
+              ON c.source = v.source
+             AND c.source_key = v.source_key
+             AND c.item_idx = v.exchange_idx
+             AND c.content_hash = COALESCE(NULLIF(v.content_hash, ''), v.hash, '')
+             AND c.status IN ('embedded', 'deduped')
+            WHERE v.source IN ('memory', 'session')
+              AND COALESCE(NULLIF(v.content_hash, ''), v.hash, '') != ''
+              AND c.source IS NULL
+            ORDER BY v.source, v.source_key, v.exchange_idx
+            """
+        ).fetchall()
+    uncataloged_by_source: dict[str, int] = {}
+    for row in uncataloged_rows:
+        source = str(row["source"] or "")
+        uncataloged_by_source[source] = uncataloged_by_source.get(source, 0) + 1
     return {
         "exists": True,
         "total": _count(conn, "memory_work_catalog"),
         "by_status": by_status,
         "pending": by_status.get("pending", 0),
         "missing_vec_links": int(missing_vec_links or 0),
+        "uncataloged_vectors": len(uncataloged_rows),
+        "uncataloged_by_source": uncataloged_by_source,
+        "uncataloged_samples": [
+            {
+                "rowid": row["rowid"],
+                "source": str(row["source"] or ""),
+                "source_key": str(row["source_key"] or ""),
+                "item_idx": int(row["exchange_idx"] or 0),
+                "hash": str(row["content_hash"] or "")[:12],
+            }
+            for row in uncataloged_rows[:20]
+        ],
     }
 
 
@@ -559,9 +622,12 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
         processing_catalog = _processing_catalog_summary(sessions_conn, memory_conn, root=root)
         curated_quality = _curated_memory_quality(memory_conn)
 
+        catalog = _catalog_summary(memory_conn)
+
         return {
             "ok": not stale_sessions
             and not orphan_vectors
+            and catalog["uncataloged_vectors"] == 0
             and processing_catalog["failed"] == 0
             and processing_catalog["stale"] == 0
             and curated_quality["empty"] == 0,
@@ -573,7 +639,7 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
                 "memory_vec_meta": _count(memory_conn, "vec_meta"),
                 "legacy_session_vec_meta": legacy_vector_count,
             },
-            "catalog": _catalog_summary(memory_conn),
+            "catalog": catalog,
             "processing_catalog": processing_catalog,
             "curated_memory_quality": curated_quality,
             "vector_sources": _source_counts(memory_conn),
@@ -586,6 +652,7 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
                 "sessions_with_missing_vectors": len(missing_sessions),
                 "sessions_with_stale_vectors": len(stale_sessions),
                 "orphan_vector_sources": len(orphan_vectors),
+                "uncataloged_vectors": catalog["uncataloged_vectors"],
                 "processing_failed": processing_catalog["failed"],
                 "processing_stale": processing_catalog["stale"],
                 "curated_empty": curated_quality["empty"],
@@ -617,7 +684,8 @@ def print_text_report(report: dict[str, Any]) -> None:
         print(
             "catalog: "
             f"units={catalog['total']} statuses={json.dumps(catalog['by_status'], sort_keys=True)} "
-            f"pending={catalog['pending']} missing_vec_links={catalog['missing_vec_links']}"
+            f"pending={catalog['pending']} missing_vec_links={catalog['missing_vec_links']} "
+            f"uncataloged_vectors={catalog['uncataloged_vectors']}"
         )
     processing = report["processing_catalog"]
     if processing["exists"]:

@@ -23,7 +23,8 @@ Al 2026-06-29, el protocolo basico esta sano:
 Resultados esperados en un sistema sano:
 
 - `memory_audit.ok == true` en cada nodo.
-- `memory_work_catalog` existe y no tiene links rotos.
+- `memory_work_catalog` existe, no tiene links rotos y cubre todos los vectores
+  `source in ('session', 'memory')`.
 - `memory_processing_catalog` existe y no tiene `failed` ni `stale`.
 - `vec_meta` no tiene duplicados por `content_hash`.
 - `sessions.db` no tiene tablas vectoriales legacy.
@@ -105,13 +106,9 @@ source + source_key + item_idx + content_hash + pipeline + model_id + pipeline_v
 
 Estado actual:
 
-- `memory_work_catalog` cubre `source + source_key + item_idx + content_hash`.
+- `memory_work_catalog` cubre
+  `source + source_key + item_idx + content_hash + pipeline + pipeline_version + model_id + model_version`.
 - `memory_processing_catalog` cubre `source + source_key + item_idx + stage + content_hash`.
-
-Proximo ajuste:
-
-- Extender catalogos o metadata para incluir `pipeline`, `pipeline_version`,
-  `model_id`, `model_version` y `source_node_id`.
 
 ## Catalogos
 
@@ -178,8 +175,9 @@ Regla:
 
 Compatibilidad legacy:
 
-- Si no hay catalogo, `vectorize_session()` todavia usa `MAX(exchange_idx)` como
-  fallback. El protocolo nuevo debe considerar eso solo modo legado.
+- Si no hay catalogo, `vectorize_session()` falla. `MAX(exchange_idx)` queda
+  solamente como helper legado de inspeccion/compatibilidad, no como autoridad
+  para decidir trabajo nuevo.
 
 ## Flujo actual de memoria curada
 
@@ -195,6 +193,8 @@ Estado implementado:
   con identidad de pipeline/modelo.
 - Si el embedding ya estaba vigente, `save_memory` no recalcula pero igualmente
   marca la unidad como cubierta.
+- `memory_repair.py --apply` backfillea vectores historicos `source='memory'`
+  que existan en `vec_meta` pero aun no tengan fila de catalogo.
 
 ## Protocolo para embeddings remotos
 
@@ -290,6 +290,7 @@ Criterio de aprobado:
 - LAN doctor: todos los checks pasan, incluido smoke de memoria.
 - LAN doctor incluye `remote_embedding_job_dry_run`.
 - Memory preflight: todos los nodos `ok`.
+- `catalog.uncataloged_vectors == 0`.
 - Los bloques `[DIFF]` de volumen no son failure si ambos nodos estan `ok`.
 
 ## Invariantes que deben tener tests
