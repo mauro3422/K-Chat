@@ -20,7 +20,7 @@ async def test_ensure_session_calls_repo_ensure():
 
     await ensure_session("sess-1", session_repo=session_repo)
 
-    session_repo.ensure.assert_awaited_once_with("sess-1")
+    session_repo.ensure.assert_awaited_once_with("sess-1", origin_node_id="")
 
 
 @pytest.mark.anyio
@@ -30,7 +30,7 @@ async def test_ensure_session_uses_deps():
 
     await ensure_session("sess-x", deps=deps)
 
-    session_repo.ensure.assert_awaited_once_with("sess-x")
+    session_repo.ensure.assert_awaited_once_with("sess-x", origin_node_id="")
 
 
 @pytest.mark.anyio
