@@ -87,6 +87,12 @@ def reset_web_runtime_state() -> None:
         logger.warning("Failed to reset memory write queue", exc_info=True)
 
     try:
+        from src.coordination.embedding_job_queue import reset_embedding_job_queue
+        reset_embedding_job_queue()
+    except Exception:
+        logger.warning("Failed to reset embedding job queue", exc_info=True)
+
+    try:
         from src.coordination.memory_lease import reset_memory_lease_manager
         reset_memory_lease_manager()
     except Exception:
@@ -530,6 +536,7 @@ def create_app() -> FastAPI:
     from web.services.failover_state import FailoverState, configure_failover_state
     from web.services.telegram_reflection import TelegramReflectionState, configure_telegram_reflection_state
     from src.coordination.memory_write_queue import get_memory_write_queue, configure_memory_write_queue
+    from src.coordination.embedding_job_queue import get_embedding_job_queue, configure_embedding_job_queue
     from src.coordination.memory_lease import get_memory_lease_manager, configure_memory_lease_manager
     from src.coordination.leader_lease import get_leader_lease_manager, configure_leader_lease_manager
     from src.coordination.node_state import get_node_coordinator, configure_node_coordinator
@@ -548,6 +555,8 @@ def create_app() -> FastAPI:
     app.state.node_coordinator = node_coordinator
     app.state.memory_write_queue = get_memory_write_queue(cfg)
     configure_memory_write_queue(app.state.memory_write_queue)
+    app.state.embedding_job_queue = get_embedding_job_queue(cfg)
+    configure_embedding_job_queue(app.state.embedding_job_queue)
     app.state.memory_lease_manager = get_memory_lease_manager(cfg)
     configure_memory_lease_manager(app.state.memory_lease_manager)
     app.state.leader_lease_manager = get_leader_lease_manager(cfg)

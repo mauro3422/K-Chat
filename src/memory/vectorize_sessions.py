@@ -15,6 +15,7 @@ import aiosqlite
 # Reuse the jaccard function from clustering module
 from src.memory.clustering.heuristic import jaccard_similarity
 from src.memory.content_hash import normalize_for_content_hash
+from src.memory.embedding_identity import session_exchange_embedding_identity
 
 logger = logging.getLogger(__name__)
 
@@ -310,12 +311,14 @@ def _get_work_catalog(repos: Any = None) -> Any:
 def _catalog_is_processed(catalog: Any, session_id: str, idx: int, text_hash: str) -> bool:
     if catalog is None:
         return False
+    identity = session_exchange_embedding_identity()
     try:
         return bool(catalog.is_processed(
             source="session",
             source_key=session_id,
             item_idx=idx,
             content_hash=text_hash,
+            **identity.as_catalog_kwargs(),
         ))
     except Exception:
         logger.debug("Failed to read memory work catalog", exc_info=True)
@@ -335,6 +338,7 @@ def _catalog_mark(
 ) -> None:
     if catalog is None:
         return
+    identity = session_exchange_embedding_identity()
     try:
         catalog.mark(
             source="session",
@@ -345,6 +349,8 @@ def _catalog_mark(
             vec_rowid=vec_rowid,
             reason=reason,
             metadata=metadata,
+            source_node_id=metadata.get("source_node_id", "") if metadata else "",
+            **identity.as_catalog_kwargs(),
         )
     except Exception:
         logger.debug("Failed to write memory work catalog", exc_info=True)
@@ -429,7 +435,15 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                     continue
                 if len(text) < 30:
                     noise_count += 1
-                    _catalog_mark(catalog, session_id, idx, text_hash, "noise", reason="short_text")
+                    _catalog_mark(
+                        catalog,
+                        session_id,
+                        idx,
+                        text_hash,
+                        "noise",
+                        reason="short_text",
+                        metadata={"source_node_id": source_node_id},
+                    )
                     continue
 
                 kws = extract_keywords(text, top_k=5)
@@ -447,7 +461,7 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                         text_hash,
                         "noise",
                         reason=reason,
-                        metadata={"keywords": [w for w, _ in kws]},
+                        metadata={"keywords": [w for w, _ in kws], "source_node_id": source_node_id},
                     )
                     continue
 
@@ -468,7 +482,7 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                             "deduped",
                             vec_rowid=existing_rowid,
                             reason="content_hash",
-                            metadata={"keywords": [w for w, _ in kws]},
+                            metadata={"keywords": [w for w, _ in kws], "source_node_id": source_node_id},
                         )
                         logger.debug("Hash collision — skipping duplicate exchange (hash=%s)", text_hash[:12])
                         count += 1
@@ -495,7 +509,7 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                         text_hash,
                         "deduped",
                         reason="batch_content_hash",
-                        metadata={"keywords": [w for w, _ in kws]},
+                        metadata={"keywords": [w for w, _ in kws], "source_node_id": source_node_id},
                     )
                     count += 1
                     logger.debug("In-memory hash collision — skipping (hash=%s)", text_hash[:12])
@@ -539,7 +553,7 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                         text_hash,
                         "embedded",
                         vec_rowid=rowid,
-                        metadata={"keywords": [w for w, _ in kws]},
+                        metadata={"keywords": [w for w, _ in kws], "source_node_id": source_node_id},
                     )
 
                     if rowid and kws:

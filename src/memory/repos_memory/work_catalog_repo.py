@@ -16,6 +16,16 @@ from typing import Any
 from src.memory.memory_db_path import resolve_memory_db_path
 
 
+def _catalog_identity_defaults() -> dict[str, str]:
+    return {
+        "pipeline": "embedding",
+        "pipeline_version": "1",
+        "model_id": "fastembed-default",
+        "model_version": "default",
+        "source_node_id": "",
+    }
+
+
 class MemoryWorkCatalogRepository:
     """SQLite repository for memory_work_catalog."""
 
@@ -40,12 +50,18 @@ class MemoryWorkCatalogRepository:
 
     @staticmethod
     def ensure_schema(conn: sqlite3.Connection) -> None:
+        defaults = _catalog_identity_defaults()
         conn.execute("""
             CREATE TABLE IF NOT EXISTS memory_work_catalog (
                 source TEXT NOT NULL,
                 source_key TEXT NOT NULL,
                 item_idx INTEGER NOT NULL,
                 content_hash TEXT NOT NULL DEFAULT '',
+                pipeline TEXT NOT NULL DEFAULT 'embedding',
+                pipeline_version TEXT NOT NULL DEFAULT '1',
+                model_id TEXT NOT NULL DEFAULT 'fastembed-default',
+                model_version TEXT NOT NULL DEFAULT 'default',
+                source_node_id TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'pending',
                 vec_rowid INTEGER,
                 reason TEXT NOT NULL DEFAULT '',
@@ -55,6 +71,16 @@ class MemoryWorkCatalogRepository:
                 PRIMARY KEY (source, source_key, item_idx)
             )
         """)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(memory_work_catalog)").fetchall()}
+        for column, sql_type in [
+            ("pipeline", f"TEXT NOT NULL DEFAULT '{defaults['pipeline']}'"),
+            ("pipeline_version", f"TEXT NOT NULL DEFAULT '{defaults['pipeline_version']}'"),
+            ("model_id", f"TEXT NOT NULL DEFAULT '{defaults['model_id']}'"),
+            ("model_version", f"TEXT NOT NULL DEFAULT '{defaults['model_version']}'"),
+            ("source_node_id", "TEXT NOT NULL DEFAULT ''"),
+        ]:
+            if column not in columns:
+                conn.execute(f"ALTER TABLE memory_work_catalog ADD COLUMN {column} {sql_type}")
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_status
             ON memory_work_catalog (status, updated_at)
@@ -67,14 +93,20 @@ class MemoryWorkCatalogRepository:
             CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_vec
             ON memory_work_catalog (vec_rowid)
         """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_identity
+            ON memory_work_catalog (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
+        """)
         conn.commit()
 
     def get(self, *, source: str, source_key: str, item_idx: int) -> dict[str, Any] | None:
         with self._connection() as conn:
             row = conn.execute(
                 """
-                SELECT source, source_key, item_idx, content_hash, status,
-                       vec_rowid, reason, created_at, updated_at, metadata
+                SELECT source, source_key, item_idx, content_hash,
+                       pipeline, pipeline_version, model_id, model_version,
+                       source_node_id, status, vec_rowid, reason,
+                       created_at, updated_at, metadata
                 FROM memory_work_catalog
                 WHERE source = ? AND source_key = ? AND item_idx = ?
                 """,
@@ -82,9 +114,28 @@ class MemoryWorkCatalogRepository:
             ).fetchone()
             return dict(row) if row else None
 
-    def is_processed(self, *, source: str, source_key: str, item_idx: int, content_hash: str) -> bool:
+    def is_processed(
+        self,
+        *,
+        source: str,
+        source_key: str,
+        item_idx: int,
+        content_hash: str,
+        pipeline: str = "embedding",
+        pipeline_version: str = "1",
+        model_id: str = "fastembed-default",
+        model_version: str = "default",
+    ) -> bool:
         row = self.get(source=source, source_key=source_key, item_idx=item_idx)
-        return bool(row and row["content_hash"] == content_hash and row["status"] in {"embedded", "deduped", "noise"})
+        return bool(
+            row
+            and row["content_hash"] == content_hash
+            and row["pipeline"] == pipeline
+            and row["pipeline_version"] == pipeline_version
+            and row["model_id"] == model_id
+            and row["model_version"] == model_version
+            and row["status"] in {"embedded", "deduped", "noise"}
+        )
 
     def mark(
         self,
@@ -97,6 +148,11 @@ class MemoryWorkCatalogRepository:
         vec_rowid: int | None = None,
         reason: str = "",
         metadata: dict[str, Any] | None = None,
+        pipeline: str = "embedding",
+        pipeline_version: str = "1",
+        model_id: str = "fastembed-default",
+        model_version: str = "default",
+        source_node_id: str = "",
     ) -> None:
         now = datetime.now().isoformat(timespec="seconds")
         meta_json = json.dumps(metadata or {}, ensure_ascii=True, sort_keys=True)
@@ -104,12 +160,19 @@ class MemoryWorkCatalogRepository:
             conn.execute(
                 """
                 INSERT INTO memory_work_catalog (
-                    source, source_key, item_idx, content_hash, status,
-                    vec_rowid, reason, created_at, updated_at, metadata
+                    source, source_key, item_idx, content_hash,
+                    pipeline, pipeline_version, model_id, model_version,
+                    source_node_id, status, vec_rowid, reason,
+                    created_at, updated_at, metadata
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(source, source_key, item_idx) DO UPDATE SET
                     content_hash = excluded.content_hash,
+                    pipeline = excluded.pipeline,
+                    pipeline_version = excluded.pipeline_version,
+                    model_id = excluded.model_id,
+                    model_version = excluded.model_version,
+                    source_node_id = excluded.source_node_id,
                     status = excluded.status,
                     vec_rowid = excluded.vec_rowid,
                     reason = excluded.reason,
@@ -121,6 +184,11 @@ class MemoryWorkCatalogRepository:
                     source_key,
                     item_idx,
                     content_hash,
+                    pipeline,
+                    pipeline_version,
+                    model_id,
+                    model_version,
+                    source_node_id,
                     status,
                     vec_rowid,
                     reason,

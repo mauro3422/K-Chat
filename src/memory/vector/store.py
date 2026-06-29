@@ -118,6 +118,11 @@ class VectorStore:
                 source_key TEXT NOT NULL,
                 item_idx INTEGER NOT NULL,
                 content_hash TEXT NOT NULL DEFAULT '',
+                pipeline TEXT NOT NULL DEFAULT 'embedding',
+                pipeline_version TEXT NOT NULL DEFAULT '1',
+                model_id TEXT NOT NULL DEFAULT 'fastembed-default',
+                model_version TEXT NOT NULL DEFAULT 'default',
+                source_node_id TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'pending',
                 vec_rowid INTEGER,
                 reason TEXT NOT NULL DEFAULT '',
@@ -127,6 +132,17 @@ class VectorStore:
                 PRIMARY KEY (source, source_key, item_idx)
             )
         """)
+        for col in [
+            ("pipeline", "TEXT NOT NULL DEFAULT 'embedding'"),
+            ("pipeline_version", "TEXT NOT NULL DEFAULT '1'"),
+            ("model_id", "TEXT NOT NULL DEFAULT 'fastembed-default'"),
+            ("model_version", "TEXT NOT NULL DEFAULT 'default'"),
+            ("source_node_id", "TEXT NOT NULL DEFAULT ''"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE memory_work_catalog ADD COLUMN {col[0]} {col[1]}")
+            except Exception:
+                logger.debug("Column %s already exists in memory_work_catalog (safe)", col[0])
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_status
             ON memory_work_catalog (status, updated_at)
@@ -138,6 +154,10 @@ class VectorStore:
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_vec
             ON memory_work_catalog (vec_rowid)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_identity
+            ON memory_work_catalog (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
         """)
         conn.commit()
 

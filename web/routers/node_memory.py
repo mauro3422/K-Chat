@@ -7,12 +7,17 @@ under the same ``/api/node`` prefix via auto-discovery.
 
 from __future__ import annotations
 
+import asyncio
 import time
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from src.coordination.embedding_job_queue import get_embedding_job_queue
 from src.coordination.memory_write_queue import apply_pending_memory_writes
+from src.memory.content_hash import content_hash
+from src.memory.embedding_identity import session_exchange_embedding_identity
 from web.routers._memory_snapshot import build_memory_snapshot, relay_memory_event
 from web.routers._node_helpers import (
     _get_coordinator,
@@ -23,10 +28,107 @@ from web.routers._node_helpers import (
     _get_save_memory_run,
     _peer_cluster_state,
 )
-from web.routers._node_models import NodeMemoryWritePayload
+from web.routers._node_models import NodeEmbeddingJobPayload, NodeMemoryWritePayload
 from web.services.node_observability import _memory_observability
 
 router = APIRouter(prefix="/api/node")
+
+
+def _get_embedding_queue(request: Request):
+    return getattr(request.app.state, "embedding_job_queue", None) or get_embedding_job_queue(
+        getattr(request.app.state, "config", None)
+    )
+
+
+def _embedding_job_dict(item: Any, *, source_node: str = "") -> dict[str, Any]:
+    data = item.to_dict() if hasattr(item, "to_dict") else item.model_dump()
+    if source_node and not data.get("source_node"):
+        data["source_node"] = source_node
+    return data
+
+
+async def _process_embedding_jobs(request: Request, items: list[Any], *, source_node: str = "") -> list[dict[str, Any]]:
+    repos = getattr(request.app.state, "repos", None)
+    memory_repos = getattr(repos, "memory", None)
+    store = getattr(memory_repos, "vector_store", None)
+    catalog = getattr(memory_repos, "work_catalog", None)
+    if store is None:
+        raise RuntimeError("vector store not configured")
+
+    from src.memory.embeddings.service import generate_embeddings_batch
+
+    identity = session_exchange_embedding_identity()
+    results: list[dict[str, Any]] = []
+    pending: list[tuple[dict[str, Any], str]] = []
+
+    for item in items:
+        data = _embedding_job_dict(item, source_node=source_node)
+        text = str(data.get("text", ""))
+        source = str(data.get("source", "session") or "session")
+        source_key = str(data.get("source_key", ""))
+        item_idx = int(data.get("item_idx", 0))
+        text_hash = str(data.get("content_hash", "") or "") or content_hash(text)
+        if not text.strip() or not source_key.strip():
+            results.append({"source": source, "source_key": source_key, "item_idx": item_idx, "status": "invalid"})
+            continue
+
+        existing = store._get_conn().execute(
+            "SELECT rowid FROM vec_meta WHERE content_hash = ? LIMIT 1",
+            (text_hash,),
+        ).fetchone()
+        if existing is not None:
+            rowid = int(existing[0])
+            if catalog is not None:
+                catalog.mark(
+                    source=source,
+                    source_key=source_key,
+                    item_idx=item_idx,
+                    content_hash=text_hash,
+                    status="deduped",
+                    vec_rowid=rowid,
+                    reason="remote_content_hash",
+                    metadata={"source_node_id": data.get("source_node", "")},
+                    source_node_id=str(data.get("source_node", "")),
+                    **identity.as_catalog_kwargs(),
+                )
+            results.append({"source": source, "source_key": source_key, "item_idx": item_idx, "status": "deduped", "vec_rowid": rowid})
+            continue
+        pending.append((data, text_hash))
+
+    if pending:
+        vectors = await asyncio.to_thread(generate_embeddings_batch, [data["text"][:4000] for data, _ in pending])
+        for (data, text_hash), vec in zip(pending, vectors):
+            source = str(data.get("source", "session") or "session")
+            source_key = str(data.get("source_key", ""))
+            item_idx = int(data.get("item_idx", 0))
+            source_node = str(data.get("source_node", ""))
+            rowid = store.insert(
+                vec,
+                source=source,
+                source_key=source_key,
+                exchange_idx=item_idx,
+                text=str(data.get("text", ""))[:4000],
+                metadata={"remote_embedding_job": True, "source_node_id": source_node},
+                hash=text_hash,
+                content_hash=text_hash,
+                source_node_id=source_node,
+            )
+            if catalog is not None:
+                catalog.mark(
+                    source=source,
+                    source_key=source_key,
+                    item_idx=item_idx,
+                    content_hash=text_hash,
+                    status="embedded",
+                    vec_rowid=rowid,
+                    reason="remote_embedding_job",
+                    metadata={"source_node_id": source_node},
+                    source_node_id=source_node,
+                    **identity.as_catalog_kwargs(),
+                )
+            results.append({"source": source, "source_key": source_key, "item_idx": item_idx, "status": "embedded", "vec_rowid": rowid})
+
+    return results
 
 
 @router.post("/memory/request")
@@ -105,6 +207,49 @@ async def memory_flush(request: Request) -> JSONResponse:
     if results:
         await _get_event_bus(request).publish("memory_synced", {"applied": results, "source": "flush"})
     return JSONResponse({"ok": True, "applied": results, "pending": []})
+
+
+@router.post("/embeddings/jobs")
+async def embedding_jobs(payload: NodeEmbeddingJobPayload, request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    source_node = str(payload.source.get("node_id", ""))
+    if not await coordinator.is_primary():
+        queue = _get_embedding_queue(request)
+        queued = [
+            queue.enqueue(
+                source=item.source,
+                source_key=item.source_key,
+                item_idx=item.item_idx,
+                text=item.text,
+                content_hash=item.content_hash,
+                source_node=source_node,
+                reason="primary_unavailable",
+            ).to_dict()
+            for item in payload.items
+        ]
+        return JSONResponse({"ok": True, "queued": True, "accepted": len(queued), "pending": queue.snapshot()})
+
+    started = time.perf_counter()
+    results = await _process_embedding_jobs(request, list(payload.items), source_node=source_node)
+    duration_ms = round((time.perf_counter() - started) * 1000, 3)
+    return JSONResponse({"ok": True, "queued": False, "processed": results, "duration_ms": duration_ms})
+
+
+@router.get("/embeddings/queue")
+async def embedding_queue(request: Request) -> JSONResponse:
+    queue = _get_embedding_queue(request)
+    return JSONResponse({"ok": True, "pending": queue.snapshot(), "path": getattr(queue, "persistence_path", "")})
+
+
+@router.post("/embeddings/flush")
+async def embedding_flush(request: Request) -> JSONResponse:
+    coordinator = _get_coordinator(request)
+    if not await coordinator.is_primary():
+        return JSONResponse({"ok": False, "error": "primary only"}, status_code=403)
+    queue = _get_embedding_queue(request)
+    pending = queue.drain()
+    results = await _process_embedding_jobs(request, pending)
+    return JSONResponse({"ok": True, "processed": results, "pending": []})
 
 
 @router.get("/sync/status")

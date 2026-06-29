@@ -1,0 +1,430 @@
+"""Safe repair/backfill helper for Kairos memory catalog state.
+
+Default mode is read-only. ``--apply`` only writes inferred
+memory_work_catalog rows; it never deletes vectors or edits sessions.
+``--vectorize-missing`` is an explicit opt-in for generating missing vectors.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import sqlite3
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.memory.maintenance.audit import _content_hash, _group_into_exchanges, _table_exists
+from src.memory.noise_filter import is_noise
+from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
+
+
+@dataclass
+class RepairAction:
+    action: str
+    source: str
+    source_key: str
+    item_idx: int
+    content_hash: str
+    status: str = ""
+    vec_rowid: int | None = None
+    reason: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "action": self.action,
+            "source": self.source,
+            "source_key": self.source_key,
+            "item_idx": self.item_idx,
+            "content_hash": self.content_hash,
+            "status": self.status,
+            "vec_rowid": self.vec_rowid,
+            "reason": self.reason,
+        }
+
+
+@dataclass
+class RepairReport:
+    actions: list[RepairAction] = field(default_factory=list)
+    applied_catalog_rows: int = 0
+    vectorized_sessions: dict[str, int] = field(default_factory=dict)
+    pruned_stale_vectors: int = 0
+
+    @property
+    def counts(self) -> dict[str, int]:
+        data: dict[str, int] = {}
+        for action in self.actions:
+            data[action.action] = data.get(action.action, 0) + 1
+        return data
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "counts": self.counts,
+            "applied_catalog_rows": self.applied_catalog_rows,
+            "vectorized_sessions": self.vectorized_sessions,
+            "pruned_stale_vectors": self.pruned_stale_vectors,
+            "actions": [action.as_dict() for action in self.actions],
+        }
+
+
+def _connect(path: str, *, readonly: bool) -> sqlite3.Connection:
+    if readonly:
+        uri = Path(path).resolve().as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+    else:
+        conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _vec_rows_by_session_idx(conn: sqlite3.Connection, session_id: str, idx: int) -> list[sqlite3.Row]:
+    if not _table_exists(conn, "vec_meta"):
+        return []
+    return conn.execute(
+        """
+        SELECT rowid, content_hash, hash
+        FROM vec_meta
+        WHERE source='session' AND source_key=? AND exchange_idx=?
+        ORDER BY rowid DESC
+        """,
+        (session_id, idx),
+    ).fetchall()
+
+
+def _find_vec_by_hash(conn: sqlite3.Connection, content_hash: str) -> sqlite3.Row | None:
+    if not _table_exists(conn, "vec_meta"):
+        return None
+    return conn.execute(
+        """
+        SELECT rowid, source, source_key, exchange_idx
+        FROM vec_meta
+        WHERE content_hash=? OR hash=?
+        ORDER BY source='session' DESC, rowid DESC
+        LIMIT 1
+        """,
+        (content_hash, content_hash),
+    ).fetchone()
+
+
+def _vec_row_exists(conn: sqlite3.Connection, rowid: int) -> bool:
+    if not _table_exists(conn, "vec_meta"):
+        return False
+    row = conn.execute("SELECT 1 FROM vec_meta WHERE rowid = ?", (rowid,)).fetchone()
+    return row is not None
+
+
+def _catalog_row(conn: sqlite3.Connection, session_id: str, idx: int) -> sqlite3.Row | None:
+    if not _table_exists(conn, "memory_work_catalog"):
+        return None
+    return conn.execute(
+        """
+        SELECT content_hash, status, vec_rowid
+        FROM memory_work_catalog
+        WHERE source='session' AND source_key=? AND item_idx=?
+        """,
+        (session_id, idx),
+    ).fetchone()
+
+
+def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
+    report = RepairReport()
+    with _connect(sessions_db, readonly=True) as sessions_conn, _connect(memory_db, readonly=True) as memory_conn:
+        if not _table_exists(sessions_conn, "sessions") or not _table_exists(sessions_conn, "messages"):
+            return report
+        sessions = sessions_conn.execute(
+            "SELECT session_id, name FROM sessions ORDER BY created_at ASC"
+        ).fetchall()
+
+        for session in sessions:
+            session_id = str(session["session_id"])
+            messages = sessions_conn.execute(
+                "SELECT role, content, created_at FROM messages WHERE session_id=? ORDER BY id ASC",
+                (session_id,),
+            ).fetchall()
+            exchanges = _group_into_exchanges(messages)
+            for exchange in exchanges:
+                idx = int(exchange["idx"])
+                text = str(exchange["text"])
+                digest = _content_hash(text)
+
+                same_idx_rows = _vec_rows_by_session_idx(memory_conn, session_id, idx)
+                for row in same_idx_rows:
+                    old_hash = str(row["content_hash"] or row["hash"] or "")
+                    if old_hash and old_hash != digest:
+                        report.actions.append(RepairAction(
+                            action="stale_vector",
+                            source="session",
+                            source_key=session_id,
+                            item_idx=idx,
+                            content_hash=old_hash,
+                            vec_rowid=int(row["rowid"]),
+                            reason=f"current_hash={digest[:12]}",
+                        ))
+
+                catalog = _catalog_row(memory_conn, session_id, idx)
+                if catalog and str(catalog["content_hash"]) == digest and str(catalog["status"]) in {
+                    "embedded",
+                    "deduped",
+                    "noise",
+                }:
+                    vec_rowid = catalog["vec_rowid"]
+                    if vec_rowid is None or str(catalog["status"]) == "noise" or _vec_row_exists(memory_conn, int(vec_rowid)):
+                        continue
+                    report.actions.append(RepairAction(
+                        action="broken_catalog_link",
+                        source="session",
+                        source_key=session_id,
+                        item_idx=idx,
+                        content_hash=digest,
+                        status=str(catalog["status"]),
+                        vec_rowid=int(vec_rowid),
+                        reason="catalog_vec_row_missing",
+                    ))
+
+                if len(text) < 30:
+                    report.actions.append(RepairAction(
+                        action="catalog_noise",
+                        source="session",
+                        source_key=session_id,
+                        item_idx=idx,
+                        content_hash=digest,
+                        status="noise",
+                        reason="short_text",
+                    ))
+                    continue
+
+                noise, reason = is_noise(text)
+                if noise:
+                    report.actions.append(RepairAction(
+                        action="catalog_noise",
+                        source="session",
+                        source_key=session_id,
+                        item_idx=idx,
+                        content_hash=digest,
+                        status="noise",
+                        reason=reason,
+                    ))
+                    continue
+
+                exact_same_idx = next(
+                    (
+                        row for row in same_idx_rows
+                        if str(row["content_hash"] or row["hash"] or "") == digest
+                    ),
+                    None,
+                )
+                if exact_same_idx is not None:
+                    report.actions.append(RepairAction(
+                        action="catalog_embedded",
+                        source="session",
+                        source_key=session_id,
+                        item_idx=idx,
+                        content_hash=digest,
+                        status="embedded",
+                        vec_rowid=int(exact_same_idx["rowid"]),
+                        reason="existing_session_vector",
+                    ))
+                    continue
+
+                existing = _find_vec_by_hash(memory_conn, digest)
+                if existing is not None:
+                    report.actions.append(RepairAction(
+                        action="catalog_deduped",
+                        source="session",
+                        source_key=session_id,
+                        item_idx=idx,
+                        content_hash=digest,
+                        status="deduped",
+                        vec_rowid=int(existing["rowid"]),
+                        reason="existing_content_hash",
+                    ))
+                else:
+                    report.actions.append(RepairAction(
+                        action="missing_vector",
+                        source="session",
+                        source_key=session_id,
+                        item_idx=idx,
+                        content_hash=digest,
+                        reason="no_matching_vector",
+                    ))
+    return report
+
+
+def apply_catalog_repairs(*, memory_db: str, report: RepairReport) -> int:
+    catalog = MemoryWorkCatalogRepository(memory_db)
+    applied = 0
+    for action in report.actions:
+        if action.action not in {"catalog_embedded", "catalog_deduped", "catalog_noise"}:
+            continue
+        catalog.mark(
+            source=action.source,
+            source_key=action.source_key,
+            item_idx=action.item_idx,
+            content_hash=action.content_hash,
+            status=action.status,
+            vec_rowid=action.vec_rowid,
+            reason=action.reason,
+            metadata={"repair_action": action.action},
+        )
+        applied += 1
+    return applied
+
+
+def _delete_if_table_exists(conn: sqlite3.Connection, table: str, column: str, rowid: int) -> None:
+    if _table_exists(conn, table):
+        conn.execute(f"DELETE FROM {table} WHERE {column} = ?", (rowid,))
+
+
+def prune_stale_vectors(*, memory_db: str, report: RepairReport) -> int:
+    rowids = sorted({
+        int(action.vec_rowid)
+        for action in report.actions
+        if action.action == "stale_vector" and action.vec_rowid is not None
+    })
+    if not rowids:
+        return 0
+
+    conn = sqlite3.connect(memory_db)
+    try:
+        try:
+            conn.enable_load_extension(True)
+            import sqlite_vec
+            sqlite_vec.load(conn)
+        except Exception:
+            pass
+        for rowid in rowids:
+            _delete_if_table_exists(conn, "vec_keywords", "rowid", rowid)
+            _delete_if_table_exists(conn, "exchange_clusters", "exchange_rowid", rowid)
+            _delete_if_table_exists(conn, "entity_mentions", "exchange_rowid", rowid)
+            _delete_if_table_exists(conn, "vec_entries", "rowid", rowid)
+            _delete_if_table_exists(conn, "vec_meta", "rowid", rowid)
+        conn.commit()
+        return len(rowids)
+    finally:
+        conn.close()
+
+
+async def vectorize_missing(report: RepairReport) -> dict[str, int]:
+    from src.memory.repos import get_repos
+    from src.memory.vectorize_sessions import vectorize_session
+
+    targets: dict[str, set[int]] = {}
+    for action in report.actions:
+        if action.action == "missing_vector":
+            targets.setdefault(action.source_key, set()).add(action.item_idx)
+
+    results: dict[str, int] = {}
+    repos = get_repos()
+    for session_id, indexes in sorted(targets.items()):
+        count, _noise_count, _mappings, _entities = await vectorize_session(
+            session_id,
+            repos=repos,
+            exchange_indexes=indexes,
+        )
+        results[session_id] = count
+    return results
+
+
+def print_text_report(report: RepairReport, *, applied: bool) -> None:
+    counts = report.counts
+    print("Kairos memory repair")
+    print(
+        "planned: "
+        f"catalog_embedded={counts.get('catalog_embedded', 0)} "
+        f"catalog_deduped={counts.get('catalog_deduped', 0)} "
+        f"catalog_noise={counts.get('catalog_noise', 0)} "
+        f"missing_vector={counts.get('missing_vector', 0)} "
+        f"stale_vector={counts.get('stale_vector', 0)} "
+        f"broken_catalog_link={counts.get('broken_catalog_link', 0)}"
+    )
+    if applied:
+        print(f"applied_catalog_rows={report.applied_catalog_rows}")
+    if report.vectorized_sessions:
+        print(f"vectorized_sessions={json.dumps(report.vectorized_sessions, sort_keys=True)}")
+    if report.pruned_stale_vectors:
+        print(f"pruned_stale_vectors={report.pruned_stale_vectors}")
+
+    interesting = [a for a in report.actions if a.action in {"missing_vector", "stale_vector", "broken_catalog_link"}]
+    if interesting:
+        print("")
+        print("Remaining work:")
+        for action in interesting[:16]:
+            rowid = f" rowid={action.vec_rowid}" if action.vec_rowid is not None else ""
+            print(
+                f"- {action.action}: {action.source_key}#{action.item_idx} "
+                f"hash={action.content_hash[:12]}{rowid} {action.reason}"
+            )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Plan or apply safe Kairos memory catalog repairs.")
+    parser.add_argument("--sessions-db", default="")
+    parser.add_argument("--memory-db", default="")
+    parser.add_argument("--apply", action="store_true", help="Write inferred catalog rows. Does not delete anything.")
+    parser.add_argument(
+        "--vectorize-missing",
+        action="store_true",
+        help="After --apply, explicitly generate vectors for sessions with missing vectors.",
+    )
+    parser.add_argument(
+        "--prune-stale",
+        action="store_true",
+        help="After --apply, delete stale vector rowids detected by this repair plan.",
+    )
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--strict", action="store_true", help="Exit nonzero if stale or missing vectors remain.")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if (args.vectorize_missing or args.prune_stale) and not args.apply:
+        parser.error("--vectorize-missing and --prune-stale require --apply")
+
+    sessions_db = args.sessions_db
+    memory_db = args.memory_db
+    if not sessions_db:
+        from src.memory.db_path import resolve_db_path
+        sessions_db = resolve_db_path()
+    if not memory_db:
+        from src.memory.memory_db_path import resolve_memory_db_path
+        memory_db = resolve_memory_db_path()
+
+    report = plan_repairs(sessions_db=sessions_db, memory_db=memory_db)
+    if args.apply:
+        applied_catalog_rows = apply_catalog_repairs(memory_db=memory_db, report=report)
+        vectorized_sessions: dict[str, int] = {}
+        pruned_stale_vectors = 0
+        if args.vectorize_missing:
+            vectorized_sessions = asyncio.run(vectorize_missing(report))
+            report = plan_repairs(sessions_db=sessions_db, memory_db=memory_db)
+        if args.prune_stale:
+            pruned_stale_vectors = prune_stale_vectors(memory_db=memory_db, report=report)
+            report = plan_repairs(sessions_db=sessions_db, memory_db=memory_db)
+        report.applied_catalog_rows = applied_catalog_rows
+        report.vectorized_sessions = vectorized_sessions
+        report.pruned_stale_vectors = pruned_stale_vectors
+
+    if args.json:
+        print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print_text_report(report, applied=args.apply)
+
+    if args.strict and (
+        report.counts.get("missing_vector", 0)
+        or report.counts.get("stale_vector", 0)
+        or report.counts.get("broken_catalog_link", 0)
+    ):
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

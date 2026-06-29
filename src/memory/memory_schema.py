@@ -413,6 +413,11 @@ def _migration_013_memory_work_catalog(conn: sqlite3.Connection, engine) -> None
             source_key TEXT NOT NULL,
             item_idx INTEGER NOT NULL,
             content_hash TEXT NOT NULL DEFAULT '',
+            pipeline TEXT NOT NULL DEFAULT 'embedding',
+            pipeline_version TEXT NOT NULL DEFAULT '1',
+            model_id TEXT NOT NULL DEFAULT 'fastembed-default',
+            model_version TEXT NOT NULL DEFAULT 'default',
+            source_node_id TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'pending',
             vec_rowid INTEGER,
             reason TEXT NOT NULL DEFAULT '',
@@ -433,6 +438,10 @@ def _migration_013_memory_work_catalog(conn: sqlite3.Connection, engine) -> None
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_vec
         ON memory_work_catalog (vec_rowid)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_identity
+        ON memory_work_catalog (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
     """)
     logger.info("memory_work_catalog table created")
 
@@ -554,6 +563,26 @@ def _migration_017_topic_clusters_origin_node_id(conn: sqlite3.Connection, engin
     logger.info("origin_node_id column added to topic_clusters")
 
 
+def _migration_018_memory_work_catalog_identity(conn: sqlite3.Connection, engine) -> None:
+    """Add embedding pipeline/model identity to memory_work_catalog."""
+    cursor = conn.execute("PRAGMA table_info(memory_work_catalog)")
+    cols = {r[1] for r in cursor.fetchall()}
+    for column, sql_type in [
+        ("pipeline", "TEXT NOT NULL DEFAULT 'embedding'"),
+        ("pipeline_version", "TEXT NOT NULL DEFAULT '1'"),
+        ("model_id", "TEXT NOT NULL DEFAULT 'fastembed-default'"),
+        ("model_version", "TEXT NOT NULL DEFAULT 'default'"),
+        ("source_node_id", "TEXT NOT NULL DEFAULT ''"),
+    ]:
+        if column not in cols:
+            conn.execute(f"ALTER TABLE memory_work_catalog ADD COLUMN {column} {sql_type}")
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_identity
+        ON memory_work_catalog (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
+    """)
+    logger.info("memory_work_catalog identity columns added")
+
+
 _MEMORY_MIGRATIONS = (
     _migration_001_global_memory_index,
     _migration_002_vec_store,
@@ -572,6 +601,7 @@ _MEMORY_MIGRATIONS = (
     _migration_015_vec_meta_source_node_id,
     _migration_016_entities_origin_node_id,
     _migration_017_topic_clusters_origin_node_id,
+    _migration_018_memory_work_catalog_identity,
 )
 
 MEMORY_SCHEMA_VERSION = len(_MEMORY_MIGRATIONS)

@@ -26,3 +26,16 @@ class NodeMemoryWritePayload(BaseModel):
     key: str = Field(default="")
     value: str = Field(default="")
     source: dict = Field(default_factory=dict)
+
+
+class NodeEmbeddingJobItem(BaseModel):
+    source: str = Field(default="session")
+    source_key: str = Field(default="")
+    item_idx: int = Field(default=0)
+    text: str = Field(default="")
+    content_hash: str = Field(default="")
+
+
+class NodeEmbeddingJobPayload(BaseModel):
+    items: list[NodeEmbeddingJobItem] = Field(default_factory=list)
+    source: dict = Field(default_factory=dict)

@@ -5,6 +5,7 @@ import threading
 from typing import Any
 
 from src.memory.content_hash import memory_hashes
+from src.memory.embedding_identity import memory_entry_embedding_identity
 from src.memory.operations._helpers import _parse_memory_md, _write_memory_md
 from src.coordination.memory_lease import get_memory_lease_manager
 from src.coordination.memory_write_queue import get_memory_write_queue
@@ -198,8 +199,10 @@ async def run(**kwargs) -> str:
         _invalidate_cache_fn()
 
     store = _repos.memory.vector_store if _repos else None
+    catalog = getattr(_repos.memory, "work_catalog", None) if _repos and getattr(_repos, "memory", None) is not None else None
+    source_node_id = getattr(coordinator, "node_id", "") if coordinator is not None else ""
     if value_clean and store is not None:
-        await _retry_embed(key_clean, value_clean, store)
+        await _retry_embed(key_clean, value_clean, store, catalog=catalog, source_node_id=source_node_id)
     elif key_clean and store is not None:
         await _retry_delete_embedding(key_clean, store)
 
@@ -273,11 +276,19 @@ async def _retry_delete(memory_index: Any, key: str, max_retries: int = 3) -> bo
     return False
 
 
-async def _retry_embed(key: str, value: str, store: Any, max_retries: int = 3) -> None:
+async def _retry_embed(
+    key: str,
+    value: str,
+    store: Any,
+    max_retries: int = 3,
+    *,
+    catalog: Any = None,
+    source_node_id: str = "",
+) -> None:
     """Try embedding + store with backoff."""
     for attempt in range(max_retries):
         try:
-            await _embed_and_store(key, value, store)
+            await _embed_and_store(key, value, store, catalog=catalog, source_node_id=source_node_id)
             return
         except Exception as e:
             if attempt < max_retries - 1:
@@ -307,13 +318,30 @@ async def _retry_delete_embedding(key: str, store: Any, max_retries: int = 3) ->
             logger.error("embedding delete failed after %d retries (key=%s): %s", max_retries, key, e)
 
 
-async def _embed_and_store(key: str, value: str, store: Any) -> None:
+async def _embed_and_store(
+    key: str,
+    value: str,
+    store: Any,
+    *,
+    catalog: Any = None,
+    source_node_id: str = "",
+) -> None:
     """Generate embedding for a memory entry and store it in sqlite-vec."""
     from src.memory.embeddings.service import generate_embedding
     from src.memory.keywords.extractor import extract_keywords
 
     raw_hash, content_hash = memory_hashes(value)
-    if await run_in_thread(_memory_embedding_is_current, key, raw_hash, content_hash, store):
+    current_rowid = await run_in_thread(_current_memory_embedding_rowid, key, raw_hash, content_hash, store)
+    if current_rowid is not None:
+        _mark_memory_catalog(
+            catalog,
+            key=key,
+            content_hash=content_hash,
+            status="embedded",
+            vec_rowid=current_rowid,
+            reason="already_current",
+            source_node_id=source_node_id,
+        )
         logger.debug("Embedding already current for key: %s", key)
         return
 
@@ -333,6 +361,7 @@ async def _embed_and_store(key: str, value: str, store: Any) -> None:
             text=value[:2000],
             hash=raw_hash,
             content_hash=content_hash,
+            source_node_id=source_node_id,
         )
     except Exception as e:
         raise RuntimeError(f"vector_store insert failed: {e}") from e
@@ -349,6 +378,15 @@ async def _embed_and_store(key: str, value: str, store: Any) -> None:
             conn.commit()
         except Exception:
             logger.warning("Failed to store keywords for embedding key %s", key, exc_info=True)
+    _mark_memory_catalog(
+        catalog,
+        key=key,
+        content_hash=content_hash,
+        status="embedded",
+        vec_rowid=rowid,
+        reason="save_memory",
+        source_node_id=source_node_id,
+    )
     logger.debug("Embedding stored for key: %s (dim=%d)", key, len(vec))
 
 
@@ -359,7 +397,37 @@ async def _delete_embedding(key: str, store: Any) -> None:
         logger.debug("Embedding deleted for key: %s", key)
 
 
-def _memory_embedding_is_current(key: str, raw_hash: str, content_hash: str, store: Any) -> bool:
+def _mark_memory_catalog(
+    catalog: Any,
+    *,
+    key: str,
+    content_hash: str,
+    status: str,
+    vec_rowid: int | None,
+    reason: str,
+    source_node_id: str = "",
+) -> None:
+    if catalog is None:
+        return
+    identity = memory_entry_embedding_identity()
+    try:
+        catalog.mark(
+            source="memory",
+            source_key=key,
+            item_idx=0,
+            content_hash=content_hash,
+            status=status,
+            vec_rowid=vec_rowid,
+            reason=reason,
+            metadata={"source_node_id": source_node_id},
+            source_node_id=source_node_id,
+            **identity.as_catalog_kwargs(),
+        )
+    except Exception:
+        logger.debug("Failed to mark memory work catalog for %s", key, exc_info=True)
+
+
+def _current_memory_embedding_rowid(key: str, raw_hash: str, content_hash: str, store: Any) -> int | None:
     try:
         conn = store._get_conn()
         row = conn.execute(
@@ -378,13 +446,18 @@ def _memory_embedding_is_current(key: str, raw_hash: str, content_hash: str, sto
             (key, content_hash, content_hash, raw_hash),
         ).fetchone()
         if row is None:
-            return False
+            return None
+        rowid = int(row[0])
         conn.execute(
             "UPDATE vec_meta SET hash = ?, content_hash = ? WHERE rowid = ?",
-            (raw_hash, content_hash, int(row[0])),
+            (raw_hash, content_hash, rowid),
         )
         conn.commit()
-        return True
+        return rowid
     except Exception:
         logger.debug("Failed to check current memory embedding for %s", key, exc_info=True)
-        return False
+        return None
+
+
+def _memory_embedding_is_current(key: str, raw_hash: str, content_hash: str, store: Any) -> bool:
+    return _current_memory_embedding_rowid(key, raw_hash, content_hash, store) is not None
