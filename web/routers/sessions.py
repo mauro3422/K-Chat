@@ -4,19 +4,15 @@ import inspect
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
 
-from src.api.repos import get_repos
 from src.gateway_log import log_event
 from src.coordination.lan_bridge import NodeLanBridge
-from web.routers._request_repos import is_unconfigured_mock, request_repos
+from web.routers._node_helpers import _request_repos
+from web.routers._request_repos import is_unconfigured_mock
 from web.services.session_directory import merge_session_entries, session_summary_from_row
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _request_repos(request: Request | None):
-    return request_repos(request, fallback=get_repos)
 
 
 def _request_coordinator(request: Request | None):

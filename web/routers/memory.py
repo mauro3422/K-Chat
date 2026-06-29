@@ -9,10 +9,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from src.gateway_log import log_event
-from src.coordination.memory_lease import get_memory_lease_manager
-from src.coordination.node_state import get_node_coordinator
-from web.routers._memory_snapshot import build_memory_snapshot, summarize_memory_compare
-from web.services.event_bus import get_event_bus
+from web.routers._memory_snapshot import (
+    build_memory_snapshot,
+    summarize_memory_compare,
+    _get_lease_manager,
+    _get_manage_memory_run,
+    _get_repos,
+)
+from web.routers._node_helpers import _get_coordinator, _get_event_bus
 
 router = APIRouter(prefix="/api/memory")
 
@@ -22,29 +26,6 @@ class MemoryMaintenancePayload(BaseModel):
     confirm: bool = Field(default=False)
     key_pattern: str = Field(default="")
     fmt: str = Field(default="text")
-
-
-def _get_repos(request: Request):
-    return getattr(request.app.state, "repos", None)
-
-
-def _get_manage_memory_run(request: Request):
-    runner = getattr(request.app.state, "manage_memory_run", None)
-    if runner is None:
-        raise RuntimeError("manage_memory runner not configured")
-    return runner
-
-
-def _get_lease_manager(request: Request):
-    return getattr(request.app.state, "memory_lease_manager", None) or get_memory_lease_manager(getattr(request.app.state, "config", None))
-
-
-def _get_coordinator(request: Request):
-    return getattr(request.app.state, "node_coordinator", None) or get_node_coordinator(getattr(request.app.state, "config", None))
-
-
-def _get_event_bus(request: Request):
-    return getattr(request.app.state, "event_bus", None) or get_event_bus()
 
 
 @router.get("/compare")

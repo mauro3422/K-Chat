@@ -28,7 +28,7 @@ async def test_router_has_routes():
     assert "/sessions" in paths
 
 
-@patch("web.routers.sessions.get_repos")
+@patch("web.routers._node_helpers.get_repos")
 @pytest.mark.anyio
 async def test_rename_success(mock_get_repos):
     repos = MagicMock()
@@ -39,7 +39,7 @@ async def test_rename_success(mock_get_repos):
     repos.sessions.rename.assert_called_once_with("sid-1", "New Name")
 
 
-@patch("web.routers.sessions.get_repos")
+@patch("web.routers._node_helpers.get_repos")
 @pytest.mark.anyio
 async def test_rename_strips_whitespace(mock_get_repos):
     repos = MagicMock()
@@ -49,7 +49,7 @@ async def test_rename_strips_whitespace(mock_get_repos):
     repos.sessions.rename.assert_called_once_with("sid-1", "Trimmed")
 
 
-@patch("web.routers.sessions.get_repos")
+@patch("web.routers._node_helpers.get_repos")
 @pytest.mark.anyio
 async def test_rename_empty_name_fallback(mock_get_repos):
     repos = MagicMock()
@@ -59,7 +59,7 @@ async def test_rename_empty_name_fallback(mock_get_repos):
     repos.sessions.rename.assert_called_once_with("long-session-id", "long-ses")
 
 
-@patch("web.routers.sessions.get_repos")
+@patch("web.routers._node_helpers.get_repos")
 @pytest.mark.anyio
 async def test_delete_success(mock_get_repos):
     repos = MagicMock()
@@ -71,7 +71,7 @@ async def test_delete_success(mock_get_repos):
 
 
 @patch("web.routers.sessions._request_bridge")
-@patch("web.routers.sessions.get_repos")
+@patch("web.routers._node_helpers.get_repos")
 @pytest.mark.anyio
 async def test_list_sessions_federates_peer_directory(mock_get_repos, mock_request_bridge):
     repos = MagicMock()

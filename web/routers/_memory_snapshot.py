@@ -7,8 +7,7 @@ from fastapi import Request
 
 from src.coordination.memory_lease import get_memory_lease_manager
 from src.coordination.memory_write_queue import get_memory_write_queue
-from src.coordination.node_state import get_node_coordinator
-from web.services.event_bus import get_event_bus
+from web.routers._node_helpers import _get_coordinator, _get_event_bus
 
 
 def _get_repos(request: Request):
@@ -28,14 +27,6 @@ def _get_queue(request: Request):
 
 def _get_lease_manager(request: Request):
     return getattr(request.app.state, "memory_lease_manager", None) or get_memory_lease_manager(getattr(request.app.state, "config", None))
-
-
-def _get_coordinator(request: Request):
-    return getattr(request.app.state, "node_coordinator", None) or get_node_coordinator(getattr(request.app.state, "config", None))
-
-
-def _get_event_bus(request: Request):
-    return getattr(request.app.state, "event_bus", None) or get_event_bus()
 
 
 async def _compare_memory(request: Request, key_pattern: str = "", fmt: str = "json") -> tuple[str, dict | None]:
