@@ -190,19 +190,36 @@ class HeuristicClusterer:
 
 async def flush_clusters_to_db(clusterer: HeuristicClusterer,
                                db_path: str,
-                               mappings: Optional[list[dict[str, Any]]] = None) -> int:
+                               mappings: Optional[list[dict[str, Any]]] = None,
+                               *,
+                               origin_node_id: str = "") -> int:
     """Persist in-memory clusters + exchange mappings to SQLite.
 
     Tables must already exist (created by memory_schema.py migrations).
     If *mappings* is provided, also inserts exchange→cluster links.
 
-    Returns count of clusters written.
+    ``origin_node_id`` records which node produced this set of clusters.
+    When empty, the helper resolves it lazily from the active coordinator
+    (so legacy callers that don't pass it still stamp provenance correctly).
+    The column was added in memory_schema migration 017; old DBs without
+    it fall back to the legacy INSERT.
+
+    Returns count of new clusters written (UPDATEs don't increment).
     """
     import aiosqlite
+
+    if not origin_node_id:
+        from src.memory.provenance import resolve_local_node_id
+        origin_node_id = resolve_local_node_id()
 
     conn = await aiosqlite.connect(db_path)
     await conn.execute("PRAGMA journal_mode=WAL")
     await conn.execute("PRAGMA foreign_keys=ON")
+
+    # Probe whether topic_clusters has the origin_node_id column (migration 017).
+    cur = await conn.execute("PRAGMA table_info(topic_clusters)")
+    cols = {r[1] for r in await cur.fetchall()}
+    has_origin = "origin_node_id" in cols
 
     count = 0
     for c in clusterer.clusters.values():
@@ -216,36 +233,72 @@ async def flush_clusters_to_db(clusterer: HeuristicClusterer,
         existing = await cursor.fetchone()
 
         if existing:
-            await conn.execute("""
-                UPDATE topic_clusters SET
-                    label = ?,
-                    keywords = ?,
-                    session_count = ?,
-                    exchange_count = ?,
-                    last_updated = datetime('now'),
-                    weight = ?
-                WHERE cluster_id = ?
-            """, (
-                c.label or "",
-                keywords_json,
-                len(c.session_ids) if hasattr(c, 'session_ids') else 0,
-                c.exchange_count,
-                c.weight if hasattr(c, 'weight') else 1.0,
-                c.id,
-            ))
+            if has_origin:
+                await conn.execute("""
+                    UPDATE topic_clusters SET
+                        label = ?,
+                        keywords = ?,
+                        session_count = ?,
+                        exchange_count = ?,
+                        last_updated = datetime('now'),
+                        weight = ?,
+                        origin_node_id = ?
+                    WHERE cluster_id = ?
+                """, (
+                    c.label or "",
+                    keywords_json,
+                    len(c.session_ids) if hasattr(c, 'session_ids') else 0,
+                    c.exchange_count,
+                    c.weight if hasattr(c, 'weight') else 1.0,
+                    origin_node_id,
+                    c.id,
+                ))
+            else:
+                await conn.execute("""
+                    UPDATE topic_clusters SET
+                        label = ?,
+                        keywords = ?,
+                        session_count = ?,
+                        exchange_count = ?,
+                        last_updated = datetime('now'),
+                        weight = ?
+                    WHERE cluster_id = ?
+                """, (
+                    c.label or "",
+                    keywords_json,
+                    len(c.session_ids) if hasattr(c, 'session_ids') else 0,
+                    c.exchange_count,
+                    c.weight if hasattr(c, 'weight') else 1.0,
+                    c.id,
+                ))
         else:
-            await conn.execute("""
-                INSERT INTO topic_clusters
-                (cluster_id, label, keywords, session_count, exchange_count, first_seen, last_updated, weight)
-                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)
-            """, (
-                c.id,
-                c.label or "",
-                keywords_json,
-                len(c.session_ids) if hasattr(c, 'session_ids') else 0,
-                c.exchange_count,
-                c.weight if hasattr(c, 'weight') else 1.0,
-            ))
+            if has_origin:
+                await conn.execute("""
+                    INSERT INTO topic_clusters
+                    (cluster_id, label, keywords, session_count, exchange_count, first_seen, last_updated, weight, origin_node_id)
+                    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?)
+                """, (
+                    c.id,
+                    c.label or "",
+                    keywords_json,
+                    len(c.session_ids) if hasattr(c, 'session_ids') else 0,
+                    c.exchange_count,
+                    c.weight if hasattr(c, 'weight') else 1.0,
+                    origin_node_id,
+                ))
+            else:
+                await conn.execute("""
+                    INSERT INTO topic_clusters
+                    (cluster_id, label, keywords, session_count, exchange_count, first_seen, last_updated, weight)
+                    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)
+                """, (
+                    c.id,
+                    c.label or "",
+                    keywords_json,
+                    len(c.session_ids) if hasattr(c, 'session_ids') else 0,
+                    c.exchange_count,
+                    c.weight if hasattr(c, 'weight') else 1.0,
+                ))
             count += 1
 
     # Persist exchange→cluster mappings incrementally

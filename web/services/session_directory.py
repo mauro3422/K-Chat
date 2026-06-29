@@ -28,6 +28,11 @@ def session_summary_from_row(
     favorite_idx = 7 if len(row) > 7 else 6
     name = _safe_text(row[name_idx] if len(row) > name_idx else "", sid[:8])
     is_favorite = bool(row[favorite_idx]) if len(row) > favorite_idx else False
+    # origin_node_id was added in migration 025. When present (row length > 8),
+    # it tells us which node created this session — the federated merge uses
+    # it to pick which entry is canonical when the same sid appears in
+    # multiple peers' directories.
+    origin_node_id = _safe_text(row[8]) if len(row) > 8 else ""
 
     return {
         "id": sid,
@@ -43,6 +48,7 @@ def session_summary_from_row(
         "cluster_name": _safe_text(cluster_name, "kairos"),
         "source_url": _safe_text(source_url),
         "source_mode": _safe_text(source_mode, "local"),
+        "origin_node_id": origin_node_id,
     }
 
 
@@ -58,16 +64,54 @@ def sort_sessions(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def merge_session_entries(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    merged: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
+    """Reconcile session directory entries from multiple nodes.
+
+    Dedup key is ``sid`` (the session UUID). When the same sid shows up in
+    more than one peer's directory, we keep ONE entry:
+
+      1. If exactly one entry's ``node_id`` matches its own ``origin_node_id``
+         (i.e. the entry is on the node that *created* the session), that
+         entry wins — its name, favorite flag, and source_url are the
+         canonical truth.
+      2. Otherwise (origin unknown on any side, or origin points at a third
+         node that's not in this merge), keep the entry with the latest
+         ``last_seen_at`` activity timestamp.
+
+    Combined with the existing ``origin_node_id`` column (migration 025),
+    this makes the federated sidebar show one row per session even when
+    two peers report it — which fixes the "duplicate / weird-named sessions"
+    symptom Mauro reported.
+    """
+    by_sid: dict[str, list[dict[str, Any]]] = {}
     for group in groups:
         for entry in group:
             sid = _safe_text(entry.get("id"))
-            node_id = _safe_text(entry.get("node_id"), "local")
-            source_url = _safe_text(entry.get("source_url"))
-            key = (sid, node_id, source_url)
-            if key in seen:
+            if not sid:
                 continue
-            seen.add(key)
-            merged.append(entry)
+            by_sid.setdefault(sid, []).append(entry)
+
+    merged: list[dict[str, Any]] = []
+    for sid, entries in by_sid.items():
+        if len(entries) == 1:
+            merged.append(entries[0])
+            continue
+
+        # Multiple entries for the same sid → pick the canonical one.
+        # Priority 1: an entry whose node_id matches its own origin_node_id.
+        canonical = None
+        for entry in entries:
+            if _safe_text(entry.get("origin_node_id")) and \
+               _safe_text(entry.get("origin_node_id")) == _safe_text(entry.get("node_id")):
+                canonical = entry
+                break
+
+        if canonical is None:
+            # Priority 2: latest last_seen_at (proxy for freshest state).
+            canonical = max(
+                entries,
+                key=lambda e: _safe_text(e.get("last_seen_at"), _safe_text(e.get("last_str"))),
+            )
+
+        merged.append(canonical)
+
     return sort_sessions(merged)

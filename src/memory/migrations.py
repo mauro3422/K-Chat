@@ -433,6 +433,26 @@ async def _migration_024_restore_session_memory_index(conn: Any, engine: Any) ->
     await engine.execute(conn, "CREATE INDEX IF NOT EXISTS idx_memory_index_key ON memory_index (key)")
 
 
+async def _migration_025_sessions_origin_node_id(conn: Any, engine: Any) -> None:
+    """Add ``origin_node_id`` to sessions for cross-node canonical identity.
+
+    Empty string means "origin unknown" (legacy rows pre-migration). Future
+    writes populate this with the local ``NodeCoordinator.node_id`` so the
+    federated session merge can distinguish "session I created" from
+    "session a remote peer created and synced to me".
+
+    Used by ``merge_session_entries`` to reconcile duplicates instead of
+    summing them. Without this column, two nodes that happen to mint the
+    same session UUID (extremely unlikely but possible) would both appear
+    in the federated sidebar.
+    """
+    await _add_column_if_missing(conn, engine, "sessions", "origin_node_id", "TEXT NOT NULL DEFAULT ''")
+    await engine.execute(conn, """
+        CREATE INDEX IF NOT EXISTS idx_sessions_origin_node_id
+        ON sessions (origin_node_id)
+    """)
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -458,4 +478,5 @@ MIGRATIONS = (
     _migration_022_add_session_favorite,
     _migration_023_memory_index_unique,
     _migration_024_restore_session_memory_index,
+    _migration_025_sessions_origin_node_id,
 )

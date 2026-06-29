@@ -68,22 +68,44 @@ class EntityRepository:
         entity_type: str,
         metadata: dict = None,
         timestamp: str = "",
+        origin_node_id: str = "",
     ) -> None:
-        """INSERT OR UPDATE an entity."""
+        """INSERT OR UPDATE an entity.
+
+        ``origin_node_id`` records which node extracted this entity. It is
+        advisory — it doesn't affect the ON CONFLICT(id) upsert behavior,
+        so two nodes extracting the same entity_id converge to a single row
+        with the last writer's origin_node_id. Useful for the curator when
+        reconciling clusters across nodes.
+        """
         async with self._connection() as conn:
             try:
                 import json
                 meta_json = json.dumps(metadata) if metadata else "{}"
-                await conn.execute(
-                    """INSERT INTO entities (id, name, entity_type, metadata, first_seen, last_seen, mention_count)
-                       VALUES (?, ?, ?, ?, ?, ?, 1)
-                       ON CONFLICT(id) DO UPDATE SET
-                           name = excluded.name,
-                           metadata = excluded.metadata,
-                           last_seen = excluded.last_seen,
-                           mention_count = mention_count + 1""",
-                    (entity_id, name, entity_type, meta_json, timestamp, timestamp),
-                )
+                try:
+                    await conn.execute(
+                        """INSERT INTO entities (id, name, entity_type, metadata, first_seen, last_seen, mention_count, origin_node_id)
+                           VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                           ON CONFLICT(id) DO UPDATE SET
+                               name = excluded.name,
+                               metadata = excluded.metadata,
+                               last_seen = excluded.last_seen,
+                               mention_count = mention_count + 1,
+                               origin_node_id = excluded.origin_node_id""",
+                        (entity_id, name, entity_type, meta_json, timestamp, timestamp, origin_node_id),
+                    )
+                except Exception:
+                    # Pre-migration-016 DB: origin_node_id column missing.
+                    await conn.execute(
+                        """INSERT INTO entities (id, name, entity_type, metadata, first_seen, last_seen, mention_count)
+                           VALUES (?, ?, ?, ?, ?, ?, 1)
+                           ON CONFLICT(id) DO UPDATE SET
+                               name = excluded.name,
+                               metadata = excluded.metadata,
+                               last_seen = excluded.last_seen,
+                               mention_count = mention_count + 1""",
+                        (entity_id, name, entity_type, meta_json, timestamp, timestamp),
+                    )
                 await conn.commit()
             except Exception:
                 await conn.rollback()

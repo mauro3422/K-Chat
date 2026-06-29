@@ -482,6 +482,78 @@ def _migration_011_vec_keywords_covering_index(conn: sqlite3.Connection, engine)
     logger.info("Covering index idx_vec_keywords_word_rowid_score created on vec_keywords")
 
 
+def _migration_015_vec_meta_source_node_id(conn: sqlite3.Connection, engine) -> None:
+    """Add ``source_node_id`` to ``vec_meta`` for cross-node provenance.
+
+    Combined with the existing ``content_hash`` index, this turns the
+    existing single-node dedup into cross-node dedup once ``memory.db``
+    is replicated via Syncthing: a row written on the laptop with
+    ``source_node_id='maurol-laptop'`` and ``content_hash=abc`` is visible
+    to the PC grande after sync, so the PC grande's vectorizer skips
+    embedding the same text again.
+
+    Empty string means "origin unknown" (legacy rows). The dedup query
+    ``SELECT rowid FROM vec_meta WHERE content_hash = ?`` already returns
+    cross-node rows post-sync; this column just records who did the work.
+    """
+    cursor = conn.execute("PRAGMA table_info(vec_meta)")
+    cols = {r[1] for r in cursor.fetchall()}
+    if "source_node_id" not in cols:
+        conn.execute(
+            "ALTER TABLE vec_meta ADD COLUMN source_node_id TEXT NOT NULL DEFAULT ''"
+        )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vec_meta_source_node ON vec_meta (source_node_id)"
+    )
+    logger.info("source_node_id column added to vec_meta")
+
+
+def _migration_016_entities_origin_node_id(conn: sqlite3.Connection, engine) -> None:
+    """Add ``origin_node_id`` to ``entities`` for cross-node provenance.
+
+    Entity fantasma conflicted at Syncthing merge when two nodes extract the
+    same entity concurrently and write to ``memory.db``. With
+    ``origin_node_id``, the curator can decide which node "owns" a given
+    entity record (e.g. last writer wins, or the primary's copy wins).
+
+    This column does NOT change the existing dedup behavior (entities still
+    deduplicate by ``normalized_name`` + ``entity_type`` via
+    ``idx_entities_dedup``). It only documents where a row came from.
+    """
+    cursor = conn.execute("PRAGMA table_info(entities)")
+    cols = {r[1] for r in cursor.fetchall()}
+    if "origin_node_id" not in cols:
+        conn.execute(
+            "ALTER TABLE entities ADD COLUMN origin_node_id TEXT NOT NULL DEFAULT ''"
+        )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_entities_origin_node ON entities (origin_node_id)"
+    )
+    logger.info("origin_node_id column added to entities")
+
+
+def _migration_017_topic_clusters_origin_node_id(conn: sqlite3.Connection, engine) -> None:
+    """Add ``origin_node_id`` to ``topic_clusters`` for cross-node provenance.
+
+    Cluster ids are generated deterministically from keyword sets (see
+    ``heuristic.py``), so two nodes extracting the same topic produce the
+    same ``cluster_id``. Syncthing merges these as upserts (INSERT OR
+    REPLACE). ``origin_node_id`` lets the curator tell apart "cluster
+    proposed by laptop" vs "cluster proposed by PC grande" when reconciling
+    cluster metadata (label, weight, exchange_count).
+    """
+    cursor = conn.execute("PRAGMA table_info(topic_clusters)")
+    cols = {r[1] for r in cursor.fetchall()}
+    if "origin_node_id" not in cols:
+        conn.execute(
+            "ALTER TABLE topic_clusters ADD COLUMN origin_node_id TEXT NOT NULL DEFAULT ''"
+        )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_topic_clusters_origin_node ON topic_clusters (origin_node_id)"
+    )
+    logger.info("origin_node_id column added to topic_clusters")
+
+
 _MEMORY_MIGRATIONS = (
     _migration_001_global_memory_index,
     _migration_002_vec_store,
@@ -497,6 +569,9 @@ _MEMORY_MIGRATIONS = (
     _migration_012_content_hash,
     _migration_013_memory_work_catalog,
     _migration_014_memory_processing_catalog,
+    _migration_015_vec_meta_source_node_id,
+    _migration_016_entities_origin_node_id,
+    _migration_017_topic_clusters_origin_node_id,
 )
 
 MEMORY_SCHEMA_VERSION = len(_MEMORY_MIGRATIONS)

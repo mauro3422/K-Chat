@@ -21,6 +21,22 @@ logger = logging.getLogger(__name__)
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB per file
 
 
+def _resolve_origin_node_id() -> str:
+    """Return the active coordinator's node_id, or '' when unconfigured.
+
+    Stamps new sessions with ``origin_node_id`` so the federated
+    session directory knows where the session was born.
+    """
+    try:
+        from src.coordination.node_state import peek_node_coordinator
+        coordinator = peek_node_coordinator()
+        if coordinator is None:
+            return ""
+        return getattr(coordinator, "node_id", "") or ""
+    except Exception:
+        return ""
+
+
 class ChatPayload(BaseModel):
     message: str
     model: str | None = None
@@ -92,7 +108,10 @@ async def chat(
         tagged=True,
         background_tasks=background_tasks,
     )
-    await repos.sessions.ensure(session_id)
+    await repos.sessions.ensure(
+        session_id,
+        origin_node_id=_resolve_origin_node_id(),
+    )
     try:
         history = await rebuild_history(session_id, model, messages_repo=repos.messages)
     except Exception as e:

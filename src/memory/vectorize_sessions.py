@@ -121,7 +121,9 @@ def group_into_exchanges(messages: list[dict[str, Any]]) -> list[dict[str, Any]]
 async def vectorize_exchange(exchange: dict[str, Any], session_id: str, idx: int,
                               clusterer: Any = None,
                               store: Any = None,
-                              embedding: Optional[list[float]] = None) -> dict[str, Any] | None:
+                              embedding: Optional[list[float]] = None,
+                              *,
+                              source_node_id: str = "") -> dict[str, Any] | None:
     """Pipeline completo FASE 7 para un exchange: keywords → noise filter → embed → cluster.
 
     Pipeline:
@@ -138,6 +140,8 @@ async def vectorize_exchange(exchange: dict[str, Any], session_id: str, idx: int
         store: VectorStore inyectado por DI. Si es None, crea uno propio (fallback).
         embedding: Embedding pre-computado (desde batch). Si se pasa, saltea
             generate_embedding individual.
+        source_node_id: Origin node stamp for the embedding row. Empty string
+            falls back to the active coordinator's node_id.
 
     Returns:
         Dict con metadata del exchange procesado, o None si es noise.
@@ -188,6 +192,10 @@ async def vectorize_exchange(exchange: dict[str, Any], session_id: str, idx: int
         store = VectorStore(resolve_memory_db_path())
         own_store = True
 
+    if not source_node_id:
+        from src.memory.provenance import resolve_local_node_id
+        source_node_id = resolve_local_node_id()
+
     # Check against DB first (persistent dedup via content_hash)
     try:
         conn = store._get_conn()
@@ -231,6 +239,7 @@ async def vectorize_exchange(exchange: dict[str, Any], session_id: str, idx: int
             metadata=metadata,
             hash=text_hash,
             content_hash=text_hash,
+            source_node_id=source_node_id,
         )
         # Step 3.5: Write keywords to vec_keywords for keyword search
         if rowid and kws:
@@ -345,7 +354,9 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                             clusterer: Any = None, repos: Any = None,
                             store: Any = None,
                             linker: Any = None,
-                            exchange_indexes: list[int] | set[int] | None = None) -> tuple[int, int, list[dict[str, Any]], list[list[tuple[str, str, float]]]]:
+                            exchange_indexes: list[int] | set[int] | None = None,
+                            *,
+                            source_node_id: str = "") -> tuple[int, int, list[dict[str, Any]], list[list[tuple[str, str, float]]]]:
     """Vectorize all exchanges in a single session.
 
     Pipeline completo por exchange: keywords → noise filter → embed → cluster.
@@ -355,6 +366,10 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
     Args:
         store: VectorStore inyectado (desde DI). Si es None, crea uno propio.
         linker: EntityLinker opcional. Si se pasa, linkea las entidades al grafo.
+        source_node_id: Origin node for the embeddings written by this call.
+            Empty string falls back to the active coordinator's node_id
+            (via ``resolve_local_node_id``), or stays empty when no
+            coordinator is configured.
 
     Returns:
         (count, noise_count, exchange_cluster_mappings, entities_list)
@@ -390,6 +405,10 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
         from src.memory.vector.store import VectorStore
         store = VectorStore(resolve_memory_db_path())
         own_store = True
+
+    if not source_node_id:
+        from src.memory.provenance import resolve_local_node_id
+        source_node_id = resolve_local_node_id()
 
     try:
         last_idx = _get_last_vectorized_idx(store, session_id)
@@ -511,6 +530,7 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
                         metadata=metadata,
                         hash=text_hash,
                         content_hash=text_hash,
+                        source_node_id=source_node_id,
                     )
                     _catalog_mark(
                         catalog,
@@ -576,7 +596,9 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
 
 async def vectorize_all_sessions(dry_run: bool = False, max_sessions: int = 0,
                                  repos: Any = None,
-                                 linker: Any = None) -> dict[str, int]:
+                                 linker: Any = None,
+                                 *,
+                                 source_node_id: str = "") -> dict[str, int]:
     """Vectorize ALL sessions with the complete FASE 7 pipeline.
 
     Pipeline global:
@@ -586,6 +608,9 @@ async def vectorize_all_sessions(dry_run: bool = False, max_sessions: int = 0,
 
     Args:
         linker: EntityLinker opcional. Si es None y no es dry_run, se crea uno nuevo.
+        source_node_id: Origin node stamp for embeddings and graphs written
+            by this run. Empty string falls back to the active coordinator's
+            node_id via ``resolve_local_node_id()``.
 
     Returns:
         {session_id: exchanges_processed_count}
@@ -603,6 +628,10 @@ async def vectorize_all_sessions(dry_run: bool = False, max_sessions: int = 0,
     if linker is None and not dry_run:
         linker = EntityLinker(db_path=resolve_memory_db_path())
 
+    if not source_node_id:
+        from src.memory.provenance import resolve_local_node_id
+        source_node_id = resolve_local_node_id()
+
     all_mappings: list[dict[str, Any]] = []
     results: dict[str, int] = {}
     total_exchanges = 0
@@ -619,6 +648,7 @@ async def vectorize_all_sessions(dry_run: bool = False, max_sessions: int = 0,
         else:
             count, noise_count, mappings, _entities = await vectorize_session(
                 sid, dry_run=False, clusterer=clusterer, repos=repos, linker=linker,
+                source_node_id=source_node_id,
             )
             all_mappings.extend(mappings)
 
@@ -633,7 +663,7 @@ async def vectorize_all_sessions(dry_run: bool = False, max_sessions: int = 0,
     # Flush clusters + exchange mappings + relations to DB
     if not dry_run and clusterer.clusters:
         db_path = resolve_memory_db_path()
-        c_count = await flush_clusters_to_db(clusterer, db_path, mappings=all_mappings)
+        c_count = await flush_clusters_to_db(clusterer, db_path, mappings=all_mappings, origin_node_id=source_node_id)
         logger.info("Flushed %d clusters + %d exchange mappings to DB",
                     c_count, len(all_mappings))
         cluster_dicts = [c.as_dict for c in clusterer.clusters.values()]
@@ -648,7 +678,7 @@ async def vectorize_all_sessions(dry_run: bool = False, max_sessions: int = 0,
         from src.memory.entity.linker import (
             flush_entities_to_db, flush_relations_to_db, flush_entity_mentions_to_db,
         )
-        e_count = await flush_entities_to_db(linker, db_path)
+        e_count = await flush_entities_to_db(linker, db_path, origin_node_id=source_node_id)
         r_count = await flush_relations_to_db(linker, db_path)
         m_count = await flush_entity_mentions_to_db(linker, db_path)
         logger.info("Flushed %d entities + %d relations + %d mentions to DB",

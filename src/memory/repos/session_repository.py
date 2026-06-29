@@ -44,15 +44,39 @@ class SessionRepository(_BaseRepository):
         except Exception as e:
             logger.warning("Failed to ensure telegram_chat_id column: %s", e)
 
-    async def ensure(self, session_id: str) -> None:
-        """Create a session row if it does not exist."""
+    async def ensure(
+        self,
+        session_id: str,
+        *,
+        origin_node_id: str = "",
+    ) -> None:
+        """Create a session row if it does not exist.
+
+        ``origin_node_id`` stamps the session with the node that *created*
+        it. Empty string (default) means "origin unknown" — legacy callers
+        that don't pass it explicitly get the behavior they had before.
+        The column already exists (migration 025) with DEFAULT '' so the
+        INSERT works whether or not the caller supplies a value.
+
+        Resolving the local node_id at write time is the caller's job
+        (typically via ``peek_node_coordinator()``); this method keeps
+        the storage layer pure and free of coordination imports.
+        """
         async with self._transaction() as conn:
             cursor = await conn.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,))
             if not await cursor.fetchone():
-                await conn.execute(
-                    "INSERT INTO sessions (session_id, name, created_at) VALUES (?, '', ?)",
-                    (session_id, datetime.now().isoformat())
-                )
+                try:
+                    await conn.execute(
+                        "INSERT INTO sessions (session_id, name, created_at, origin_node_id) VALUES (?, '', ?, ?)",
+                        (session_id, datetime.now().isoformat(), origin_node_id)
+                    )
+                except sqlite3.OperationalError:
+                    # Pre-migration-025 DB: origin_node_id column missing.
+                    # Fall back to legacy INSERT so the session is still created.
+                    await conn.execute(
+                        "INSERT INTO sessions (session_id, name, created_at) VALUES (?, '', ?)",
+                        (session_id, datetime.now().isoformat())
+                    )
 
     async def exists(self, session_id: str) -> bool:
         """Check if a session exists without creating it."""
@@ -243,26 +267,61 @@ class SessionRepository(_BaseRepository):
 
     # ── End of SessionRepository ───────────────────────────────────────────
     async def get_all(self, limit: int = 50) -> list[tuple[Any, ...]]:
-        """Return all sessions with summary data (now includes is_favorite)."""
+        """Return all sessions with summary data (now includes is_favorite).
+
+        Schema after migration 025: ``sessions`` has ``origin_node_id`` (TEXT
+        DEFAULT ''). The SELECT returns it so the federated merge can
+        reconcile by canonical owner instead of duplicating sessions that
+        exist on both nodes.
+        """
         await self._ensure_favorite_column()
         await self._ensure_telegram_chat_id_column()
         try:
             async with self._connection() as conn:
-                cursor = await conn.execute('''
-                    SELECT m.session_id,
-                           MIN(m.created_at),
-                           MAX(m.created_at),
-                           SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END),
-                           NULL,
-                           COALESCE(s.name, ''),
-                           s.telegram_chat_id,
-                           COALESCE(s.is_favorite, 0)
-                    FROM messages m
-                    LEFT JOIN sessions s ON m.session_id = s.session_id
-                    GROUP BY m.session_id
-                    ORDER BY MAX(m.created_at) DESC
-                    LIMIT ?
-                ''', (limit,))
+                # Probe whether origin_node_id column exists (migration 025).
+                has_origin = False
+                try:
+                    cur = await conn.execute("PRAGMA table_info(sessions)")
+                    for col in await cur.fetchall():
+                        if col[1] == "origin_node_id":
+                            has_origin = True
+                            break
+                except Exception:
+                    pass
+
+                if has_origin:
+                    cursor = await conn.execute('''
+                        SELECT m.session_id,
+                               MIN(m.created_at),
+                               MAX(m.created_at),
+                               SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END),
+                               NULL,
+                               COALESCE(s.name, ''),
+                               s.telegram_chat_id,
+                               COALESCE(s.is_favorite, 0),
+                               COALESCE(s.origin_node_id, '')
+                        FROM messages m
+                        LEFT JOIN sessions s ON m.session_id = s.session_id
+                        GROUP BY m.session_id
+                        ORDER BY MAX(m.created_at) DESC
+                        LIMIT ?
+                    ''', (limit,))
+                else:
+                    cursor = await conn.execute('''
+                        SELECT m.session_id,
+                               MIN(m.created_at),
+                               MAX(m.created_at),
+                               SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END),
+                               NULL,
+                               COALESCE(s.name, ''),
+                               s.telegram_chat_id,
+                               COALESCE(s.is_favorite, 0)
+                        FROM messages m
+                        LEFT JOIN sessions s ON m.session_id = s.session_id
+                        GROUP BY m.session_id
+                        ORDER BY MAX(m.created_at) DESC
+                        LIMIT ?
+                    ''', (limit,))
                 return await cursor.fetchall()
         except Exception:
             logger.exception("Failed to get all sessions")

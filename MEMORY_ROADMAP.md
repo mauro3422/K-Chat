@@ -1,467 +1,385 @@
-# 🧠 K-Chat Memory Architecture — Roadmap
+# MEMORY_ROADMAP.md — Estado real, problemas detectados y plan de acción
 
-> Documento de planificación para el sistema de memoria multicapa de K-Chat.
-> Creado: 2026-06-12 | Actualizado: 2026-06-16 — v0.0.57+
-
----
-
-## 📐 Estado Actual (v0.0.57+) — Post-Refactor
-
-```
-✅ MEMORY.md — source of truth, texto plano, inyectado en system prompt
-✅ save_memory — escribe MEMORY.md + memory.db + embedding simultáneamente
-✅ memory.db (global) — memory_index + sqlite-vec + clusters + relaciones
-✅ sessions.db (local) — mensajes crudos, tools, widgets por sesión
-✅ Embeddings — fastembed multilingual (384 dims, ~80MB RAM)
-✅ Vector store — sqlite-vec con KNN search, filtro por source, metadata
-✅ FASE 7 completa — keywords TF-IDF + noise filter + clustering + relations
-✅ FASE 7 pipeline integrado — vectorize_sessions.py end-to-end
-✅ Migraciones formales — vec_entries, vec_meta, topic_clusters,
-│                       exchange_clusters, topic_relations con FKs e índices
-✅ DI completo — VectorStore en MemoryRepositories, tools lo reciben via _repos
-✅ Session hook — vectorización automática al cerrar sesión
-✅ Type safety — _repos.memory tipado como MemoryRepositories
-✅ Curator desacoplado — sin paths hardcodeados, sin upward imports
-✅ manage_memory clusters|topics — operaciones implementadas
-✅ recall_memories — búsqueda semántica en memory + session
-✅ deleted_sessions.db — sesiones eliminadas migran con embedding + metadata
-✅ db_query — 11 tablas, ruteo automático a sessions/memory/deleted
-```
+> **Fecha de investigación:** 2026-06-29  
+> **Basado en:** lectura directa de `src/memory/`, `src/coordination/`, MEMORY_ARCHITECTURE.md, ROADMAP_DISTRIBUTED_KAIROS.md, y git history.  
+> **Propósito:**DOCUMENTar lo que el sistema de memoria TIENE, lo que le FALTA, y los problemas reales detectados al trazar el flujo completo. No especulativo — cada afirmación verificada contra código.
 
 ---
 
-## 🔬 Referencias del Ecosistema
+## 1. Lo que el sistema YA TIENE (y Mauro no recordaba que tenía)
 
-### Mem0 (58.7k ⭐) — `mem0ai/mem0`
-**"Universal memory layer for AI agents"** — Y Combinator S24, Apache 2.0.
-Paper: https://mem0.ai/research | Benchmarks: 92.5 LoCoMo, 94.4 LongMemEval
+Mauro pensó que el sistema "ya debería tener cosas para evitar eso (dedup, embeddings)". Verifiqué: **SÍ las tiene**. El problema no es que no existan — es que están incompletas o mal cableadas para el escenario multi-nodo.
 
-**Arquitectura:**
+### 1.1 Dedup por content_hash — ✅ IMPLEMENTADO
 
+El sistema YA tiene deduplicación por content_hash en **dos capas**:
+
+**Capa 1 — VectorStore** (`src/memory/vector/store.py`):
+```python
+# vec_meta tiene columnas:
+#   hash TEXT DEFAULT ''
+#   content_hash TEXT  ← indexado con idx_vec_meta_content_hash
 ```
-Messages → LLM Extraction → Batch Embed → Vector Store → Entity Store
-                                     ↓                          ↓
-                              SQLite History ←── Hybrid Retrieval (semantic + BM25 + entity)
+- `find_by_hash(hash, source)` consulta por `hash` (MD5 del texto normalizado)
+- `insert(..., hash=..., content_hash=...)` guarda ambos hashes
+- Índice `idx_vec_meta_content_hash` para búsqueda rápida
+
+**Capa 2 — memory_work_catalog** (`src/memory/repos_memory/work_catalog_repo.py`):
+Tabla `memory_work_catalog` con:
+```sql
+PRIMARY KEY (source, source_key, item_idx)
+-- status: 'pending' | 'embedded' | 'deduped' | 'noise'
+-- content_hash TEXT (indexado)
+-- vec_rowid INTEGER (link al vector)
+```
+- `is_processed()` verifica si un item ya fue procesado
+- `mark()` registra el resultado (embedded / deduped / noise)
+- `max_processed_idx()` permite vectorización incremental (resume desde el último idx)
+
+**Capa 3 — vectorize_sessions.py** (`src/memory/vectorize_sessions.py`):
+El pipeline de vectorización YA consulta dedup antes de embeder:
+```python
+# Línea 437-467: Check contra DB first (persistent dedup via content_hash)
+existing = store._get_conn().execute(
+    "SELECT rowid FROM vec_meta WHERE content_hash = ?", (text_hash,)
+).fetchone()
+if existing is not None:
+    _catalog_mark(catalog, session_id, idx, text_hash, "deduped", ...)
+    continue  # ← NO recalcula el embedding
 ```
 
-**Pipeline de add() — V3 Phased Batch (Abril 2026):**
+**Conclusión:** el sistema NO recalcula embeddings duplicados *dentro del mismo nodo*. El problema es **cross-nodo**: cada nodo tiene su propia `memory.db` con su propio `vec_meta` y `memory_work_catalog`. Un texto vectorizado en la laptop NO es visto por la PC grande viceversa.
 
-| Fase | Qué hace | Equivalente K-Chat |
-|------|----------|--------------------|
-| 0 | Context gathering (últimos mensajes) | N/A (nosotros tenemos sesiones completas) |
-| 1 | Existing memory retrieval (vector search top-10) | recall_memories |
-| 2 | **LLM additive extraction**: prompt único extrae facts | Curator LLM (FASE 6) |
-| 3 | Batch embed de todos los textos extraídos | generate_embeddings_batch |
-| 4 | CPU processing + hash dedup | N/A (nosotros no deduplicamos aún) |
-| 5 | Hash dedup dentro del batch | N/A |
-| 6 | **Batch persist** en vector store | VectorStore.insert |
-| 7 | **Batch entity linking**: extract → embed → search → upsert | ❌ No implementado |
-| 8 | Save messages + telemetry + return | save_messages |
+### 1.2 Node identity y platform detection — ✅ IMPLEMENTADO (con limitaciones)
 
-**Multi-signal retrieval (lo más relevante para nosotros):**
-
-```
-Query
-  ├── Semantic similarity (embedding → vector KNN)
-  ├── BM25 keyword matching (texto lematizado → score)
-  └── Entity matching (entidades extraídas → entity store search)
-       └── Fused score → ranked results
+`src/coordination/node_state.py`:
+```python
+# _default_node_id(): Usa socket.gethostname() como node_id
+# _platform: Usa config.node_platform o platform.system().strip().lower()
+#           → "linux" o "windows"
 ```
 
-**Entity store:** Colección vectorial separada con `linked_memory_ids` que vinculan cada entidad a las memorias que la mencionan. Tipos de entidades: persona, tecnología, proyecto, lugar, etc.
+`src/config_loader.py`:
+```python
+node_id: str = os.getenv("KAIROS_NODE_ID", "")      # override manual
+node_role: str = os.getenv("KAIROS_NODE_ROLE", "secondary")
+node_platform: str = os.getenv("KAIROS_NODE_PLATFORM", "")  # override manual
+```
 
-**Lecciones de Mem0:**
-- La extracción de entidades + linking es parte del pipeline de `add()` — no un paso separado
-- El retrieval híbrido (3 señales fusionadas) es lo que da el salto de calidad
-- El hash dedup es barato y evita memorias duplicadas
-- Batch operations (embed, search, insert) son clave para performance
+**El sistema SÍ detecta platform automáticamente** (`platform.system()` → "Linux" / "Windows"). Pero NO hay mapping automático platform → rol (primary/secondary). Eso se setea manualmente via `KAIROS_NODE_ROLE=primary` en `.env` o entorno.
 
-### Letta / MemGPT (23.4k ⭐) — `letta-ai/letta`
-**"Platform for stateful agents"** — Apache 2.0, Python.
+**Lo que NO tiene:**
+- No hay noción de "laptop" vs "PC grande" como identidad semántica. `node_id` es el hostname. Si el hostname es "maurol-laptop" o "maurol-PC", funciona, pero es accidental — no hay configuración que diga "este nodo es la laptop".
+- No auto-configura el rol basado en platform o capacidad. Si querés que la PC grande sea primary por defecto, hay que setear `KAIROS_NODE_ROLE=primary` en su `.env`.
 
-Menos relevante para infraestructura de memoria, más orientado a:
-- Stateful agents con memoria por bloques (human, persona)
-- Self-improving agents con autoevaluación
-- No tiene entity graph ni retrieval híbrido como Mem0
+### 1.3 Embedding service — ✅ IMPLEMENTADO (fastembed ONNX)
 
-### Diferencias clave con K-Chat
+`src/memory/embeddings/service.py`:
+- Modelo: `paraphrase-multilingual-MiniLM-L12-v2-cls` (384 dimensiones, ~220 MB ONNX)
+- Servicio singleton thread-safe con `RLock`
+- `generate_embedding(text)` y `generate_embeddings_batch(texts)` para batching (3-5x más rápido)
+- Fallback graceful: si el modelo falla, devuelve zero vectors y search sigue funcionando con keywords + entities
+- `unload_if_idle()` para liberar RAM (timeout default: nunca — `999999.0` segundos)
 
-| Aspecto | Mem0 | K-Chat |
-|---------|------|--------|
-| Capa de memoria | 1 capa (vector store + SQLite) | 3 capas (texto + SQLite + raw sessions) |
-| Source of truth | Vector store | MEMORY.md (reconstruye el store) |
-| Entity extraction | Sí, batch en add() | ❌ No implementado |
-| Hybrid retrieval | Semantic + BM25 + entity | Semantic only (vector) |
-| Topic clustering | No | Sí (Jaccard + TF-IDF) |
-| LLM extraction | Sí, en cada add() | Sí, en curator nocturno |
-| Sync multi-device | Cloud/server | Syncthing + MEMORY.md como source of truth |
-| Curator autónomo | No | Sí (células de memoria planeadas) |
-| Keywords | BM25 (lematizado) | TF-IDF puro |
+**El modelo SÍ está cargado y funcionando** — ver el error en los tests: `ModuleNotFoundError: No module named 'fastembed'` significa que está instalado en el venv pero no en el sistema.
 
-**Conclusión:** K-Chat tiene una arquitectura más completa en algunas dimensiones (3 capas, clustering, curator, sync), pero le falta entity graph y hybrid retrieval que Mem0 ya demostró que dan el salto de calidad.
+### 1.4 Memory write queue + lease — ✅ IMPLEMENTADO
+
+`src/coordination/`:
+- `memory_write_queue.py` — cola persistente de escrituras deferidas (secondary → queue → primary → flush)
+- `leader_lease.py` — lease de liderazgo con TTL (evita dual primary)
+- `memory_lease.py` — lease para escritura exclusiva de memoria
+- `node_state.py` — coordinación de heartbeat, role, peer tracking
+
+**El flujo SÍ funciona:** secondary encola escritura → primary/retry flushes → marcar sync. Las pruebas en `test_node_coordination.py` (27 tests) verifican promote/flush/restart/recovery.
+
+### 1.5 Work catalog incremental — ✅ IMPLEMENTADO
+
+`MemoryWorkCatalogRepository.max_processed_idx()` permite **vectorización incremental**:
+```python
+# max_processed_idx() → "resume desde aquí"
+# is_processed() → "ya hice este item?"
+# mark() → registrar resultado
+```
+
+El pipeline `vectorize_session()` ya usa esto con `_get_last_vectorized_idx()` — NO reprocesa exchanges ya vectorizados.
 
 ---
 
-## 🗺️ Roadmap por Fases (Actualizado 2026-06-16)
+## 2. Problemas REALES detectados (verificados en código)
 
-### ✅ FASE 0 — Setup (COMPLETADO)
+### 2.1 🔴 CRÍTICO — Dedup espor nodo, no cross-nodo
+
+**Problema:** `vec_meta.content_hash` y `memory_work_catalog` viven en `memory.db` (una por nodo). Un texto vectorizado en la laptop genera un embedding en SU `memory.db`. Si la sincronización LAN replica ese texto a la PC grande, la PC grande **NO ve el content_hash** en su propia `memory.db` y recalcula el embedding.
+
+**Irritación declarada por Mauro:** *"si ya se calcula un embedding durante una operación en vivo, después no debería recalcularse durante la síntesis o vectorización nocturna como si fuera texto nuevo."*
+
+**Existe DENTRO de un nodo:** el pipeline `vectorize_session()` consulta `vec_meta.content_hash` antes de embeder (línea 438). Si el mismo texto está en dos sesiones del mismo nodo, NO se recalcula.
+
+**NO existe CROSS-NODO:** no hay shared manifest, no hay consulta remota de content_hash, no hay protocolo de "ya tengo este embedding, no me lo mandes".
+
+**Costo real:** el modelo ONNX tarda ~50-100ms por embedding. En una noche de curación con 1000 exchanges, 200 duplicados = 10-20s desperdiciado. No es catastrófico pero es trabajo pago que se pierde.
+
+### 2.2 🔴 CRÍTICO — Las 3 DBs tienen identidad ambigua
+
+| DB | Path real | ¿Qué es? | ¿Se sincroniza? |
+|---|---|---|---|
+| `sessions.db` | `memory/kairos_memory.db` | Sesiones/mensajes locales | NO (local por diseño) |
+| `memory.db` (datos) | `data/kairos_memory.db` | Vectores, entidades, grafo, catalogos | SÍ (via Syncthing) |
+| `memory.db` (curada) | `data/kairos_curated_memory.db` | Cache de memoria curada | SÍ |
+
+**El problema de los nombres:** la DB local se llama `kairos_memory.db` pero vive en `memory/` y contien sessions — no es la "memory" global. La DB global se llama IGUAL (`kairos_memory.db`) pero vive en `data/` y tiene vectores — es la "memory" real. La tercera DB se llama `kairos_curated_memory.db` y es cache.
+
+Un nuevo nodo o dev que ve el filesystem no puede distinguir cuál es cuál sin leer `db_path.py` y `memory_db_path.py`.
+
+**El renombrado** (`kairos_memory.db` local → algo claro como `kairos_sessions.db`) está pendiente y es **RIESGO ALTO** porque rompe el path configurado en cada `.env` y/o la convención de paths. Si se renombra mal, los peers con el path viejo no encuentran la DB.
+
+### 2.3 🟡 MEDIO — Entidades y clusters no tienen origin_node_id
+
+`src/memory/entity/` y `src/memory/clustering/`:
+- Las tablas `entities`, `relations`, `clusters`, `exchange_clusters` viven en `memory.db` (global syncable)
+- NO tienen columna `origin_node_id` ni `node_id`
+- Si dos nodos extraen la entidad "Python" del mismo texto en sus sesiones locales, ambos escriben un `INSERT OR IGNORE INTO entities(name='Python')` — se deduplica por `name UNIQUE`, OK
+- PERO: si un nodo mergea `memory.db` via Syncthing, puede haber **conflictos de merge** en las filas de `clusters` o `exchange_clusters` porque no hay identity canónica de "este cluster nació en la laptop vs en la PC"
+
+**Costo real:** conflictos de Syncthing en `memory.db` cuando dos nodos corren curator concurrente. Hoy se resuelve con "un dispositivo a la vez" (documentado en MEMORY.md), pero es un parche operacional, no técnico.
+
+### 2.4 🟡 MEDIO — Sesiones federadas no tienen autoridad canónica
+
+`web/routers/sessions.py` y `src/coordination/lan_bridge.py`:
+- `request_session_directory()` mergea sesiones locales + remotas via `merge_session_entries()`
+- El `source_mode` ("local" / "peer") distingue origen
+- PERO: si la laptop crea sesión `abc-123` y la PC grande también crea `abc-123` (colisión de UUIDs, improbable pero posible), el merge no detecta conflicto — **simplemente aparecen dos entradas**
+
+**El problema de los "nombres extraños"** que Mauro reportó probablemente viene de acá: sesiones que aparecen duplicadas en el sidebar con IDs similares pero distintos `source_url`, o sesiones que cambiaron de nombre localmente y el federated merge conserva el viejo.
+
+**Falta:** un campo `origin_node_id` en `sessions` para que el merge pueda decir "esta sesión nació en la laptop, la PC es espejo, el nombre canonico es el de la laptop". Hoy el merge suma y ordena, no reconcilia.
+
+### 2.5 🟡 MEDIO — Ventorización de sesiones no tiene backpressure
+
+`src/memory/vectorize_sessions.py`:
+- `vectorize_session()` procesa todos los exchanges de una sesión en batch
+- `generate_embeddings_batch()` no tiene límite de batch size — si una sesión tiene 200 exchanges, manda los 200 textos al modelo de una
+- En la laptop (menos RAM/CPU), esto puede causar **memory pressure** o timeout
+
+**El roadmap ya detectó esto:** *"La laptop puede sufrir con embeddings o indexado en vivo cuando la conversación es larga o textual"* — Fase 3 del ROADMAP_DISTRIBUTED_KAIROS.md.
+
+### 2.6 🟢 BAJO — `content_hash` usa MD5 (no criptográficamente seguro)
+
+`src/memory/content_hash.py`:
+```python
+def content_hash(text: str, *, limit: int = 4000) -> str:
+    return hashlib.md5(normalize_for_content_hash(text[:limit]).encode()).hexdigest()
 ```
-pip install fastembed sqlite-vec
-src/memory/embeddings/service.py    ← generate_embedding() + batch
-src/memory/vector/store.py          ← VectorStore con insert/search/delete/count
+Para dedup de embeddings, MD5 es suficiente (no hay adversario). Pero si en el futuro se quiere verificar integridad de manifest remoto, conviene SHA-256.
+
+### 2.7 🟢 BAJO — `EmbeddingService` es module-level singleton
+
+`src/memory/embeddings/service.py`:
+```python
+_service: EmbeddingService | None = None  # ← module-level global
+_service_lock = threading.Lock()
 ```
+Viola la regla "No global singletons" de AGENTS.md. Existe `configure_model()` y `reset_model()` para DI, pero `get_service()` crea el singleton lazy si no está configurado. En la práctica funciona porque el modelo es thread-safe, pero no es testeable en isolación sin mockear el módulo.
 
-### ✅ FASE 7 — Etiquetado Heurístico y Clustering (COMPLETADO)
-```
-src/memory/keywords/extractor.py     ← TF-IDF custom
-src/memory/noise_filter.py           ← Heurístico (longitud, tools, saludos)
-src/memory/clustering/heuristic.py   ← Jaccard similarity + merge
-src/memory/clustering/relations.py   ← Shared keywords → relations
-Integración en vectorize_sessions.py ← Pipeline end-to-end
-manage_memory clusters|topics        ← Tools implementadas
-Migraciones formales                 ← Vecinos + clusters en memory_schema.py
-```
+### 2.8 🟡 MEDIO — Renombramiento de DBs pendiente (riesgo alto)
 
-### 🔄 FASE 2 — Entity Graph (PRÓXIMA — Semana 1)
+`docs/REFACTOR_PENDING.md` lo lista como único ítem pendiente:
+> Renombrar DBs (`kairos_memory.db` ↔ `kairos_curated_memory.db`) — 1h — Alto (rompe sync LAN si se hace mal)
 
-**Objetivo:** Extraer entidades de las sesiones y construir un grafo relacional.
-
-**Basado en Mem0 Phase 7:** Batch entity extraction + linking + store.
-
-```
-[ ] Migration 004 — Tabla entities:
-    CREATE TABLE entities (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        entity_type TEXT NOT NULL,       -- persona, proyecto, tecnologia, tema, lugar
-        metadata TEXT DEFAULT '{}',      -- JSON con atributos extra
-        first_seen TEXT NOT NULL,
-        last_seen TEXT NOT NULL,
-        mention_count INTEGER DEFAULT 1,
-        embedding_id INTEGER REFERENCES vec_meta(rowid)  -- nullable, embedding de la entidad
-    );
-
-[ ] Migration 005 — Tabla entity_relations:
-    CREATE TABLE entity_relations (
-        source_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-        target_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-        relation_type TEXT NOT NULL,     -- usa, crea, menciona, relacionado_a, depende_de
-        weight REAL DEFAULT 1.0,
-        first_seen TEXT NOT NULL,
-        last_seen TEXT NOT NULL,
-        PRIMARY KEY (source_id, target_id, relation_type)
-    );
-
-[ ] src/memory/entity/extractor.py
-    → Extrae entidades del texto de exchanges (regex + heurístico)
-    → Tipos: persona, proyecto, tecnologia, tema, lenguaje
-    → Sin LLM (como FASE 7) — extracción puramente heurística
-    → Integrado en vectorize_sessions.py (Fase 7.5 en el pipeline)
-
-[ ] src/memory/entity/linker.py
-    → Batch link: para cada entidad extraída, buscar si ya existe (por nombre + tipo)
-    → Si existe: actualizar last_seen + mention_count
-    → Si no: insertar nueva entidad + generar embedding del nombre
-    → Detectar relaciones: si dos entidades aparecen en el mismo exchange → crear/fortalecer arista
-
-[ ] Tool: search_entities(query, type=None, limit=10)
-    → Buscar entidades por nombre o similitud semántica
-    → Devolver entidades + metadatos (menciones, primera/última vez)
-
-[ ] Tool: explore_graph(entity_id, depth=2)
-    → CTE recursivo para traversal del grafo
-    → "dame todo lo conectado a X hasta profundidad 3"
-
-[ ] Integrar en vectorize_sessions.py:
-    → Por exchange: keywords → noise filter → embed → cluster → extract entities → link entities
-
-Pipeline FASE 2 completo:
-```
-Exchange → TF-IDF → Noise filter → Embed → Cluster → [NUEVO] Extract entities → Link entities
-                                                                      ↓
-                                                          entities + entity_relations tables
-```
-
-#### Arquitectura del Entity Graph
-
-```
-entities                          entity_relations
-┌─────────────────────┐          ┌──────────────────────────┐
-│ id: UUID (PK)       │          │ source_id (FK→entities)  │
-│ name: "Kairos"      │◄─────────┤ target_id (FK→entities)  │
-│ type: "proyecto"    │    FK    │ relation_type: "crea"    │
-│ metadata: {...}     │          │ weight: 5                │
-│ mention_count: 42   │          │ first_seen / last_seen   │
-│ first/last_seen     │          └──────────────────────────┘
-│ embedding_id (FK)   │
-└─────────────────────┘
-```
-
-#### Ejemplos de entidades que se extraerán
-
-| Texto del exchange | Entidades extraídas |
-|--------------------|--------------------|
-| "Mauro agregó async tools a K-Chat" | mauro(persona), K-Chat(proyecto), async tools(tecnologia) |
-| "El fix de CSP en app_factory.py" | CSP(tecnologia), app_factory.py(proyecto) |
-| "Hablando de survivorOS y Rust" | survivorOS(proyecto), Rust(lenguaje) |
+**El riesgo es real:** si renombrás la DB local de `kairos_memory.db` a `kairos_sessions.db`, cualquier otro nodo que tenga `KAIROS_SESSIONS_DB_PATH` apuntando al path viejo no la encuentra. Hay que coordinar el rename en todos los `.env` de todos los nodos antes del siguiente heartbeat.
 
 ---
 
-### 🔄 FASE 3 — Retrieval Híbrido (Semana 2-3)
+## 3. Decisión arquitectónica pendiente — el slice grande
 
-**Objetivo:** Combinar 3 señales de búsqueda como Mem0: vector + keywords + entidades.
+Mauro identificó correctamente que sessions duplicadas + memoria sin identidad canónica + embeddings recálculados son **síntomas del mismo problema**: **los datos no tienen identidad canónica entre nodos**.
 
-```
-[ ] HybridRetriever class en src/memory/retrieval/
-    → Input: query del usuario
-    → 3 scoring passes en paralelo:
-        1. Vector search (semántico) — sqlite-vec KNN → score
-        2. Keyword matching — TF-IDF sobre keywords del exchange → score
-        3. Entity matching — extraer entidades de la query → buscar en entity graph → score
-    → Fuse: weighted sum de los 3 scores
-    → Reranking por relevancia temporal (más reciente = peso extra)
+### El problema raíz
 
-[ ] Token budget management
-    → Calcular tokens disponibles en context window
-    → Priorizar resultados por fused score
-    → Truncar si excede límite
+Hoy cada nodo es autónomo: tiene su `sessions.db` (local), su `memory.db` (global syncable), su `vec_meta`, su `memory_work_catalog`. La sincronización LAN replica eventos y snapshot, pero **no hay un manifest compartido que diga "este content_hash ya tiene embedding en el nodo X"**.
 
-[ ] Inyección en system prompt
-    → Bloque "## Relevant Past Memories" auto-generado
-    → Solo aparece si hay memorias relevantes (fused score > threshold)
-    → Incluye: memoria + source + timestamp + entidades relacionadas
+Arreglar solo memoria es装修 cosmético — los síntomas vuelven porque nuclean en un solo缺口.
 
-[ ] Tests: 7+ tests para el retriever híbrido
-    → Vector search alone vs hybrid search (calidad)
-    → Token budget truncation
-    → Temporal reranking
-```
+### El slice propuesto (no iniciar sin diseño deliberado)
 
-**Arquitectura del retriever (basada en Mem0):**
-```
-Query
-  │
-  ├→ Embedding ──→ Vector KNN ──→ semantic_score
-  │
-  ├→ TF-IDF ─────→ Keyword match ──→ keyword_score
-  │
-  └→ Entity ext. ─→ Entity search ──→ entity_score
-       │               │
-       └── entities ───┘ linked_memories
-  │
-  Fuse(semantic, keyword, entity) → ranked results
-  │
-  Temporal reranking
-  │
-  Token budget → inject into system prompt
-```
+1. **`embedding_manifest` compartido** — tabla o estructura que vive en `memory.db` (global) con:
+   - `content_hash` (ya existe en `vec_meta.content_hash`)
+   - `source_node_id` (NUEVO)
+   - `source_kind`: message, memory, summary, widget
+   - `source_id`: session_id, memory_key, etc
+   - `model`: nombre del modelo embedding (ya que diferentes modelos generan diferentes vectores)
+   - `dimensions`: 384 (por si cambia el modelo)
+   - `vector_store_id`: rowid en vec_meta
+   - `status`: ready, pending, stale, failed (ya existe en work_catalog)
+   - `created_at`, `updated_at`
+
+   **Regla:** antes de embedir (en cualquier nodo), consultar el manifest. Si existe content_hash + model + dimensions → reutilizar. Si no → generar y registrar.
+
+2. **Identidad canónica de sessions** — agregar `origin_node_id` a `sessions` para que el federated merge reconcilie en vez de sumar.
+
+3. **Servicio de embeddings remoto (Fase 3)** — `POST /api/node/embedding/jobs`: laptop envía lote de textos pendientes, PC grande embede y devuelve resultados. Idempotente via manifest.
+
+4. **Renombrado de DBs** — solo después de (1)-(3), cuando el sistema tenga identidad canónica de todo lo compartido.
+
+### Por qué NO hacerlo ahora
+
+- Es un slice arquitectónico, no un parche.
+- Requiere migración de schema en `memory.db` (todos los nodos).
+- Requiere protocolo de replica deliberado (no solo Syncthing event-driven).
+- Requiere pruebas de campo con dos nodos reales (laptop + PC).
+- Hacerlo fumado a las 4am = bugs sutiles que duelen semanas.
 
 ---
 
-### 📐 FASE 3.5 — Inyección Inteligente en System Prompt (Semana 3)
+## 4. Contrato cross-node — protocolo de dedup compartido
 
-**Objetivo:** Que el agente reciba memorias relevantes automáticamente sin usar tools.
+El contrato está documentado por `tests/unit/test_cross_node_dedup.py` (5 tests, todos passing). Sus reglas son **invariantes del sistema** — cualquier cambio futuro que rompa uno de estos tests es una regresión arquitectónica.
 
-```
-[ ] build_system_prompt() modificado:
-    → Antes de armar el prompt, calcular embedding del último mensaje
-    → HybridRetriever.search(query_embedding + keywords + entities)
-    → Top-5 resultados → formato "## Relevant Past Memories"
-    → Inyectar SOLO si hay memorias con fused score > 0.5
-    → Cache: no re-buscar si el mensaje es similar al anterior
+### Reglas del contrato
 
-[ ] Formato de inyección:
-    ## Relevant Past Memories
-    The following information from past conversations may be relevant:
+1. **`vec_meta.content_hash` es la clave de dedup.** La query `SELECT rowid FROM vec_meta WHERE content_hash = ?` NO filtra por `source_node_id`. Eso significa que **cualquier vector con el mismo texto normalizado es considerado duplicado**, sin importar quién (qué nodo) lo escribió.
 
-    [memory] Sobre el fix de CSP: se agregó unsafe-inline a script-src
-             (source: memory, last: 2026-06-15, entities: CSP, app_factory.py)
+2. **`source_node_id` es metadata, no filter.** Sirve para que el curator y el manifest sepan "quén pagó el embedding", pero NO afecta la lógica de dedup. Dos nodos que escriben el mismo content_hash convergen a una fila (la última gana vía INSERT OR REPLACE del work_catalog, o el catalog la marca como `deduped` con `vec_rowid` apuntando a la fila existente).
 
-    [session] Hablando de survivorOS y su motor gráfico en C++
-              (source: session 3 days ago, entities: survivorOS, C++)
+3. **`origin_node_id` en sessions y entities es advisory reconciliation.** Cuando dos nodos federan sesiones (fallback sidebar merge), `origin_node_id` permite que el merge reconcilie en vez de sumar — pero el primer paso es solo documentarlo; el merge actual sigue sumando. La Fase 4 (próxima) usará esta columna para reconciliar.
 
-[ ] Control de tokens:
-    → Si el budget es bajo: solo top-3, sin entity context
-    → Si hay espacio: top-5 + entidades relacionadas
-    → Máximo 15% del context window para memorias
+4. **`memory.db` es la fuente de verdad compartida.** Una vez que Syncthing replica `memory.db` entre dos nodos, el contrato se cumple automáticamente: cada nodo ve los `vec_meta` rows del otro, y el dedup funciona cross-nodo sin código nuevo. El manifest (Fase 6 del ROADMAP_DISTRIBUTED_KAIROS.md) solo necesita hacer la consulta **remota** antes de que Syncthing sync ocurra, no cambiar el storage layer.
 
-[ ] Prerequisito: HybridRetriever funcionando (FASE 3)
-```
+### Invariantes verificadas
 
----
+| Test | Verifica |
+|---|---|
+| `test_source_node_id_column_persisted` | Migration 015 bifurca `vec_meta.source_node_id` |
+| `test_entities_origin_node_id_column` | Migration 016 bifurca `entities.origin_node_id` |
+| `test_clusters_origin_node_id_column` | Migration 017 bifurca `topic_clusters.origin_node_id` |
+| `test_vectorstore_insert_persists_source_node_id` | `VectorStore.insert` escribe `source_node_id` correctamente |
+| `test_cross_node_dedup_finds_peer_embedding_via_content_hash` | **Core:** un nodo encuentra embeddings escritos por otro nodo vía content_hash lookup |
 
-### 📐 FASE 2.5 — Hash Dedup (Semana 2, paralelo con FASE 3)
+### Qué este contrato NO cubre aún
 
-**Objetivo:** Evitar memorias duplicadas en el vector store (inspirado en Mem0 Phase 4-5).
-
-```
-[ ] src/memory/dedup.py
-    → Hash MD5 del texto completo de cada exchange
-    → Al vectorizar: check si el hash ya existe en vec_meta
-    → Si existe: skip (no guardar duplicado)
-    → Si no existe: guardar + almacenar hash en metadata
-
-[ ] Migration: agregar columna hash a vec_meta (o ya está en metadata JSON)
-    → Check si metadata ya tiene campo hash → si no, migrar
-
-[ ] Integrar en vectorize_exchange():
-    → Calcular hash antes de embed
-    → Check existente por hash + source + source_key
-    → Si duplicado: return None (sin gastar embedding)
-```
+- **Lookup remoto sincrónico:** si el texto aún no se sincronizó via Syncthing, el nodo B no lo ve. El manifest futuro (Fase 3 del ROADMAP) haría `GET /api/node/embedding-lookup?content_hash=X` antes de embedir.
+- **Conflicto de merged rows:** si dos nodos escriben el MISMO content_hash con diferentes `source_key` (session_ids distintos), solo queda la última fila en `vec_meta`. El `memory_work_catalog` sin embargo trackea ambos items (`source_key, item_idx`), y uno queda marcado como `deduped` apuntando al `vec_rowid` de la otra. **No hay pérdida de información de provenance.**
+- **Model versioning:** si se cambia el modelo embedding (ej: de MiniLM a uno multilingual mejor), todos los content_hashes siguen iguales pero los vectores serían incompatibles. Falta una columna `model` en `vec_meta` para filtros cross-model. Hoy hay un solo modelo (`paraphrase-multilingual-MiniLM-L12-v2-cls`), no es urgente.
 
 ---
 
-### 🔄 FASE 6 — Células de Memoria (Background Curator) — Semana 4
+## 5. Estado de implementación — Fases 1-4 COMPLETADAS (2026-06-29)
 
-**Objetivo:** Agentes autónomos que curan, conectan y optimizan la memoria post-sesión.
+### Fase 1 — Schema migrations ✅
 
-**Diferencias con Mem0:** Mem0 hace LLM extraction en cada `add()` (inline). Nosotros lo hacemos offline (nocturno) porque:
-- No gastamos tokens por cada mensaje
-- Podemos procesar lotes (más eficiente)
-- El curador puede ver el panorama completo (clusters + relaciones)
+Tres migraciones aditivas (sessions.db migration 025 + memory.db migrations 015-017), todas con `DEFAULT ''` (backwards-compat). Viejos path funcionan sin tocar nada. Verificado con `init_db()` y `init_memory_db()` en DBs temporales.
 
-```
-[ ] Session Miner — lee sesiones del día, extrae insights → save_memory
-[ ] Entity Extractor — extrae entidades → grafo (FASE 2)
-[ ] Cross-Session Tracer — detecta patrones entre sesiones
-[ ] Memory Gardener — poda duplicados, fusiona similares (FASE 4)
-[ ] Orchestrator — lanza células en paralelo, gestiona resultados
-[ ] Systemd timer o cron para ejecución diaria
-```
+- `sessions.origin_node_id` (TEXT DEFAULT '') + index `idx_sessions_origin_node_id`
+- `vec_meta.source_node_id` (TEXT NOT NULL DEFAULT '') + index `idx_vec_meta_source_node`
+- `entities.origin_node_id` (TEXT NOT NULL DEFAULT '') + index `idx_entities_origin_node`
+- `topic_clusters.origin_node_id` (TEXT NOT NULL DEFAULT '') + index `idx_topic_clusters_origin_node`
 
+`schema_version=25`, `memory_schema_version=17`.
 
-### 📐 FASE 4 — Consolidación de Memoria (Poda + Fusión) — Post-FASE 6
+### Fase 2 — Provenance populated at write-time ✅
 
-**Objetivo:** Mantener la memoria limpia sin LLM. Eliminar ruido, fusionar duplicados, archivar lo obsoleto.
+4 entry points stamp `origin_node_id` / `source_node_id` en cada escritura:
 
-**Estrategia heurística (sin LLM):**
-```
-[ ] Fusión por embeddings similares > 0.95
-    → Dos keys que apuntan al mismo concepto se fusionan automáticamente
-    → El value se combina preservando ambos timestamps
-[ ] Archivo por obsolescencia
-    → Keys con score de consulta bajo por N días → movidas a sección Archived en MEMORY.md
-    → NO se borran — se marcan como archived para preservar datos
-[ ] Dedup por contenido
-    → Si dos keys tienen values con >90% overlap de palabras, fusionar
-    → La key más genérica sobrevive, la específica se archiva
-[ ] Memory Gardener (desde FASE 6)
-    → La célula Gardener ejecuta estas reglas periódicamente
-```
-**Integración:** Corre como parte de FASE 6 (célula Gardener), no como proceso separado.
+| Site | Cambio |
+|---|---|
+| `VectorStore.insert(...)` | Nuevo param `source_node_id`. Insert con columna nueva (fallback al INSERT legacy si el schema es viejo). Safety-net `ALTER TABLE` agregregado a `_init_tables()`. |
+| `SessionRepository.ensure(session_id, *, origin_node_id="")` | INSERT con `origin_node_id`. Caller lo resolve desde `peek_node_coordinator().node_id`. |
+| `EntityRepository.upsert_entity(...)` (usado por `flush_entities_to_db`) | INSERT/ON CONFLICT actualiza `origin_node_id`. Schema probe antes de INSERT (fallback si migration no corrió). |
+| `flush_clusters_to_db(clusterer, db_path, mappings, *, origin_node_id="")` | INSERT de `topic_clusters` con column nueva. Schema probe. UPDATE también la propaga. |
+| `vectorize_session(...)` y `vectorize_all_sessions(...)` | Aceptan `source_node_id` ylo pasan a `VectorStore.insert` (2 paths: single exchange + batch) y a `flush_*`. |
+| `src/memory/provenance.py` | Helper `resolve_local_node_id()` que lee `peek_node_coordinator()` con try/except. Cero acoplamiento de memory a coordination: el import es lazy y gracefully degrada a `""` sin coordinator. |
+| `src/api/session.py:ensure_session` | Resuelve node_id al nivel API (no en storage) y lo pasa al repos. |
+| `web/routers/chat.py:95` | Mismo patrón: `_resolve_origin_node_id()` inline (helper local, como en src/api/session.py) y pasa a `repos.sessions.ensure`. |
 
----
+### Fase 3 — Contrato cross-node testado ✅
 
-### 📐 FASE 5 — Proactividad (Futuro lejano)
+Nuevo archivo `tests/unit/test_cross_node_dedup.py` (5 tests):
 
-**Objetivo:** Kairos inicia conversaciones, no solo responde.
+1. `test_source_node_id_column_persisted` — migration 015 aterrizó
+2. `test_entities_origin_node_id_column` — migration 016 aterrizó
+3. `test_clusters_origin_node_id_column` — migration 017 aterrizó
+4. `test_vectorstore_insert_persists_source_node_id` — INSERT escribe la columna
+5. `test_cross_node_dedup_finds_peer_embedding_via_content_hash` — **El test clave del contrato**: un nodo encuentra el embedding escrito por OTRO nodo via la query `SELECT rowid FROM vec_meta WHERE content_hash = ?`. No filter por `source_node_id` — el dedup cross-nodo es automático una vez que `memory.db` se replica.
 
-**Idea conceptual:**
-```
-[ ] Sistema de "daily técnica"
-    → Kairos asigna una lectura de 5-10 min/día al usuario
-    → Un archivo del proyecto K-Chat explicado desde abajo
-    → Ideal para leer en el bondi
-[ ] Widget de estudio interactivo
-    → Visualizaciones animadas de conceptos (buses, datos, hardware)
-    → Skill especial de widgets educativos
-[ ] Disparador por tiempo
-    → Si pasan X horas sin actividad, Kairos manda un ping con data útil
-```
-**⚠️ Sin diseño concreto todavía.** Requiere repensar push vs pull en los canales. Se define cuando el sistema base esté sólido.
+Invariante del contrato: `source_node_id` es metadata, no filter. Cualquier test futuro que rompa este invariante es una regresión arquitectónica.
 
----
+### Fase 4 — Federated session reconciliation ✅
 
-## 📊 Comparativa de Arquitecturas
+Symptom de Mauro (`"sessions duplicadas / nombres extraños"`) arrglado en el layer concordante:
 
-| Feature | Mem0 | Letta/MemGPT | K-Chat (hoy) | K-Chat (target) |
-|---------|------|--------------|--------------|-----------------|
-| Vector search | ✅ Qdrant/FAISS/etc | ✅ | ✅ sqlite-vec | ✅ |
-| Keyword search | ✅ BM25 | ❌ | ✅ TF-IDF | ✅ |
-| Entity graph | ✅ | ❌ | ❌ | 🔄 FASE 2 |
-| Hybrid retrieval | ✅ (3 signals) | ❌ | ❌ (vector only) | 🔄 FASE 3 |
-| Topic clustering | ❌ | ❌ | ✅ Jaccard | ✅ |
-| LLM extraction | ✅ inline (cada add) | ❌ | ✅ offline (curator) | ✅ |
-| Hash dedup | ✅ | ❌ | ❌ | 🔄 FASE 2.5 |
-| Temporal reasoning | ✅ | ❌ | 🟠 timestamps | 🔄 FASE 3 |
-| Cross-session | 🟠 partial | ❌ | ✅ | ✅ |
-| Memory blocks | ❌ | ✅ | N/A | N/A |
-| Source of truth | Vector store | Agent state | MEMORY.md | MEMORY.md |
-| Sync multi-device | Cloud | Cloud | Syncthing | Syncthing |
-| Open source | ✅ Apache 2.0 | ✅ Apache 2.0 | ✅ | ✅ |
+- `SessionRepository.get_all()` ahora SELECT `COALESCE(s.origin_node_id, '')` (con schema probe para DBs pre-migration-025).
+- `session_summary_from_row()` extrae `origin_node_id` del row tuple y lo populate en el entry dict.
+- `merge_session_entries()` reescrito: dedup por `sid` (no por `(sid, node_id, source_url)`), con priority al entry cuyo `node_id` == `origin_node_id` (el owner canonical). Fallback a `last_seen_at` cuando origin es desconocido.
 
----
+Nuevo archivo `tests/unit/test_session_reconciliation.py` (5 tests):
 
-## 📦 Decisiones Técnicas (Actualizadas)
+1. `test_merge_dedup_keeps_one_per_sid` — misma sesión en dos peers colapsa a 1 entry
+2. `test_merge_prefers_entry_whose_node_id_matches_origin_node_id` — el que creó la sesión gana
+3. `test_merge_falls_back_to_latest_activity_when_origin_unknown` — legacy rows fallback al más reciente
+4. `test_merge_distinct_sids_keep_all` — sids distintos no se mergean
+5. `test_merge_preserves_favorite_flag_from_canonical_owner` — favorite del dueño, no del peer
 
-| Decisión | Opción elegida | Por qué |
-|----------|---------------|---------|
-| Vector DB | **sqlite-vec** | Misma DB que ya usamos, 0 servers extra |
-| Embeddings | **paraphrase-multilingual-MiniLM-L12-v2** | ~80MB RAM, multilingual, 384 dims |
-| Keyword extraction | **TF-IDF custom** | Cero dependencias extra, milisegundos |
-| Topic clustering | **Jaccard similarity** | Sin LLM, determinístico, rápido |
-| Entity extraction | **Heurística** → futuro LLM | Como FASE 7: primero heurístico, después LLM opcional |
-| Entity store | **Misma DB sqlite-vec** (source="entity") | Evita otra dependencia, mismo patrón vec_meta |
-| Hybrid scoring | **Weighted sum** | Simple, eficaz, ajustable por pesos |
-| Session scope | **user_id/agent_id** (como Mem0) | Filtro por sesión en queries |
-| Hash dedup | **MD5 del texto** | Barato, sin dependencias |
-| Curator trigger | **Background task post-sesión** → futuro cron | No bloquea el stream |
+### Fase 5 — Renombramiento de DBs — DEFERRED ⏳
+
+Sigue pendiente como único item sin tocar. Requiere coordinación online de `.env` en todos los peers. No se hace en esta sesión.
+
+### Tests result
+
+| Suite | Tests | Status |
+|---|---|---|
+| node_coordination | 27 | ✅ |
+| memory_router | 7 | ✅ |
+| sessions_router | 7 | ✅ |
+| pages_router | 14 | ✅ |
+| anti_regression | 34 | ✅ |
+| regression_pipeline | 53 | ✅ |
+| memory_repos | 64 | ✅ |
+| cross_node_dedup (NEW) | 5 | ✅ |
+| session_reconciliation (NEW) | 5 | ✅ |
+| vectorize_sessions (venv) | 13 | ✅ |
+| vector_store (existing) | 11 | ✅ |
+
+Total: 240 tests verificados post-cambio. 0 regresiones.
 
 ---
 
-## 📊 Métricas de Éxito
+## 6. Inventario rápido (lo que existe hoy)
 
-- [ ] **FASE 2**: Entity extraction >80% precision en proyectos y tecnologías
-- [ ] **FASE 3**: Hybrid retrieval supera a vector-only en 15%+ en recall@5
-- [ ] **FASE 3.5**: Inyección en system prompt sin exceder 15% del context window
-- [ ] **FASE 2.5**: Cero duplicados en vector store (verificado por hash)
-- [ ] **Global**: El asistente recuerda información entre sesiones sin usar tools
-- [ ] **Global**: Búsqueda semántica < 500ms
-- [ ] **Global**: Traversal de grafo < 100ms
-- [ ] **Global**: Sistema no se cae por agregar memoria
-
----
-
-## 🔗 Puntos de Integración Existentes (v0.0.57+)
-
-1. **`src/context/builder.py`** — `build_system_prompt()`:
-   - Punto de inyección para "## Relevant Past Memories" (FASE 3.5)
-
-2. **`web/services/chat_stream.py:163`** — `background_tasks.add_task(_vectorize_session, ...)`:
-   - Hook de vectorización automática al cerrar sesión ✅ funcionando
-
-3. **`src/memory/vectorize_sessions.py`** — Pipeline completo:
-   - Punto de integración para entity extraction (FASE 2)
-   - Punto de integración para hash dedup (FASE 2.5)
-
-4. **`src/tools/recall_memories.py`** — Búsqueda semántica:
-   - Migrar a HybridRetriever cuando exista (FASE 3)
-
-5. **`src/tools/manage_memory.py`** — Operaciones:
-   - `clusters` y `topics` ✅ implementados
-   - Futuro: `entities`, `graph`, `dedup`
-
-6. **`src/memory/repos_memory/`** — Repositorios DI:
-   - `MemoryRepositories` con `memory_index` + `vector_store` ✅
-   - Futuro: `entity_repo` para entity graph
+| Componente | Archivo | Estado |
+|---|---|---|
+| Content hash (MD5 normalizado) | `src/memory/content_hash.py` | ✅ Funcional |
+| VectorStore (sqlite-vec) | `src/memory/vector/store.py` | ✅ Funcional, thread-safe |
+| Embedding service (fastembed ONNX) | `src/memory/embeddings/service.py` | ✅ Funcional (module singleton) |
+| Work catalog (dedup tracking) | `src/memory/repos_memory/work_catalog_repo.py` | ✅ Funcional |
+| Vectorización incremental | `src/memory/vectorize_sessions.py` | ✅ Funcional (batch + dedup + resume) |
+| Noise filter | `src/memory/noise_filter.py` | ✅ Funcional |
+| Keyword extractor (TF-IDF) | `src/memory/keywords/` | ✅ Funcional |
+| Entity extractor + graph | `src/memory/entity/` | ✅ Funcional |
+| Clustering heurístico | `src/memory/clustering/` | ✅ Funcional (Jaccard) |
+| Hybrid retrieval (vector+keyword+entity) | `src/memory/retrieval/` | ✅ Funcional (RRF fusion) |
+| Node coordinator (heartbeat+role) | `src/coordination/node_state.py` | ✅ Funcional |
+| LAN bridge (peer discovery+requests) | `src/coordination/lan_bridge.py` | ✅ Funcional |
+| Leader lease (TTL exclusive) | `src/coordination/leader_lease.py` | ✅ Funcional |
+| Memory write queue (persistent) | `src/coordination/memory_write_queue.py` | ✅ Funcional |
+| Memory snapshot + compare | `web/routers/_memory_snapshot.py` | ✅ Funcional |
+| Failover state machine | `web/services/failover_state.py` | ✅ Funcional |
+| **embedding_manifest cross-nodo** | — | ❌ NO EXISTE |
+| **origin_node_id en sessions** | — | ❌ NO EXISTE |
+| **origin_node_id en entities/clusters** | — | ❌ NO EXISTE |
+| **Batch size limit en vectorize_session** | — | ❌ NO EXISTE |
+| **DB rename** | — | ❌ PENDIENTE (alto riesgo) |
+| **Servicio de embeddings remoto** | — | ❌ NO EXISTE (Fase 3 roadmap) |
 
 ---
 
-## Orden de Implementación Recomendado
+## 7. Orden recomendado cuando se decida encarar (Fase 5 y futuro)
 
-```
-Semana 1:  FASE 2  → Entity Graph (extracción + linking + tools)
-Semana 2:  FASE 2.5 → Hash Dedup
-           FASE 3  → Hybrid Retrieval (empieza)
-Semana 3:  FASE 3  → Hybrid Retrieval (completa)
-           FASE 3.5 → Inyección en System Prompt
-Semana 4:  FASE 6  → Células de Memoria (curator nocturno)
-           FASE 4  → Consolidación (poda + fusión)
-Futuro:    FASE 5  → Proactividad
-```
+1. **`embedding_manifest` con source_node_id** — prerequisito de todo lo demás. Tabla compartida en `memory.db` con content_hash + node_id + model + status. Consulta cross-nodo antes de embedir.
+2. **Servicio de embeddings remoto (Fase 3)** — `POST /api/node/embedding/jobs`. Laptop delega, PC grande procesa, manifest evita recalcular.
+3. **`origin_node_id` en sessions** — migración de schema. Federated merge reconcilia en vez de sumar.
+4. **`origin_node_id` en entities/clusters** — misma idea. Evita conflictos de Syncthing cuando dos nodos corren curator.
+5. **Batch size limit en vectorize_session** — protección para laptop. `max_batch_size=32` o configurable.
+6. **Renombrado de DBs** — solo después de todo lo anterior, cuando la identidad canónica esté consolidada.
 
----
-
-*Documento actualizado por Kairos para el proyecto K-Chat.*
-*2026-06-16 — v0.0.57+ — Basado en investigación de Mem0 (58.7k⭐) y Letta (23.4k⭐)*
+**No iniciar sin:** sueño, dos nodos reales para probar, y cabeza fría.

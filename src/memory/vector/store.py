@@ -95,6 +95,7 @@ class VectorStore:
         for col in [
             ("hash", "TEXT DEFAULT ''"),
             ("content_hash", "TEXT"),
+            ("source_node_id", "TEXT NOT NULL DEFAULT ''"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE vec_meta ADD COLUMN {col[0]} {col[1]}")
@@ -149,12 +150,21 @@ class VectorStore:
                text: str = "",
                metadata: Optional[dict] = None,
                hash: str = "",
-               content_hash: str = "") -> int:
+               content_hash: str = "",
+               source_node_id: str = "") -> int:
         """Insert a vector and its metadata. Returns the rowid.
 
         Args:
             hash: Optional MD5 hash of the source text, used for deduplication.
             content_hash: Normalized MD5 hash for cross-session dedup.
+            source_node_id: Origin node for this embedding. Empty string means
+                "origin unknown" (legacy callers, or coordinator not configured).
+                When ``memory.db`` is replicated between peers (Syncthing), this
+                field tells each node who originally embedded the text — combined
+                with ``content_hash`` it turns the existing local dedup into
+                cross-node dedup, because the dedup query
+                ``SELECT rowid FROM vec_meta WHERE content_hash = ?`` already
+                returns rows written by other nodes after sync.
         """
         with self._lock:
             conn = self._get_conn()
@@ -172,12 +182,22 @@ class VectorStore:
             # Compute initial relevance score
             score = compute_relevance(source=source, days_old=0.0)
 
-            # Insert metadata
-            conn.execute(
-                "INSERT INTO vec_meta(rowid, source, source_key, exchange_idx, text, metadata, created_at, hash, relevance_score, content_hash) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [rowid, source, source_key, exchange_idx, text, meta_json, now, hash, round(score, 4), content_hash]
-            )
+            # Insert metadata (column source_node_id is tolerated when absent
+            # by the safety-net ALTER in _init_tables)
+            try:
+                conn.execute(
+                    "INSERT INTO vec_meta(rowid, source, source_key, exchange_idx, text, metadata, created_at, hash, relevance_score, content_hash, source_node_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [rowid, source, source_key, exchange_idx, text, meta_json, now, hash, round(score, 4), content_hash, source_node_id]
+                )
+            except sqlite3.OperationalError:
+                # Column missing on a very old DB where _init_tables safety net
+                # did not run yet — fall back to the legacy 10-column insert.
+                conn.execute(
+                    "INSERT INTO vec_meta(rowid, source, source_key, exchange_idx, text, metadata, created_at, hash, relevance_score, content_hash) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [rowid, source, source_key, exchange_idx, text, meta_json, now, hash, round(score, 4), content_hash]
+                )
             conn.commit()
             return rowid
 

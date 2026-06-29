@@ -209,37 +209,76 @@ class EntityLinker:
 async def flush_entities_to_db(
     linker: EntityLinker,
     db_path: str,
+    *,
+    origin_node_id: str = "",
 ) -> int:
     """Persist in-memory entities to SQLite via upsert.
 
     Tables must already exist (created by migration).
+    ``origin_node_id`` is stamped on each row so the curator can tell
+    where each entity was extracted. Empty string falls back to the
+    active coordinator's node_id (via ``resolve_local_node_id``), or
+    stays empty if no coordinator is configured.
     Returns count of entities written.
     """
+    if not origin_node_id:
+        from src.memory.provenance import resolve_local_node_id
+        origin_node_id = resolve_local_node_id()
+
     count = 0
     async with aiosqlite.connect(db_path) as db:
         await db.execute("PRAGMA foreign_keys=ON")
+        # Probe schema for origin_node_id (migration 016).
+        cur = await db.execute("PRAGMA table_info(entities)")
+        cols = {r[1] for r in await cur.fetchall()}
+        has_origin = "origin_node_id" in cols
+
         for entity in linker.get_entities():
             normalized_name = entity.name.lower()
-            await db.execute(
-                """
-                INSERT INTO entities (id, name, normalized_name, entity_type, metadata, first_seen, last_seen, mention_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(normalized_name, entity_type) DO UPDATE SET
-                    last_seen     = excluded.last_seen,
-                    mention_count = excluded.mention_count,
-                    metadata      = excluded.metadata
-                """,
-                (
-                    entity.id,
-                    entity.name,
-                    normalized_name,
-                    entity.entity_type,
-                    json.dumps(entity.metadata),
-                    entity.first_seen,
-                    entity.last_seen,
-                    entity.mention_count,
-                ),
-            )
+            if has_origin:
+                await db.execute(
+                    """
+                    INSERT INTO entities (id, name, normalized_name, entity_type, metadata, first_seen, last_seen, mention_count, origin_node_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(normalized_name, entity_type) DO UPDATE SET
+                        last_seen       = excluded.last_seen,
+                        mention_count   = excluded.mention_count,
+                        metadata        = excluded.metadata,
+                        origin_node_id  = excluded.origin_node_id
+                    """,
+                    (
+                        entity.id,
+                        entity.name,
+                        normalized_name,
+                        entity.entity_type,
+                        json.dumps(entity.metadata),
+                        entity.first_seen,
+                        entity.last_seen,
+                        entity.mention_count,
+                        origin_node_id,
+                    ),
+                )
+            else:
+                await db.execute(
+                    """
+                    INSERT INTO entities (id, name, normalized_name, entity_type, metadata, first_seen, last_seen, mention_count)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(normalized_name, entity_type) DO UPDATE SET
+                        last_seen     = excluded.last_seen,
+                        mention_count = excluded.mention_count,
+                        metadata      = excluded.metadata
+                    """,
+                    (
+                        entity.id,
+                        entity.name,
+                        normalized_name,
+                        entity.entity_type,
+                        json.dumps(entity.metadata),
+                        entity.first_seen,
+                        entity.last_seen,
+                        entity.mention_count,
+                    ),
+                )
             count += 1
         await db.commit()
     return count

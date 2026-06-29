@@ -6,6 +6,24 @@ from src.api.exceptions import ServiceException
 from src.api._resolve import resolve_deps
 
 
+def _resolve_local_node_id() -> str:
+    """Return the active coordinator's node_id, or '' when unconfigured.
+
+    Injected here at the API layer (not in src/memory) to keep the
+    storage module pure. The node_id stamps new sessions with
+    ``origin_node_id`` so the federated merge can distinguish "session
+    created on this node" vs "session synced from a peer".
+    """
+    try:
+        from src.coordination.node_state import peek_node_coordinator
+        coordinator = peek_node_coordinator()
+        if coordinator is None:
+            return ""
+        return getattr(coordinator, "node_id", "") or ""
+    except Exception:
+        return ""
+
+
 def _resolve_session_deps(
     session_repo: SessionRepository | None = None,
     repos: Repositories | None = None,
@@ -15,10 +33,15 @@ def _resolve_session_deps(
 
 
 async def ensure_session(session_id: str, session_repo: SessionRepository | None = None, deps: SessionOpsDeps | None = None) -> None:
-    """Ensure a session exists in the database."""
+    """Ensure a session exists in the database.
+
+    Stamps ``origin_node_id`` with the local node_id on first insert so
+    the federated session directory can tell where the session was born.
+    Existing sessions are left untouched.
+    """
     _deps = _resolve_session_deps(session_repo=session_repo, deps=deps)
     repo = _deps.session_repo if _deps.session_repo is not None else SessionRepository()
-    return await repo.ensure(session_id)
+    return await repo.ensure(session_id, origin_node_id=_resolve_local_node_id())
 
 
 async def rename_session(session_id: str, name: str, session_repo: SessionRepository | None = None, deps: SessionOpsDeps | None = None) -> None:
