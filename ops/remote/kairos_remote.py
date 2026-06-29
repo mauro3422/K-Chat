@@ -508,6 +508,22 @@ def _http_json_url(url: str, *, timeout: float = 20) -> dict[str, Any]:
     return parsed
 
 
+def _http_json_post_url(url: str, payload: dict[str, Any], *, timeout: float = 20) -> dict[str, Any]:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        raw = response.read().decode("utf-8", errors="replace")
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        raise ValueError(f"unexpected JSON response from {url}")
+    return parsed
+
+
 def _local_command_check(name: str, command: list[str], *, timeout: int = 30) -> DoctorCheck:
     try:
         result = subprocess.run(command, cwd=repo_root(), text=True, capture_output=True, timeout=timeout)
@@ -610,6 +626,42 @@ def _smoke_check(primary_url: str, secondary_url: str, *, loopback: bool = False
     )
 
 
+def _remote_embedding_dry_run_check(primary_url: str, *, timeout: float = 12) -> DoctorCheck:
+    url = primary_url.rstrip("/") + "/api/node/embeddings/jobs"
+    payload = {
+        "dry_run": True,
+        "source": {"node_id": "lan-doctor"},
+        "items": [
+            {
+                "source": "session",
+                "source_key": "lan-doctor-dry-run",
+                "item_idx": 0,
+                "content_hash": "dry-run",
+                "text": "User: dry run\nAssistant: validate remote embedding job contract.",
+            }
+        ],
+    }
+    try:
+        data = _http_json_post_url(url, payload, timeout=timeout)
+    except Exception as exc:
+        detail = f"{url}: {exc}"
+        return DoctorCheck(
+            name="remote_embedding_job_dry_run",
+            ok=False,
+            detail=detail,
+            hint="El endpoint de embeddings remotos no responde al contrato dry-run.",
+        )
+    ok = data.get("ok") is True and data.get("dry_run") is True and data.get("processed", [{}])[0].get("status") == "dry_run"
+    rendered = json.dumps(data, ensure_ascii=False, sort_keys=True)
+    return DoctorCheck(
+        name="remote_embedding_job_dry_run",
+        ok=ok,
+        detail="ok" if ok else "unexpected response",
+        hint="" if ok else "Revisar /api/node/embeddings/jobs y NodeEmbeddingJobPayload.",
+        stdout=_short(rendered),
+    )
+
+
 def collect_lan_doctor_checks(profile: NodeProfile, *, primary_url: str, secondary_url: str, loopback: bool = False) -> list[DoctorCheck]:
     checks = [
         _local_command_check("local_git", ["git", "status", "--short", "--branch"]),
@@ -618,6 +670,7 @@ def collect_lan_doctor_checks(profile: NodeProfile, *, primary_url: str, seconda
         _local_http_check("local_health", primary_url, "/health"),
         _local_http_check("local_node_state", primary_url, "/api/node/state", expected_role="primary"),
         _local_http_check("local_runtime", primary_url, "/api/node/runtime"),
+        _remote_embedding_dry_run_check(primary_url),
     ]
     if loopback:
         checks.append(

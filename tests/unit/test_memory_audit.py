@@ -217,3 +217,35 @@ def test_memory_audit_reports_stale_processing_catalog_row(tmp_path):
     assert processing["stale_rows"][0]["stage"] == "curated"
     assert report["summary"]["processing_stale"] == 1
     assert report["ok"] is False
+
+
+def test_memory_audit_scores_curated_memory_quality(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+
+    conn = sqlite3.connect(memory_db)
+    conn.execute(
+        "INSERT INTO memory_index (key, value, updated_at) VALUES (?, ?, ?)",
+        ("test", "ok", "2026-06-29T10:00:00"),
+    )
+    conn.execute(
+        "INSERT INTO memory_index (key, value, updated_at) VALUES (?, ?, ?)",
+        (
+            "user:workflow",
+            "2026-06-29 10:00 | Mauro prefers catalog-first memory sync with explicit embedding pipeline identity.",
+            "2026-06-29T10:01:00",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    report = run_audit(sessions_db=str(sessions_db), memory_db=str(memory_db), root=str(tmp_path))
+
+    quality = report["curated_memory_quality"]
+    assert quality["total"] == 2
+    assert quality["low_signal"] == 1
+    assert quality["probe"] == 1
+    assert quality["avg_quality_score"] < 1.0
+    assert report["summary"]["curated_low_signal"] == 1

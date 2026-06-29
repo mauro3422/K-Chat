@@ -11,6 +11,7 @@ import anyio
 import httpx
 
 from src.config_loader import Config
+from src.coordination.embedding_job_queue import get_embedding_job_queue, replay_pending_embedding_jobs
 from src.coordination.lan_discovery import detect_lan_ip
 from src.coordination.memory_write_queue import get_memory_write_queue, replay_pending_memory_writes
 from src.coordination.node_state import NodeCoordinator
@@ -135,6 +136,9 @@ class NodeLanBridge:
                             replayed = await self.replay_pending_memory_writes()
                             if replayed:
                                 logger.info("Replayed %d queued memory writes via %s", len(replayed), peer)
+                            embedding_replayed = await self.replay_pending_embedding_jobs()
+                            if embedding_replayed:
+                                logger.info("Replayed %d queued embedding jobs via %s", len(embedding_replayed), peer)
                         except Exception as exc:
                             result.failed += 1
                             result.errors.append({"peer": peer, "error": f"replay failed: {exc}"})
@@ -213,6 +217,40 @@ class NodeLanBridge:
                 except Exception as exc:
                     last_error = str(exc)
         return {"ok": False, "granted": False, "queued": False, "peer": None, "error": locals().get("last_error", "request failed")}
+
+    async def request_embedding_jobs(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        peer: str | None = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Ask a primary peer to process embedding work items."""
+        peers = self.peer_urls
+        if not peers:
+            return {"ok": False, "queued": False, "peer": None, "error": "no peers configured"}
+
+        payload = {
+            "items": items,
+            "dry_run": dry_run,
+            "source": {
+                "node_id": self._coordinator.node_id,
+                "role": self._coordinator.role,
+                "base_url": self.base_url,
+            },
+        }
+
+        async with self._client_factory() as client:
+            peers = [peer] if peer else peers
+            for peer in peers:
+                try:
+                    response = await self._request_with_retry(client, "post", f"{peer}/api/node/embeddings/jobs", json=payload)
+                    data = response.json() if response.content else {}
+                    if isinstance(data, dict) and data.get("ok"):
+                        return {"ok": True, "queued": bool(data.get("queued", False)), "peer": peer, "response": data}
+                except Exception as exc:
+                    last_error = str(exc)
+        return {"ok": False, "queued": False, "peer": None, "error": locals().get("last_error", "request failed")}
 
     async def request_memory_snapshot(self, *, key_pattern: str = "", peer: str | None = None) -> dict[str, Any]:
         """Ask a peer for a complete memory snapshot."""
@@ -374,6 +412,29 @@ class NodeLanBridge:
             return await self.request_memory_write(item.key, item.value, peer=primary_peer)
 
         return await replay_pending_memory_writes(queue, _deliver)
+
+    async def replay_pending_embedding_jobs(self) -> list[dict[str, Any]]:
+        """Replay queued embedding jobs against the first reachable primary peer."""
+        queue = get_embedding_job_queue(self._config)
+        if not queue:
+            return []
+
+        primary_peer = None
+        for peer in self.peer_urls:
+            for heartbeat in self._coordinator.snapshot().get("peers", []):
+                if heartbeat.get("base_url") == peer and heartbeat.get("role") == "primary":
+                    primary_peer = peer
+                    break
+            if primary_peer:
+                break
+
+        if primary_peer is None:
+            return []
+
+        async def _deliver(item):
+            return await self.request_embedding_jobs([item.to_dict()], peer=primary_peer)
+
+        return await replay_pending_embedding_jobs(queue, _deliver)
 
     async def _request_with_retry(
         self,

@@ -328,3 +328,35 @@ async def test_vectorize_session_can_fill_targeted_gap_with_existing_later_index
     assert row is not None
     assert row["status"] == "embedded"
     assert row["vec_rowid"] == 100
+
+
+@pytest.mark.asyncio
+async def test_vectorize_session_requires_work_catalog(monkeypatch, vec_conn):
+    conn = vec_conn
+    conn.execute(
+        """
+        CREATE TABLE vec_meta (
+            rowid INTEGER PRIMARY KEY,
+            source TEXT,
+            source_key TEXT,
+            exchange_idx INTEGER,
+            text TEXT,
+            hash TEXT,
+            content_hash TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    store = _FakeStore(conn)
+
+    async def fake_get_session_messages(session_id, repos=None):
+        return [
+            {"role": "user", "content": "Explain catalog authority for embeddings.", "created_at": "now"},
+            {"role": "assistant", "content": "The work catalog is required.", "created_at": "now"},
+        ]
+
+    monkeypatch.setattr("src.memory.vectorize_sessions.get_session_messages", fake_get_session_messages)
+    monkeypatch.setattr("src.memory.vectorize_sessions._get_work_catalog", lambda repos=None: None)
+
+    with pytest.raises(RuntimeError, match="memory_work_catalog is required"):
+        await vectorize_session("session-no-catalog", store=store)

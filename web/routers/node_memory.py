@@ -213,6 +213,22 @@ async def memory_flush(request: Request) -> JSONResponse:
 async def embedding_jobs(payload: NodeEmbeddingJobPayload, request: Request) -> JSONResponse:
     coordinator = _get_coordinator(request)
     source_node = str(payload.source.get("node_id", ""))
+    if payload.dry_run:
+        return JSONResponse({
+            "ok": True,
+            "queued": False,
+            "dry_run": True,
+            "accepted": len(payload.items),
+            "processed": [
+                {
+                    "source": item.source,
+                    "source_key": item.source_key,
+                    "item_idx": item.item_idx,
+                    "status": "dry_run",
+                }
+                for item in payload.items
+            ],
+        })
     if not await coordinator.is_primary():
         queue = _get_embedding_queue(request)
         queued = [
@@ -248,7 +264,12 @@ async def embedding_flush(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "primary only"}, status_code=403)
     queue = _get_embedding_queue(request)
     pending = queue.drain()
-    results = await _process_embedding_jobs(request, pending)
+    try:
+        results = await _process_embedding_jobs(request, pending)
+    except Exception as exc:
+        for item in pending:
+            queue.mark_retryable(item, error=str(exc))
+        return JSONResponse({"ok": False, "error": str(exc), "pending": queue.snapshot()}, status_code=503)
     return JSONResponse({"ok": True, "processed": results, "pending": []})
 
 
@@ -256,6 +277,7 @@ async def embedding_flush(request: Request) -> JSONResponse:
 async def sync_status(request: Request) -> JSONResponse:
     coordinator = _get_coordinator(request)
     queue = _get_memory_queue(request)
+    embedding_queue = _get_embedding_queue(request)
     lease_manager = _get_leader_lease_manager(request)
     lease = lease_manager.snapshot()
     bridge = _get_node_bridge(request)
@@ -276,6 +298,11 @@ async def sync_status(request: Request) -> JSONResponse:
                 "size": len(queue),
                 "pending": queue.snapshot(),
                 "path": getattr(queue, "persistence_path", ""),
+            },
+            "embedding_queue": {
+                "size": len(embedding_queue),
+                "pending": embedding_queue.snapshot(),
+                "path": getattr(embedding_queue, "persistence_path", ""),
             },
             "sync": {
                 "role": snapshot.get("role", ""),

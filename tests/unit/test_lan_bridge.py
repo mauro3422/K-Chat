@@ -396,6 +396,35 @@ async def test_request_memory_write_falls_back_to_next_peer() -> None:
 
 
 @pytest.mark.anyio
+async def test_request_embedding_jobs_posts_to_primary_peer() -> None:
+    cfg = MagicMock(
+        host="127.0.0.1",
+        port=8000,
+        peer_urls="http://peer-a:8000",
+        node_heartbeat_ttl=12.0,
+    )
+    coordinator = NodeCoordinator(cfg)
+    responses = {
+        "http://peer-a:8000/api/node/embeddings/jobs": _FakeResponse(
+            {"ok": True, "queued": False, "processed": [{"status": "dry_run"}]}
+        ),
+    }
+    fake_client = _FakeClient(responses)
+    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: fake_client)
+
+    result = await bridge.request_embedding_jobs(
+        [{"source": "session", "source_key": "s1", "item_idx": 0, "text": "hello"}],
+        dry_run=True,
+    )
+
+    assert result["ok"] is True
+    assert result["peer"] == "http://peer-a:8000"
+    assert fake_client.calls[0][0] == "http://peer-a:8000/api/node/embeddings/jobs"
+    assert fake_client.calls[0][1]["dry_run"] is True
+    assert fake_client.calls[0][1]["items"][0]["source_key"] == "s1"
+
+
+@pytest.mark.anyio
 async def test_broadcast_once_replays_pending_memory_writes_when_primary_returns(tmp_path: Path) -> None:
     cfg = MagicMock(
         host="127.0.0.1",

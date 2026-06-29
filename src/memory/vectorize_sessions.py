@@ -417,16 +417,15 @@ async def vectorize_session(session_id: str, dry_run: bool = False,
         source_node_id = resolve_local_node_id()
 
     try:
-        last_idx = _get_last_vectorized_idx(store, session_id)
         catalog = _get_work_catalog(repos)
+        if catalog is None:
+            raise RuntimeError("memory_work_catalog is required for session vectorization")
 
         # ── Phase 1: Extract metadata, collect candidates for batch embedding ──
         candidates: list[tuple[int, dict[str, Any], str, str, list[tuple[str, float]], list]] = []
 
         for idx, exchange in enumerate(exchanges):
             if target_indexes is not None and idx not in target_indexes:
-                continue
-            if catalog is None and idx <= last_idx:
                 continue
             try:
                 text = exchange["text"]

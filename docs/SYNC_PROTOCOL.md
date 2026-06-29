@@ -255,8 +255,14 @@ Reglas:
   pipeline_version`.
 - Si el receptor no es primary, encola en `embedding_job_queue`.
 - `POST /api/node/embeddings/flush` procesa la cola cuando el nodo es primary.
-- La respuesta `deduped` o `embedded` debe registrarse en el catalogo local del
-  solicitante cuando se implemente el cliente remoto.
+- `NodeLanBridge.request_embedding_jobs()` es el cliente LAN para entregar jobs
+  al primary.
+- `NodeLanBridge.replay_pending_embedding_jobs()` reintenta trabajos pendientes
+  contra el primer primary reachable.
+- La cola distingue `pending`, `retryable` y `failed`, con `attempts` y
+  `last_error`.
+- `dry_run=true` valida el contrato HTTP sin generar embeddings ni tocar
+  `vec_meta`.
 
 ## Doctor obligatorio
 
@@ -282,6 +288,7 @@ Criterio de aprobado:
 
 - Remote doctor: todos los checks pasan.
 - LAN doctor: todos los checks pasan, incluido smoke de memoria.
+- LAN doctor incluye `remote_embedding_job_dry_run`.
 - Memory preflight: todos los nodos `ok`.
 - Los bloques `[DIFF]` de volumen no son failure si ambos nodos estan `ok`.
 
@@ -298,14 +305,11 @@ Criterio de aprobado:
 
 ## Riesgos restantes
 
-1. `MAX(exchange_idx)` sigue como fallback legacy si falta catalogo.
-2. El cliente remoto aun debe llamar `POST /api/node/embeddings/jobs` y aplicar
-   resultados en el catalogo local del solicitante.
-3. La cola de embeddings todavia no distingue fallidos/reintentables; hoy es FIFO
-   persistente con flush explicito.
-4. La auditoria de calidad semantica es inicial: detecta vacios, cortos,
+1. La auditoria de calidad semantica es inicial: detecta vacios, cortos,
    timestamps faltantes y duplicados exactos; falta scoring semantico mas fino.
-5. Falta agregar `remote_embedding_job_dry_run` al LAN doctor.
+2. Falta aplicar automaticamente resultados remotos en un catalogo local
+   separado cuando el solicitante quiera conservar evidencia propia, aunque el
+   primary ya registra la unidad remota con `source_node_id`.
 
 ## Frontera scripts vs funciones del sistema
 
@@ -372,9 +376,7 @@ Reglas de migracion:
 
 ## Proximo corte recomendado
 
-1. Hacer que el cliente remoto use `POST /api/node/embeddings/jobs`.
-2. Agregar estados `failed`/`retryable` a `EmbeddingJobQueue`.
-3. Agregar `remote_embedding_job_dry_run` al LAN doctor.
-4. Reemplazar `MAX(exchange_idx)` por catalogo como autoridad obligatoria.
-5. Subir la auditoria de calidad de memorias curadas de heuristica a scoring
+1. Subir la auditoria de calidad de memorias curadas de heuristica a scoring
    semantico real.
+2. Decidir si el solicitante remoto debe guardar una copia local del resultado
+   del job o si alcanza con el catalogo central del primary.

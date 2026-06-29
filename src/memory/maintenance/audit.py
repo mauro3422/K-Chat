@@ -173,7 +173,11 @@ def _curated_memory_quality(conn: sqlite3.Connection) -> dict[str, Any]:
             "empty": 0,
             "too_short": 0,
             "missing_timestamp": 0,
+            "low_signal": 0,
+            "vague": 0,
+            "probe": 0,
             "duplicate_value_groups": 0,
+            "avg_quality_score": 1.0,
             "samples": [],
         }
 
@@ -187,6 +191,10 @@ def _curated_memory_quality(conn: sqlite3.Connection) -> dict[str, Any]:
     empty: list[str] = []
     too_short: list[str] = []
     missing_timestamp: list[str] = []
+    low_signal: list[str] = []
+    vague: list[str] = []
+    probe: list[str] = []
+    quality_scores: list[float] = []
     by_value: dict[str, list[str]] = {}
 
     for row in rows:
@@ -194,11 +202,20 @@ def _curated_memory_quality(conn: sqlite3.Connection) -> dict[str, Any]:
         value = str(row["value"] or "").strip()
         if not value:
             empty.append(key)
+            quality_scores.append(0.0)
             continue
         if len(value) < 20:
             too_short.append(key)
         if not re.match(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\|", value):
             missing_timestamp.append(key)
+        score, flags = _semantic_quality_flags(key, value)
+        quality_scores.append(score)
+        if "low_signal" in flags:
+            low_signal.append(key)
+        if "vague" in flags:
+            vague.append(key)
+        if "probe" in flags:
+            probe.append(key)
         normalized = re.sub(r"\s+", " ", value.lower())
         by_value.setdefault(normalized, []).append(key)
 
@@ -208,6 +225,9 @@ def _curated_memory_quality(conn: sqlite3.Connection) -> dict[str, Any]:
         ("empty", empty),
         ("too_short", too_short),
         ("missing_timestamp", missing_timestamp),
+        ("low_signal", low_signal),
+        ("vague", vague),
+        ("probe", probe),
     ]:
         samples.extend({"kind": kind, "key": key} for key in keys[:8])
     for keys in duplicate_groups[:8]:
@@ -219,9 +239,45 @@ def _curated_memory_quality(conn: sqlite3.Connection) -> dict[str, Any]:
         "empty": len(empty),
         "too_short": len(too_short),
         "missing_timestamp": len(missing_timestamp),
+        "low_signal": len(low_signal),
+        "vague": len(vague),
+        "probe": len(probe),
         "duplicate_value_groups": len(duplicate_groups),
+        "avg_quality_score": round(sum(quality_scores) / len(quality_scores), 3) if quality_scores else 1.0,
         "samples": samples[:30],
     }
+
+
+def _semantic_quality_flags(key: str, value: str) -> tuple[float, set[str]]:
+    """Return a cheap semantic quality score and diagnostic flags.
+
+    The audit is intentionally deterministic: it catches low-information
+    memories without calling an LLM during doctor/preflight.
+    """
+    text = re.sub(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\|\s*", "", value.strip())
+    normalized = text.lower()
+    tokens = re.findall(r"[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9_-]{3,}", normalized)
+    unique_tokens = set(tokens)
+    flags: set[str] = set()
+    score = 1.0
+
+    if len(unique_tokens) < 5 or len(text) < 40:
+        flags.add("low_signal")
+        score -= 0.35
+    if re.search(r"\b(test|smoke|probe|dummy|lorem|asdf|hola|ok)\b", f"{key} {normalized}"):
+        flags.add("probe")
+        score -= 0.3
+    vague_patterns = [
+        r"\b(cosa|algo|varios|pendiente|misc|general|recordar esto)\b",
+        r"\b(needs?|maybe|probably|quizas|tal vez)\b",
+    ]
+    if any(re.search(pattern, normalized) for pattern in vague_patterns):
+        flags.add("vague")
+        score -= 0.2
+    if len(unique_tokens) >= 12 and ":" in key:
+        score += 0.1
+
+    return max(0.0, min(1.0, score)), flags
 
 
 def _processing_catalog_summary(
@@ -535,6 +591,9 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
                 "curated_empty": curated_quality["empty"],
                 "curated_too_short": curated_quality["too_short"],
                 "curated_missing_timestamp": curated_quality["missing_timestamp"],
+                "curated_low_signal": curated_quality["low_signal"],
+                "curated_vague": curated_quality["vague"],
+                "curated_probe": curated_quality["probe"],
                 "curated_duplicate_value_groups": curated_quality["duplicate_value_groups"],
             },
             "orphan_vectors": orphan_vectors,
@@ -573,6 +632,8 @@ def print_text_report(report: dict[str, Any]) -> None:
             "curated_quality: "
             f"empty={quality['empty']} too_short={quality['too_short']} "
             f"missing_timestamp={quality['missing_timestamp']} "
+            f"low_signal={quality['low_signal']} vague={quality['vague']} "
+            f"probe={quality['probe']} avg_score={quality['avg_quality_score']} "
             f"duplicate_value_groups={quality['duplicate_value_groups']}"
         )
     print(

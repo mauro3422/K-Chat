@@ -24,6 +24,9 @@ class EmbeddingJobRequest:
     requested_at: float
     source_node: str = ""
     reason: str = "primary_unavailable"
+    status: str = "pending"
+    attempts: int = 0
+    last_error: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return dict(asdict(self))
@@ -61,6 +64,9 @@ class EmbeddingJobQueue:
             requested_at=time.time(),
             source_node=source_node.strip(),
             reason=reason,
+            status="pending",
+            attempts=0,
+            last_error="",
         )
         self._queue.append(request)
         self._persist()
@@ -70,10 +76,52 @@ class EmbeddingJobQueue:
         return [item.to_dict() for item in self._queue]
 
     def drain(self) -> list[EmbeddingJobRequest]:
-        drained = list(self._queue)
-        self._queue.clear()
+        drained: list[EmbeddingJobRequest] = []
+        remaining: deque[EmbeddingJobRequest] = deque()
+        for item in self._queue:
+            if item.status in {"pending", "retryable"}:
+                drained.append(item)
+            else:
+                remaining.append(item)
+        self._queue = remaining
         self._persist()
         return drained
+
+    def mark_retryable(self, item: EmbeddingJobRequest, *, error: str) -> EmbeddingJobRequest:
+        retried = EmbeddingJobRequest(
+            source=item.source,
+            source_key=item.source_key,
+            item_idx=item.item_idx,
+            text=item.text,
+            content_hash=item.content_hash,
+            requested_at=item.requested_at,
+            source_node=item.source_node,
+            reason=item.reason,
+            status="retryable",
+            attempts=item.attempts + 1,
+            last_error=error,
+        )
+        self._queue.append(retried)
+        self._persist()
+        return retried
+
+    def mark_failed(self, item: EmbeddingJobRequest, *, error: str) -> EmbeddingJobRequest:
+        failed = EmbeddingJobRequest(
+            source=item.source,
+            source_key=item.source_key,
+            item_idx=item.item_idx,
+            text=item.text,
+            content_hash=item.content_hash,
+            requested_at=item.requested_at,
+            source_node=item.source_node,
+            reason=item.reason,
+            status="failed",
+            attempts=item.attempts + 1,
+            last_error=error,
+        )
+        self._queue.append(failed)
+        self._persist()
+        return failed
 
     def __len__(self) -> int:
         return len(self._queue)
@@ -102,6 +150,9 @@ class EmbeddingJobQueue:
                         requested_at=float(item.get("requested_at", time.time())),
                         source_node=str(item.get("source_node", "")).strip(),
                         reason=str(item.get("reason", "primary_unavailable")),
+                        status=str(item.get("status", "pending") or "pending"),
+                        attempts=int(item.get("attempts", 0) or 0),
+                        last_error=str(item.get("last_error", "")),
                     )
                 )
             except Exception:
@@ -132,3 +183,27 @@ def get_embedding_job_queue(config: Any | None = None) -> EmbeddingJobQueue:
         _current_queue.set(queue)
     return queue
 
+
+async def replay_pending_embedding_jobs(
+    queue: EmbeddingJobQueue,
+    deliver_request,
+) -> list[dict[str, Any]]:
+    pending = queue.drain()
+    if not pending:
+        return []
+
+    applied: list[dict[str, Any]] = []
+    for item in pending:
+        try:
+            result = await deliver_request(item)
+        except Exception as exc:
+            queue.mark_retryable(item, error=str(exc))
+            continue
+
+        if isinstance(result, dict) and bool(result.get("ok")) and not bool(result.get("queued", False)):
+            applied.append({"source_key": item.source_key, "item_idx": item.item_idx, "result": "replayed"})
+        else:
+            error = str(result.get("error", "not accepted")) if isinstance(result, dict) else "not accepted"
+            queue.mark_retryable(item, error=error)
+
+    return applied

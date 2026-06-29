@@ -825,6 +825,87 @@ async def test_node_memory_request_secondary_queues_when_not_primary():
 
 
 @pytest.mark.anyio
+async def test_node_embedding_jobs_dry_run_validates_contract():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="primary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+    )
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/node/embeddings/jobs",
+                json={
+                    "dry_run": True,
+                    "source": {"node_id": "node-b"},
+                    "items": [{"source": "session", "source_key": "s1", "item_idx": 0, "text": "hello"}],
+                },
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ok"] is True
+            assert body["dry_run"] is True
+            assert body["processed"][0]["status"] == "dry_run"
+
+
+@pytest.mark.anyio
+async def test_node_embedding_jobs_secondary_queues_with_status():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="secondary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+    )
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/node/embeddings/jobs",
+                json={
+                    "source": {"node_id": "node-b"},
+                    "items": [{"source": "session", "source_key": "s1", "item_idx": 0, "text": "hello"}],
+                },
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["queued"] is True
+            assert body["pending"][0]["status"] == "pending"
+            assert body["pending"][0]["source_key"] == "s1"
+
+
+@pytest.mark.anyio
 async def test_node_promote_flushes_pending_memory_queue():
     from fastapi.testclient import TestClient
     from web.app_factory import create_app

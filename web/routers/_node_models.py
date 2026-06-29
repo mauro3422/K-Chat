@@ -39,3 +39,4 @@ class NodeEmbeddingJobItem(BaseModel):
 class NodeEmbeddingJobPayload(BaseModel):
     items: list[NodeEmbeddingJobItem] = Field(default_factory=list)
     source: dict = Field(default_factory=dict)
+    dry_run: bool = Field(default=False)
