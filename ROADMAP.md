@@ -172,7 +172,7 @@ The goal is to build a reliable core first: chat, memory, tools, streaming, debu
 - [x] **Repos injection chain**: `chat.py` → `orchestrator.py` → `tool_loop.py` → `runner.py`
 - [x] **`sqlite3.Row` row_factory**: Named column access + 38 migrations from positional
 - [x] **Frontend cleanup**: CSS extraction, global removal, `log-ui.js` module, `shared-state.js`
-- [x] **`git_operation` tool**: Safe Git ops (blocks `--force`/`--hard`), 16 tools total
+- [x] **`git_operation` tool**: Safe Git ops (blocks `--force`/`--hard`), 33 tools total
 - [x] **`MemoryIndexRepository`**: New repo for `memory_index` table
 - [x] **Stream resilience**: Save retry (3 attempts, backoff), mid-stream recovery
 - [x] **24 audit issues fixed**: 3 critical, 6 high, 9 medium, 6 low

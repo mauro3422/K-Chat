@@ -52,7 +52,7 @@ El loader itera `os.listdir()` del directorio `src/tools/`, filtrando:
 - Excluye `runner.py` explícitamente
 **Nota**: `_rate_limiter.py`, `_tool_parser.py`, `_tool_persister.py`, `_path_helpers.py`, `_widget_helpers.py`, `_analyzers.py`, `_validators.py` no empiezan con `__`, pero no exportan `DEFINITION` ni `run`, así que se descartan silenciosamente.
 
-**Total**: 16 tools auto-descubiertas (v0.0.52+).
+**Total**: 33 tools auto-descubiertas (v0.2.0+).
 - Requiere `DEFINITION` (dict con schema OpenAI) y `run` (callable)
 - Extrae `tool_name` de `DEFINITION['function']['name']`
 - Registra en `TOOL_MAP[tool_name] = mod.run` y `TOOL_DEFINITIONS[tool_name] = mod.DEFINITION`

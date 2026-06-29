@@ -1,5 +1,20 @@
 # Changelog — K-Chat
 
+## [2026-06-29] - v0.2.2 — CI fix, docs sync, stale cleanup
+
+### Corregido
+
+- **CI expandido**: Workflow de GitHub Actions ahora corre la suite unit completa (`tests/unit/`, 1859 tests) en lugar de solo 3 archivos de smoke. Agregado `pytest-cov` y `pytest-mock` a `requirements.txt` (faltantes pero requeridos por `pytest.ini`).
+- **Leader leases stale eliminados**: 4 archivos de estado expirados borrados (lease de hace 213h y 40h). Nodo local verificado healthy tras la limpieza.
+
+### Documentación
+
+- README, ROADMAP y docs de arquitectura actualizados: 16 tools → 33 tools, 664 tests → 1928 tests.
+- 3 docs de planificación LAN cumplidas archivadas a `docs/archive/`.
+- Nuevo `docs/REFACTOR_PENDING.md` con investigación de node.py god-router y estado de TS migration.
+
+Ver: [changelogs/v0.2.2.md](changelogs/v0.2.2.md)
+
 ## [2026-06-26] - v0.2.0 — Codex task bridge, LAN remote control y failover fixes
 
 ### Nuevas capacidades

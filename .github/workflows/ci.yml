@@ -30,7 +30,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
 
       - name: Install Node dependencies
         run: npm ci
@@ -50,8 +49,8 @@ jobs:
       - name: Run JS frontend tests
         run: npm run test:js
 
-      - name: Run Python smoke tests
-        run: python -m pytest tests/unit/test_app_factory.py tests/unit/test_anti_regression.py tests/unit/test_web_logging.py -v
+      - name: Run Python unit tests
+        run: python -m pytest tests/unit/ -v
 
       - name: Lint with Ruff
         run: |

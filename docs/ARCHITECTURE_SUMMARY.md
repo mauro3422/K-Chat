@@ -12,7 +12,7 @@ K-Chat (nombre interno: Kairos) es un asistente conversacional con capacidades d
 
 **Capacidades clave:**
 - Chat con streaming NDJSON (razonamiento → herramientas → contenido)
-- 16 herramientas auto-descubiertas (fetch_url, web_search, read_file, write_file, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, list_files, execute_command, search_files, edit_file, analyze_code, git_operation)
+- 33 herramientas auto-descubiertas (analyze_code, delegate_to_codex, delete_memory, dependency_graph, edit_file, execute_command, explore_graph, extract_text, fetch_url, find_dead_code, get_tool_history, get_widget_code, git_operation, impact_analysis, list_files, list_memories, manage_memory, memory_search, move_file, read_file, read_multiple, read_skill, recall_memories, run_code, save_memory, save_widget, search_conversations, search_entities, search_files, update_widget, validate_all, web_search, write_file)
 - Sistema de widgets versionados con persistencia de estado por sesión
 - Auto-rename de sesiones vía LLM en background
 - Compresión automática de historial (>40 msgs / >6k tokens)
@@ -60,7 +60,7 @@ TOOLS (sistema de herramientas)
 ├── src/tools/loader.py         (importlib filesystem scan)
 ├── src/tools/_path_helpers.py  (path traversal guard)
 ├── src/tools/_widget_helpers.py
-└── src/tools/*.py              (16 herramientas individuales)
+└── src/tools/*.py              (33 herramientas individuales)
 
 MEMORY (persistencia)
 ├── src/memory/lifecycle.py    (estado de inicialización por ruta)

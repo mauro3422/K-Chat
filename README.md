@@ -59,7 +59,7 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   │   ├── loader.py       → Auto-loader (TOOL_MAP, TOOL_DEFINITIONS)
 │   │   ├── runner.py       → Parallel tool execution
 │   │   ├── rules/          → Auto-generated tool rule docs (preserves manual edits below ---)
-│   │   └── 16 tools        → Individual tools
+│   │   └── 33 tools        → Individual tools
 │   ├── constants.py        → Shared policy constants (MAX_TOOL_TURNS, LLM_MAX_RETRIES)
 │   ├── context/
 │   │   ├── builder.py      → System prompt builder
@@ -97,7 +97,7 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   │   └── logs.py         → Log query endpoints
 │   ├── templates/          → Jinja2 templates
 │   └── static/             → CSS, JS modules (chat, session, debug, widgets)
-├── tests/                  → 664 Python + 22 E2E tests (Playwright)
+├── tests/                  → 1928 Python tests (unit + integration) + E2E (Playwright)
 ├── docs/
 │   ├── ARCHITECTURE.md     → System architecture and data flow
 │   ├── MODULES.md          → Module responsibilities and interfaces
@@ -110,10 +110,10 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 
 ## Features
 
-### 16 Tools
+### 33 Tools
 - `src/tools/rules/`: Auto-generated markdown docs per tool, preserving manual usage notes below `---` separators.
 
-`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`, `list_files`, `execute_command`, `search_files`, `edit_file`, `analyze_code`, `git_operation`. Auto-registered via `importlib` filesystem scan.
+`analyze_code`, `delegate_to_codex`, `delete_memory`, `dependency_graph`, `edit_file`, `execute_command`, `explore_graph`, `extract_text`, `fetch_url`, `find_dead_code`, `get_tool_history`, `get_widget_code`, `git_operation`, `impact_analysis`, `list_files`, `list_memories`, `manage_memory`, `memory_search`, `move_file`, `read_file`, `read_multiple`, `read_skill`, `recall_memories`, `run_code`, `save_memory`, `save_widget`, `search_conversations`, `search_entities`, `search_files`, `update_widget`, `validate_all`, `web_search`, `write_file`. Auto-registered via `importlib` filesystem scan.
 
 ### Streaming with visual phases
 Each interaction is shown in sequenced phases: reasoning → tools → reasoning → tools → final response. Tools are shown as pills with spinner (calling) and checkmark (ok).
