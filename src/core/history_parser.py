@@ -70,42 +70,48 @@ def _parse_rows(rows: list[Any]) -> list[HistoryMessage]:
     return raw_msgs
 
 
+def _copy_message(msg: HistoryMessage, **updates: Any) -> HistoryMessage:
+    if hasattr(msg, "model_copy"):
+        return msg.model_copy(update=updates)
+    return msg.copy(update=updates)
+
+
 def _sanitize_messages(raw_msgs: list[HistoryMessage]) -> list[HistoryMessage]:
-    tool_responses = set()
-    for msg in raw_msgs:
-        if msg.role == "tool" and msg.tool_call_id:
-            tool_responses.add(msg.tool_call_id)
-
     sanitized = []
-    valid_tool_call_ids = set()
-    pending_tool_call_ids: set[str] = set()
+    idx = 0
 
-    for msg in raw_msgs:
+    while idx < len(raw_msgs):
+        msg = raw_msgs[idx]
         role = msg.role
-        if role == "assistant":
-            tool_calls = msg.tool_calls
-            if tool_calls:
-                filtered_tcs = [tc for tc in tool_calls if tc.get("id") in tool_responses]
-                if filtered_tcs:
-                    msg.tool_calls = filtered_tcs
-                    for tc in filtered_tcs:
-                        valid_tool_call_ids.add(tc.get("id"))
-                        pending_tool_call_ids.add(tc.get("id"))
-                else:
-                    msg.tool_calls = None
-                    if not msg.content:
-                        continue
-            else:
-                if pending_tool_call_ids:
-                    continue
-            sanitized.append(msg)
-        elif role == "tool":
-            tcid = msg.tool_call_id
-            if tcid in valid_tool_call_ids:
-                sanitized.append(msg)
-                pending_tool_call_ids.discard(tcid)
-        else:
-            if pending_tool_call_ids:
-                pending_tool_call_ids.clear()
-            sanitized.append(msg)
+
+        if role == "assistant" and msg.tool_calls:
+            tool_call_ids = {tc.get("id") for tc in msg.tool_calls if tc.get("id")}
+            consecutive_tool_msgs: list[HistoryMessage] = []
+            responded_tool_ids: set[str] = set()
+            scan_idx = idx + 1
+
+            while scan_idx < len(raw_msgs) and raw_msgs[scan_idx].role == "tool":
+                tool_msg = raw_msgs[scan_idx]
+                if tool_msg.tool_call_id in tool_call_ids and tool_msg.tool_call_id not in responded_tool_ids:
+                    consecutive_tool_msgs.append(tool_msg)
+                    responded_tool_ids.add(tool_msg.tool_call_id)
+                scan_idx += 1
+
+            filtered_tcs = [tc for tc in msg.tool_calls if tc.get("id") in responded_tool_ids]
+            if filtered_tcs:
+                sanitized.append(_copy_message(msg, tool_calls=filtered_tcs))
+                sanitized.extend(consecutive_tool_msgs)
+            elif msg.content:
+                sanitized.append(_copy_message(msg, tool_calls=None))
+
+            idx = scan_idx
+            continue
+
+        if role == "tool":
+            idx += 1
+            continue
+
+        sanitized.append(msg)
+        idx += 1
+
     return sanitized

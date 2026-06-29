@@ -87,3 +87,21 @@ def reset_runtime_state() -> None:
         reset_thread_pool()
     except Exception:
         logger.warning("Failed to reset thread pool", exc_info=True)
+
+
+async def reset_runtime_state_async() -> None:
+    """Close async resources, then reset process-local state.
+
+    The synchronous reset hook is kept for entrypoints and tests that cannot
+    await. Async callers should prefer this function so aiosqlite worker
+    threads are joined before the event loop shuts down.
+    """
+    try:
+        from src.memory.connection_pool import close_all
+        from src.memory.memory_pool import close_memory_all
+        await close_all()
+        await close_memory_all()
+    except Exception:
+        logger.warning("Failed to close memory pools", exc_info=True)
+
+    reset_runtime_state()

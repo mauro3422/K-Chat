@@ -23,9 +23,9 @@ class WidgetStateRepository(_BaseRepository):
     async def get_states(self, session_id: str) -> dict[str, str]:
         """Retrieve all widget states for a session."""
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute('SELECT widget_id, state FROM widget_states WHERE session_id = ?', (session_id,))
-            rows = await cursor.fetchall()
+            async with self._connection() as conn:
+                cursor = await conn.execute('SELECT widget_id, state FROM widget_states WHERE session_id = ?', (session_id,))
+                rows = await cursor.fetchall()
             return {row["widget_id"]: row["state"] for row in rows}
         except Exception:
             logger.exception("Failed to get widget states for %s", session_id)

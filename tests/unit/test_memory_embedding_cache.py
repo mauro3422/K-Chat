@@ -57,6 +57,18 @@ class _CacheStore:
     def count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM vec_meta").fetchone()[0]
 
+    def close(self) -> None:
+        self.conn.close()
+
+
+@pytest.fixture
+def cache_store():
+    store = _CacheStore()
+    try:
+        yield store
+    finally:
+        store.close()
+
 
 @pytest.fixture
 def temp_memory_file():
@@ -77,14 +89,14 @@ def temp_memory_file():
 
 
 @pytest.mark.anyio
-async def test_reindex_memories_skips_current_memory_embedding(monkeypatch):
+async def test_reindex_memories_skips_current_memory_embedding(cache_store, monkeypatch):
     from src.memory.content_hash import memory_hashes
     from src.memory.operations.reindex import _reindex_memories
 
     key = "user:lenguaje"
     value = "Mauro usa Python para scripts de memoria."
     raw_hash, content_hash = memory_hashes(value)
-    store = _CacheStore()
+    store = cache_store
     store.conn.execute(
         """
         INSERT INTO vec_meta (rowid, source, source_key, text, hash, content_hash)
@@ -116,14 +128,14 @@ async def test_reindex_memories_skips_current_memory_embedding(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_save_memory_skips_current_memory_embedding(temp_memory_file, monkeypatch):
+async def test_save_memory_skips_current_memory_embedding(temp_memory_file, cache_store, monkeypatch):
     from src.memory.content_hash import memory_hashes
     from src.tools.save_memory import run as save_memory_run
 
     key = "user:lenguaje"
     value = "Mauro usa Python para scripts de memoria."
     raw_hash, _content_hash = memory_hashes(value)
-    store = _CacheStore()
+    store = cache_store
     store.conn.execute(
         """
         INSERT INTO vec_meta (rowid, source, source_key, text, hash, content_hash)

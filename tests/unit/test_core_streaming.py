@@ -51,7 +51,10 @@ def _make_deps(tool_map):
     reg._tool_map = tool_map
     reg._definitions = {}
     reg._built = True
-    deps = OrchestratorDeps()
+    repos = MagicMock()
+    repos.messages.save = AsyncMock()
+    repos.tool_calls.record_execution = AsyncMock()
+    deps = OrchestratorDeps(repos=repos)
     deps.tool_registry = reg
     return deps
 
@@ -68,7 +71,7 @@ async def test_streaming_content_only(mock_stream, mock_chat):
 
     history = [{"role": "system", "content": "test"}]
     tokens = []
-    async for t in chat_stream("Hola", history, model="test-model", tagged=True, streaming=True):
+    async for t in chat_stream("Hola", history, model="test-model", tagged=True, streaming=True, deps=_make_deps({})):
         tokens.append(t)
 
     types = [t[0] for t in tokens]
@@ -177,7 +180,7 @@ async def test_streaming_no_tools_from_stream(mock_stream, mock_chat):
 
     history = [{"role": "system", "content": "test"}]
     tokens = []
-    async for t in chat_stream("test", history, model="test-model", tagged=True, streaming=True):
+    async for t in chat_stream("test", history, model="test-model", tagged=True, streaming=True, deps=_make_deps({})):
         tokens.append(t)
 
     types = [t[0] for t in tokens]

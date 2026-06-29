@@ -1,4 +1,5 @@
 import logging
+import inspect
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import JSONResponse
@@ -6,6 +7,7 @@ from fastapi.responses import JSONResponse
 from src.api.repos import get_repos
 from src.gateway_log import log_event
 from src.coordination.lan_bridge import NodeLanBridge
+from web.routers._request_repos import is_unconfigured_mock, request_repos
 from web.services.session_directory import merge_session_entries, session_summary_from_row
 
 logger = logging.getLogger(__name__)
@@ -14,10 +16,7 @@ router = APIRouter()
 
 
 def _request_repos(request: Request | None):
-    app = getattr(request, "app", None)
-    state = getattr(app, "state", None) if app is not None else None
-    repos = getattr(state, "repos", None) if state is not None else None
-    return repos or get_repos()
+    return request_repos(request, fallback=get_repos)
 
 
 def _request_coordinator(request: Request | None):
@@ -34,11 +33,11 @@ def _request_bridge(request: Request | None):
     app = getattr(request, "app", None)
     state = getattr(app, "state", None) if app is not None else None
     bridge = getattr(state, "node_bridge", None) if state is not None else None
-    if bridge is not None:
+    if bridge is not None and not is_unconfigured_mock(bridge):
         return bridge
     coordinator = _request_coordinator(request)
     config = getattr(state, "config", None) if state is not None else None
-    if coordinator is None:
+    if coordinator is None or is_unconfigured_mock(coordinator):
         return None
     bridge = NodeLanBridge(config=config, coordinator=coordinator)
     if state is not None:
@@ -84,6 +83,8 @@ async def _federated_session_entries(request: Request | None, limit: int) -> lis
     bridge = _request_bridge(request)
     if bridge is None or not bridge.peer_urls:
         return local
+    if not inspect.iscoroutinefunction(getattr(bridge, "request_session_directory", None)):
+        return local
     remote_payload = await bridge.request_session_directory(limit=limit)
     remote_sessions = remote_payload.get("sessions", []) if isinstance(remote_payload, dict) else []
     merged = merge_session_entries(local, [s for s in remote_sessions if isinstance(s, dict)])
@@ -91,7 +92,7 @@ async def _federated_session_entries(request: Request | None, limit: int) -> lis
 
 
 @router.post("/sessions/{session_id}/rename")
-async def rename(session_id: str, name: str = Body(..., embed=True), *, request: Request = None) -> JSONResponse:
+async def rename(session_id: str, request: Request = None, name: str = Body(..., embed=True)) -> JSONResponse:
     repos = _request_repos(request)
     new_name = name.strip() or session_id[:8]
     await repos.sessions.require_session(session_id)
@@ -128,7 +129,7 @@ async def toggle_favorite(session_id: str, body: dict = Body(...), *, request: R
 
 
 @router.post("/sessions/{session_id}/delete")
-async def delete(session_id: str, *, request: Request = None) -> JSONResponse:
+async def delete(session_id: str, request: Request = None) -> JSONResponse:
     repos = _request_repos(request)
     await repos.sessions.delete_cascade(session_id, repos=repos)
     log_event("INFO", "web", "session_deleted", session_id, meta={"session_id": session_id})

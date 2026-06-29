@@ -17,6 +17,7 @@ from src.coordination.lan_bridge import NodeLanBridge
 from src.coordination.lan_discovery import normalize_lan_peer_url
 from web.services.session_directory import session_summary_from_row
 from web.routers._memory_snapshot import build_memory_snapshot, relay_memory_event
+from web.routers._request_repos import request_repos
 from web.services.event_bus import IEventBus, get_event_bus
 from web.services.failover_state import get_failover_state
 
@@ -28,10 +29,7 @@ def _get_coordinator(request: Request) -> NodeCoordinator:
 
 
 def _request_repos(request: Request):
-    app = getattr(request, "app", None)
-    state = getattr(app, "state", None) if app is not None else None
-    repos = getattr(state, "repos", None) if state is not None else None
-    return repos or get_repos()
+    return request_repos(request, fallback=get_repos)
 
 
 def _get_event_bus(request: Request) -> IEventBus:

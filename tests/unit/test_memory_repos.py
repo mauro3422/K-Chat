@@ -1,4 +1,5 @@
 import pytest
+import pytest_asyncio
 
 from src.memory.repos import (
     DebugRepository,
@@ -17,8 +18,8 @@ class TestSessionRepository:
     async def test_ensure_creates_new(self, setup_test_db):
         repo = SessionRepository()
         await repo.ensure("sess_new")
-        conn = await repo._get_conn()
-        row = await (await conn.execute("SELECT * FROM sessions WHERE session_id = ?", ("sess_new",))).fetchone()
+        async with repo._connection() as conn:
+            row = await (await conn.execute("SELECT * FROM sessions WHERE session_id = ?", ("sess_new",))).fetchone()
         assert row is not None
         assert row["session_id"] == "sess_new"
 
@@ -27,8 +28,8 @@ class TestSessionRepository:
         repo = SessionRepository()
         await repo.ensure("sess_1")
         await repo.ensure("sess_1")
-        conn = await repo._get_conn()
-        rows = await (await conn.execute("SELECT COUNT(*) as c FROM sessions WHERE session_id = ?", ("sess_1",))).fetchone()
+        async with repo._connection() as conn:
+            rows = await (await conn.execute("SELECT COUNT(*) as c FROM sessions WHERE session_id = ?", ("sess_1",))).fetchone()
         assert rows["c"] == 1
 
     @pytest.mark.anyio
@@ -36,8 +37,8 @@ class TestSessionRepository:
         repo = SessionRepository()
         await repo.ensure("sess_1")
         await repo.rename("sess_1", "My Session")
-        conn = await repo._get_conn()
-        row = await (await conn.execute("SELECT name FROM sessions WHERE session_id = ?", ("sess_1",))).fetchone()
+        async with repo._connection() as conn:
+            row = await (await conn.execute("SELECT name FROM sessions WHERE session_id = ?", ("sess_1",))).fetchone()
         assert row["name"] == "My Session"
 
     @pytest.mark.anyio
@@ -45,8 +46,8 @@ class TestSessionRepository:
         repo = SessionRepository()
         await repo.ensure("sess_1")
         await repo.delete("sess_1")
-        conn = await repo._get_conn()
-        row = await (await conn.execute("SELECT * FROM sessions WHERE session_id = ?", ("sess_1",))).fetchone()
+        async with repo._connection() as conn:
+            row = await (await conn.execute("SELECT * FROM sessions WHERE session_id = ?", ("sess_1",))).fetchone()
         assert row is None
 
     @pytest.mark.anyio
@@ -100,13 +101,13 @@ class TestSessionRepository:
         await repos.widget_states.save_state("sess_cascade", "w1", "{}")
         await repos.memory_index.upsert("sess_cascade", "k1", "v1")
         await repos.sessions.delete_cascade("sess_cascade", repos)
-        conn = await repos.sessions._get_conn()
-        assert (await (await conn.execute("SELECT COUNT(*) as c FROM sessions WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
-        assert (await (await conn.execute("SELECT COUNT(*) as c FROM messages WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
-        assert (await (await conn.execute("SELECT COUNT(*) as c FROM tool_calls WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
-        assert (await (await conn.execute("SELECT COUNT(*) as c FROM debug_info WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
-        assert (await (await conn.execute("SELECT COUNT(*) as c FROM widget_states WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
-        assert (await (await conn.execute("SELECT COUNT(*) as c FROM memory_index WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
+        async with repos.sessions._connection() as conn:
+            assert (await (await conn.execute("SELECT COUNT(*) as c FROM sessions WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
+            assert (await (await conn.execute("SELECT COUNT(*) as c FROM messages WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
+            assert (await (await conn.execute("SELECT COUNT(*) as c FROM tool_calls WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
+            assert (await (await conn.execute("SELECT COUNT(*) as c FROM debug_info WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
+            assert (await (await conn.execute("SELECT COUNT(*) as c FROM widget_states WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
+            assert (await (await conn.execute("SELECT COUNT(*) as c FROM memory_index WHERE session_id = ?", ("sess_cascade",))).fetchone())["c"] == 0
 
 
 
@@ -420,7 +421,7 @@ _MEMORY_SCHEMA = [
 ]
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def memory_db_conn():
     import aiosqlite
 

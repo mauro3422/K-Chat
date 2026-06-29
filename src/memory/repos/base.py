@@ -21,6 +21,15 @@ class _BaseRepository:
         return await get_conn()
 
     @asynccontextmanager
+    async def _connection(self):
+        conn = await self._get_conn()
+        try:
+            yield conn
+        finally:
+            if self._conn is None:
+                await conn.close()
+
+    @asynccontextmanager
     async def _transaction(self):
         conn = await self._get_conn()
         engine = self._engine or get_engine()

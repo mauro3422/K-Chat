@@ -499,6 +499,8 @@ _MEMORY_MIGRATIONS = (
     _migration_014_memory_processing_catalog,
 )
 
+MEMORY_SCHEMA_VERSION = len(_MEMORY_MIGRATIONS)
+
 
 async def init_memory_db() -> None:
     """Initialize memory.db: create tables and run pending migrations.

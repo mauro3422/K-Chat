@@ -36,7 +36,7 @@ async def test_chat_stream_uses_orchestrator_dependency_bundle(
     history = [{"role": "system", "content": "test"}]
     default_model_fn = MagicMock(return_value="bundle-model")
 
-    deps = OrchestratorDeps(default_model_fn=default_model_fn)
+    deps = OrchestratorDeps(default_model_fn=default_model_fn, repos=MagicMock())
     async for _ in chat_stream("hola", history, deps=deps, streaming=True):
         pass
 

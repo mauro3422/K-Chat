@@ -14,12 +14,39 @@ import time
 from typing import Optional
 
 from fastembed import TextEmbedding
+from fastembed.common.model_description import ModelSource, PoolingType
 
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_MODEL = "kairos/paraphrase-multilingual-MiniLM-L12-v2-cls"
 EMBEDDING_DIM = 384
+_CUSTOM_MODEL_REGISTERED = False
+
+
+def _ensure_custom_model_registered() -> None:
+    """Register the legacy CLS-pooling model alias expected by Kairos."""
+    global _CUSTOM_MODEL_REGISTERED
+    if _CUSTOM_MODEL_REGISTERED:
+        return
+    try:
+        TextEmbedding.add_custom_model(
+            model=DEFAULT_MODEL,
+            pooling=PoolingType.CLS,
+            normalization=True,
+            sources=ModelSource(hf="qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q"),
+            dim=EMBEDDING_DIM,
+            model_file="model_optimized.onnx",
+            description=(
+                "Kairos alias for sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 "
+                "with legacy CLS pooling."
+            ),
+            license="apache-2.0",
+            size_in_gb=0.22,
+        )
+    except ValueError:
+        pass
+    _CUSTOM_MODEL_REGISTERED = True
 
 
 class EmbeddingService:
@@ -44,6 +71,7 @@ class EmbeddingService:
         """
         with self._lock:
             if self._model is None:
+                _ensure_custom_model_registered()
                 logger.info("Loading embedding model: %s", DEFAULT_MODEL)
                 try:
                     self._model = TextEmbedding(model_name=DEFAULT_MODEL)

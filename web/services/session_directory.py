@@ -24,8 +24,10 @@ def session_summary_from_row(
     first = row[1] if len(row) > 1 else ""
     last = row[2] if len(row) > 2 else ""
     count = int(row[3] or 0) if len(row) > 3 and row[3] is not None else 0
-    name = _safe_text(row[4], sid[:8])
-    is_favorite = bool(row[6]) if len(row) > 6 else False
+    name_idx = 5 if len(row) > 5 and isinstance(row[5], str) else 4
+    favorite_idx = 7 if len(row) > 7 else 6
+    name = _safe_text(row[name_idx] if len(row) > name_idx else "", sid[:8])
+    is_favorite = bool(row[favorite_idx]) if len(row) > favorite_idx else False
 
     return {
         "id": sid,

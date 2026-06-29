@@ -43,15 +43,15 @@ class ToolCallRepository(_BaseRepository):
     async def get_history(self, session_id: str, limit: int = 10) -> list[tuple[Any, ...]]:
         """Retrieve tool call history for a session."""
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute('''
-                SELECT tool_name, input, status, created_at, turn
-                FROM tool_calls
-                WHERE session_id = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-            ''', (session_id, limit))
-            return await cursor.fetchall()
+            async with self._connection() as conn:
+                cursor = await conn.execute('''
+                    SELECT tool_name, input, status, created_at, turn
+                    FROM tool_calls
+                    WHERE session_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                ''', (session_id, limit))
+                return await cursor.fetchall()
         except Exception:
             logger.exception("Failed to get tool history for %s", session_id)
             return []

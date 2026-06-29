@@ -86,7 +86,7 @@ def test_update_orders_preflight_backup_and_previous_commit() -> None:
 
 def test_windows_remote_control_maps_recovery_actions() -> None:
     source = WINDOWS_SCRIPT.read_text(encoding="utf-8")
-    for action in ("Preflight", "Backup", "Pull", "Rollback", "Doctor", "LanDoctor", "ListNodes", "KairosPython", "Chat", "TaskCreate", "TaskList", "TaskShow", "TaskUpdate"):
+    for action in ("Preflight", "MemoryPreflight", "Backup", "Pull", "Rollback", "Doctor", "LanDoctor", "ListNodes", "KairosPython", "Chat", "TaskCreate", "TaskList", "TaskShow", "TaskUpdate"):
         assert action in source
     for command in ("'preflight'", "'backup'", "'Restore'", "'rollback'"):
         assert command in source
@@ -94,10 +94,12 @@ def test_windows_remote_control_maps_recovery_actions() -> None:
     assert "$args=@('chat','--node',$Node,'--message',$Message)" in source
     assert "'lan-doctor'" in source
     assert "'preflight'" in source
+    assert "'memory-preflight'" in source
     assert "'task-create'" in source
     assert "'task-update'" in source
     assert "'kairos-python'" in source
     assert "Invoke-RemoteClient $args" in source
+    assert "--dry-run" in source
 
 
 def test_remote_client_has_valid_python_syntax() -> None:
@@ -107,8 +109,10 @@ def test_remote_client_has_valid_python_syntax() -> None:
     assert "def action_doctor" in source
     assert "def action_lan_doctor" in source
     assert "lan-doctor" in source
+    assert "memory-preflight" in source
     assert "preflight" in source
     assert "def action_chat" in source
+    assert "def action_memory_preflight" in source
     assert "CODEX_DELEGATION_GUIDE" in source
     assert "task-create" in source
     assert "task-update" in source
@@ -119,6 +123,8 @@ def test_remote_client_has_valid_python_syntax() -> None:
     assert "venv/bin/python" in source
     assert "--raw-message" in source
     assert "--json" in source
+    assert "--loopback" in source
+    assert "--dry-run" in source
     assert "ConnectTimeout=8" in source
 
 
@@ -187,7 +193,7 @@ def test_lan_doctor_report_can_emit_json(monkeypatch, capsys, tmp_path) -> None:
     monkeypatch.setattr(
         module,
         "collect_lan_doctor_checks",
-        lambda _profile, *, primary_url, secondary_url: [
+        lambda _profile, *, primary_url, secondary_url, loopback=False: [
             module.DoctorCheck(name="local_health", ok=True, detail=primary_url),
             module.DoctorCheck(name="lan_smoke", ok=False, detail=secondary_url, hint="revisar smoke"),
         ],
@@ -205,6 +211,87 @@ def test_lan_doctor_report_can_emit_json(monkeypatch, capsys, tmp_path) -> None:
     assert payload["primary_url"] == "http://primary:8000"
     assert payload["secondary_url"] == "http://secondary:8000"
     assert payload["checks"][1]["hint"] == "revisar smoke"
+
+
+def test_lan_doctor_loopback_emits_mode_and_uses_primary_as_secondary(monkeypatch, capsys, tmp_path) -> None:
+    module = load_remote_client_module()
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("fake", encoding="utf-8")
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.40",
+        user="maurol",
+        repo="/home/maurol/dev/K-Chat",
+        identity_file=str(identity),
+        service_url="http://192.168.1.40:8000",
+    )
+
+    monkeypatch.setattr(
+        module,
+        "collect_lan_doctor_checks",
+        lambda _profile, *, primary_url, secondary_url, loopback=False: [
+            module.DoctorCheck(name="lan_smoke", ok=loopback, detail=f"{primary_url} {secondary_url}"),
+        ],
+    )
+
+    assert module.action_lan_doctor(
+        profile,
+        primary_url="http://primary:8000",
+        secondary_url="",
+        json_output=True,
+        loopback=True,
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["mode"] == "loopback"
+    assert payload["secondary_url"] == "http://primary:8000"
+    assert payload["checks"][0]["ok"] is True
+
+
+def test_smoke_check_passes_loopback_flag(monkeypatch) -> None:
+    module = load_remote_client_module()
+    captured = {}
+
+    def fake_run(command, cwd, text, capture_output, timeout):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    check = module._smoke_check("http://primary:8000", "", loopback=True)
+
+    assert check.ok is True
+    assert "--loopback" in captured["command"]
+    assert "--secondary-url" not in captured["command"]
+
+
+def test_preflight_loopback_does_not_require_remote_profile(monkeypatch, tmp_path) -> None:
+    module = load_remote_client_module()
+    missing_config = tmp_path / "missing-remote-nodes.json"
+    captured = {}
+
+    def fake_action(profile, *, primary_url, secondary_url, json_output=False, loopback=False):
+        captured["profile"] = profile
+        captured["primary_url"] = primary_url
+        captured["secondary_url"] = secondary_url
+        captured["loopback"] = loopback
+        return 0
+
+    monkeypatch.setattr(module, "action_lan_doctor", fake_action)
+
+    assert module.main([
+        "preflight",
+        "--loopback",
+        "--config",
+        str(missing_config),
+        "--primary-url",
+        "http://primary:8000",
+    ]) == 0
+
+    assert captured["profile"].name == "linux"
+    assert captured["primary_url"] == "http://primary:8000"
+    assert captured["secondary_url"] == ""
+    assert captured["loopback"] is True
 
 
 def test_remote_node_state_detects_profile_identity_mismatch(monkeypatch, tmp_path) -> None:
@@ -278,6 +365,39 @@ def test_remote_doctor_report_can_emit_json(monkeypatch, capsys, tmp_path) -> No
     assert payload["passed"] == 1
     assert payload["total"] == 2
     assert payload["checks"][1]["hint"] == "revisar health"
+
+
+def test_memory_preflight_action_emits_json(monkeypatch, capsys, tmp_path) -> None:
+    module = load_remote_client_module()
+    from scripts import memory_pipeline_preflight as pipeline
+
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("fake", encoding="utf-8")
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.40",
+        user="maurol",
+        repo="/home/maurol/dev/K-Chat",
+        identity_file=str(identity),
+        service_url="http://192.168.1.40:8000",
+    )
+
+    monkeypatch.setattr(
+        pipeline,
+        "run_local_pipeline",
+        lambda *, node, dry_run=False: {"node": node, "ok": True, "snapshot": {"vectors": 1}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "run_remote_pipeline",
+        lambda *, node, runner, dry_run=False: {"node": node, "ok": False, "snapshot": {}, "issues": ["remote failed"]},
+    )
+
+    assert module.action_memory_preflight(profile, json_output=True) == 2
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["ok"] is False
+    assert payload["failed_nodes"] == ["linux"]
 
 
 def test_remote_doctor_hint_names_common_lan_failures() -> None:

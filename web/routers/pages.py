@@ -14,6 +14,7 @@ from src.api.llm_client import (
     get_rate_limit_store,
 )
 from src.api.repos import get_repos
+from web.routers._request_repos import is_unconfigured_mock, request_repos
 from web.services.diagnostics_snapshot import build_diagnostics_snapshot
 from web.routers.sessions import _federated_session_entries
 from web.services.message_renderer import render_session_messages
@@ -31,10 +32,7 @@ _DIST_DIR = _STATIC_DIR / "dist" / "assets"
 
 
 def _request_repos(request: Request):
-    app = getattr(request, "app", None)
-    state = getattr(app, "state", None) if app is not None else None
-    repos = getattr(state, "repos", None) if state is not None else None
-    return repos or get_repos()
+    return request_repos(request, fallback=get_repos)
 
 
 def _request_web_base_url(request: Request | None = None) -> str:
@@ -61,18 +59,26 @@ def _master_session_url(request: Request | None, session_id: str) -> str:
 
 def _get_registry(request: Request | None = None):
     if request is not None:
-        reg = getattr(request.app.state, "model_registry", None)
-        if reg is not None:
+        app = getattr(request, "app", None)
+        state = getattr(app, "state", None) if app is not None else None
+        reg = getattr(state, "model_registry", None) if state is not None else None
+        if reg is not None and not is_unconfigured_mock(reg):
             return reg
+        if is_unconfigured_mock(app) or is_unconfigured_mock(state) or is_unconfigured_mock(reg):
+            return get_model_registry()
         raise RuntimeError("Model registry not initialized")
     return get_model_registry()
 
 
 def _get_rate_store(request: Request | None = None):
     if request is not None:
-        store = getattr(request.app.state, "rate_limit_store", None)
-        if store is not None:
+        app = getattr(request, "app", None)
+        state = getattr(app, "state", None) if app is not None else None
+        store = getattr(state, "rate_limit_store", None) if state is not None else None
+        if store is not None and not is_unconfigured_mock(store):
             return store
+        if is_unconfigured_mock(app) or is_unconfigured_mock(state) or is_unconfigured_mock(store):
+            return get_rate_limit_store()
         raise RuntimeError("Rate limit store not initialized")
     return get_rate_limit_store()
 

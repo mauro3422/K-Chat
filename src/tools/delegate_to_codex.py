@@ -50,7 +50,13 @@ def _bridge_url() -> str:
     return raw.rstrip("/")
 
 
-async def run(title: str, prompt: str, priority: str = "normal", session_id: str = "") -> str:
+async def run(
+    title: str,
+    prompt: str,
+    priority: str = "normal",
+    session_id: str = "",
+    _session_id: str | None = None,
+) -> str:
     if not title.strip():
         return "[ERROR] title is required."
     if not prompt.strip():
@@ -60,7 +66,7 @@ async def run(title: str, prompt: str, priority: str = "normal", session_id: str
         "title": title,
         "prompt": prompt,
         "priority": priority,
-        "session_id": session_id,
+        "session_id": session_id or _session_id or "",
         "from_node": os.getenv("KAIROS_NODE_ID", ""),
     }
     url = f"{_bridge_url()}/api/codex/tasks"

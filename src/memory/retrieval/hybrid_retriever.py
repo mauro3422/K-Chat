@@ -168,9 +168,9 @@ class HybridRetriever:
         finally:
             conn.close()
 
-        vec_dict = dict(vec_results)
-        kw_dict = dict(kw_results)
-        ent_dict = dict(ent_results)
+        vec_dict = dict(_raw_vec)
+        kw_dict = dict(_raw_kw)
+        ent_dict = dict(_raw_ent)
 
         hydrated_map = {d["rowid"]: d for d in hydrated_dicts}
 

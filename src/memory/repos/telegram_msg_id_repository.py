@@ -22,11 +22,11 @@ class TelegramMsgIdRepo(_BaseRepository):
 
     async def get_all(self, chat_id: int) -> list[tuple[str, int]]:
         """Get all (phase_key, msg_id) pairs for a chat."""
-        conn = await self._get_conn()
-        cursor = await conn.execute('''
-            SELECT phase_key, msg_id FROM telegram_msg_ids WHERE chat_id = ?
-        ''', (chat_id,))
-        rows = await cursor.fetchall()
+        async with self._connection() as conn:
+            cursor = await conn.execute('''
+                SELECT phase_key, msg_id FROM telegram_msg_ids WHERE chat_id = ?
+            ''', (chat_id,))
+            rows = await cursor.fetchall()
         return [(row["phase_key"], row["msg_id"]) for row in rows]
 
     async def delete_chat(self, chat_id: int) -> None:

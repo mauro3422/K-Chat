@@ -43,6 +43,9 @@ def smoke_args(**overrides):
         "probe_value": "probe",
         "promote_secondary": False,
         "keep_probe": False,
+        "no_restore_memory_file": False,
+        "loopback": False,
+        "loopback_peer_id": "",
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -94,6 +97,44 @@ def test_run_smoke_accepts_healthy_two_node_topology(monkeypatch):
 
     assert all(step.ok for step in steps)
     assert any(step.name == "topology has one primary and one secondary" for step in steps)
+
+
+def test_run_smoke_accepts_loopback_single_physical_node(monkeypatch):
+    responses = common_responses()
+    synthetic_peer = "node-a-loopback-secondary"
+    loopback_state = healthy_state("node-a", "primary", synthetic_peer)
+    responses.update({
+        ("GET", "primary", "/api/node/state"): loopback_state,
+        ("GET", "secondary", "/api/node/state"): loopback_state,
+        ("GET", "primary", "/api/node/sync/status"): {
+            "ok": True,
+            "sync": {"memory_is_fresh": True},
+            "cluster": {"reachable_peers": 0},
+        },
+        ("GET", "secondary", "/api/node/sync/status"): {
+            "ok": True,
+            "sync": {"memory_is_fresh": True},
+            "cluster": {"reachable_peers": 0},
+        },
+    })
+    fake = FakeClient(responses)
+    monkeypatch.setattr(lan_field_smoke, "Client", lambda timeout: fake)
+
+    steps = lan_field_smoke.run_smoke(smoke_args(loopback=True, secondary_url="http://primary:8000"))
+
+    assert all(step.ok for step in steps)
+    assert any(step.name == "loopback uses one physical node" for step in steps)
+    assert any(step.name == "loopback recorded synthetic secondary heartbeat" for step in steps)
+    assert ("POST", "primary", "/api/node/heartbeat") in fake.calls
+
+
+def test_main_loopback_does_not_require_secondary_url(monkeypatch, capsys):
+    monkeypatch.setattr(lan_field_smoke, "run_smoke", lambda args: [lan_field_smoke.Step(name=args.secondary_url, ok=True)])
+
+    assert lan_field_smoke.main(["--loopback", "--primary-url", "http://primary:8000", "--skip-write"]) == 0
+
+    captured = capsys.readouterr()
+    assert "1/1 checks passed" in captured.out
 
 
 def test_run_smoke_reports_inverted_urls(monkeypatch):

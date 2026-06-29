@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock
 from pathlib import Path
+import sys
 
 from src.tools.execute_command import run as execute_command_run
 from src.tools.list_files import run as list_files_run
@@ -8,7 +9,7 @@ from src.tools.list_files import run as list_files_run
 
 @pytest.mark.anyio
 async def test_execute_command_runs_shell_command(tmp_path: Path):
-    result = execute_command_run(command="printf hola", cwd=str(tmp_path))
+    result = execute_command_run(command="echo hola", cwd=str(tmp_path))
     assert "hola" in result
 
 
@@ -29,7 +30,7 @@ async def test_execute_command_rejects_outside_cwd():
 @pytest.mark.anyio
 async def test_execute_command_truncates_large_output(tmp_path: Path):
     result = execute_command_run(
-        command="python3 -c \"print('x' * 40050)\"",
+        command=f'"{sys.executable}" -c "print(\'x\' * 40050)"',
         cwd=str(tmp_path),
     )
     assert "...[truncado" in result or "truncado" in result.lower()

@@ -53,19 +53,19 @@ class DebugRepository(_BaseRepository):
     async def get_info(self, session_id: str) -> dict[str, Any]:
         """Retrieve debug info for a session."""
         try:
-            conn = await self._get_conn()
-            # Check if phases column exists
-            col_info = await conn.execute("PRAGMA table_info(debug_info)")
-            columns = {row[1] for row in await col_info.fetchall()}
-            select_cols = "model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, auto_memories"
-            if "phases" in columns:
-                select_cols += ", phases, prompt_tokens, completion_tokens, total_tokens"
-            cursor = await conn.execute(f'''
-                SELECT {select_cols}
-                FROM debug_info
-                WHERE session_id = ?
-            ''', (session_id,))
-            row = await cursor.fetchone()
+            async with self._connection() as conn:
+                # Check if phases column exists
+                col_info = await conn.execute("PRAGMA table_info(debug_info)")
+                columns = {row[1] for row in await col_info.fetchall()}
+                select_cols = "model, reasoning, system_prompt, tool_calls, history_before, asr_telemetry, auto_memories"
+                if "phases" in columns:
+                    select_cols += ", phases, prompt_tokens, completion_tokens, total_tokens"
+                cursor = await conn.execute(f'''
+                    SELECT {select_cols}
+                    FROM debug_info
+                    WHERE session_id = ?
+                ''', (session_id,))
+                row = await cursor.fetchone()
             if not row:
                 return {}
             result = {

@@ -13,17 +13,12 @@ if TYPE_CHECKING:
 
 class SessionRepository(_BaseRepository):
 
-    _did_alter_favorite = False
-
     async def _ensure_favorite_column(self) -> None:
-        if SessionRepository._did_alter_favorite:
-            return
         try:
             async with self._transaction() as conn:
                 cursor = await conn.execute("PRAGMA table_info(sessions)")
                 columns = await cursor.fetchall()
                 if any(col[1] == "is_favorite" for col in columns):
-                    SessionRepository._did_alter_favorite = True
                     return
                 await conn.execute("ALTER TABLE sessions ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
         except sqlite3.OperationalError as e:
@@ -31,7 +26,23 @@ class SessionRepository(_BaseRepository):
                 logger.warning("Failed to ensure is_favorite column: %s", e)
         except Exception as e:
             logger.warning("Failed to ensure is_favorite column: %s", e)
-        SessionRepository._did_alter_favorite = True
+
+    async def _ensure_telegram_chat_id_column(self) -> None:
+        try:
+            async with self._transaction() as conn:
+                cursor = await conn.execute("PRAGMA table_info(sessions)")
+                columns = await cursor.fetchall()
+                if any(col[1] == "telegram_chat_id" for col in columns):
+                    return
+                await conn.execute("ALTER TABLE sessions ADD COLUMN telegram_chat_id INTEGER")
+                await conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sessions_telegram_chat_id ON sessions (telegram_chat_id)"
+                )
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                logger.warning("Failed to ensure telegram_chat_id column: %s", e)
+        except Exception as e:
+            logger.warning("Failed to ensure telegram_chat_id column: %s", e)
 
     async def ensure(self, session_id: str) -> None:
         """Create a session row if it does not exist."""
@@ -45,9 +56,9 @@ class SessionRepository(_BaseRepository):
 
     async def exists(self, session_id: str) -> bool:
         """Check if a session exists without creating it."""
-        conn = await self._get_conn()
-        cursor = await conn.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,))
-        row = await cursor.fetchone()
+        async with self._connection() as conn:
+            cursor = await conn.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,))
+            row = await cursor.fetchone()
         return row is not None
 
     async def rename(self, session_id: str, name: str) -> None:
@@ -122,10 +133,10 @@ class SessionRepository(_BaseRepository):
         # Fetch session name
         name = ""
         try:
-            conn = await self._get_conn()
-            row = await (await conn.execute(
-                "SELECT name FROM sessions WHERE session_id = ?", (session_id,)
-            )).fetchone()
+            async with self._connection() as conn:
+                row = await (await conn.execute(
+                    "SELECT name FROM sessions WHERE session_id = ?", (session_id,)
+                )).fetchone()
             if row:
                 name = row["name"] or ""
         except Exception:
@@ -234,23 +245,25 @@ class SessionRepository(_BaseRepository):
     async def get_all(self, limit: int = 50) -> list[tuple[Any, ...]]:
         """Return all sessions with summary data (now includes is_favorite)."""
         await self._ensure_favorite_column()
+        await self._ensure_telegram_chat_id_column()
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute('''
-                SELECT m.session_id,
-                       MIN(m.created_at),
-                       MAX(m.created_at),
-                       SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END),
-               COALESCE(s.name, ''),
-                       s.telegram_chat_id,
-                       COALESCE(s.is_favorite, 0)
-                FROM messages m
-                LEFT JOIN sessions s ON m.session_id = s.session_id
-                GROUP BY m.session_id
-                ORDER BY MAX(m.created_at) DESC
-                LIMIT ?
-            ''', (limit,))
-            return await cursor.fetchall()
+            async with self._connection() as conn:
+                cursor = await conn.execute('''
+                    SELECT m.session_id,
+                           MIN(m.created_at),
+                           MAX(m.created_at),
+                           SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END),
+                           NULL,
+                           COALESCE(s.name, ''),
+                           s.telegram_chat_id,
+                           COALESCE(s.is_favorite, 0)
+                    FROM messages m
+                    LEFT JOIN sessions s ON m.session_id = s.session_id
+                    GROUP BY m.session_id
+                    ORDER BY MAX(m.created_at) DESC
+                    LIMIT ?
+                ''', (limit,))
+                return await cursor.fetchall()
         except Exception:
             logger.exception("Failed to get all sessions")
             return []
@@ -268,11 +281,11 @@ class SessionRepository(_BaseRepository):
         """Return all favorited sessions."""
         await self._ensure_favorite_column()
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute(
-                "SELECT session_id, name, created_at, is_favorite FROM sessions WHERE is_favorite = 1 ORDER BY created_at DESC",
-            )
-            rows = await cursor.fetchall()
+            async with self._connection() as conn:
+                cursor = await conn.execute(
+                    "SELECT session_id, name, created_at, is_favorite FROM sessions WHERE is_favorite = 1 ORDER BY created_at DESC",
+                )
+                rows = await cursor.fetchall()
             return [{"session_id": r[0], "name": r[1], "created_at": r[2], "is_favorite": r[3]} for r in rows]
         except Exception:
             logger.exception("Failed to get favorite sessions")
@@ -289,14 +302,15 @@ class SessionRepository(_BaseRepository):
 
     async def find_by_telegram_chat_id(self, chat_id: int) -> str | None:
         """Get the most recent session_id for a Telegram chat, or None."""
+        await self._ensure_telegram_chat_id_column()
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute('''
-                SELECT session_id FROM sessions
-                WHERE telegram_chat_id = ?
-                ORDER BY created_at DESC LIMIT 1
-            ''', (chat_id,))
-            row = await cursor.fetchone()
+            async with self._connection() as conn:
+                cursor = await conn.execute('''
+                    SELECT session_id FROM sessions
+                    WHERE telegram_chat_id = ?
+                    ORDER BY created_at DESC LIMIT 1
+                ''', (chat_id,))
+                row = await cursor.fetchone()
             return row["session_id"] if row else None
         except Exception:
             logger.exception("Failed to find session by telegram_chat_id")
@@ -304,15 +318,16 @@ class SessionRepository(_BaseRepository):
 
     async def find_all_by_telegram_chat_id(self, chat_id: int) -> list[tuple[str, str, str]]:
         """Get all session_ids + names for a Telegram chat, newest first."""
+        await self._ensure_telegram_chat_id_column()
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute('''
-                SELECT session_id, COALESCE(name, ''), created_at
-                FROM sessions
-                WHERE telegram_chat_id = ?
-                ORDER BY created_at DESC
-            ''', (chat_id,))
-            rows = await cursor.fetchall()
+            async with self._connection() as conn:
+                cursor = await conn.execute('''
+                    SELECT session_id, COALESCE(name, ''), created_at
+                    FROM sessions
+                    WHERE telegram_chat_id = ?
+                    ORDER BY created_at DESC
+                ''', (chat_id,))
+                rows = await cursor.fetchall()
             return [(r["session_id"], r["name"], r["created_at"]) for r in rows]
         except Exception:
             logger.exception("Failed to find all sessions by telegram_chat_id")
@@ -320,6 +335,7 @@ class SessionRepository(_BaseRepository):
 
     async def update_telegram_chat_id(self, session_id: str, chat_id: int) -> None:
         """Set the telegram_chat_id for a session."""
+        await self._ensure_telegram_chat_id_column()
         async with self._transaction() as conn:
             await conn.execute(
                 "UPDATE sessions SET telegram_chat_id = ? WHERE session_id = ?",
@@ -333,23 +349,31 @@ class SessionRepository(_BaseRepository):
         (identified by telegram_chat_id) with only 1 user message.
         """
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute(
-                "SELECT name, telegram_chat_id FROM sessions WHERE session_id = ?",
-                (session_id,),
-            )
-            row = await cursor.fetchone()
-            if row:
-                name = row["name"] or ""
-                is_tg = row["telegram_chat_id"] is not None
-                if name == "" or (is_tg and not name):
+            async with self._connection() as conn:
+                try:
                     cursor = await conn.execute(
-                        "SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user'",
+                        "SELECT name, telegram_chat_id FROM sessions WHERE session_id = ?",
                         (session_id,),
                     )
-                    count_row = await cursor.fetchone()
-                    count = count_row[0] if count_row else 0
-                    return count == 1
+                except sqlite3.OperationalError as exc:
+                    if "no such column: telegram_chat_id" not in str(exc).lower():
+                        raise
+                    cursor = await conn.execute(
+                        "SELECT name FROM sessions WHERE session_id = ?",
+                        (session_id,),
+                    )
+                row = await cursor.fetchone()
+                if row:
+                    name = row["name"] or ""
+                    is_tg = "telegram_chat_id" in row.keys() and row["telegram_chat_id"] is not None
+                    if name == "" or (is_tg and not name):
+                        cursor = await conn.execute(
+                            "SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user'",
+                            (session_id,),
+                        )
+                        count_row = await cursor.fetchone()
+                        count = count_row[0] if count_row else 0
+                        return count == 1
             return False
         except Exception:
             logger.exception("Failed to check should_rename for %s", session_id)

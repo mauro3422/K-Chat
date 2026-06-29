@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import aiosqlite
+import pytest_asyncio
 
 from src.config_loader import Config
 from src.memory.repos import (
@@ -131,7 +132,7 @@ _SCHEMA_STATEMENTS = [
 ]
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def in_memory_db():
     """SQLite :memory: connection with full schema initialized.
 

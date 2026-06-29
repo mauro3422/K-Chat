@@ -20,21 +20,21 @@ class MemoryIndexRepository(_BaseRepository):
             )
 
     async def get(self, session_id: str, key: str) -> str | None:
-        conn = await self._get_conn()
-        cursor = await conn.execute(
-            "SELECT value FROM memory_index WHERE session_id = ? AND key = ?",
-            (session_id, key),
-        )
-        row = await cursor.fetchone()
+        async with self._connection() as conn:
+            cursor = await conn.execute(
+                "SELECT value FROM memory_index WHERE session_id = ? AND key = ?",
+                (session_id, key),
+            )
+            row = await cursor.fetchone()
         return row["value"] if row else None
 
     async def get_all(self, session_id: str) -> list[dict[str, str]]:
-        conn = await self._get_conn()
-        cursor = await conn.execute(
-            "SELECT key, value FROM memory_index WHERE session_id = ? ORDER BY key",
-            (session_id,),
-        )
-        rows = await cursor.fetchall()
+        async with self._connection() as conn:
+            cursor = await conn.execute(
+                "SELECT key, value FROM memory_index WHERE session_id = ? ORDER BY key",
+                (session_id,),
+            )
+            rows = await cursor.fetchall()
         return [{"key": row["key"], "value": row["value"]} for row in rows]
 
     async def delete(self, session_id: str, key: str) -> None:

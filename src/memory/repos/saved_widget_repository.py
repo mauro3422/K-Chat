@@ -49,12 +49,12 @@ class SavedWidgetRepository(_BaseRepository):
     async def get(self, widget_id: str) -> dict[str, Any] | None:
         """Get the active version of a widget."""
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute(
-                'SELECT code, version, description, updated_at FROM saved_widgets WHERE widget_id = ?',
-                (widget_id,)
-            )
-            row = await cursor.fetchone()
+            async with self._connection() as conn:
+                cursor = await conn.execute(
+                    'SELECT code, version, description, updated_at FROM saved_widgets WHERE widget_id = ?',
+                    (widget_id,)
+                )
+                row = await cursor.fetchone()
             if row:
                 return {
                     "widget_id": widget_id,
@@ -71,12 +71,12 @@ class SavedWidgetRepository(_BaseRepository):
     async def get_versions(self, widget_id: str) -> list[dict[str, Any]]:
         """Get all versions of a widget."""
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute(
-                'SELECT version, description, created_at FROM widget_versions WHERE widget_id = ? ORDER BY version DESC',
-                (widget_id,)
-            )
-            rows = await cursor.fetchall()
+            async with self._connection() as conn:
+                cursor = await conn.execute(
+                    'SELECT version, description, created_at FROM widget_versions WHERE widget_id = ? ORDER BY version DESC',
+                    (widget_id,)
+                )
+                rows = await cursor.fetchall()
             return [
                 {
                     "version": row["version"],
@@ -92,12 +92,12 @@ class SavedWidgetRepository(_BaseRepository):
     async def get_by_version(self, widget_id: str, version: int) -> dict[str, Any] | None:
         """Get a specific version of a widget."""
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute(
-                'SELECT code, description, created_at FROM widget_versions WHERE widget_id = ? AND version = ?',
-                (widget_id, version)
-            )
-            row = await cursor.fetchone()
+            async with self._connection() as conn:
+                cursor = await conn.execute(
+                    'SELECT code, description, created_at FROM widget_versions WHERE widget_id = ? AND version = ?',
+                    (widget_id, version)
+                )
+                row = await cursor.fetchone()
             if row:
                 return {
                     "widget_id": widget_id,

@@ -20,6 +20,7 @@ def track_retrieval(
     Uses the existing retrieval_log table schema which stores per-result rows.
     Logs a summary row with vec_rowid=0 as a query-level marker.
     """
+    conn = None
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
@@ -30,6 +31,8 @@ def track_retrieval(
             ("", query[:500], f"{method}|{result_count}"),
         )
         conn.commit()
-        conn.close()
     except Exception:
         logger.exception("Failed to track retrieval")
+    finally:
+        if conn is not None:
+            conn.close()

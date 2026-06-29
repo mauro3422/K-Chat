@@ -41,6 +41,19 @@ async def test_sanitize_messages_assistant_with_tool_calls_no_content():
 
 
 @pytest.mark.anyio
+async def test_sanitize_messages_drops_tool_response_after_interruption():
+    tool_calls = [{"id": "tc1", "type": "function", "function": {"name": "web_search"}}]
+    raw_msgs = [
+        HistoryMessage(role="assistant", content=None, created_at="2025-01-01T10:00:00", tool_calls=tool_calls),
+        HistoryMessage(role="user", content="new turn", created_at="2025-01-01T10:00:01"),
+        HistoryMessage(role="tool", content="late result", created_at="2025-01-01T10:00:02", tool_call_id="tc1"),
+    ]
+    result = _sanitize_messages(raw_msgs)
+    assert [msg.role for msg in result] == ["user"]
+    assert all(msg.role != "tool" for msg in result)
+
+
+@pytest.mark.anyio
 async def test_sanitize_messages_assistant_empty():
     raw_msgs = [
         HistoryMessage(role="assistant", content="", created_at="2025-01-01T10:00:00"),

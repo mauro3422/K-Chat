@@ -9,6 +9,7 @@ issues with aiosqlite's background worker threads.
 """
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Any
 
 from src.memory.repos_memory.sqlite_helper import create_memory_db_connection
@@ -41,6 +42,15 @@ class GlobalMemoryIndexRepository:
         """Create a fresh aiosqlite connection to memory.db."""
         return await create_memory_db_connection()
 
+    @asynccontextmanager
+    async def _connection(self):
+        conn = await self._get_conn()
+        try:
+            yield conn
+        finally:
+            if self._conn is None:
+                await conn.close()
+
     async def _ensure_table(self, conn: Any) -> None:
         """Ensure the memory_index table exists (lazy init)."""
         try:
@@ -58,65 +68,65 @@ class GlobalMemoryIndexRepository:
 
     async def upsert(self, key: str, value: str) -> None:
         """Insert or update a memory entry. Global scope — no session_id."""
-        conn = await self._get_conn()
-        try:
-            await conn.execute(
-                """INSERT INTO memory_index (key, value) VALUES (?, ?)
-                   ON CONFLICT(key) DO UPDATE SET
-                       value = excluded.value,
-                       updated_at = CURRENT_TIMESTAMP""",
-                (key, value),
-            )
-            await conn.commit()
-        except Exception:
-            await conn.rollback()
-            raise
+        async with self._connection() as conn:
+            try:
+                await conn.execute(
+                    """INSERT INTO memory_index (key, value) VALUES (?, ?)
+                       ON CONFLICT(key) DO UPDATE SET
+                           value = excluded.value,
+                           updated_at = CURRENT_TIMESTAMP""",
+                    (key, value),
+                )
+                await conn.commit()
+            except Exception:
+                await conn.rollback()
+                raise
 
     async def get(self, key: str) -> str | None:
         """Get a single memory entry by key."""
-        conn = await self._get_conn()
-        cursor = await conn.execute(
-            "SELECT value FROM memory_index WHERE key = ?",
-            (key,),
-        )
-        row = await cursor.fetchone()
+        async with self._connection() as conn:
+            cursor = await conn.execute(
+                "SELECT value FROM memory_index WHERE key = ?",
+                (key,),
+            )
+            row = await cursor.fetchone()
         return row["value"] if row else None
 
     async def get_all(self) -> list[dict[str, str]]:
         """Get all memory entries, ordered by key."""
-        conn = await self._get_conn()
-        cursor = await conn.execute(
-            "SELECT key, value, updated_at FROM memory_index ORDER BY key",
-        )
-        rows = await cursor.fetchall()
+        async with self._connection() as conn:
+            cursor = await conn.execute(
+                "SELECT key, value, updated_at FROM memory_index ORDER BY key",
+            )
+            rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
     async def search(self, query: str) -> list[dict[str, str]]:
         """Search memory entries by key or value (LIKE match)."""
-        conn = await self._get_conn()
         pattern = f"%{query}%"
-        cursor = await conn.execute(
-            "SELECT key, value, updated_at FROM memory_index WHERE key LIKE ? OR value LIKE ? ORDER BY key",
-            (pattern, pattern),
-        )
-        rows = await cursor.fetchall()
+        async with self._connection() as conn:
+            cursor = await conn.execute(
+                "SELECT key, value, updated_at FROM memory_index WHERE key LIKE ? OR value LIKE ? ORDER BY key",
+                (pattern, pattern),
+            )
+            rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
     async def delete(self, key: str) -> None:
         """Delete a memory entry by key."""
-        conn = await self._get_conn()
-        try:
-            await conn.execute("DELETE FROM memory_index WHERE key = ?", (key,))
-            await conn.commit()
-        except Exception:
-            await conn.rollback()
-            raise
+        async with self._connection() as conn:
+            try:
+                await conn.execute("DELETE FROM memory_index WHERE key = ?", (key,))
+                await conn.commit()
+            except Exception:
+                await conn.rollback()
+                raise
 
     async def count(self) -> int:
         """Return the total number of memory entries."""
-        conn = await self._get_conn()
-        cursor = await conn.execute("SELECT COUNT(*) as cnt FROM memory_index")
-        row = await cursor.fetchone()
+        async with self._connection() as conn:
+            cursor = await conn.execute("SELECT COUNT(*) as cnt FROM memory_index")
+            row = await cursor.fetchone()
         return row["cnt"] if row else 0
 
 

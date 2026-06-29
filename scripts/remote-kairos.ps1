@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Shell','Exec','KairosPython','Preflight','Backup','Pull','Restore','Update','Rollback','Restart','Status','Logs','FollowLogs','Health','Platform','Doctor','LanDoctor','ListNodes','Chat','TaskCreate','TaskList','TaskShow','TaskUpdate')]
+    [ValidateSet('Shell','Exec','KairosPython','Preflight','MemoryPreflight','Backup','Pull','Restore','Update','Rollback','Restart','Status','Logs','FollowLogs','Health','Platform','Doctor','LanDoctor','ListNodes','Chat','TaskCreate','TaskList','TaskShow','TaskUpdate')]
     [string]$Action='Status',
     [string]$Node=$env:KAIROS_REMOTE_NODE,
     [string]$HostName=$env:KAIROS_LINUX_HOST,
@@ -13,6 +13,8 @@ param(
     [string]$Message='', [string]$SessionId='', [string]$Model='',
     [string]$Title='', [string]$TaskId='', [string]$TaskStatus='', [string]$Priority='normal',
     [switch]$RawMessage,
+    [switch]$Loopback,
+    [switch]$DryRun,
     [switch]$Json
 )
 $ErrorActionPreference='Stop'
@@ -46,6 +48,7 @@ switch($Action){
         $args=@('lan-doctor','--node',$Node)
         if($PrimaryUrl){$args += @('--primary-url',$PrimaryUrl)}
         if($SecondaryUrl){$args += @('--secondary-url',$SecondaryUrl)}
+        if($Loopback){$args += @('--loopback')}
         if($Json){$args += @('--json')}
         Invoke-RemoteClient $args
     }
@@ -53,6 +56,13 @@ switch($Action){
         $args=@('preflight','--node',$Node)
         if($PrimaryUrl){$args += @('--primary-url',$PrimaryUrl)}
         if($SecondaryUrl){$args += @('--secondary-url',$SecondaryUrl)}
+        if($Loopback){$args += @('--loopback')}
+        if($Json){$args += @('--json')}
+        Invoke-RemoteClient $args
+    }
+    'MemoryPreflight' {
+        $args=@('memory-preflight','--node',$Node)
+        if($DryRun){$args += @('--dry-run')}
         if($Json){$args += @('--json')}
         Invoke-RemoteClient $args
     }

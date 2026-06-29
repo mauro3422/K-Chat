@@ -432,6 +432,50 @@ def action_kairos_python(profile: NodeProfile, command: str) -> int:
     return run_ssh(profile, remote_python_command(profile, command))
 
 
+@dataclass(frozen=True)
+class RemotePythonJsonRunner:
+    profile: NodeProfile
+
+    def run_json(self, command: str, *, timeout: int) -> dict[str, Any]:
+        result = capture_ssh(self.profile, remote_python_command(self.profile, command), timeout=timeout)
+        if result.returncode != 0:
+            message = f"remote exit={result.returncode}"
+            if result.stdout.strip():
+                message += f" stdout={_short(result.stdout)}"
+            if result.stderr.strip():
+                message += f" stderr={_short(result.stderr)}"
+            raise RuntimeError(message)
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"remote returned non-JSON output: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError("remote returned JSON that is not an object")
+        return payload
+
+
+def action_memory_preflight(profile: NodeProfile, *, json_output: bool = False, dry_run: bool = False) -> int:
+    from scripts.memory_pipeline_preflight import (
+        build_pipeline_report,
+        print_short_report,
+        run_local_pipeline,
+        run_remote_pipeline,
+    )
+
+    local = run_local_pipeline(node=os.environ.get("KAIROS_NODE_ID", "local"), dry_run=dry_run)
+    remote = run_remote_pipeline(
+        node=profile.name,
+        runner=RemotePythonJsonRunner(profile),
+        dry_run=dry_run,
+    )
+    report = build_pipeline_report([local, remote])
+    if json_output:
+        print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print_short_report(report)
+    return 0 if report["ok"] else 2
+
+
 def _http_json(profile: NodeProfile, path: str, payload: dict[str, Any] | None = None, *, timeout: float = 20) -> dict[str, Any]:
     url = profile.base_url + path
     data = None
@@ -526,19 +570,23 @@ def _expected_identity_errors(*, expected_node_id: str, expected_role: str, data
     return errors
 
 
-def _smoke_check(primary_url: str, secondary_url: str, *, timeout: int = 180) -> DoctorCheck:
+def _smoke_check(primary_url: str, secondary_url: str, *, loopback: bool = False, timeout: int = 180) -> DoctorCheck:
     command = [
         sys.executable,
         str(repo_root() / "scripts" / "lan_field_smoke.py"),
         "--primary-url",
         primary_url.rstrip("/"),
-        "--secondary-url",
-        secondary_url.rstrip("/"),
         "--sync-attempts",
         "4",
         "--sync-delay",
         "1",
     ]
+    if loopback:
+        command.append("--loopback")
+        if secondary_url:
+            command.extend(["--secondary-url", secondary_url.rstrip("/")])
+    else:
+        command.extend(["--secondary-url", secondary_url.rstrip("/")])
     try:
         result = subprocess.run(command, cwd=repo_root(), text=True, capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
@@ -557,7 +605,7 @@ def _smoke_check(primary_url: str, secondary_url: str, *, timeout: int = 180) ->
     )
 
 
-def collect_lan_doctor_checks(profile: NodeProfile, *, primary_url: str, secondary_url: str) -> list[DoctorCheck]:
+def collect_lan_doctor_checks(profile: NodeProfile, *, primary_url: str, secondary_url: str, loopback: bool = False) -> list[DoctorCheck]:
     checks = [
         _local_command_check("local_git", ["git", "status", "--short", "--branch"]),
         _local_command_check("local_head", ["git", "rev-parse", "--short", "HEAD"]),
@@ -566,25 +614,35 @@ def collect_lan_doctor_checks(profile: NodeProfile, *, primary_url: str, seconda
         _local_http_check("local_node_state", primary_url, "/api/node/state", expected_role="primary"),
         _local_http_check("local_runtime", primary_url, "/api/node/runtime"),
     ]
-    checks.extend(
-        DoctorCheck(
-            name=f"remote_{check.name}",
-            ok=check.ok,
-            detail=check.detail,
-            hint=check.hint,
-            stdout=check.stdout,
-            stderr=check.stderr,
+    if loopback:
+        checks.append(
+            DoctorCheck(
+                name="remote_doctor_skipped",
+                ok=True,
+                detail="loopback mode uses one physical node",
+            )
         )
-        for check in collect_doctor_checks(profile)
-    )
-    checks.append(_smoke_check(primary_url, secondary_url))
+    else:
+        checks.extend(
+            DoctorCheck(
+                name=f"remote_{check.name}",
+                ok=check.ok,
+                detail=check.detail,
+                hint=check.hint,
+                stdout=check.stdout,
+                stderr=check.stderr,
+            )
+            for check in collect_doctor_checks(profile)
+        )
+    checks.append(_smoke_check(primary_url, secondary_url, loopback=loopback))
     return checks
 
 
-def print_lan_doctor_report(profile: NodeProfile, checks: list[DoctorCheck], *, primary_url: str, secondary_url: str) -> None:
+def print_lan_doctor_report(profile: NodeProfile, checks: list[DoctorCheck], *, primary_url: str, secondary_url: str, loopback: bool = False) -> None:
     failed = [check for check in checks if not check.ok]
     print(f"Kairos LAN doctor: {len(checks) - len(failed)}/{len(checks)} checks passed")
-    print(f"primary={primary_url.rstrip('/')} secondary={secondary_url.rstrip('/')} remote_node={profile.name}")
+    mode = "loopback" if loopback else "two-node"
+    print(f"mode={mode} primary={primary_url.rstrip('/')} secondary={secondary_url.rstrip('/')} remote_node={profile.name}")
     for check in checks:
         status = "OK" if check.ok else "FAIL"
         print(f"\n[{status}] {check.name}: {check.detail}")
@@ -601,14 +659,15 @@ def print_lan_doctor_report(profile: NodeProfile, checks: list[DoctorCheck], *, 
         print("- Si lan_smoke falla, revisar el reporte corto del smoke.")
 
 
-def action_lan_doctor(profile: NodeProfile, *, primary_url: str, secondary_url: str, json_output: bool = False) -> int:
+def action_lan_doctor(profile: NodeProfile, *, primary_url: str, secondary_url: str, json_output: bool = False, loopback: bool = False) -> int:
     primary = primary_url.rstrip("/") or os.environ.get("KAIROS_LAN_PRIMARY_URL", "http://127.0.0.1:8000").rstrip("/")
-    secondary = secondary_url.rstrip("/") or profile.base_url
-    checks = collect_lan_doctor_checks(profile, primary_url=primary, secondary_url=secondary)
+    secondary = secondary_url.rstrip("/") or (primary if loopback else profile.base_url)
+    checks = collect_lan_doctor_checks(profile, primary_url=primary, secondary_url=secondary, loopback=loopback)
     failed = [check for check in checks if not check.ok]
     if json_output:
         payload = {
             "ok": not failed,
+            "mode": "loopback" if loopback else "two-node",
             "primary_url": primary,
             "secondary_url": secondary,
             "remote_node": profile.name,
@@ -618,7 +677,7 @@ def action_lan_doctor(profile: NodeProfile, *, primary_url: str, secondary_url: 
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        print_lan_doctor_report(profile, checks, primary_url=primary, secondary_url=secondary)
+        print_lan_doctor_report(profile, checks, primary_url=primary, secondary_url=secondary, loopback=loopback)
     return 1 if failed else 0
 
 
@@ -755,6 +814,7 @@ def build_parser() -> argparse.ArgumentParser:
             "list",
             "doctor",
             "lan-doctor",
+            "memory-preflight",
             "preflight",
             "health",
             "pull",
@@ -775,6 +835,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", default=os.environ.get("KAIROS_REMOTE_NODES_CONFIG", str(default_config_path())))
     parser.add_argument("--primary-url", default=os.environ.get("KAIROS_LAN_PRIMARY_URL", "http://127.0.0.1:8000"))
     parser.add_argument("--secondary-url", default=os.environ.get("KAIROS_LAN_SECONDARY_URL", ""))
+    parser.add_argument("--loopback", action="store_true", default=os.environ.get("KAIROS_LAN_SMOKE_LOOPBACK", "").lower() in {"1", "true", "yes", "on"})
+    parser.add_argument("--dry-run", action="store_true", help="plan supported write steps without writing")
     parser.add_argument("--command", default="")
     parser.add_argument("--lines", type=int, default=150)
     parser.add_argument("--message", default="")
@@ -794,11 +856,23 @@ def main(argv: list[str] | None = None) -> int:
     profiles = load_profiles(Path(args.config))
     if args.action == "list":
         return action_list(profiles)
+    if args.action in {"lan-doctor", "preflight"} and args.loopback:
+        profile = profiles.get(args.node) or NodeProfile(
+            name=args.node,
+            host="",
+            user="",
+            repo="",
+            identity_file="",
+            service_url=args.secondary_url or args.primary_url,
+        )
+        return action_lan_doctor(profile, primary_url=args.primary_url, secondary_url=args.secondary_url, json_output=args.json, loopback=True)
     profile = require_profile(profiles, args.node)
     if args.action == "doctor":
         return action_doctor(profile, json_output=args.json)
+    if args.action == "memory-preflight":
+        return action_memory_preflight(profile, json_output=args.json, dry_run=args.dry_run)
     if args.action in {"lan-doctor", "preflight"}:
-        return action_lan_doctor(profile, primary_url=args.primary_url, secondary_url=args.secondary_url, json_output=args.json)
+        return action_lan_doctor(profile, primary_url=args.primary_url, secondary_url=args.secondary_url, json_output=args.json, loopback=args.loopback)
     if args.action == "health":
         return action_http_get(profile, "/health")
     if args.action == "pull":

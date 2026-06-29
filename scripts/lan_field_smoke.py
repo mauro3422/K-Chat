@@ -29,6 +29,14 @@ class Node:
     url: str
 
 
+@dataclass(frozen=True)
+class SmokeTopology:
+    primary: Node
+    secondary: Node
+    loopback: bool = False
+    loopback_peer_id: str = ""
+
+
 @dataclass
 class Step:
     name: str
@@ -175,6 +183,30 @@ def role_summary(states: dict[str, dict[str, Any]]) -> dict[str, str]:
     return {name: str(state.get("role", "")).strip() for name, state in states.items()}
 
 
+def is_loopback_args(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "loopback", False))
+
+
+def build_topology(args: argparse.Namespace) -> SmokeTopology:
+    primary = Node("primary", normalize_url(args.primary_url))
+    loopback = is_loopback_args(args)
+    secondary_url = (args.secondary_url or args.primary_url) if loopback else args.secondary_url
+    secondary = Node("secondary", normalize_url(secondary_url))
+    return SmokeTopology(
+        primary=primary,
+        secondary=secondary,
+        loopback=loopback,
+        loopback_peer_id=str(getattr(args, "loopback_peer_id", "") or "").strip(),
+    )
+
+
+def loopback_peer_id(local_node_id: str, explicit_peer_id: str = "") -> str:
+    explicit = explicit_peer_id.strip()
+    if explicit:
+        return explicit
+    return f"{local_node_id or 'kairos'}-loopback-secondary"
+
+
 def wait_for_snapshot_match(
     client: Client,
     node: Node,
@@ -222,8 +254,9 @@ def restore_memory_file_snapshot(snapshot: bytes | None) -> bool:
 
 def run_smoke(args: argparse.Namespace) -> list[Step]:
     client = Client(timeout=args.timeout)
-    primary = Node("primary", normalize_url(args.primary_url))
-    secondary = Node("secondary", normalize_url(args.secondary_url))
+    topology = build_topology(args)
+    primary = topology.primary
+    secondary = topology.secondary
     steps: list[Step] = []
 
     health: dict[str, dict[str, Any]] = {}
@@ -261,54 +294,89 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
 
     primary_id = str(states["primary"].get("node_id", "")).strip()
     secondary_id = str(states["secondary"].get("node_id", "")).strip()
-    steps.append(
-        expect(
-            bool(primary_id and secondary_id and primary_id != secondary_id),
-            "distinct node ids",
-            detail=f"primary={primary_id!r} secondary={secondary_id!r}",
-            hint=failure_hint("node state healthy with node_id"),
+    if topology.loopback:
+        synthetic_secondary_id = loopback_peer_id(primary_id, topology.loopback_peer_id)
+        steps.append(
+            expect(
+                bool(primary_id and secondary_id and primary_id == secondary_id),
+                "loopback uses one physical node",
+                detail=f"node_id={primary_id!r} synthetic_secondary={synthetic_secondary_id!r}",
+                hint=failure_hint("node state healthy with node_id"),
+            )
         )
-    )
-    roles = role_summary(states)
-    steps.append(
-        expect(
-            sorted(roles.values()) == ["primary", "secondary"],
-            "topology has one primary and one secondary",
-            detail=short_json(roles),
-            hint=failure_hint("topology role mismatch", data=roles),
-            data={"roles": roles},
+        roles = {"primary": str(states["primary"].get("role", "")).strip(), "synthetic_secondary": "secondary"}
+        steps.append(
+            expect(
+                states["primary"].get("role") == "primary",
+                "loopback primary endpoint has primary role",
+                detail=short_json({"physical_roles": role_summary(states), "logical_roles": roles}),
+                hint="Loopback necesita que la unica instancia disponible corra como primary para validar escritura/sync sin encolar.",
+                data={"physical_roles": role_summary(states), "logical_roles": roles},
+            )
         )
-    )
-    steps.append(
-        expect(
-            states["primary"].get("role") == "primary" and states["secondary"].get("role") == "secondary",
-            "provided URLs match primary/secondary roles",
-            detail=short_json(roles),
-            hint="Si las URLs estan invertidas, pasalas como: python scripts/lan_field_smoke.py --primary-url URL_PRIMARY --secondary-url URL_SECONDARY.",
-            data={"roles": roles},
+    else:
+        steps.append(
+            expect(
+                bool(primary_id and secondary_id and primary_id != secondary_id),
+                "distinct node ids",
+                detail=f"primary={primary_id!r} secondary={secondary_id!r}",
+                hint=failure_hint("node state healthy with node_id"),
+            )
         )
-    )
+        roles = role_summary(states)
+        steps.append(
+            expect(
+                sorted(roles.values()) == ["primary", "secondary"],
+                "topology has one primary and one secondary",
+                detail=short_json(roles),
+                hint=failure_hint("topology role mismatch", data=roles),
+                data={"roles": roles},
+            )
+        )
+        steps.append(
+            expect(
+                states["primary"].get("role") == "primary" and states["secondary"].get("role") == "secondary",
+                "provided URLs match primary/secondary roles",
+                detail=short_json(roles),
+                hint="Si las URLs estan invertidas, pasalas como: python scripts/lan_field_smoke.py --primary-url URL_PRIMARY --secondary-url URL_SECONDARY.",
+                data={"roles": roles},
+            )
+        )
 
-    heartbeat_payloads = [
-        (
-            secondary,
-            {
-                "node_id": primary_id,
-                "role": str(states["primary"].get("role") or "secondary"),
-                "base_url": primary.url,
-                "metadata": {"source": "lan_field_smoke"},
-            },
-        ),
-        (
-            primary,
-            {
-                "node_id": secondary_id,
-                "role": str(states["secondary"].get("role") or "secondary"),
-                "base_url": secondary.url,
-                "metadata": {"source": "lan_field_smoke"},
-            },
-        ),
-    ]
+    if topology.loopback:
+        synthetic_secondary_id = loopback_peer_id(primary_id, topology.loopback_peer_id)
+        heartbeat_payloads = [
+            (
+                primary,
+                {
+                    "node_id": synthetic_secondary_id,
+                    "role": "secondary",
+                    "base_url": secondary.url,
+                    "metadata": {"source": "lan_field_smoke", "mode": "loopback"},
+                },
+            )
+        ]
+    else:
+        heartbeat_payloads = [
+            (
+                secondary,
+                {
+                    "node_id": primary_id,
+                    "role": str(states["primary"].get("role") or "secondary"),
+                    "base_url": primary.url,
+                    "metadata": {"source": "lan_field_smoke"},
+                },
+            ),
+            (
+                primary,
+                {
+                    "node_id": secondary_id,
+                    "role": str(states["secondary"].get("role") or "secondary"),
+                    "base_url": secondary.url,
+                    "metadata": {"source": "lan_field_smoke"},
+                },
+            ),
+        ]
     for target, payload in heartbeat_payloads:
         response, failure = request_step(client, "POST", target, "/api/node/heartbeat", "heartbeat accepted", payload=payload)
         if failure:
@@ -322,8 +390,12 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
             steps.append(failure)
         else:
             states[node.name] = payload or {}
-    steps.append(expect(secondary_id in peer_ids(states["primary"]), "primary recorded secondary heartbeat", node="primary", hint=failure_hint("heartbeat recorded", data=states["primary"]), data=states["primary"]))
-    steps.append(expect(primary_id in peer_ids(states["secondary"]), "secondary recorded primary heartbeat", node="secondary", hint=failure_hint("heartbeat recorded", data=states["secondary"]), data=states["secondary"]))
+    if topology.loopback:
+        synthetic_secondary_id = loopback_peer_id(primary_id, topology.loopback_peer_id)
+        steps.append(expect(synthetic_secondary_id in peer_ids(states["primary"]), "loopback recorded synthetic secondary heartbeat", node="primary", hint=failure_hint("heartbeat recorded", data=states["primary"]), data=states["primary"]))
+    else:
+        steps.append(expect(secondary_id in peer_ids(states["primary"]), "primary recorded secondary heartbeat", node="primary", hint=failure_hint("heartbeat recorded", data=states["primary"]), data=states["primary"]))
+        steps.append(expect(primary_id in peer_ids(states["secondary"]), "secondary recorded primary heartbeat", node="secondary", hint=failure_hint("heartbeat recorded", data=states["secondary"]), data=states["secondary"]))
 
     sync_status: dict[str, dict[str, Any]] = {}
     failover_status: dict[str, dict[str, Any]] = {}
@@ -345,7 +417,10 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
         cluster = sync_status[node.name].get("cluster", {})
         steps.append(expect(sync_status[node.name].get("ok") is True, "sync status ok", node=node.name, hint=failure_hint("sync status ok", data=sync_status[node.name]), data=sync_status[node.name]))
         steps.append(expect(sync.get("memory_is_fresh") is True, "sync.memory_is_fresh == true", node=node.name, hint=failure_hint("sync.memory_is_fresh", data=sync_status[node.name]), data=sync_status[node.name]))
-        steps.append(expect(int(cluster.get("reachable_peers", 0)) >= 1, "cluster has reachable peer", node=node.name, hint=failure_hint("heartbeat cluster peer", data=sync_status[node.name]), data=sync_status[node.name]))
+        if topology.loopback:
+            steps.append(expect(synthetic_secondary_id in peer_ids(states["primary"]), "loopback cluster has synthetic heartbeat peer", node=node.name, hint=failure_hint("heartbeat cluster peer", data=sync_status[node.name]), data=sync_status[node.name]))
+        else:
+            steps.append(expect(int(cluster.get("reachable_peers", 0)) >= 1, "cluster has reachable peer", node=node.name, hint=failure_hint("heartbeat cluster peer", data=sync_status[node.name]), data=sync_status[node.name]))
 
         failover_payload, failover_failure = request_step(client, "GET", node, "/api/node/failover/status", "failover status reachable")
         if failover_failure:
@@ -358,7 +433,7 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
     if args.skip_write:
         return steps
 
-    memory_file_snapshot = None if args.keep_probe or args.no_restore_memory_file else read_memory_file_snapshot()
+    memory_file_snapshot = None if args.keep_probe or getattr(args, "no_restore_memory_file", False) else read_memory_file_snapshot()
     probe_key = args.probe_key or f"lan_field_smoke:{int(time.time())}"
     probe_value = f"{args.probe_value} ({time.strftime('%Y-%m-%d %H:%M:%S')})"
     writer = primary if states["primary"].get("role") == "primary" else secondary
@@ -412,7 +487,7 @@ def run_smoke(args: argparse.Namespace) -> list[Step]:
     steps.append(
         expect(
             matched,
-            "secondary can see probe memory",
+            "loopback can see probe memory" if topology.loopback else "secondary can see probe memory",
             node=reader.name,
             detail=f"source.mode={source_mode!r}",
             hint=failure_hint("memory snapshot can see probe", data=snapshot),
@@ -472,7 +547,11 @@ def print_report(steps: list[Step]) -> None:
     passed = len(steps) - len(failures)
     print(f"LAN field smoke: {passed}/{len(steps)} checks passed")
     if not failures:
-        print("OK: health, node state, heartbeats, sync, memory visibility and failover status passed.")
+        loopback = any(step.name.startswith("loopback ") for step in steps)
+        if loopback:
+            print("OK: loopback health, node state, synthetic heartbeat, sync, memory visibility and failover status passed.")
+        else:
+            print("OK: health, node state, heartbeats, sync, memory visibility and failover status passed.")
         for step in steps:
             if step.data.get("_summary"):
                 data = step.data
@@ -522,6 +601,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--primary-url", default=os.getenv("KAIROS_LAN_PRIMARY_URL", "http://127.0.0.1:8000"))
     parser.add_argument("--secondary-url", default=os.getenv("KAIROS_LAN_SECONDARY_URL", ""))
+    parser.add_argument("--loopback", action="store_true", default=os.getenv("KAIROS_LAN_SMOKE_LOOPBACK", "").lower() in {"1", "true", "yes", "on"}, help="Validate the LAN node contract against one physical server by registering a synthetic secondary heartbeat.")
+    parser.add_argument("--loopback-peer-id", default=os.getenv("KAIROS_LAN_SMOKE_LOOPBACK_PEER_ID", ""), help="Synthetic peer id used by --loopback.")
     parser.add_argument("--timeout", type=float, default=float(os.getenv("KAIROS_LAN_SMOKE_TIMEOUT", DEFAULT_TIMEOUT)))
     parser.add_argument("--sync-attempts", type=int, default=int(os.getenv("KAIROS_LAN_SMOKE_SYNC_ATTEMPTS", "6")))
     parser.add_argument("--sync-delay", type=float, default=float(os.getenv("KAIROS_LAN_SMOKE_SYNC_DELAY", "1.0")))
@@ -544,6 +625,8 @@ def main(argv: list[str] | None = None) -> int:
         args.secondary_url = args.urls[1]
     elif len(args.urls) > 2:
         parser.error("expected at most two positional URLs: [secondary-url] or [primary-url secondary-url]")
+    if args.loopback and not args.secondary_url:
+        args.secondary_url = args.primary_url
     if not args.secondary_url:
         parser.error("--secondary-url is required, or set KAIROS_LAN_SECONDARY_URL")
 

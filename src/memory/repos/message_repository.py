@@ -64,15 +64,15 @@ class MessageRepository(_BaseRepository):
     async def get_session_messages(self, session_id: str, limit: int = 500) -> list[tuple[Any, ...]]:
         """Retrieve messages for a session, ordered by creation time."""
         try:
-            conn = await self._get_conn()
-            cursor = await conn.execute('''
-                SELECT role, content, model, created_at, reasoning, phases, tool_calls, tool_call_id, id
-                FROM messages
-                WHERE session_id = ?
-                ORDER BY id ASC
-                LIMIT ?
-            ''', (session_id, limit))
-            return await cursor.fetchall()
+            async with self._connection() as conn:
+                cursor = await conn.execute('''
+                    SELECT role, content, model, created_at, reasoning, phases, tool_calls, tool_call_id, id
+                    FROM messages
+                    WHERE session_id = ?
+                    ORDER BY id ASC
+                    LIMIT ?
+                ''', (session_id, limit))
+                return await cursor.fetchall()
         except Exception:
             logger.exception("Failed to get session messages for %s", session_id)
             return []

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
@@ -41,6 +42,15 @@ class _FakeStore:
         )
         self.conn.commit()
         return rowid
+
+
+@pytest.fixture
+def vec_conn() -> Iterator[sqlite3.Connection]:
+    conn = sqlite3.connect(":memory:")
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 class TestGroupIntoExchanges:
@@ -118,14 +128,14 @@ class TestIsNoise:
 
 
 @pytest.mark.asyncio
-async def test_vectorize_session_catalog_marks_cross_session_dedup(tmp_path, monkeypatch):
+async def test_vectorize_session_catalog_marks_cross_session_dedup(tmp_path, monkeypatch, vec_conn):
     text = (
         "User: Explain how a distributed memory catalog avoids duplicated embedding work "
         "between two Kairos nodes.\n"
         "Assistant: It tracks each logical source item separately from the physical vector row."
     )
     text_hash = hashlib.md5(_normalize_for_dedup(text[:4000]).encode()).hexdigest()
-    conn = sqlite3.connect(":memory:")
+    conn = vec_conn
     conn.execute(
         """
         CREATE TABLE vec_meta (
@@ -177,14 +187,14 @@ async def test_vectorize_session_catalog_marks_cross_session_dedup(tmp_path, mon
 
 
 @pytest.mark.asyncio
-async def test_vectorize_session_catalog_does_not_trust_legacy_exchange_idx(tmp_path, monkeypatch):
+async def test_vectorize_session_catalog_does_not_trust_legacy_exchange_idx(tmp_path, monkeypatch, vec_conn):
     old_text = "User: old question about memory.\nAssistant: old answer."
     new_text = (
         "User: Explain why exchange indexes alone are not enough for memory freshness.\n"
         "Assistant: The content hash must match, otherwise the previous vector is stale."
     )
     old_hash = hashlib.md5(_normalize_for_dedup(old_text[:4000]).encode()).hexdigest()
-    conn = sqlite3.connect(":memory:")
+    conn = vec_conn
     conn.execute(
         """
         CREATE TABLE vec_meta (
@@ -235,7 +245,7 @@ async def test_vectorize_session_catalog_does_not_trust_legacy_exchange_idx(tmp_
 
 
 @pytest.mark.asyncio
-async def test_vectorize_session_can_fill_targeted_gap_with_existing_later_index(tmp_path, monkeypatch):
+async def test_vectorize_session_can_fill_targeted_gap_with_existing_later_index(tmp_path, monkeypatch, vec_conn):
     texts = [
         (
             "User: Explain how targeted memory repair fills an old missing exchange.\n"
@@ -250,7 +260,7 @@ async def test_vectorize_session_can_fill_targeted_gap_with_existing_later_index
             "Assistant: A max exchange index cursor can skip older missing vectors."
         ),
     ]
-    conn = sqlite3.connect(":memory:")
+    conn = vec_conn
     conn.execute(
         """
         CREATE TABLE vec_meta (

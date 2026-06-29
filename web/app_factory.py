@@ -117,6 +117,47 @@ def _wire_llm_runtime_state(llm_container, app_state=None) -> None:
         app_state.model_registry = llm_container.get_model_registry()
 
 
+def _ensure_llm_runtime_state(app: FastAPI, cfg=None):
+    """Create the LLM container once and expose its shared runtime state."""
+    from src.llm.container import LLMContainer
+
+    llm_container = getattr(app.state, "llm_container", None)
+    if llm_container is None:
+        llm_container = LLMContainer(config=cfg or getattr(app.state, "config", None))
+        app.state.llm_container = llm_container
+    _wire_llm_runtime_state(llm_container, app.state)
+    return llm_container
+
+
+def _ensure_core_services(app: FastAPI, cfg=None, repos=None, logbus=None) -> None:
+    """Expose core services required by routes that may run before lifespan."""
+    from src.core.services.telemetry_service import TelemetryService
+    from src.core.services.history_service import HistoryService
+    from src.core.services.llm_service import LLMService
+    from src.core.services.tool_execution_service import ToolExecutionService
+    from src.core.services.retrieval_service import RetrievalService
+
+    cfg = cfg or getattr(app.state, "config", None)
+    repos = repos or getattr(app.state, "repos", None) or get_repos()
+    logbus = logbus if logbus is not None else getattr(app.state, "logbus", None)
+    llm_container = _ensure_llm_runtime_state(app, cfg)
+
+    app.state.repos = repos
+    if not hasattr(app.state, "telemetry_service"):
+        app.state.telemetry_service = TelemetryService(logbus=logbus)
+    if not hasattr(app.state, "history_service"):
+        app.state.history_service = HistoryService(repos=repos)
+    if not hasattr(app.state, "tool_service"):
+        app.state.tool_service = ToolExecutionService()
+    if not hasattr(app.state, "retrieval_service"):
+        app.state.retrieval_service = RetrievalService(config=cfg)
+    if not hasattr(app.state, "llm_service"):
+        app.state.llm_service = LLMService(
+            telemetry_service=app.state.telemetry_service,
+            model_registry=llm_container.get_model_registry(),
+        )
+
+
 async def _prime_verified_model_cache(app: FastAPI, timeout: float = 10) -> None:
     """Prime the shared model registry used by HTTP requests."""
     from src.llm.model_registry import configure_model_registry
@@ -184,28 +225,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning("Failed to start LogBus", exc_info=True)
 
     # â”€â”€ Composition Root: Core Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    from src.core.services.telemetry_service import TelemetryService
-    from src.core.services.history_service import HistoryService
-    from src.core.services.llm_service import LLMService
-    from src.core.services.tool_execution_service import ToolExecutionService
-    from src.core.services.retrieval_service import RetrievalService
-
-    telemetry_service = TelemetryService(logbus=logbus)
-    app.state.telemetry_service = telemetry_service
-    app.state.history_service = HistoryService(repos=repos)
-    app.state.tool_service = ToolExecutionService()
-    app.state.retrieval_service = RetrievalService(config=cfg)
+    _ensure_core_services(app, cfg=cfg, repos=repos, logbus=logbus)
     logger.info("Composition root: Core services created and injected")
     # â”€â”€ Composition Root: LLM Container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    from src.llm.container import LLMContainer
-    llm_container = LLMContainer(config=cfg)
-    app.state.llm_container = llm_container
-    _wire_llm_runtime_state(llm_container, app.state)
+    _ensure_llm_runtime_state(app, cfg)
     logger.info("Composition root: LLM Container created and injected")
-    app.state.llm_service = LLMService(
-        telemetry_service=telemetry_service,
-        model_registry=llm_container.get_model_registry(),
-    )
     from src.coordination.node_state import get_node_coordinator
     from src.coordination.lan_bridge import NodeLanBridge
     if not hasattr(app.state, "node_coordinator"):
@@ -385,8 +409,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.warning("Failed to reset web runtime state on shutdown", exc_info=True)
     try:
-        from src.api.lifecycle import reset_runtime_state
-        reset_runtime_state()
+        from src.api.lifecycle import reset_runtime_state_async
+        await reset_runtime_state_async()
     except Exception:
         logger.warning("Failed to reset runtime state on shutdown", exc_info=True)
 
@@ -532,6 +556,7 @@ def create_app() -> FastAPI:
     app.state.save_memory_run = save_memory_run
     app.state.skill_registry = SkillRegistry()
     app.state.logbus = get_logbus()
+    _ensure_core_services(app, cfg=cfg, logbus=app.state.logbus)
     logger.info("Composition root: EventBus created and injected")
 
     register_middlewares(app)

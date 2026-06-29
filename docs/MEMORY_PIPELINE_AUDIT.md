@@ -39,6 +39,24 @@ Backfill conservador:
 python scripts/backfill_processing_catalog.py
 ```
 
+Preflight de pipeline local:
+
+```bash
+python scripts/memory_pipeline_preflight.py
+```
+
+Preflight de pipeline local + remoto:
+
+```bash
+python ops/remote/kairos_remote.py memory-preflight --node laptop
+```
+
+JSON para comparar nodos desde tools:
+
+```bash
+python ops/remote/kairos_remote.py memory-preflight --node laptop --json
+```
+
 Preflight LAN completo:
 
 ```bash
@@ -75,7 +93,7 @@ El smoke restaura `MEMORY.md` local al terminar para no dejar cambios de ordenam
 
 ## Proximo corte recomendado
 
-1. Correr backfill en ambos nodos.
-2. Confirmar que `memory_audit` reporta candidatos observados y sintesis procesadas.
+1. Correr `python ops/remote/kairos_remote.py memory-preflight --node laptop`.
+2. Confirmar que el reporte termina con todos los nodos consistentes y revisar cualquier bloque `[DIFF]`.
 3. Agregar un modo de auditoria de calidad para curaciones reales.
 4. Separar embeddings remotos como servicio/job idempotente por hash.

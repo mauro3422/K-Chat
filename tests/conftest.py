@@ -199,12 +199,12 @@ async def setup_test_db(monkeypatch):
         pass
 
 
-@pytest.fixture(autouse=True)
-def reset_shared_runtime_state():
+@pytest_asyncio.fixture(autouse=True)
+async def reset_shared_runtime_state():
     """Keep process-local singletons isolated between tests."""
     try:
-        from src.api.lifecycle import reset_runtime_state
-        reset_runtime_state()
+        from src.api.lifecycle import reset_runtime_state_async
+        await reset_runtime_state_async()
     except Exception:
         pass
 
@@ -217,8 +217,8 @@ def reset_shared_runtime_state():
     yield
 
     try:
-        from src.api.lifecycle import reset_runtime_state
-        reset_runtime_state()
+        from src.api.lifecycle import reset_runtime_state_async
+        await reset_runtime_state_async()
     except Exception:
         pass
 

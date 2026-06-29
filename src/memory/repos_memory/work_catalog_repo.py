@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 
@@ -28,6 +29,14 @@ class MemoryWorkCatalogRepository:
         conn.execute("PRAGMA busy_timeout=5000")
         self.ensure_schema(conn)
         return conn
+
+    @contextmanager
+    def _connection(self):
+        conn = self._connect()
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     @staticmethod
     def ensure_schema(conn: sqlite3.Connection) -> None:
@@ -61,7 +70,7 @@ class MemoryWorkCatalogRepository:
         conn.commit()
 
     def get(self, *, source: str, source_key: str, item_idx: int) -> dict[str, Any] | None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 """
                 SELECT source, source_key, item_idx, content_hash, status,
@@ -91,7 +100,7 @@ class MemoryWorkCatalogRepository:
     ) -> None:
         now = datetime.now().isoformat(timespec="seconds")
         meta_json = json.dumps(metadata or {}, ensure_ascii=True, sort_keys=True)
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 """
                 INSERT INTO memory_work_catalog (
@@ -123,7 +132,7 @@ class MemoryWorkCatalogRepository:
             conn.commit()
 
     def max_processed_idx(self, *, source: str, source_key: str) -> int:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 """
                 SELECT COALESCE(MAX(item_idx), -1)

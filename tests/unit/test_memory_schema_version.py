@@ -33,7 +33,7 @@ async def test_memory_schema_uses_independent_version_table(tmp_path, monkeypatc
     connection.close()
 
     monkeypatch.setenv("KAIROS_MEMORY_DB_PATH", str(database))
-    from src.memory.memory_schema import init_memory_db
+    from src.memory.memory_schema import MEMORY_SCHEMA_VERSION, init_memory_db
 
     await init_memory_db()
 
@@ -45,5 +45,5 @@ async def test_memory_schema_uses_independent_version_table(tmp_path, monkeypatc
 
     assert "session_id" not in columns
     assert {"key", "value", "weight"}.issubset(columns)
-    assert version == 12
+    assert version == MEMORY_SCHEMA_VERSION
     assert session_version == 23
