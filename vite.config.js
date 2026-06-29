@@ -10,7 +10,7 @@ export default defineConfig({
     sourcemap: process.env.NODE_ENV === 'development' ? true : false,
     rollupOptions: {
       input: {
-        app_mock: resolve(__dirname, 'web/src_ts/app_mock.ts'),
+        app: resolve(__dirname, 'web/src_ts/app.ts'),
       },
       output: {
         entryFileNames: 'assets/[name].js',

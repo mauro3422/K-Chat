@@ -582,7 +582,7 @@ def test_sse_client_handles_session_deleted():
     assert "this.eventBus.emit('sse:session-deleted'" in source, (
         "SSEClient must emit the session-deleted event"
     )
-    app_source = _read_source("web/src_ts/app_mock.ts")
+    app_source = _read_source("web/src_ts/app.ts")
     assert "eventBus.on<{ id: string }>('sse:session-deleted'" in app_source, (
         "App layer must listen for session deletion events"
     )

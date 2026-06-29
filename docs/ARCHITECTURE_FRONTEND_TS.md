@@ -2,8 +2,8 @@
 
 > **Última actualización:** 2026-06-16
 > **Versión:** TS Prototype (refactor completo)
-> **Entry point:** `web/src_ts/app_mock.ts`
-> **Build output:** `web/static/dist/assets/app_mock.js`
+> **Entry point:** `web/src_ts/app.ts`
+> **Build output:** `web/static/dist/assets/app.js`
 
 ---
 
@@ -11,7 +11,7 @@
 
 1. [Filosofía: Arquitectura Lego](#1-filosofía-arquitectura-lego)
 2. [Estructura de Capas](#2-estructura-de-capas)
-3. [Composition Root (app_mock.ts)](#3-composition-root)
+3. [Composition Root (app.ts)](#3-composition-root)
 4. [Core — Infraestructura](#4-core--infraestructura)
 5. [Core — Sesión y UI](#5-core--sesión-y-ui)
 6. [Core — Notificaciones](#6-core--notificaciones)
@@ -40,7 +40,7 @@ Cada pieza del sistema es un **bloque independiente** que:
 5. **No sabe nada** de capas superiores
 
 ```
-  types/  ←── core/  ←── rendering/  ←── streaming/  ←── widgets/  ←── app_mock.ts
+  types/  ←── core/  ←── rendering/  ←── streaming/  ←── widgets/  ←── app.ts
   (hoja)     (lógica)     (DOM)           (eventos)       (componentes)  (wiring)
 ```
 
@@ -124,12 +124,12 @@ web/src_ts/
 ├── api/
 │   └── ApiClient.ts             ← IChatApi, ISessionApi, etc.
 │
-└── app_mock.ts        ← Composition Root (wiring de todos los bloques)
+└── app.ts        ← Composition Root (wiring de todos los bloques)
 ```
 
 ---
 
-## 3. Composition Root (`app_mock.ts`)
+## 3. Composition Root (`app.ts`)
 
 Único archivo que **instancia todo** con `new`. Cero lógica de negocio.
 
@@ -906,7 +906,7 @@ build: {
   outDir: 'dist',
   sourcemap: process.env.NODE_ENV === 'development',
   rollupOptions: {
-    input: { app: 'web/static/app.js', app_mock: 'web/src_ts/app_mock.ts' },
+    input: { app: 'web/src_ts/app.ts' },
     output: {
       manualChunks(id) {
         if (id.includes('src_ts/widgets/')) return 'widgets';
@@ -923,7 +923,7 @@ build: {
 
 | Chunk | Tamaño | Contenido |
 |-------|--------|-----------|
-| `app_mock.js` | 37 KB | Composition root + core |
+| `app.js` | 37 KB | Composition root + core |
 | `streaming-*.js` | 51 KB | StreamOrchestrator, NDJSONClient, SSEClient, handlers |
 | `rendering-*.js` | 22 KB | MessageView, DomRenderer, IframeBuilder |
 | `widgets-*.js` | 20 KB | CanvasOverlay, CanvasWorkspace, SkillsUI |

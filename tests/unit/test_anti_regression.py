@@ -1,4 +1,4 @@
-﻿"""Anti-regression tests for architectural and frontend bugs.
+"""Anti-regression tests for architectural and frontend bugs.
 
 These tests exist to PREVENT the bugs we fixed today from coming back:
 1. CSP missing blob: in img-src  â†’ image paste previews blocked
@@ -100,11 +100,11 @@ REQUIRED_INITS = [
 ]
 
 
-async def test_app_mock_ts_has_all_initializations() -> None:
-    app_js = _read("web/src_ts/app_mock.ts")
+async def test_app_ts_has_all_initializations() -> None:
+    app_js = _read("web/src_ts/app.ts")
     for init_name in REQUIRED_INITS:
         assert init_name in app_js, \
-            f"Missing {init_name} call in app_mock.ts â€” TS bootstrap is incomplete!"
+            f"Missing {init_name} call in app.ts â€” TS bootstrap is incomplete!"
 
 
 # 6. app.js must no longer import the legacy runtime modules

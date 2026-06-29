@@ -1,6 +1,11 @@
-> ⚠️ This document may lag behind the current version. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) and [docs/MODULES.md](MODULES.md) for the latest.
+> ⚠️ **DEPRECATED** — Este documento describe la arquitectura frontend pre-migración a TypeScript (v0.0.64). Ya no refleja el estado real del sistema. El frontend vivo es TypeScript con Vite build, ver:
+> - [`docs/ARCHITECTURE_FRONTEND_TS.md`](ARCHITECTURE_FRONTEND_TS.md) — arquitectura TS actual
+> - [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — overview arquitectónico
+> - [`docs/MODULES.md`](MODULES.md) — inventario de módulos
 >
-> **Last updated:** 2026-06-14 — Full module inventory + ASR subsystem + widgets subsystem.
+> Conservado solo como referencia histórica. No actualizar. **No confiar en este doc para decisiones técnicas actuales.**
+>
+> **Last updated:** 2026-06-14 — Full module inventory + ASR subsystem + widgets subsystem (pre-TS migration).
 
 # Arquitectura Frontend — K-Chat
 

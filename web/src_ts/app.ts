@@ -29,6 +29,7 @@ import { CanvasCardManager } from './widgets/CanvasCardManager';
 import { CanvasLayoutStore } from './widgets/CanvasLayoutStore';
 import { SkillsUI } from './widgets/SkillsUI';
 import { ModelSelector } from './widgets/ModelSelector';
+import { ModelAvailabilityPoller } from './widgets/ModelAvailabilityPoller';
 import { NotificationService } from './core/notification/NotificationService';
 import { RateLimitCooldown } from './core/notification/RateLimitCooldown';
 import { ToastUI } from './core/notification/ToastUI';
@@ -105,12 +106,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const skillsUI = new SkillsUI(eventBus, renderMarkdownFn, window.fetch.bind(window));
   const modelSelector = new ModelSelector();
+  const modelAvailabilityPoller = new ModelAvailabilityPoller();
   const systemLogPanel = new SystemLogPanel(apiClient);
   const lanStatusPanel = new LanStatusPanel(apiClient, getLogger('lan-status'));
   const memoryStatusPanel = new MemoryStatusPanel(apiClient, getLogger('memory-status'));
   const healthOverviewPanel = new HealthOverviewPanel(apiClient, getLogger('health-overview'));
   skillsUI.init();
   modelSelector.init();
+  modelAvailabilityPoller.init();
   systemLogPanel.init();
   lanStatusPanel.init();
   memoryStatusPanel.init();

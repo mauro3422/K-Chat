@@ -14,10 +14,10 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 ## Stack
 
 - **Models:** big-pickle (default), deepseek-v4-flash-free (fallback) — OpenCode Zen API
-- **Chat:** CLI + Web dashboard (FastAPI + vanilla JS + Jinja2)
+- **Chat:** CLI + Web dashboard (FastAPI + TypeScript frontend + Jinja2)
 - **Memory:** SQLite persistent (sessions, messages with reasoning, tool_calls with phases, debug_info)
 - **Context:** SOUL.md + MEMORY.md + AGENTS.md + TOOLS.md (auto-created and auto-generated)
-- **Frontend:** No build step, no bundles. HTML + CSS + JS vanilla (~2,000 lines total)
+- **Frontend:** TypeScript + Vite build. 80+ TS modules under `web/src_ts/`, served via Jinja2 template (`chat_ts.html`) that loads the Vite bundle from `web/static/dist/assets/app.js`. Lightweight dependency injection (Lego blocks) — each widget, panel, and service is wired in `app.ts` (the composition root). Vendored libs only (marked, purify, htmx); zero JS framework.
 
 ## Structure
 

@@ -126,7 +126,7 @@ class TestPageEndpoints:
         assert isinstance(resp, RedirectResponse)
         assert resp.headers["location"] == "http://192.168.1.40:8000/go/sid-remote"
 
-    @patch("web.routers.pages.get_repos")
+    @patch("web.routers._node_helpers.get_repos")
     @patch("web.routers.pages.templates.TemplateResponse")
     @pytest.mark.anyio
     async def test_sidebar_returns_html(self, mock_tpl, mock_get_repos):

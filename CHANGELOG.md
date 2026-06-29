@@ -1,5 +1,36 @@
 # Changelog — K-Chat
 
+## [2026-06-29] - v0.2.3 — node.py god-router split, providers dedup, TS migration cierre
+
+### Refactor
+
+- **`node.py` god-router split**: 519 líneas → 6 archivos cohesivos (node.py 202, node_memory.py 184, node_failover.py 23, _node_helpers.py 96, _node_models.py 27, web/services/node_observability.py 95). URLs idénticas, auto-discovery registra los 3 routers con mismo prefix `/api/node`. 0 breaking changes.
+- **Providers dedup**: `_get_coordinator`, `_get_event_bus`, wrapper `_request_repos` se importan de `_node_helpers.py` en memory.py, _memory_snapshot.py, sessions.py, pages.py. Sin duplicación.
+- **`NodeRolePayload` eliminado**: dead code desde commit `feac04d` (creado junto a `/promote` y `/demote` sin body — nunca cableado).
+
+### TS migration — cierre cosmético
+
+- **`app_mock.ts` → `app.ts`** (vía `git mv`); `vite.config.js`, `pages.py`, tests y docs actualizados. Bundle: `dist/assets/app.js`.
+- **`model-availability.js` migrado a TS** como `ModelAvailabilityPoller.ts`. Wireado en `app.ts` como bloque DI. Archivo JS vanilla y `<script>` del template eliminados.
+- **`chat_ts.py` eliminado** (redirect innecesario, las rutas principales sirven directamente el template TS).
+
+### Documentacion
+
+- **`README.md`** — "No build step, no bundles. HTML + CSS + JS vanilla" reescrito a "TypeScript + Vite build. 80+ TS modules..., lightweight dependency injection (Lego blocks)".
+- **`docs/ARCHITECTURE.md`** — "No DI container" corregido a DI lightweight en Python (app_factory.py ~18 blocks) + TypeScript (app.ts).
+- **`docs/ARCHITECTURE_FRONTEND_TS.md` y `docs/BACKEND_MIGRATION.md`** — 12 refs `app_mock.*` → `app.*`.
+- **`docs/ARCHITECTURE_FRONTEND.md` y `docs/LEGOS_AUDIT.md`** — marcados como deprecated (documentan pre-migración TS).
+- **`docs/REFACTOR_PENDING.md`** — split y TS cierre marcados COMPLETADOS. Único pendiente: renombramiento DBs (alto riesgo).
+
+### Tests
+
+- `pytest` (6 archivos afectados) -> **145 passed**.
+- `npx vitest run` -> **352 passed**.
+- `npx tsc --noEmit` -> 0 errores.
+- `create_app()` registra 14 rutas `/api/node/*` idénticas, 0 rutas `/chat-ts`.
+
+Ver: [changelogs/v0.2.3.md](changelogs/v0.2.3.md)
+
 ## [2026-06-29] - v0.2.2 — CI fix, docs sync, stale cleanup
 
 ### Corregido

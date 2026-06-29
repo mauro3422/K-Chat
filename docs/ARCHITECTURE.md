@@ -2,7 +2,7 @@
 
 ## Philosophy: Legos
 
-Every piece is an independent block connected by minimal interfaces. No central framework, no magic plugin loader, no DI container. Each file can be read and understood on its own.
+Every piece is an independent block connected by minimal interfaces. No central framework, no magic plugin loader. Dependency injection is explicit and lightweight (Python: composition root in `web/app_factory.py` that wires ~18 Lego blocks; TypeScript: composition root in `web/src_ts/app.ts` that wires widgets, panels, and streaming services). Each file can be read and understood on its own.
 
 The system is organized in layers with clear boundaries:
 

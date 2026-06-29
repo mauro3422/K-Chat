@@ -1,3 +1,5 @@
+> ⚠️ **DEPRECATED** — Audit de arquitectura Legos previo a la migración TS (v0.0.64) y al split de `node.py` (v0.2.3). Las referencias a `web/static/app.js` como "actual bundle entry" y a módulos JS vanilla como activos ya no son precisas. Bundle actual: `dist/assets/app.js` (Vite build desde `web/src_ts/app.ts`). Ver [`docs/ARCHITECTURE_FRONTEND_TS.md`](ARCHITECTURE_FRONTEND_TS.md) y [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) para el estado actual. Conservado como referencia histórica.
+
 # K-Chat Legos Audit
 
 This is the current architecture audit for the repo. It is intentionally blunt: the goal is to separate what is already decoupled from what is still in transition.

@@ -13,8 +13,8 @@ from src.api.llm_client import (
     get_model_registry,
     get_rate_limit_store,
 )
-from src.api.repos import get_repos
-from web.routers._request_repos import is_unconfigured_mock, request_repos
+from web.routers._node_helpers import _request_repos
+from web.routers._request_repos import is_unconfigured_mock
 from web.services.diagnostics_snapshot import build_diagnostics_snapshot
 from web.routers.sessions import _federated_session_entries
 from web.services.message_renderer import render_session_messages
@@ -29,10 +29,6 @@ templates.env.auto_reload = True
 _NOCACHE_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 _STATIC_DIR = Path(__file__).parent.parent / "static"
 _DIST_DIR = _STATIC_DIR / "dist" / "assets"
-
-
-def _request_repos(request: Request):
-    return request_repos(request, fallback=get_repos)
 
 
 def _request_web_base_url(request: Request | None = None) -> str:
@@ -160,11 +156,12 @@ def get_available_models(request: Request | None = None) -> dict[str, list[dict]
     return grouped
 
 
-def resolve_frontend_entry(preferred_name: str = "app_mock.js", fallback_name: str = "app.js") -> str:
+def resolve_frontend_entry(preferred_name: str = "app.js", fallback_name: str = "app.js") -> str:
     """Return the best available frontend entrypoint.
 
-    Uses the Vite-built bundle when present, otherwise falls back to the
-    checked-in ESM source so the app remains usable without a build step.
+    Uses the Vite-built bundle (``/static/dist/assets/app.js``) when present.
+    ``fallback_name`` is kept for API compatibility with environments that ship
+    a non-bundled ``/static/app.js`` — currently unused here but harmless.
     """
     bundled = _DIST_DIR / preferred_name
     if bundled.exists():
@@ -196,7 +193,7 @@ def home(request: Request, new: bool = False) -> HTMLResponse:
         "models_json": _json.dumps(_models),
         "master_session_base_url": _request_web_base_url(request),
         "master_session_url": _master_session_url(request, session_id),
-        "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
+        "frontend_entry": resolve_frontend_entry("app.js", "app.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     # Always refresh the cookie so "new" actually persists
@@ -221,7 +218,7 @@ async def session_page(request: Request, session_id: str) -> Response:
         "models_json": _json.dumps(_models2),
         "master_session_base_url": _request_web_base_url(request),
         "master_session_url": _master_session_url(request, session_id),
-        "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
+        "frontend_entry": resolve_frontend_entry("app.js", "app.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp
@@ -289,7 +286,7 @@ async def go_session(request: Request, session_id: str) -> Response:
         "models_json": _json.dumps(_models3),
         "master_session_base_url": _request_web_base_url(request),
         "master_session_url": _master_session_url(request, session_id),
-        "frontend_entry": resolve_frontend_entry("app_mock.js", "app_mock.js"),
+        "frontend_entry": resolve_frontend_entry("app.js", "app.js"),
     })
     resp.headers.update(_NOCACHE_HEADERS)
     return resp

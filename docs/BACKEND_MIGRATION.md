@@ -13,10 +13,10 @@
 | Dimensión | Frontend TS | Backend Python | Diferencia |
 |-----------|-------------|----------------|------------|
 | Clases con interfaz | **39/39 (100%)** | ~40%, protocols existen pero no 1:1 | El backend tiene protocols en repos pero las services no tienen interfaces 1:1 |
-| Composition Root | ✅ `app_mock.ts` — 1 archivo, 0 lógica | ❌ Disperso: `get_repos()` en 7+ archivos, `new` inline en `chat_stream.py` | **Crítico** |
+| Composition Root | ✅ `app.ts` — 1 archivo, 0 lógica | ❌ Disperso: `get_repos()` en 7+ archivos, `new` inline en `chat_stream.py` | **Crítico** |
 | Singletons globales | **0** | **3+**: `get_repos()`, `get_event_bus()`, `_config` | **Alto** |
-| Inline `new` en lógica | **0** — todo en app_mock | **5+**: TelemetryService, HistoryService, LLMService, ToolExecutionService dentro de `build_stream_generator()` | **Alto** |
-| Capas estrictas | ✅ `types/` ← `core/` ← `streaming/` ← `app_mock.ts` | 🟡 Parcial: `web/services/` importa `src.api.orchestrator` directamente | Medio |
+| Inline `new` en lógica | **0** — todo en app | **5+**: TelemetryService, HistoryService, LLMService, ToolExecutionService dentro de `build_stream_generator()` | **Alto** |
+| Capas estrictas | ✅ `types/` ← `core/` ← `streaming/` ← `app.ts` | 🟡 Parcial: `web/services/` importa `src.api.orchestrator` directamente | Medio |
 | Event Bus desacoplado | ✅ `IEventBus` inyectado | ✅ `EventBus` con `get_event_bus()` pero es singleton global | Medio |
 | Persistencia inyectada | ✅ Repos via constructor | 🟡 Hay protocolos, pero `get_repos()` es singleton | Medio |
 
