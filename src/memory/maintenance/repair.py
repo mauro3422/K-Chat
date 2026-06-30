@@ -189,6 +189,39 @@ def _plan_memory_vector_catalog_repairs(memory_conn: sqlite3.Connection, report:
         ))
 
 
+def _plan_orphan_memory_catalog_repairs(memory_conn: sqlite3.Connection, report: RepairReport) -> None:
+    if not _table_exists(memory_conn, "memory_work_catalog") or not _table_exists(memory_conn, "memory_index"):
+        return
+
+    has_vec_meta = _table_exists(memory_conn, "vec_meta")
+    join_vec = "LEFT JOIN vec_meta v ON v.rowid = c.vec_rowid" if has_vec_meta else ""
+    vec_missing_clause = "AND (c.vec_rowid IS NULL OR v.rowid IS NULL)" if has_vec_meta else ""
+    rows = memory_conn.execute(
+        f"""
+        SELECT c.source, c.source_key, c.item_idx, c.content_hash, c.status, c.vec_rowid
+        FROM memory_work_catalog c
+        {join_vec}
+        LEFT JOIN memory_index m ON m.key = c.source_key
+        WHERE c.source = 'memory'
+          AND c.status IN ('embedded', 'deduped')
+          {vec_missing_clause}
+          AND m.key IS NULL
+        ORDER BY c.source_key, c.item_idx
+        """
+    ).fetchall()
+    for row in rows:
+        report.actions.append(RepairAction(
+            action="orphan_catalog_row",
+            source=str(row["source"]),
+            source_key=str(row["source_key"]),
+            item_idx=int(row["item_idx"]),
+            content_hash=str(row["content_hash"] or ""),
+            status=str(row["status"] or ""),
+            vec_rowid=int(row["vec_rowid"]) if row["vec_rowid"] is not None else None,
+            reason="memory_key_and_vec_missing",
+        ))
+
+
 def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
     report = RepairReport()
     with _connect(sessions_db, readonly=True) as sessions_conn, _connect(memory_db, readonly=True) as memory_conn:
@@ -311,6 +344,7 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
                         reason="no_matching_vector",
                     ))
         _plan_memory_vector_catalog_repairs(memory_conn, report)
+        _plan_orphan_memory_catalog_repairs(memory_conn, report)
     return report
 
 
@@ -331,6 +365,19 @@ def apply_catalog_repairs(*, memory_db: str, report: RepairReport) -> int:
             metadata={"repair_action": action.action},
         )
         applied += 1
+    orphan_rows = [action for action in report.actions if action.action == "orphan_catalog_row"]
+    if orphan_rows:
+        with sqlite3.connect(memory_db) as conn:
+            for action in orphan_rows:
+                conn.execute(
+                    """
+                    DELETE FROM memory_work_catalog
+                    WHERE source = ? AND source_key = ? AND item_idx = ?
+                    """,
+                    (action.source, action.source_key, action.item_idx),
+                )
+                applied += 1
+            conn.commit()
     return applied
 
 
@@ -398,6 +445,7 @@ def print_text_report(report: RepairReport, *, applied: bool) -> None:
         f"catalog_memory_embedded={counts.get('catalog_memory_embedded', 0)} "
         f"catalog_deduped={counts.get('catalog_deduped', 0)} "
         f"catalog_noise={counts.get('catalog_noise', 0)} "
+        f"orphan_catalog_row={counts.get('orphan_catalog_row', 0)} "
         f"missing_vector={counts.get('missing_vector', 0)} "
         f"stale_vector={counts.get('stale_vector', 0)} "
         f"broken_catalog_link={counts.get('broken_catalog_link', 0)}"
@@ -409,7 +457,10 @@ def print_text_report(report: RepairReport, *, applied: bool) -> None:
     if report.pruned_stale_vectors:
         print(f"pruned_stale_vectors={report.pruned_stale_vectors}")
 
-    interesting = [a for a in report.actions if a.action in {"missing_vector", "stale_vector", "broken_catalog_link"}]
+    interesting = [
+        a for a in report.actions
+        if a.action in {"missing_vector", "stale_vector", "broken_catalog_link", "orphan_catalog_row"}
+    ]
     if interesting:
         print("")
         print("Remaining work:")
@@ -459,6 +510,8 @@ def main(argv: list[str] | None = None) -> int:
     report = plan_repairs(sessions_db=sessions_db, memory_db=memory_db)
     if args.apply:
         applied_catalog_rows = apply_catalog_repairs(memory_db=memory_db, report=report)
+        if applied_catalog_rows:
+            report = plan_repairs(sessions_db=sessions_db, memory_db=memory_db)
         vectorized_sessions: dict[str, int] = {}
         pruned_stale_vectors = 0
         if args.vectorize_missing:
@@ -480,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
         report.counts.get("missing_vector", 0)
         or report.counts.get("stale_vector", 0)
         or report.counts.get("broken_catalog_link", 0)
+        or report.counts.get("orphan_catalog_row", 0)
     ):
         return 1
     return 0

@@ -627,6 +627,7 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
         return {
             "ok": not stale_sessions
             and not orphan_vectors
+            and catalog["missing_vec_links"] == 0
             and catalog["uncataloged_vectors"] == 0
             and processing_catalog["failed"] == 0
             and processing_catalog["stale"] == 0
@@ -652,6 +653,7 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
                 "sessions_with_missing_vectors": len(missing_sessions),
                 "sessions_with_stale_vectors": len(stale_sessions),
                 "orphan_vector_sources": len(orphan_vectors),
+                "catalog_missing_vec_links": catalog["missing_vec_links"],
                 "uncataloged_vectors": catalog["uncataloged_vectors"],
                 "processing_failed": processing_catalog["failed"],
                 "processing_stale": processing_catalog["stale"],

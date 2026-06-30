@@ -236,3 +236,26 @@ def test_memory_repair_backfills_memory_vector_catalog_rows(tmp_path):
     assert row["status"] == "embedded"
     assert row["vec_rowid"] == 11
     assert row["content_hash"] == digest
+
+
+def test_memory_repair_deletes_orphan_memory_catalog_row(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    catalog = MemoryWorkCatalogRepository(str(memory_db))
+    catalog.mark(
+        source="memory",
+        source_key="lan_field_smoke:ghost",
+        item_idx=0,
+        content_hash="ghost-hash",
+        status="embedded",
+        vec_rowid=99,
+        reason="test_fixture",
+    )
+
+    report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
+    assert report.counts == {"missing_vector": 1, "orphan_catalog_row": 1}
+
+    assert apply_catalog_repairs(memory_db=str(memory_db), report=report) == 1
+    assert catalog.get(source="memory", source_key="lan_field_smoke:ghost", item_idx=0) is None

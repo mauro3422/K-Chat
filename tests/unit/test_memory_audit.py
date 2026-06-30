@@ -285,3 +285,25 @@ def test_memory_audit_reports_uncataloged_memory_vectors(tmp_path):
     assert report["catalog"]["uncataloged_vectors"] == 1
     assert report["catalog"]["uncataloged_by_source"] == {"memory": 1}
     assert report["summary"]["uncataloged_vectors"] == 1
+
+
+def test_memory_audit_fails_on_missing_catalog_vector_link(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    MemoryWorkCatalogRepository(str(memory_db)).mark(
+        source="memory",
+        source_key="lan_field_smoke:ghost",
+        item_idx=0,
+        content_hash="ghost-hash",
+        status="embedded",
+        vec_rowid=99,
+        reason="test_fixture",
+    )
+
+    report = run_audit(sessions_db=str(sessions_db), memory_db=str(memory_db), root=str(tmp_path))
+
+    assert report["ok"] is False
+    assert report["catalog"]["missing_vec_links"] == 1
+    assert report["summary"]["catalog_missing_vec_links"] == 1
