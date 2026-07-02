@@ -129,7 +129,7 @@ class VectorStore:
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
                 metadata TEXT NOT NULL DEFAULT '{}',
-                PRIMARY KEY (source, source_key, item_idx)
+                PRIMARY KEY (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
             )
         """)
         for col in [
@@ -143,6 +143,8 @@ class VectorStore:
                 conn.execute(f"ALTER TABLE memory_work_catalog ADD COLUMN {col[0]} {col[1]}")
             except Exception:
                 logger.debug("Column %s already exists in memory_work_catalog (safe)", col[0])
+        from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
+        MemoryWorkCatalogRepository.ensure_schema(conn)
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_status
             ON memory_work_catalog (status, updated_at)

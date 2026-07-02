@@ -14,11 +14,13 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 async def main():
-    from src.memory.curator.curate import curate_all
-    from src.tools.save_memory import run as save_memory_run
+    from src.memory.curator.curate import _save_memory_local, curate_all
+    from src.memory.operations.sync import _sync
+    from src.memory.repos import get_repos
     
     print("🌙 K-Chat Memory Curator starting...")
-    result = await curate_all(dry=False, save_memory_fn=lambda k, v: save_memory_run(key=k, value=v))
+    result = await curate_all(dry=False, save_memory_fn=_save_memory_local)
+    sync_result = await _sync(dry_run=False, confirm=True, repos=get_repos())
     
     gardener = result.get("gardener", [])
     tracer = result.get("tracer", {})
@@ -34,6 +36,7 @@ async def main():
         print(f"   [{p['type']}] ...")
     
     print(f"✅ Curator: {saved}/{len(entries)} new memories saved")
+    print(f"✅ Memory index sync: {sync_result}")
     
     if saved > 0 or gardener or tracer.get("total", 0) > 0:
         print("✅ Curation successful")

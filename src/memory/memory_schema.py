@@ -424,7 +424,7 @@ def _migration_013_memory_work_catalog(conn: sqlite3.Connection, engine) -> None
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             metadata TEXT NOT NULL DEFAULT '{}',
-            PRIMARY KEY (source, source_key, item_idx)
+            PRIMARY KEY (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
         )
     """)
     conn.execute("""
@@ -583,6 +583,76 @@ def _migration_018_memory_work_catalog_identity(conn: sqlite3.Connection, engine
     logger.info("memory_work_catalog identity columns added")
 
 
+def _migration_019_memory_work_catalog_identity_pk(conn: sqlite3.Connection, engine) -> None:
+    """Promote embedding identity into memory_work_catalog's primary key."""
+    cursor = conn.execute("PRAGMA table_info(memory_work_catalog)")
+    rows = cursor.fetchall()
+    if not rows:
+        return
+    pk_columns = tuple(row[1] for row in sorted((row for row in rows if int(row[5] or 0) > 0), key=lambda row: int(row[5])))
+    target_pk = ("source", "source_key", "item_idx", "pipeline", "pipeline_version", "model_id", "model_version")
+    if pk_columns == target_pk:
+        return
+
+    conn.execute("ALTER TABLE memory_work_catalog RENAME TO memory_work_catalog_old")
+    conn.execute("""
+        CREATE TABLE memory_work_catalog (
+            source TEXT NOT NULL,
+            source_key TEXT NOT NULL,
+            item_idx INTEGER NOT NULL,
+            content_hash TEXT NOT NULL DEFAULT '',
+            pipeline TEXT NOT NULL DEFAULT 'embedding',
+            pipeline_version TEXT NOT NULL DEFAULT '1',
+            model_id TEXT NOT NULL DEFAULT 'fastembed-default',
+            model_version TEXT NOT NULL DEFAULT 'default',
+            source_node_id TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            vec_rowid INTEGER,
+            reason TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            metadata TEXT NOT NULL DEFAULT '{}',
+            PRIMARY KEY (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
+        )
+    """)
+    conn.execute("""
+        INSERT OR REPLACE INTO memory_work_catalog (
+            source, source_key, item_idx, content_hash,
+            pipeline, pipeline_version, model_id, model_version,
+            source_node_id, status, vec_rowid, reason,
+            created_at, updated_at, metadata
+        )
+        SELECT
+            source, source_key, item_idx, content_hash,
+            COALESCE(NULLIF(pipeline, ''), 'embedding'),
+            COALESCE(NULLIF(pipeline_version, ''), '1'),
+            COALESCE(NULLIF(model_id, ''), 'fastembed-default'),
+            COALESCE(NULLIF(model_version, ''), 'default'),
+            COALESCE(source_node_id, ''),
+            status, vec_rowid, reason,
+            created_at, updated_at, metadata
+        FROM memory_work_catalog_old
+    """)
+    conn.execute("DROP TABLE memory_work_catalog_old")
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_status
+        ON memory_work_catalog (status, updated_at)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_hash
+        ON memory_work_catalog (content_hash)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_vec
+        ON memory_work_catalog (vec_rowid)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_identity
+        ON memory_work_catalog (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
+    """)
+    logger.info("memory_work_catalog identity primary key applied")
+
+
 _MEMORY_MIGRATIONS = (
     _migration_001_global_memory_index,
     _migration_002_vec_store,
@@ -602,6 +672,7 @@ _MEMORY_MIGRATIONS = (
     _migration_016_entities_origin_node_id,
     _migration_017_topic_clusters_origin_node_id,
     _migration_018_memory_work_catalog_identity,
+    _migration_019_memory_work_catalog_identity_pk,
 )
 
 MEMORY_SCHEMA_VERSION = len(_MEMORY_MIGRATIONS)

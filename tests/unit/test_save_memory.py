@@ -1,12 +1,15 @@
 from unittest.mock import AsyncMock
 import os
+import sqlite3
 import tempfile
 import pytest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 
 from src.coordination.memory_write_queue import get_memory_write_queue
 from src.coordination.node_state import NodeCoordinator, configure_node_coordinator, reset_node_coordinator
+from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
 from src.tools.save_memory import run as save_memory_run
 
 @pytest.fixture
@@ -129,3 +132,101 @@ async def test_save_memory_broadcasts_memory_updated_event(temp_memory_file):
     with open(temp_memory_file, "r", encoding="utf-8") as f:
         content = f.read()
     assert "- **Preferencia**: Python" in content
+
+
+class _MemoryIndexFake:
+    async def upsert(self, key, value):
+        return None
+
+    async def get(self, key):
+        return None
+
+    async def delete(self, key):
+        return None
+
+
+class _VectorStoreFake:
+    def __init__(self):
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.execute(
+            """
+            CREATE TABLE vec_meta (
+                rowid INTEGER PRIMARY KEY,
+                source TEXT,
+                source_key TEXT,
+                exchange_idx INTEGER,
+                text TEXT,
+                hash TEXT,
+                content_hash TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        self.conn.execute("CREATE TABLE vec_keywords (rowid INTEGER, word TEXT, score REAL)")
+        self.conn.commit()
+
+    def _get_conn(self):
+        return self.conn
+
+    def delete_by_source(self, source_key, source=""):
+        self.conn.execute("DELETE FROM vec_meta WHERE source=? AND source_key=?", (source, source_key))
+        self.conn.commit()
+        return 0
+
+    def insert(self, embedding, **kwargs):
+        rowid = 10
+        self.conn.execute(
+            """
+            INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (
+                rowid,
+                kwargs["source"],
+                kwargs["source_key"],
+                kwargs.get("exchange_idx", 0),
+                kwargs["text"],
+                kwargs["hash"],
+                kwargs["content_hash"],
+            ),
+        )
+        self.conn.commit()
+        return rowid
+
+
+@pytest.mark.anyio
+async def test_save_memory_registers_memory_embedding_in_work_catalog(temp_memory_file, tmp_path):
+    catalog = MemoryWorkCatalogRepository(str(tmp_path / "memory.db"))
+    store = _VectorStoreFake()
+    repos = SimpleNamespace(
+        memory=SimpleNamespace(
+            memory_index=_MemoryIndexFake(),
+            vector_store=store,
+            work_catalog=catalog,
+        )
+    )
+
+    with (
+        patch("src.memory.embeddings.service.generate_embedding", return_value=[0.1, 0.2]),
+        patch("src.memory.keywords.extractor.extract_keywords", return_value=[("python", 1.0)]),
+    ):
+        result = await save_memory_run(
+            key="user:preference",
+            value="2026-07-01 10:00 | Mauro prefers cataloged memory writes.",
+            _repos=repos,
+        )
+
+    row = catalog.get(
+        source="memory",
+        source_key="user:preference",
+        item_idx=0,
+        pipeline="memory_entry_embedding",
+        pipeline_version="1",
+        model_id="fastembed-default",
+        model_version="default",
+    )
+    assert "[OK]" in result
+    assert row is not None
+    assert row["status"] == "embedded"
+    assert row["vec_rowid"] == 10
+    store.conn.close()

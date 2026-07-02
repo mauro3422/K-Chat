@@ -21,6 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.memory.maintenance.audit import _content_hash, _group_into_exchanges, _table_exists
+from src.memory.embedding_identity import memory_entry_embedding_identity, session_exchange_embedding_identity
 from src.memory.noise_filter import is_noise
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
 
@@ -123,9 +124,44 @@ def _catalog_row(conn: sqlite3.Connection, session_id: str, idx: int) -> sqlite3
     return _catalog_row_for(conn, source="session", source_key=session_id, item_idx=idx)
 
 
+def _catalog_identity_kwargs(source: str) -> dict[str, str]:
+    if source == "session":
+        return session_exchange_embedding_identity().as_catalog_kwargs()
+    if source == "memory":
+        return memory_entry_embedding_identity().as_catalog_kwargs()
+    return {}
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    if not _table_exists(conn, table):
+        return set()
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
 def _catalog_row_for(conn: sqlite3.Connection, *, source: str, source_key: str, item_idx: int) -> sqlite3.Row | None:
     if not _table_exists(conn, "memory_work_catalog"):
         return None
+    identity = _catalog_identity_kwargs(source)
+    identity_columns = ("pipeline", "pipeline_version", "model_id", "model_version")
+    if identity and set(identity_columns).issubset(_table_columns(conn, "memory_work_catalog")):
+        return conn.execute(
+            """
+            SELECT content_hash, status, vec_rowid
+            FROM memory_work_catalog
+            WHERE source=? AND source_key=? AND item_idx=?
+              AND pipeline=? AND pipeline_version=?
+              AND model_id=? AND model_version=?
+            """,
+            (
+                source,
+                source_key,
+                item_idx,
+                identity["pipeline"],
+                identity["pipeline_version"],
+                identity["model_id"],
+                identity["model_version"],
+            ),
+        ).fetchone()
     return conn.execute(
         """
         SELECT content_hash, status, vec_rowid
@@ -363,6 +399,7 @@ def apply_catalog_repairs(*, memory_db: str, report: RepairReport) -> int:
             vec_rowid=action.vec_rowid,
             reason=action.reason,
             metadata={"repair_action": action.action},
+            **_catalog_identity_kwargs(action.source),
         )
         applied += 1
     orphan_rows = [action for action in report.actions if action.action == "orphan_catalog_row"]

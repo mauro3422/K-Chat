@@ -224,7 +224,9 @@ def remote_python_bootstrap() -> str:
     return (
         'KAIROS_PY="$(if [ -x venv/bin/python ]; then printf %s venv/bin/python; '
         'elif [ -x .venv/bin/python ]; then printf %s .venv/bin/python; '
-        'else command -v python3; fi)"'
+        'elif command -v python3 >/dev/null 2>&1 && python3 -c "import fastembed, sqlite_vec" >/dev/null 2>&1; then command -v python3; '
+        'else printf >&2 "Kairos Python environment not found. Fix: cd %s && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt\\n" "$(pwd)"; '
+        'exit 127; fi)"'
     )
 
 

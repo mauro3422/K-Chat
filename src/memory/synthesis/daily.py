@@ -8,7 +8,7 @@ import aiosqlite
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -143,7 +143,11 @@ async def _get_session_topics(mem_db: str, session_id: str) -> list[str]:
         return [r["label"] for r in await cursor.fetchall() if r["label"]]
 
 
-async def generate_daily_synthesis(db_path: str, output_dir: str = "memory/synthesis") -> str:
+async def generate_daily_synthesis(
+    db_path: str,
+    output_dir: str = "memory/synthesis",
+    target_date: date | None = None,
+) -> str:
     """Generate a daily synthesis Markdown report.
 
     Connects to sessions.db at *db_path*, resolves memory.db internally.
@@ -152,6 +156,7 @@ async def generate_daily_synthesis(db_path: str, output_dir: str = "memory/synth
     Args:
         db_path: Path to sessions.db.
         output_dir: Output directory relative to project root.
+        target_date: Date to synthesize. Defaults to today, or yesterday before 04:00.
 
     Returns:
         Absolute path to the created report file.
@@ -160,10 +165,11 @@ async def generate_daily_synthesis(db_path: str, output_dir: str = "memory/synth
     root = _project_root()
     abs_output_dir = os.path.join(root, output_dir)
 
-    now = datetime.now()
-    target_date = now.date()
-    if now.hour < 4:
-        target_date = (now - timedelta(days=1)).date()
+    if target_date is None:
+        now = datetime.now()
+        target_date = now.date()
+        if now.hour < 4:
+            target_date = (now - timedelta(days=1)).date()
     date_str = target_date.isoformat()
 
     logger.info("Generating daily synthesis for %s", date_str)

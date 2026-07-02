@@ -21,6 +21,7 @@ LAN_FAILOVER_DRILL = ROOT / "scripts" / "lan_failover_drill.py"
 LAN_FIELD_SMOKE = ROOT / "scripts" / "lan_field_smoke.py"
 REMOTE_CLIENT = ROOT / "ops" / "remote" / "kairos_remote.py"
 REMOTE_NODES_EXAMPLE = ROOT / "ops" / "remote" / "nodes.example.json"
+PYTHON_BOOTSTRAP = ROOT / "scripts" / "_python_bootstrap.py"
 
 
 def load_remote_client_module():
@@ -121,6 +122,7 @@ def test_remote_client_has_valid_python_syntax() -> None:
     assert "fastembed=ok" in source
     assert "scripts/memory_audit.py" in source
     assert "venv/bin/python" in source
+    assert "Kairos Python environment not found" in source
     assert "--raw-message" in source
     assert "--json" in source
     assert "--loopback" in source
@@ -407,6 +409,43 @@ def test_remote_doctor_hint_names_common_lan_failures() -> None:
     assert "KAIROS_PEER_URLS" in module.doctor_hint("sync_status")
     assert "puerto SSH" in module.doctor_hint("ssh", detail="connection refused")
     assert "Auditoria de memoria" in module.doctor_hint("memory_audit")
+
+
+def test_memory_script_bootstrap_reports_missing_repo_env(monkeypatch, tmp_path) -> None:
+    spec = importlib.util.spec_from_file_location("kairos_python_bootstrap_test", PYTHON_BOOTSTRAP)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    root = tmp_path / "Kairos"
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True)
+    (root / "src").mkdir()
+    (root / "requirements.txt").write_text("fastembed\nsqlite-vec\n", encoding="utf-8")
+    script = scripts / "memory_audit.py"
+    script.write_text("", encoding="utf-8")
+    monkeypatch.setattr(module.importlib.util, "find_spec", lambda _module: None)
+
+    with pytest.raises(SystemExit) as exc:
+        module.ensure_repo_python(str(script), command_name="scripts/memory_audit.py")
+
+    message = str(exc.value)
+    assert "Kairos Python environment not found." in message
+    assert "Expected a repo venv or the current Python with required packages." in message
+    assert "py -3 -m venv .venv" in message
+    assert ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt" in message
+
+
+def test_remote_python_bootstrap_does_not_fallback_to_global_python() -> None:
+    module = load_remote_client_module()
+
+    bootstrap = module.remote_python_bootstrap()
+
+    assert "venv/bin/python" in bootstrap
+    assert ".venv/bin/python" in bootstrap
+    assert "Kairos Python environment not found" in bootstrap
+    assert 'python3 -c "import fastembed, sqlite_vec"' in bootstrap
 
 
 def test_windows_control_has_valid_powershell_syntax() -> None:

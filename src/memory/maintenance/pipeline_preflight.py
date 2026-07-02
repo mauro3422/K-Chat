@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
 
 from src.memory.maintenance.backfill_processing_catalog import run_backfill
 from src.memory.maintenance.audit import run_audit
+from src.memory.maintenance.repair import apply_catalog_repairs, plan_repairs
 
 
 class RemoteCommandRunner(Protocol):
@@ -141,6 +142,12 @@ def run_local_pipeline(
         root=root,
     )
     try:
+        repair_report = plan_repairs(sessions_db=resolved_sessions, memory_db=resolved_memory)
+        if not dry_run:
+            repair_report.applied_catalog_rows = apply_catalog_repairs(
+                memory_db=resolved_memory,
+                report=repair_report,
+            )
         backfill = run_backfill(
             sessions_db=resolved_sessions,
             memory_db=resolved_memory,
@@ -157,6 +164,7 @@ def run_local_pipeline(
             "node": node,
             "ok": not issues,
             "error": "",
+            "repair": repair_report.as_dict(),
             "backfill": backfill,
             "audit": audit,
             "snapshot": node_snapshot(audit),
@@ -167,6 +175,7 @@ def run_local_pipeline(
             "node": node,
             "ok": False,
             "error": str(exc),
+            "repair": {},
             "backfill": {},
             "audit": {},
             "snapshot": {},

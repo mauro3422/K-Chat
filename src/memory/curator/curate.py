@@ -153,6 +153,37 @@ def _get_processing_catalog() -> MemoryProcessingCatalogRepository | None:
         return None
 
 
+def _mark_processing_catalog(
+    catalog: MemoryProcessingCatalogRepository | None,
+    *,
+    source: str,
+    source_key: str,
+    item_idx: int,
+    stage: str,
+    content_hash: str,
+    status: str = "processed",
+    processor: str = "",
+    reason: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    if catalog is None:
+        return
+    try:
+        catalog.mark(
+            source=source,
+            source_key=source_key,
+            item_idx=item_idx,
+            stage=stage,
+            content_hash=content_hash,
+            status=status,
+            processor=processor,
+            reason=reason,
+            metadata=metadata,
+        )
+    except Exception:
+        logger.debug("Failed to mark memory processing catalog", exc_info=True)
+
+
 def parse_resp(text: str) -> list[dict[str, str]]:
     entries: list[dict[str, str]] = []
     key = None
@@ -180,6 +211,7 @@ async def curate_clusters(
         llm_call_fn = _default_llm_call
 
     db_path = _get_memory_db_path()
+    catalog = None if dry else _get_processing_catalog()
     conn = sqlite3.connect(db_path)
     clusters = conn.execute(
         "SELECT cluster_id, label, exchange_count FROM topic_clusters "
@@ -229,14 +261,48 @@ async def curate_clusters(
             + "\n---\n".join(t[:400] for t in texts)
             + "\n\nExtract new info or NO_NEW_INFO"
         )
+        digest = content_hash(prompt)
+        if catalog and catalog.is_processed(
+            source="cluster",
+            source_key=str(cid),
+            item_idx=-1,
+            stage="curated",
+            content_hash=digest,
+        ):
+            logger.info("Skipping unchanged curated cluster %s", cid)
+            continue
+
         context = _get_memory_context()
         system_prompt = f"EXISTING MEMORIES:\n{context}\n\n{CURATOR_PROMPT}" if context else CURATOR_PROMPT
         try:
             resp = await llm_call_fn(system_prompt, prompt)
-            if "NO_NEW_INFO" not in resp:
-                entries.extend(parse_resp(resp))
+            parsed = [] if "NO_NEW_INFO" in resp else parse_resp(resp)
+            _mark_processing_catalog(
+                catalog,
+                source="cluster",
+                source_key=str(cid),
+                item_idx=-1,
+                stage="curated",
+                content_hash=digest,
+                processor="curate_clusters",
+                reason="no_new_info" if not parsed else "entries_extracted",
+                metadata={"entries": len(parsed), "texts": len(texts), "label": str(label)},
+            )
+            entries.extend(parsed)
         except Exception:
             logger.exception("LLM call failed for cluster %s", label)
+            _mark_processing_catalog(
+                catalog,
+                source="cluster",
+                source_key=str(cid),
+                item_idx=-1,
+                stage="curated",
+                content_hash=digest,
+                status="failed",
+                processor="curate_clusters",
+                reason="llm_call_failed",
+                metadata={"texts": len(texts), "label": str(label)},
+            )
 
     return entries
 
@@ -514,6 +580,24 @@ async def curate_all(
     # Step 4: Save report to MEMORY.md as a curation checkpoint
     if not dry:
         report_text = "\n".join(report_lines)
+        catalog = _get_processing_catalog()
+        report_digest = content_hash("\n".join(report_lines[2:]) or report_text)
+        _mark_processing_catalog(
+            catalog,
+            source="curator",
+            source_key=datetime.now().strftime("%Y-%m-%d"),
+            item_idx=-1,
+            stage="run",
+            content_hash=report_digest,
+            processor="curate_all",
+            reason="completed",
+            metadata={
+                "entries": len(entries),
+                "saved": saved,
+                "gardener_actions": len(gardener_results),
+                "tracer_patterns": int(tracer_result.get("total", 0)),
+            },
+        )
         try:
             await save_memory_fn(
                 f"checkpoint:curation-{datetime.now().strftime('%Y-%m-%d')}",

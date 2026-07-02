@@ -223,8 +223,8 @@ Estado del primer corte:
 - [x] `vectorize_session()` registra `embedded`, `deduped` y `noise`.
 - [x] El auditor muestra resumen del catalogo y usa catalogo para evitar falsos faltantes por dedup.
 - [x] Test de idempotencia: si una sesion B reutiliza el embedding de sesion A por `content_hash`, la segunda pasada ya no reprocesa.
-- [ ] Decision incremental completa por `content_hash + pipeline + model_id` pendiente.
-- [ ] Registro de `save_memory` y curator/synthesis en catalogo pendiente.
+- [x] Decision incremental completa por `content_hash + pipeline + model_id`.
+- [x] Registro de `save_memory` y curator/synthesis en catalogo.
 
 Estado del segundo corte:
 
@@ -236,7 +236,8 @@ Estado del segundo corte:
 - [x] Detecta catalogos que apuntan a un `vec_rowid` inexistente y los repara contra el vector actual por `content_hash`.
 - [x] En PC grande, el auditor quedo sin `missing_sessions` ni `stale_sessions`.
 - [x] Resolver tablas vectoriales legacy en `sessions.db` con backup previo y limpieza controlada.
-- [ ] Ejecutar el mismo repair en laptop despues del pull.
+- [x] Ejecutar el mismo repair en laptop despues del pull.
+- [x] Laptop post-pull verificada: audit OK, repair sin acciones pendientes, preflight local OK.
 
 ## Criterio de aprobado
 

@@ -26,6 +26,10 @@ def _catalog_identity_defaults() -> dict[str, str]:
     }
 
 
+_IDENTITY_COLUMNS = ("pipeline", "pipeline_version", "model_id", "model_version")
+_PRIMARY_KEY_COLUMNS = ("source", "source_key", "item_idx", *_IDENTITY_COLUMNS)
+
+
 class MemoryWorkCatalogRepository:
     """SQLite repository for memory_work_catalog."""
 
@@ -68,11 +72,15 @@ class MemoryWorkCatalogRepository:
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
                 metadata TEXT NOT NULL DEFAULT '{}',
-                PRIMARY KEY (source, source_key, item_idx)
+                PRIMARY KEY (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
             )
         """)
         columns = {row[1] for row in conn.execute("PRAGMA table_info(memory_work_catalog)").fetchall()}
         for column, sql_type in [
+            ("reason", "TEXT NOT NULL DEFAULT ''"),
+            ("created_at", "TEXT NOT NULL DEFAULT ''"),
+            ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+            ("metadata", "TEXT NOT NULL DEFAULT '{}'"),
             ("pipeline", f"TEXT NOT NULL DEFAULT '{defaults['pipeline']}'"),
             ("pipeline_version", f"TEXT NOT NULL DEFAULT '{defaults['pipeline_version']}'"),
             ("model_id", f"TEXT NOT NULL DEFAULT '{defaults['model_id']}'"),
@@ -81,6 +89,8 @@ class MemoryWorkCatalogRepository:
         ]:
             if column not in columns:
                 conn.execute(f"ALTER TABLE memory_work_catalog ADD COLUMN {column} {sql_type}")
+                columns.add(column)
+        MemoryWorkCatalogRepository._ensure_identity_primary_key(conn)
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_memory_work_catalog_status
             ON memory_work_catalog (status, updated_at)
@@ -99,8 +109,88 @@ class MemoryWorkCatalogRepository:
         """)
         conn.commit()
 
-    def get(self, *, source: str, source_key: str, item_idx: int) -> dict[str, Any] | None:
+    @staticmethod
+    def _primary_key_columns(conn: sqlite3.Connection) -> tuple[str, ...]:
+        pk_rows = [
+            row
+            for row in conn.execute("PRAGMA table_info(memory_work_catalog)").fetchall()
+            if int(row[5] or 0) > 0
+        ]
+        return tuple(row[1] for row in sorted(pk_rows, key=lambda row: int(row[5])))
+
+    @staticmethod
+    def _ensure_identity_primary_key(conn: sqlite3.Connection) -> None:
+        if MemoryWorkCatalogRepository._primary_key_columns(conn) == _PRIMARY_KEY_COLUMNS:
+            return
+
+        conn.execute("ALTER TABLE memory_work_catalog RENAME TO memory_work_catalog_old")
+        conn.execute("""
+            CREATE TABLE memory_work_catalog (
+                source TEXT NOT NULL,
+                source_key TEXT NOT NULL,
+                item_idx INTEGER NOT NULL,
+                content_hash TEXT NOT NULL DEFAULT '',
+                pipeline TEXT NOT NULL DEFAULT 'embedding',
+                pipeline_version TEXT NOT NULL DEFAULT '1',
+                model_id TEXT NOT NULL DEFAULT 'fastembed-default',
+                model_version TEXT NOT NULL DEFAULT 'default',
+                source_node_id TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                vec_rowid INTEGER,
+                reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                metadata TEXT NOT NULL DEFAULT '{}',
+                PRIMARY KEY (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
+            )
+        """)
+        conn.execute("""
+            INSERT OR REPLACE INTO memory_work_catalog (
+                source, source_key, item_idx, content_hash,
+                pipeline, pipeline_version, model_id, model_version,
+                source_node_id, status, vec_rowid, reason,
+                created_at, updated_at, metadata
+            )
+            SELECT
+                source, source_key, item_idx, content_hash,
+                COALESCE(NULLIF(pipeline, ''), 'embedding'),
+                COALESCE(NULLIF(pipeline_version, ''), '1'),
+                COALESCE(NULLIF(model_id, ''), 'fastembed-default'),
+                COALESCE(NULLIF(model_version, ''), 'default'),
+                COALESCE(source_node_id, ''),
+                status, vec_rowid, reason,
+                created_at, updated_at, metadata
+            FROM memory_work_catalog_old
+        """)
+        conn.execute("DROP TABLE memory_work_catalog_old")
+
+    def get(
+        self,
+        *,
+        source: str,
+        source_key: str,
+        item_idx: int,
+        pipeline: str | None = None,
+        pipeline_version: str | None = None,
+        model_id: str | None = None,
+        model_version: str | None = None,
+    ) -> dict[str, Any] | None:
         with self._connection() as conn:
+            if None in {pipeline, pipeline_version, model_id, model_version}:
+                row = conn.execute(
+                    """
+                    SELECT source, source_key, item_idx, content_hash,
+                           pipeline, pipeline_version, model_id, model_version,
+                           source_node_id, status, vec_rowid, reason,
+                           created_at, updated_at, metadata
+                    FROM memory_work_catalog
+                    WHERE source = ? AND source_key = ? AND item_idx = ?
+                    ORDER BY updated_at DESC, rowid DESC
+                    LIMIT 1
+                    """,
+                    (source, source_key, item_idx),
+                ).fetchone()
+                return dict(row) if row else None
             row = conn.execute(
                 """
                 SELECT source, source_key, item_idx, content_hash,
@@ -109,8 +199,10 @@ class MemoryWorkCatalogRepository:
                        created_at, updated_at, metadata
                 FROM memory_work_catalog
                 WHERE source = ? AND source_key = ? AND item_idx = ?
+                  AND pipeline = ? AND pipeline_version = ?
+                  AND model_id = ? AND model_version = ?
                 """,
-                (source, source_key, item_idx),
+                (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version),
             ).fetchone()
             return dict(row) if row else None
 
@@ -126,7 +218,15 @@ class MemoryWorkCatalogRepository:
         model_id: str = "fastembed-default",
         model_version: str = "default",
     ) -> bool:
-        row = self.get(source=source, source_key=source_key, item_idx=item_idx)
+        row = self.get(
+            source=source,
+            source_key=source_key,
+            item_idx=item_idx,
+            pipeline=pipeline,
+            pipeline_version=pipeline_version,
+            model_id=model_id,
+            model_version=model_version,
+        )
         return bool(
             row
             and row["content_hash"] == content_hash
@@ -157,32 +257,25 @@ class MemoryWorkCatalogRepository:
         now = datetime.now().isoformat(timespec="seconds")
         meta_json = json.dumps(metadata or {}, ensure_ascii=True, sort_keys=True)
         with self._connection() as conn:
-            conn.execute(
+            result = conn.execute(
                 """
-                INSERT INTO memory_work_catalog (
-                    source, source_key, item_idx, content_hash,
-                    pipeline, pipeline_version, model_id, model_version,
-                    source_node_id, status, vec_rowid, reason,
-                    created_at, updated_at, metadata
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(source, source_key, item_idx) DO UPDATE SET
-                    content_hash = excluded.content_hash,
-                    pipeline = excluded.pipeline,
-                    pipeline_version = excluded.pipeline_version,
-                    model_id = excluded.model_id,
-                    model_version = excluded.model_version,
-                    source_node_id = excluded.source_node_id,
-                    status = excluded.status,
-                    vec_rowid = excluded.vec_rowid,
-                    reason = excluded.reason,
-                    updated_at = excluded.updated_at,
-                    metadata = excluded.metadata
+                UPDATE memory_work_catalog
+                SET content_hash = ?,
+                    pipeline = ?,
+                    pipeline_version = ?,
+                    model_id = ?,
+                    model_version = ?,
+                    source_node_id = ?,
+                    status = ?,
+                    vec_rowid = ?,
+                    reason = ?,
+                    updated_at = ?,
+                    metadata = ?
+                WHERE source = ? AND source_key = ? AND item_idx = ?
+                  AND pipeline = ? AND pipeline_version = ?
+                  AND model_id = ? AND model_version = ?
                 """,
                 (
-                    source,
-                    source_key,
-                    item_idx,
                     content_hash,
                     pipeline,
                     pipeline_version,
@@ -193,10 +286,45 @@ class MemoryWorkCatalogRepository:
                     vec_rowid,
                     reason,
                     now,
-                    now,
                     meta_json,
+                    source,
+                    source_key,
+                    item_idx,
+                    pipeline,
+                    pipeline_version,
+                    model_id,
+                    model_version,
                 ),
             )
+            if result.rowcount == 0:
+                conn.execute(
+                    """
+                    INSERT INTO memory_work_catalog (
+                        source, source_key, item_idx, content_hash,
+                        pipeline, pipeline_version, model_id, model_version,
+                        source_node_id, status, vec_rowid, reason,
+                        created_at, updated_at, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        source,
+                        source_key,
+                        item_idx,
+                        content_hash,
+                        pipeline,
+                        pipeline_version,
+                        model_id,
+                        model_version,
+                        source_node_id,
+                        status,
+                        vec_rowid,
+                        reason,
+                        now,
+                        now,
+                        meta_json,
+                    ),
+                )
             conn.commit()
 
     def max_processed_idx(self, *, source: str, source_key: str) -> int:

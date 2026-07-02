@@ -4,6 +4,7 @@ import sqlite3
 
 from scripts.memory_audit import _content_hash
 from scripts.memory_repair import apply_catalog_repairs, plan_repairs, prune_stale_vectors
+from src.memory.embedding_identity import memory_entry_embedding_identity, session_exchange_embedding_identity
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
 
 
@@ -84,6 +85,14 @@ def test_memory_repair_plans_and_applies_catalog_embedded(tmp_path):
 
     applied = apply_catalog_repairs(memory_db=str(memory_db), report=report)
     assert applied == 1
+    catalog = MemoryWorkCatalogRepository(str(memory_db))
+    assert catalog.is_processed(
+        source="session",
+        source_key="s1",
+        item_idx=0,
+        content_hash=digest,
+        **session_exchange_embedding_identity().as_catalog_kwargs(),
+    )
     report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
     assert report.counts == {}
 
@@ -199,6 +208,7 @@ def test_memory_repair_detects_and_fixes_broken_catalog_link(tmp_path):
         status="embedded",
         vec_rowid=8,
         reason="old_row",
+        **session_exchange_embedding_identity().as_catalog_kwargs(),
     )
 
     report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
@@ -231,11 +241,60 @@ def test_memory_repair_backfills_memory_vector_catalog_rows(tmp_path):
 
     assert apply_catalog_repairs(memory_db=str(memory_db), report=report) == 1
     catalog = MemoryWorkCatalogRepository(str(memory_db))
-    row = catalog.get(source="memory", source_key="user:workflow", item_idx=0)
+    identity = memory_entry_embedding_identity().as_catalog_kwargs()
+    row = catalog.get(source="memory", source_key="user:workflow", item_idx=0, **identity)
     assert row is not None
     assert row["status"] == "embedded"
     assert row["vec_rowid"] == 11
     assert row["content_hash"] == digest
+    assert catalog.is_processed(
+        source="memory",
+        source_key="user:workflow",
+        item_idx=0,
+        content_hash=digest,
+        **identity,
+    )
+
+
+def test_memory_repair_ignores_legacy_default_identity_catalog_row(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    digest = _content_hash(_exchange_text())
+    conn = sqlite3.connect(memory_db)
+    conn.execute(
+        """
+        INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+        VALUES (12, 'session', 's1', 0, ?, ?, ?, '2026-06-27T10:00:02')
+        """,
+        (_exchange_text(), digest, digest),
+    )
+    conn.commit()
+    conn.close()
+
+    catalog = MemoryWorkCatalogRepository(str(memory_db))
+    catalog.mark(
+        source="session",
+        source_key="s1",
+        item_idx=0,
+        content_hash=digest,
+        status="embedded",
+        vec_rowid=12,
+        reason="legacy_default_identity",
+    )
+
+    report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
+    assert report.counts == {"catalog_embedded": 1}
+
+    assert apply_catalog_repairs(memory_db=str(memory_db), report=report) == 1
+    assert catalog.is_processed(
+        source="session",
+        source_key="s1",
+        item_idx=0,
+        content_hash=digest,
+        **session_exchange_embedding_identity().as_catalog_kwargs(),
+    )
 
 
 def test_memory_repair_deletes_orphan_memory_catalog_row(tmp_path):
