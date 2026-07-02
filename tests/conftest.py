@@ -191,6 +191,12 @@ async def setup_test_db(monkeypatch):
     yield sessions_db_path
 
     try:
+        from src.api.lifecycle import reset_runtime_state_async
+        await reset_runtime_state_async()
+    except Exception:
+        pass
+
+    try:
         for path in (sessions_db_path, memory_db_path, memory_queue_path):
             if os.path.exists(path):
                 os.remove(path)

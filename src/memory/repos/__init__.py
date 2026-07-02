@@ -41,6 +41,11 @@ class Repositories:
             from src.memory.repos_memory import MemoryRepositories
             self.memory = MemoryRepositories()
 
+    def close(self) -> None:
+        """Close cached resources owned by nested repositories."""
+        if self.memory is not None:
+            self.memory.close()
+
 
 def get_repos(conn=None) -> Repositories:
     from src.memory.repos_memory import get_memory_repos

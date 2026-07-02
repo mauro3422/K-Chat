@@ -44,6 +44,11 @@ class MemoryRepositories:
         if self.processing_catalog is None:
             self.processing_catalog = MemoryProcessingCatalogRepository(resolve_memory_db_path())
 
+    def close(self) -> None:
+        """Close cached resources owned by this repository bundle."""
+        if self.vector_store is not None:
+            self.vector_store.close()
+
 
 def get_memory_repos() -> MemoryRepositories:
     """Create a MemoryRepositories instance with default repos."""

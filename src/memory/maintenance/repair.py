@@ -12,6 +12,8 @@ import asyncio
 import json
 import sqlite3
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -74,14 +76,18 @@ class RepairReport:
         }
 
 
-def _connect(path: str, *, readonly: bool) -> sqlite3.Connection:
+@contextmanager
+def _connect(path: str, *, readonly: bool) -> Iterator[sqlite3.Connection]:
     if readonly:
         uri = Path(path).resolve().as_uri() + "?mode=ro"
         conn = sqlite3.connect(uri, uri=True)
     else:
         conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _vec_rows_by_session_idx(conn: sqlite3.Connection, session_id: str, idx: int) -> list[sqlite3.Row]:
@@ -404,7 +410,7 @@ def apply_catalog_repairs(*, memory_db: str, report: RepairReport) -> int:
         applied += 1
     orphan_rows = [action for action in report.actions if action.action == "orphan_catalog_row"]
     if orphan_rows:
-        with sqlite3.connect(memory_db) as conn:
+        with _connect(memory_db, readonly=False) as conn:
             for action in orphan_rows:
                 conn.execute(
                     """

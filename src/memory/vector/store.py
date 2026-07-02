@@ -62,6 +62,25 @@ class VectorStore:
             self._init_tables()
         return self._conn
 
+    def close(self) -> None:
+        """Close the cached SQLite connection, if one was opened."""
+        with self._lock:
+            if self._conn is not None:
+                conn, self._conn = self._conn, None
+                conn.close()
+
+    def __enter__(self) -> "VectorStore":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def _init_tables(self):
         """Ensure vector store tables exist (fallback if migration hasn't run).
 
