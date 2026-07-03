@@ -106,9 +106,9 @@ export class NDJSONStreamClient implements INDJSONStreamClient {
     let resp: Response;
     try {
       if (files && files.length > 0) {
-        resp = await this.apiClient.chatStreamWithFiles(sessionId, message, model || 'default', controller, files);
+        resp = await this.apiClient.chatStreamWithFiles(sessionId, message, model || '', controller, files);
       } else {
-        resp = await this.apiClient.chatStream(sessionId, message, model || 'default', controller);
+        resp = await this.apiClient.chatStream(sessionId, message, model || '', controller);
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;

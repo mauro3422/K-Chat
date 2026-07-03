@@ -210,7 +210,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         await this.ndjsonClient.startStream({
           sessionId: this.sessionStore.activeSessionId,
           message: text,
-          model: model || 'default',
+          model: model || '',
           signal: abortController.signal,
           dispatcher: dispatcher,
           context: ctx,
