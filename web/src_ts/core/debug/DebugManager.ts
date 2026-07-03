@@ -449,10 +449,14 @@ export class DebugManager implements IDebugManager {
   // ── Private: Copy ────────────────────────────────────
 
   private handleCopyClick(e: Event): void {
-    const target = e.target as HTMLElement;
-    const btn = target.closest('.db-copy') as HTMLElement | null;
+    const target = e.target as Node;
+    // e.target can be a text node (e.g. clicking on emoji inside button)
+    // — closest() only exists on Element, not on Text nodes.
+    const el = target.nodeType === Node.TEXT_NODE ? target.parentElement : target as Element;
+    const btn = el?.closest('.db-copy') as HTMLElement | null;
     if (!btn) return;
     const action = btn.getAttribute('data-copy-action');
+    console.log('[debug] copy click', { action, btnText: btn.textContent });
     if (action === 'all') this.copyAll(btn);
     else if (action === 'stream') this.copyStreamSection(btn);
     else if (action === 'ui') this.copyUISection(btn);

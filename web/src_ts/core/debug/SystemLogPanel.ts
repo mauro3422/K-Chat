@@ -57,8 +57,10 @@ export class SystemLogPanel {
         // Save scroll position
         const scrollTop = this.logsContentEl!.scrollTop;
         this.render(entries);
-        // Restore scroll position
-        this.logsContentEl!.scrollTop = scrollTop;
+        // Restore scroll position after layout
+        requestAnimationFrame(() => {
+          if (this.logsContentEl) this.logsContentEl.scrollTop = scrollTop;
+        });
       })
       .catch((err: unknown) => {
         this.logger.warn('refresh failed', err);
