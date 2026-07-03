@@ -165,14 +165,16 @@ export class DebugManager implements IDebugManager {
 
     this.contentEl.innerHTML = html;
 
-    // Restore scroll positions
+    // Restore scroll positions after layout completes
     if (Object.keys(scrollPositions).length > 0) {
-      this.contentEl.querySelectorAll('pre.db-pre, .dbg-dom, .sl-container').forEach((el, i) => {
-        const key = (el.id || `scroll-${i}`);
-        const saved = scrollPositions[key];
-        if (saved !== undefined) {
-          el.scrollTop = saved;
-        }
+      requestAnimationFrame(() => {
+        this.contentEl!.querySelectorAll('pre.db-pre, .dbg-dom, .sl-container').forEach((el, i) => {
+          const key = (el.id || `scroll-${i}`);
+          const saved = scrollPositions[key];
+          if (saved !== undefined) {
+            el.scrollTop = saved;
+          }
+        });
       });
     }
   }
@@ -487,13 +489,32 @@ export class DebugManager implements IDebugManager {
   }
 
   private copyText(text: string, btn: HTMLElement): void {
-    navigator.clipboard.writeText(text).then(() => {
+    const fallbackCopy = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const showResult = (ok: boolean) => {
       const orig = btn.textContent;
-      btn.textContent = '✅ Copied!';
+      btn.textContent = ok ? '✅ Copied!' : '❌ Error';
       setTimeout(() => { btn.textContent = orig; }, 1500);
-    }).catch(() => {
-      btn.textContent = '❌ Error';
-    });
+    };
+
+    navigator.clipboard.writeText(text).then(
+      () => showResult(true),
+      () => showResult(fallbackCopy())
+    );
   }
 
   // ── Private: Util ────────────────────────────────────
