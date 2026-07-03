@@ -546,4 +546,97 @@ async def test_scripts_test_sh_exists_and_uses_venv() -> None:
         "back to system python3 which lacks fastembed."
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 27. TOCTOU race condition fixes (2026-07-03)
+#     Prevents the ERR_CONNECTION_REFUSED crash caused by concurrent requests
+#     hitting UNIQUE constraint on sessions.session_id, and similar patterns.
+# ─────────────────────────────────────────────────────────────────────────────
 
+async def test_session_ensure_uses_insert_or_ignore() -> None:
+    """session_repository.py ensure() must use INSERT OR IGNORE, not SELECT+INSERT."""
+    content = _read("src/memory/repos/session_repository.py")
+    assert "INSERT OR IGNORE INTO sessions" in content, \
+        "session_repository.py ensure() must use INSERT OR IGNORE (atomic)."
+    # The ensure() method should NOT have a SELECT followed by INSERT.
+    # Find the ensure() method body and check.
+    ensure_start = content.find("async def ensure(")
+    ensure_end = content.find("async def exists(", ensure_start)
+    ensure_body = content[ensure_start:ensure_end]
+    assert "SELECT 1 FROM sessions" not in ensure_body, \
+        "ensure() must NOT use SELECT before INSERT — TOCTOU race condition."
+
+
+async def test_work_catalog_mark_uses_on_conflict_do_update() -> None:
+    """work_catalog_repo.py mark() must use INSERT ... ON CONFLICT DO UPDATE."""
+    content = _read("src/memory/repos_memory/work_catalog_repo.py")
+    assert "ON CONFLICT (source, source_key, item_idx" in content, \
+        "work_catalog_repo.py must use ON CONFLICT DO UPDATE (atomic upsert)."
+    assert "result.rowcount == 0" not in content, \
+        "work_catalog_repo.py must NOT use UPDATE-then-INSERT pattern — TOCTOU bug."
+
+
+async def test_vector_store_insert_has_atomic_dedup() -> None:
+    """VectorStore.insert() must check content_hash atomically inside _lock."""
+    content = _read("src/memory/vector/store.py")
+    assert "SELECT rowid FROM vec_meta WHERE content_hash = ? LIMIT 1" in content, \
+        "VectorStore.insert() missing atomic dedup check — duplicate vectors possible."
+    assert "if content_hash:" in content, \
+        "VectorStore must dedup by content_hash to prevent duplicate embeddings."
+
+
+async def test_curate_has_pre_mark_processing() -> None:
+    """curate.py must pre-mark as 'processing' before LLM call to prevent dupes."""
+    content = _read("src/memory/curator/curate.py")
+    assert 'status="processing"' in content, \
+        "curate.py must pre-mark clusters/sessions as 'processing' before LLM call " \
+        "to prevent duplicate LLM work from concurrent curators."
+    assert "Pre-mark as" in content, \
+        "curate.py must have comment explaining the pre-mark TOCTOU fix."
+
+
+async def test_curate_retire_uses_per_session_commit() -> None:
+    """_retire_old_sessions() must commit per session, not all at once."""
+    content = _read("src/memory/curator/curate.py")
+    assert "del_conn.commit()" in content, \
+        "curate.py _retire_old_sessions must commit deleted_sessions per session."
+    assert "conn.rollback()" in content, \
+        "curate.py _retire_old_sessions must rollback on session deletion failure."
+
+
+async def test_watchdog_has_grace_180_and_failures_6() -> None:
+    """Watchdog must tolerate slow model downloads (180s grace, 6 failures)."""
+    content = _read(".kairos/watchdog.py")
+    assert 'STARTUP_GRACE = int(os.getenv("WATCHDOG_STARTUP_GRACE", "180"))' in content, \
+        "Watchdog STARTUP_GRACE must be 180s (was 10s) to tolerate model downloads."
+    assert 'REQUIRED_FAILURES = int(os.getenv("WATCHDOG_REQUIRED_FAILURES", "6"))' in content, \
+        "Watchdog REQUIRED_FAILURES must be 6 (was 3) to avoid false positives."
+
+
+async def test_models_availability_auto_refreshes_when_empty() -> None:
+    """debug.py /models/availability must auto-refresh when registry is empty."""
+    content = _read("web/routers/debug.py")
+    assert 'reg.summary()["total_models"] == 0' in content, \
+        "debug.py must auto-refresh model registry when empty (lazy recovery)."
+    assert "ensure_registry_refreshed()" in content, \
+        "debug.py must call ensure_registry_refreshed() on empty registry."
+
+
+async def test_ml_preload_runs_as_create_task() -> None:
+    """ML model preload must run as asyncio.create_task, not blocking lifespan."""
+    content = _read("web/app_factory.py")
+    assert "async def _warmup_ml_models" in content, \
+        "app_factory.py must define _warmup_ml_models as background coroutine."
+    assert "asyncio.create_task(_warmup_ml_models())" in content, \
+        "app_factory.py must run ML warmup as background task, not blocking startup."
+    # Preload must NOT block the yield (i.e., no await before yield)
+    warmup_pos = content.find("_warmup_ml_models")
+    yield_pos = content.find("yield")
+    assert warmup_pos > yield_pos or warmup_pos == -1, \
+        "ML preload must run AFTER yield or as background task, not blocking startup."
+
+
+async def test_lifespan_model_prime_runs_as_create_task() -> None:
+    """Model registry priming must run as background task."""
+    content = _read("web/app_factory.py")
+    assert "asyncio.create_task(_prime_model_registry())" in content, \
+        "Model registry priming must run as background task (not blocking lifespan)."
