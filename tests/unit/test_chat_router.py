@@ -87,7 +87,7 @@ async def test_chat_success(mock_build_gen, mock_rebuild, mock_get_repos, mock_d
     assert isinstance(result, StreamingResponse)
     assert result.media_type == "application/x-ndjson"
 
-    mock_get_repos.return_value.sessions.ensure.assert_called_once_with("s1")
+    mock_get_repos.return_value.sessions.ensure.assert_called_once_with("s1", origin_node_id=ANY)
     mock_rebuild.assert_called_once()
     args, kwargs = mock_rebuild.call_args
     assert args[0] == "s1"

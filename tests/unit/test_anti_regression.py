@@ -471,4 +471,79 @@ async def test_widget_container_renderer_uses_real_dom_contract() -> None:
         "WidgetContainerRenderer must preserve widget detection results."
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 26. Venv / Python environment health
+#     Prevents the constant "ModuleNotFoundError: No module named 'fastembed'"
+#     that happens when tests run with system python3 instead of the project's
+#     venv. If this test fails, run: scripts/test.sh ...
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_fastembed_is_importable() -> None:
+    """fastembed must be importable — proves we're inside the project venv."""
+    import fastembed  # noqa: F401
+    assert fastembed.__file__ is not None, \
+        "fastembed not importable! You're probably running tests with system " \
+        "python3 instead of venv/bin/python. Use: scripts/test.sh"
+
+
+async def test_project_venv_has_python_and_venv_bin_python() -> None:
+    """venv/bin/python must exist and be executable."""
+    venv_python = PROJECT_ROOT / "venv" / "bin" / "python"
+    assert venv_python.exists(), \
+        f"venv/bin/python not found at {venv_python} — venv may be missing or broken"
+    import os
+    assert os.access(str(venv_python), os.X_OK), \
+        f"venv/bin/python at {venv_python} is not executable"
+
+
+async def test_project_venv_has_fastembed_wheel() -> None:
+    """The project venv must have fastembed installed."""
+    fastembed_dir = PROJECT_ROOT / "venv" / "lib"
+    matched = list(fastembed_dir.glob("python*/site-packages/fastembed"))
+    assert matched, \
+        "fastembed not found in venv/lib/.../site-packages — run: " \
+        "venv/bin/pip install -r requirements.txt"
+
+
+async def test_dot_venv_symlink_is_valid() -> None:
+    """.venv must either not exist, or be a valid symlink pointing to venv/.
+
+    A broken .venv symlink causes scripts/kairos-node.sh and other tools
+    that reference .venv/bin/pip to silently fall back to system python3,
+    which lacks fastembed and other project dependencies.
+    """
+    dot_venv = PROJECT_ROOT / ".venv"
+    if not dot_venv.exists():
+        return  # .venv is optional
+    if dot_venv.is_symlink():
+        target = dot_venv.resolve()
+        assert target.name == "venv" or target == PROJECT_ROOT / "venv", \
+            f".venv symlink points to {target}, expected venv/"
+    # If it's a real directory, that's also fine (some setups create a full venv)
+
+
+async def test_active_python_prefix_is_not_system() -> None:
+    """The running Python interpreter must not be the system python.
+
+    If sys.prefix is '/' or '/usr', the tests are running on system python
+    which lacks project dependencies (fastembed, etc.). Use scripts/test.sh.
+    """
+    import sys
+    assert sys.prefix not in ("/", "/usr", "/usr/local"), \
+        f"Running on system python (prefix={sys.prefix}) — fastembed and other " \
+        "project deps are missing! Use: scripts/test.sh"
+
+
+async def test_scripts_test_sh_exists_and_uses_venv() -> None:
+    """scripts/test.sh must exist and reference venv/bin/python."""
+    test_sh = PROJECT_ROOT / "scripts" / "test.sh"
+    assert test_sh.exists(), \
+        "scripts/test.sh missing — this is the canonical way to run tests " \
+        "with the project venv (which has fastembed, pytest-testmon, etc.)"
+    content = test_sh.read_text("utf-8")
+    assert "venv/bin/python" in content, \
+        "scripts/test.sh must check venv/bin/python first to avoid falling " \
+        "back to system python3 which lacks fastembed."
+
+
 

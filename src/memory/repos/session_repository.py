@@ -63,20 +63,21 @@ class SessionRepository(_BaseRepository):
         the storage layer pure and free of coordination imports.
         """
         async with self._transaction() as conn:
-            cursor = await conn.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,))
-            if not await cursor.fetchone():
-                try:
-                    await conn.execute(
-                        "INSERT INTO sessions (session_id, name, created_at, origin_node_id) VALUES (?, '', ?, ?)",
-                        (session_id, datetime.now().isoformat(), origin_node_id)
-                    )
-                except sqlite3.OperationalError:
-                    # Pre-migration-025 DB: origin_node_id column missing.
-                    # Fall back to legacy INSERT so the session is still created.
-                    await conn.execute(
-                        "INSERT INTO sessions (session_id, name, created_at) VALUES (?, '', ?)",
-                        (session_id, datetime.now().isoformat())
-                    )
+            # Atomic INSERT OR IGNORE eliminates the TOCTOU race where two
+            # concurrent requests both see "session doesn't exist" and both
+            # try to INSERT, causing IntegrityError that crashes the server.
+            try:
+                await conn.execute(
+                    "INSERT OR IGNORE INTO sessions (session_id, name, created_at, origin_node_id) VALUES (?, '', ?, ?)",
+                    (session_id, datetime.now().isoformat(), origin_node_id)
+                )
+            except sqlite3.OperationalError:
+                # Pre-migration-025 DB: origin_node_id column missing.
+                # Fall back to legacy INSERT so the session is still created.
+                await conn.execute(
+                    "INSERT OR IGNORE INTO sessions (session_id, name, created_at) VALUES (?, '', ?)",
+                    (session_id, datetime.now().isoformat())
+                )
 
     async def exists(self, session_id: str) -> bool:
         """Check if a session exists without creating it."""

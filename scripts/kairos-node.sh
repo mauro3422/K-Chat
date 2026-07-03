@@ -178,7 +178,7 @@ rollback_to() {
     return 2
   fi
   git reset --hard "$target"
-  if [[ -x .venv/bin/pip ]]; then .venv/bin/pip install -r requirements.txt; fi
+  if [[ -x venv/bin/pip ]]; then venv/bin/pip install -r requirements.txt; fi
   npm ci
   npm run build
   service_control restart
@@ -196,7 +196,7 @@ update() {
   printf '%s\n' "$previous_commit" > "$ROOT/.kairos/last-good-commit"
   git pull --ff-only
   if ! {
-    if [[ -x .venv/bin/pip ]]; then .venv/bin/pip install -r requirements.txt; fi &&
+    if [[ -x venv/bin/pip ]]; then venv/bin/pip install -r requirements.txt; fi &&
     npm ci &&
     npm run build &&
     service_control restart &&

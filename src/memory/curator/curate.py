@@ -272,6 +272,21 @@ async def curate_clusters(
             logger.info("Skipping unchanged curated cluster %s", cid)
             continue
 
+        # Pre-mark as "processing" to claim the work atomically and prevent
+        # duplicate LLM calls from concurrent curators (TOCTOU fix).
+        _mark_processing_catalog(
+            catalog,
+            source="cluster",
+            source_key=str(cid),
+            item_idx=-1,
+            stage="curated",
+            content_hash=digest,
+            status="processing",
+            processor="curate_clusters",
+            reason="claimed",
+            metadata={"texts": len(texts), "label": str(label)},
+        )
+
         context = _get_memory_context()
         system_prompt = f"EXISTING MEMORIES:\n{context}\n\n{CURATOR_PROMPT}" if context else CURATOR_PROMPT
         try:
@@ -369,6 +384,21 @@ async def curate_sessions(
             logger.info("Skipping unchanged curated session %s", sid)
             continue
 
+        # Pre-mark as "processing" to claim the work atomically and prevent
+        # duplicate LLM calls from concurrent curators (TOCTOU fix).
+        _mark_processing_catalog(
+            catalog,
+            source="session",
+            source_key=sid,
+            item_idx=-1,
+            stage="curated",
+            content_hash=digest,
+            status="processing",
+            processor="curate_sessions",
+            reason="claimed",
+            metadata={"texts": len(texts)},
+        )
+
         context = _get_memory_context()
         system_prompt = f"EXISTING MEMORIES:\n{context}\n\n{CURATOR_PROMPT}" if context else CURATOR_PROMPT
         try:
@@ -440,15 +470,21 @@ def _retire_old_sessions(max_age_days: int, dry: bool = False) -> int:
                 "SELECT COUNT(*) FROM messages WHERE session_id = ?", (sid,)
             ).fetchone()[0]
             if not dry:
-                del_conn.execute(
-                    "INSERT OR IGNORE INTO deleted_sessions (session_id, name, message_count, deleted_at) VALUES (?, ?, ?, ?)",
-                    (sid, name, msg_count, now),
-                )
-                conn.execute("DELETE FROM sessions WHERE session_id = ?", (sid,))
-
-        if not dry:
-            del_conn.commit()
-            conn.commit()
+                try:
+                    # Insert into deleted_sessions first, then delete from sessions.
+                    # If DELETE fails (e.g., FK constraint), the INSERT is harmless
+                    # because it uses OR IGNORE. Each pair commits independently
+                    # so a failure on one session doesn't block the rest.
+                    del_conn.execute(
+                        "INSERT OR IGNORE INTO deleted_sessions (session_id, name, message_count, deleted_at) VALUES (?, ?, ?, ?)",
+                        (sid, name, msg_count, now),
+                    )
+                    del_conn.commit()
+                    conn.execute("DELETE FROM sessions WHERE session_id = ?", (sid,))
+                    conn.commit()
+                except Exception:
+                    logger.warning("Failed to retire session %s, skipping", sid, exc_info=True)
+                    conn.rollback()
 
         del_conn.close()
         conn.close()

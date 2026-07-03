@@ -209,6 +209,21 @@ class VectorStore:
         """
         with self._lock:
             conn = self._get_conn()
+
+            # Atomic dedup check inside the lock — prevents TOCTOU race where
+            # two concurrent vectorizers both see "no existing row" and insert
+            # duplicates.
+            if content_hash:
+                try:
+                    existing = conn.execute(
+                        "SELECT rowid FROM vec_meta WHERE content_hash = ? LIMIT 1",
+                        [content_hash]
+                    ).fetchone()
+                    if existing is not None:
+                        return existing[0]
+                except sqlite3.OperationalError:
+                    pass  # content_hash column may not exist yet
+
             now = datetime.now().isoformat(timespec="seconds")
             meta_json = json.dumps(metadata or {})
 

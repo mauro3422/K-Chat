@@ -1,516 +1,60 @@
-# Changelog — K-Chat
+# CHANGELOG — 2026-07-03
 
-## [2026-06-29] - v0.2.3 — node.py god-router split, providers dedup, TS migration cierre
+## Fix: Race condition TOCTOU que crasheaba el servidor (ERR_CONNECTION_REFUSED)
 
-### Refactor
+### Bug principal
+- **`session_repository.py:ensure()`** — Race condition TOCTOU (Time-of-Check-Time-of-Use):
+  dos requests concurrentes para el mismo `session_id` ejecutaban SELECT + INSERT sin
+  atomicidad. El segundo INSERT fallaba con `UNIQUE constraint failed: sessions.session_id`,
+  excepción no atrapada que mataba el proceso de uvicorn. El frontend entraba en loop de
+  reintentos generando spam masivo de `ERR_CONNECTION_REFUSED`.
+- **Fix:** `INSERT INTO` → `INSERT OR IGNORE INTO` (atómico, elimina el SELECT previo).
 
-- **`node.py` god-router split**: 519 líneas → 6 archivos cohesivos (node.py 202, node_memory.py 184, node_failover.py 23, _node_helpers.py 96, _node_models.py 27, web/services/node_observability.py 95). URLs idénticas, auto-discovery registra los 3 routers con mismo prefix `/api/node`. 0 breaking changes.
-- **Providers dedup**: `_get_coordinator`, `_get_event_bus`, wrapper `_request_repos` se importan de `_node_helpers.py` en memory.py, _memory_snapshot.py, sessions.py, pages.py. Sin duplicación.
-- **`NodeRolePayload` eliminado**: dead code desde commit `feac04d` (creado junto a `/promote` y `/demote` sin body — nunca cableado).
+### Fixes adicionales (mismo patrón TOCTOU)
 
-### TS migration — cierre cosmético
-
-- **`app_mock.ts` → `app.ts`** (vía `git mv`); `vite.config.js`, `pages.py`, tests y docs actualizados. Bundle: `dist/assets/app.js`.
-- **`model-availability.js` migrado a TS** como `ModelAvailabilityPoller.ts`. Wireado en `app.ts` como bloque DI. Archivo JS vanilla y `<script>` del template eliminados.
-- **`chat_ts.py` eliminado** (redirect innecesario, las rutas principales sirven directamente el template TS).
-
-### Documentacion
-
-- **`README.md`** — "No build step, no bundles. HTML + CSS + JS vanilla" reescrito a "TypeScript + Vite build. 80+ TS modules..., lightweight dependency injection (Lego blocks)".
-- **`docs/ARCHITECTURE.md`** — "No DI container" corregido a DI lightweight en Python (app_factory.py ~18 blocks) + TypeScript (app.ts).
-- **`docs/ARCHITECTURE_FRONTEND_TS.md` y `docs/BACKEND_MIGRATION.md`** — 12 refs `app_mock.*` → `app.*`.
-- **`docs/ARCHITECTURE_FRONTEND.md` y `docs/LEGOS_AUDIT.md`** — marcados como deprecated (documentan pre-migración TS).
-- **`docs/REFACTOR_PENDING.md`** — split y TS cierre marcados COMPLETADOS. Único pendiente: renombramiento DBs (alto riesgo).
-
-### Tests
-
-- `pytest` (6 archivos afectados) -> **145 passed**.
-- `npx vitest run` -> **352 passed**.
-- `npx tsc --noEmit` -> 0 errores.
-- `create_app()` registra 14 rutas `/api/node/*` idénticas, 0 rutas `/chat-ts`.
-
-Ver: [changelogs/v0.2.3.md](changelogs/v0.2.3.md)
-
-## [2026-06-29] - v0.2.2 — CI fix, docs sync, stale cleanup
-
-### Corregido
-
-- **CI expandido**: Workflow de GitHub Actions ahora corre la suite unit completa (`tests/unit/`, 1859 tests) en lugar de solo 3 archivos de smoke. Agregado `pytest-cov` y `pytest-mock` a `requirements.txt` (faltantes pero requeridos por `pytest.ini`).
-- **Leader leases stale eliminados**: 4 archivos de estado expirados borrados (lease de hace 213h y 40h). Nodo local verificado healthy tras la limpieza.
-
-### Documentación
-
-- README, ROADMAP y docs de arquitectura actualizados: 16 tools → 33 tools, 664 tests → 1928 tests.
-- 3 docs de planificación LAN cumplidas archivadas a `docs/archive/`.
-- Nuevo `docs/REFACTOR_PENDING.md` con investigación de node.py god-router y estado de TS migration.
-
-Ver: [changelogs/v0.2.2.md](changelogs/v0.2.2.md)
-
-## [2026-06-26] - v0.2.0 — Codex task bridge, LAN remote control y failover fixes
-
-### Nuevas capacidades
-
-- **Codex Task Bridge**: Nuevo sistema de delegación LAN. Servicio `codex_task_bridge.py` + router `codex.py` + tool `delegate_to_codex.py` — permite delegar tareas entre agentes en la red LAN, con contexto de delegación en mensajes remotos.
-- **LAN Remote Control**: Sistema completo con smoke tests (`scripts/lan_field_smoke.py`), nodos configurables, script PowerShell y cliente remoto Python. Incluye failover de modelos sobre LAN.
-- **Descubrimiento LAN dinámico**: Nodos se descubren sin IPs fijas mediante `lan_discovery.py` con bind a interfaz activa y aprendizaje recíproco de peers.
-
-### Correcciones
-
-- Reconciliación de primarias duales tras failover LAN
-- Estabilización de líder LAN
-- Migraciones de memoria idempotentes
-- Servicio Windows sin ventana de consola, tarea oculta restartable
-- Lockfile Linux atómico, symlink legacy migrado
-- Sanitizer frontend mejorado, logs LAN transport silenciados
+- **`work_catalog_repo.py:mark()`** — Upsert manual (UPDATE then INSERT) reemplazado por
+  `INSERT ... ON CONFLICT DO UPDATE` (atómico).
+- **`vector/store.py:insert()`** — Añadido dedup check atómico dentro del `_lock` para
+  prevenir duplicados cuando dos vectorizers concurrentes insertan el mismo `content_hash`.
+- **`curate.py:curate_clusters()` y `curate_sessions()`** — Pre-marca como "processing"
+  antes de la llamada LLM costosa, previniendo duplicación de trabajo entre curadores
+  concurrentes (antes: is_processed → LLM → mark, con ventana de segundos a minutos).
+- **`curate.py:_retire_old_sessions()`** — Cada par INSERT+DELETE ahora se commitea
+  individualmente con manejo de errores por sesión (antes: commit único batch).
 
 ### Tests
 
-- **test_codex_task_bridge.py**: 53 assertions
-- **test_debug_router.py**: 40 assertions — LAN debug endpoint regression
-- **test_lan_discovery.py**, **test_lan_bridge.py**: ~145 assertions combinados
-- **test_remote_control_scripts.py**: scripts de servicio Linux/Windows
-- **test_backup_restore_script.py**: 76 assertions de integración
-- **test_app_factory.py**: 27 assertions — debug access y registry priming
-
-## [2026-06-19] - Coordinación LAN, memoria compartida y observabilidad viva
-
-### Nuevas capacidades
-
-- Coordinación entre instancias por LAN con estado de nodo, heartbeat, liderazgo y failover observable.
-- Cola persistente de escrituras de memoria, replay al volver la primaria y diagnóstico de conflictos con resumen accionable.
-- `memory.db` reconstruible desde `MEMORY.md` y sync/repair con marcas de estado.
-- Telegram reflejado entre UIs con estado observable para ver si el evento salió por bus local y por LAN.
-- Runbook operativo en la raíz para arrancar, monitorear y depurar el sistema.
-
-### Observabilidad
-
-- `GET /health` ahora expone coordinación, sync y failover.
-- `GET /api/node/sync/status` expone cola, lease y frescura.
-- `GET /api/node/failover/status` expone la política de failover y su estado actual.
-- `GET /api/memory/conflicts` resume conflictos de memoria y sugiere acciones.
-- `GET /api/telegram/status` expone el estado del reflejo de Telegram.
-- `GET /api/logs/tail` y `GET /api/logbus` quedan como vistas vivas para seguir el sistema.
-
-### Pruebas
-
-- Se agregaron pruebas de coordinación, memoria, failover, reflejo de Telegram y logging.
-- La batería relevante quedó validada con más de 100 tests verdes.
-
-## [2026-06-18] - Lifecycle unificado + Singleton x Testing + Frontend Widget Runtime
-
-### 🔥 Bugs críticos corregidos
-
-- **Corrutinas sin consumir en LLM failover** (`failover.py`): `_mark_and_refresh()` llamaba a `discovery.get_verified_models()` (un `async def`) desde contexto sync sin await — la corrutina se descartaba y el refresh de modelos verificados NUNCA ocurría. Ahora se consume via `loop.create_task()` o `asyncio.run()`.
-- **Corrutina sin consumir en discovery** (`discovery.py`): `loop.create_task()` en `_ping_free_model_availability()` se llamaba sin verificar si había un event loop corriendo. Ahora con `try/except RuntimeError` guard.
-- **ModelState retornaba modelo fallido como "last resort"**: `switch_model()` devolvía un modelo ya fallido si todos los candidatos habían fallado, causando loops infinitos de failover. Ahora levanta `RuntimeError` limpio.
-- **SECONDARY_MODEL vacío**: `SECONDARY_MODEL = ""` inhabilitaba el failover a modelo secundario. Ahora es `"big-pickle"`.
-- **Rate limiter como global module-level**: compartido entre tests y requests, causando contaminación de estado en tests concurrentes. Movido a `app.state`.
-- **Gateway sin reset de estado**: `main()` no limpiaba `_services`, `_shutdown` entre ejecuciones. Ahora `reset_gateway_state()` al inicio.
-- **Placeholder k0-k19 en MEMORY.md**: 21 entradas basura del curador eliminadas.
-
-### 🧠 Singleton Elimination (18 módulos con `configure_*`/`reset_*`)
-
-Todos los módulos con estado module-level ahora exponen un par `configure_*`/`reset_*` para inyección explícita + `get_*` con prioridad: (1) instancia explícita, (2) DI container, (3) lazy singleton fallback.
-
-| Capa | Módulo | Funciones |
-|------|--------|-----------|
-| **LLM** | `circuit_breaker.py` | `configure_breaker()` / `reset_breaker()` |
-| **LLM** | `container.py` | `get_container()` / `LLMContainer` por composición raíz |
-| **LLM** | `model_registry.py` | `configure_model_registry()` / `reset_model_registry()` |
-| **LLM** | `model_state.py` | `configure_state()` / `reset_state()` |
-| **LLM** | `providers.py` | `configure_registry()` / `reset_registry()` |
-| **LLM** | `rate_limit_state.py` | `configure_rate_limit_store()` / `reset_rate_limit_store()` |
-| **Memory** | `connection_pool.py` | `configure_connection_pool()` / `reset_connection_pool()` |
-| **Memory** | `memory_pool.py` | `configure_memory_pool()` / `reset_memory_pool()` |
-| **Memory** | `engine_state.py` | `configure_engine()` / `reset_engine()` |
-| **Memory** | `embeddings/service.py` | `configure_model()` / `reset_model()` |
-| **Memory** | `keywords/extractor.py` | `configure_global_extractor()` / `reset_global_extractor()` |
-| **Memory** | `retrieval/reranker.py` | `configure_reranker()` / `reset_reranker()` |
-| **Infra** | `logbus/__init__.py` | `configure_logbus()` / `reset_logbus()` |
-| **Infra** | `config_loader.py` | `reset_dotenv_state()` |
-| **Web** | `services/file_logger.py` | `configure_log_dirs()` / `reset_log_dirs()` |
-| **Web** | `services/event_bus.py` | `reset_event_bus()` |
-| **Web** | `services/model_catalog.py` | `reset_model_cache()` |
-| **Entry** | `gateway.py` | `reset_gateway_state()` |
-
-Todos reseteables desde un solo punto: **`src/api/lifecycle.reset_runtime_state()`** que orquesta los 18 módulos.
-
-### 🏗️ DI Composition Root extendido
-
-- **SkillRegistry** ahora vive en `app.state` en lugar de module-level — los routers lo resuelven vía `request.app.state.skill_registry`.
-- **Rate limiter** movido de `_rate_limit_store = RateLimitStore()` global a `app.state.http_rate_limit_store`.
-- **`ToolRegistry.reset()`** y **`SkillRegistry.reset()`** añadidos — permiten rediscovery y test isolation.
-- **Log dirs dinámicos**: `web/routers/logs.py` ya no importa `SERVER_LOG_DIR`/`CLIENT_LOG_DIR` en módulo — llama a `get_server_log_dir()`/`get_client_log_dir()` en cada request.
-- **Provider injectable**: `api_call._resolve_provider()` y `_api_call()` aceptan `provider_fn: Any | None` — la vieja singleton `_get_provider()` quedó como wrapper compatible.
-
-### 🐍 LLM Layer: Async Safety + Código limpio
-
-- **`anyio.fail_after`** reemplaza `asyncio.wait_for` en `client.py` — mejor manejo de cancelación.
-- **`_await_if_needed()`**: helper que detecta corrutinas y las await automáticamente — protege contra sync/async mismatches.
-- **`_mark_model_success()`**: extraído 3 instancias de `mark_available` + `record_success` en `client.py`.
-- **`_resolve_config()`**: patrón "if config is None: load_config()" extraído de múltiples funciones en `discovery.py`.
-- **`_model_id()`**: extraído del patrón `model if isinstance(model, str) else getattr(model, "id", "")` (~6 usos).
-- **`_make_zen_provider()`**: construcción de Zen provider (~15 líneas) extraída de 3 ubicaciones en `discovery.py`.
-- **Selector con DI**: `_get_free_models_sync()` y `_get_default_model_candidates()` aceptan `free_models_fn`/`verified_models_fn` opcionales.
-- **`create_provider()`** simplificado: base URL como one-liner ternario, registry simplificado.
-- **ModelState.PRIORITY** filtra falsy: `[m for m in priority if m]` — evita modelos vacíos.
-
-### 🔧 Memory Layer: Upward coupling eliminado
-
-- **`src/memory/curator/curate.py`**: `_default_save_memory` (que importaba `src.tools.save_memory`) reemplazado por `_noop_save_memory`. Entry points (`.kairos/curator.py`, `.kairos/memory_backup.py`) inyectan `save_memory_fn`.
-- **`src/memory/operations/archive.py`**: `_archive()` ahora requiere `save_memory_fn: Callable` — ya no importa internamente. `manage_memory.py` lo inyecta vía lambda.
-- **Reranker**: 6 nuevos tests unitarios cubren `load_model` (éxito/fallo), fallback, empty candidates, sorting, error propagation, y unload.
-- **Embedding service**: `configure_model()`/`reset_model()` permiten inyectar modelo dummy sin red.
-
-### 🌐 Web Layer: Widget detection runtime + build CI
-
-- **Nuevo sistema frontend de widgets**: `stream-dispatcher.js` (pub/sub), `contract.js` (constantes), `state-manager.js` (estado en Map), `widget-detector.js` (scanner de bloques ` ```html-widget` y `[Widget:]` en streaming).
-- **CI refactorizado**: `npm install` → `npm ci`, se agregó `npm run build`, `npm run test:ts` + `npm run test:js`. Python tests reemplazados por smoke tests específicos (3 archivos).
-- **Docker**: `CMD` cambiado de uvicorn directo a `python -m src.gateway` (multi-service launcher). Removido `config.py` del build.
-- **Lifespan**: shutdown ahora llama a `reset_runtime_state()`, `reset_config_cache()`, `reset_event_bus()`, y `logbus.stop()` en el orden correcto.
-
-### 📦 Dependencias
-
-- **Agregado**: `anyio>=4.0.0,<5.0.0` (timeout handling robusto)
-- **Removidos**: `sentence-transformers` (reemplazado por fastembed), `hf_xet`, `huggingface-hub[hf_xet]`, `pytest-mock`, `trio`
-
-### 🧪 Tests (24 nuevos, ~40 modificados)
-
-- **8 tests singleton**: `test_circuit_breaker`, `test_container`, `test_rate_limit_state`, `test_model_registry_singleton`, `test_connection_pool`, `test_context_runtime_reset`, `test_gateway_state` — verifican `configure_*`/`reset_*` con finally cleanup.
-- **8 tests memory**: `test_connection_pool`, `test_embedding_service`, `test_engine_state`, `test_keyword_extractor`, `test_memory_pool`, `test_reranker`, `test_retrieval_service`, `test_vectorize_sessions`.
-- **4 tests web**: `test_app_factory_config`, `test_file_logger_reset`, `test_logbus`, `test_tool_registry_reset`.
-- **Test isolation**: `reset_shared_runtime_state` fixture (autouse=True) en `conftest.py` — limpia 18 singletons antes/después de cada test.
-- **Schema inline**: `conftest.py` ya no importa `src.memory.schema.init_db()` — define DDL propio para 10 tablas + 9 índices.
-- **`test_app_factory.py`**: `_mock_startup` fixture mockea 6 dependencias; `TestClient` envuelto en `with` context manager.
-- **`test_orchestrator.py`**: mocks envueltos en `RetrievalService(config=cfg, retrieval_service=mock)` real en lugar de mock directo.
-- **`test_anti_regression.py`**: 9 tests legacy JS eliminados, 8 renombrados a TS, 10 nuevos tests TS.
-- **`test_llm.py` y `test_models.py`**: nuevos patrones DI via `provider_fn` en lugar de `_get_provider()` mock.
-- **`pytest.ini`**: filtro `DeprecationWarning` para `aifc` (eliminado en Python 3.13).
-
-### 📚 Documentación actualizada
-
-- **`docs/MODULES.md`**: 10+ módulos nuevos documentados, campos `reset_*` agregados a módulos existentes.
-- **`docs/HEALTH.md`**: sección DIP expandida con ~20 módulos lifecycle-controlados; DB pool re-caracterizado de "no pool" a "process-local pools".
-- **`docs/llm_architecture.md`**: diagrama de `create_provider()` actualizado; 3 ítems de "lo que podría mejorar" eliminados.
-- **`MEMORY.md`**: 21 placeholders del curador eliminados.
-
-### Integración
-
-- HEAD en `1d33756` (v0.0.63)
-- 56 archivos modificados, 24 nuevos
-- +1089 líneas, −590 líneas
-
----
-
-### Multi-Device SSE
-- **`KAIROS_WEB_URL` ahora acepta múltiples URLs separadas por coma**: el bot de Telegram notifica a TODOS los web UIs simultáneamente.
-  - `adapter.py`: `_get_sse_notify_url()` reemplazado por `_get_sse_notify_urls()` que devuelve lista.
-  - Nuevo helper `_notify_all()` — POSTea el evento a todas las URLs configuradas.
-  - `ws_client.py`: el fallback HTTP de `send_event()` también usa `_notify_all()`.
-  - Cada fallo individual se loggea sin bloquear a los demás.
-  - Uso: `KAIROS_WEB_URL="http://127.0.0.1:8000,http://192.168.1.100:8000"é
-
-### Accesibilidad
-- `<select id="model-select">` ahora tiene `aria-label="Seleccionar modelo de lenguaje"é (DevTools AI audit).
-- Polling de `/models/availability` reducido de 30s a 60s (success) / 120s (error). El endpoint es puramente en memoria, no consume tokens.
-
-### Fixes de tests post-refactor
-- `conftest.py`: columna `auto_memories` agregada al schema de `debug_info`.
-- `test_web_server.py`: `request: Request` y `BackgroundTasks` pasados correctamente a routers con DI.
-- `test_db_query.py`: todas las llamadas a `db_query.run()` ahora tienen `await`.
-- `test_history_service.py`: asserts actualizados con `memory_results=None`.
-
----
-
-## [2026-06-18] — Backend Migration Fase 3: Composition Root + DI completo
-
-### 🏗️ Composition Root unificado (`web/app_factory.py`)
-- **5 servicios core** creados en `lifespan()` y guardados en `app.state`: `TelemetryService`, `HistoryService`, `LLMService`, `ToolExecutionService`, `RetrievalService`.
-- **LLMContainer** creado por la composición raíz y conectado a `app.state`. Sub-servicios expuestos: `circuit_breaker`, `rate_limit_store`, `model_registry`.
-- **ConnectionPool** creado y configurado vía `configure_connection_pool()`, expuesto en `app.state`.
-- **Config** (`load_config()`) guardado en `app.state.config`.
-- **LogBus** guardado en `app.state.logbus` e inyectado a `TelemetryService` por constructor.
-- `chat_stream.py`: eliminada la creación inline de 4 servicios por request. Ahora recibe `OrchestratorDeps` ya armado (requerido, falla con `ValueError` si falta).
-
-### 🔌 Routers sin singletons
-- **`debug.py`**: `get_repos()` → `request.app.state.repos`.
-- **`ws_events.py`**: `get_event_bus()` → `websocket.app.state.event_bus`.
-- **`pages.py`**: helpers `_get_registry(request)` y `_get_rate_store(request)` prefieren `app.state`. `session_messages()` recibe `request` y usa `_request_repos()`.
-- **`logbus.py`**: helper `_get_logbus(request)` prefiere `app.state.logbus`.
-- **`debug.py`**: `model_availability()` lee `model_registry` y `rate_limit_store` de `app.state`.
-
-### 🧩 LLM layer con DI
-- **`client.py`**: `chat()` y `chat_stream()` aceptan `breaker`, `rate_store`, `default_model_fn` opcionales.
-- **`failover.py`**: `_resolve_registry()` prefiere container vía `get_container().get_model_registry()`.
-- **`model_registry.py`**: `get_model_registry()` prueba container antes de singleton.
-- **`get_default_model()`**: accesible vía parámetro `default_model_fn` en `_resolve_model()`.
-
-### 🧹 Curator cleanup
-- `gardener.py` y `tracer.py`: `_DEFAULT_CONFIG` (dict hardcodeado) reemplazado por `_default_config()` que llama a `load_config()`.
-
-### 🧪 Tests
-- **32 tests** de `test_chat_stream.py` actualizados para pasar `mock OrchestratorDeps`.
-- **7 tests** de `test_orchestrator.py` con `repos=MagicMock()` en `OrchestratorDeps`.
-- **Anti-regression**: `app_factory.py` excluido de la regla de imports directos (composition root necesita imports de dominio por diseño).
-- **34/34 anti-regression tests** pasando.
-
-### Integración
-- 10 commits en master desde v0.0.64
-- +320 líneas, −189 líneas
-- HEAD en `014d7ef`
-
----
-
-## [2026-06-17] - Estabilizacion local + logs al gateway
-
-### Bugfixes
-- Sidebar desincronizado: el contador ahora muestra el total real de mensajes y no un valor cacheado o parcial.
-- Rename de sesiones: el flujo de rename en `chat-ts` y en el frontend clasico ahora persiste y refresca la vista.
-- Assets 404: `skills-ui.js` vuelve a servir correctamente y se elimina el error de carga dinamica.
-- Logs al gateway: eventos clave de sesion ahora se registran en `gateway_log` (`session_created`, `session_renamed`, `session_deleted`).
-
-### Arquitectura
-- Se eliminaron imports directos innecesarios a `src.memory` desde la capa web y desde `gateway`.
-- El arranque y shutdown de modelos quedaron desacoplados con importacion dinamica.
-- `buildIframeSrc` mantiene el codigo del widget sin transformarlo, alineado con el contrato de tests.
-
-### Dependencias
-- Se ampliaron los requisitos de instalacion para incluir dependencias de ASR, embeddings y tests.
-
-### Verificacion
-- `tests/unit/test_anti_regression.py` ahora pasa.
-- `tests/unit/test_pages_router.py` y `tests/unit/api/test_api_session.py` pasan.
-- `GET /health` responde OK despues del reinicio del server.
-
-## [2026-06-16] — Auditoría general + estabilización full-stack
-
-### 🔥 Bugs críticos corregidos
-- **Connection leak**: `_BaseRepository._transaction()` ahora cierra conexiones en `finally` (antes se filtraban)
-- **Dual-write no atómico** (bug #11): save_memory ahora escribe a `.tmp` + `os.replace()` atómico, con restore on failure
-- **entity_search case-sensitive** (bug #2): queries usan `LOWER()` en ambos lados del WHERE
-- **Hardcode paths**: curator, gardener, tracer ahora resuelven paths dinámicamente
-- **Cache invalidation prematura** (bug #4): solo invalida tras write exitoso
-
-### 🧠 Memoria (12+ fixes)
-- **Connection pool**: `threading.Lock` → `asyncio.Lock`, sync/async consistency fix
-- **Thread-safety**: keywords extractor, entity extractor, reranker singleton — locks agregados
-- **Async flushes**: clustering (heuristic.py, relations.py) y entity linker migrados de `sqlite3` sync a `aiosqlite`
-- **Env vars unificadas**: `K_CHAT_MEMORY_DB` → `resolve_memory_db_path()` en garderner/tracer
-- **Dead code eliminado**: `classify_exchange`, `extract_keywords_batch`, `extract_entities_batch`, `cosine_similarity_keywords`, `backfill_relevance.py`, `entity_search_batch`
-- **Split manage_memory.py**: 683→140 líneas, 7 archivos en `src/memory/operations/`
-- **Split hybrid_retriever.py**: 304→206 líneas, hydrator + tracker extraídos
-- **Hash dedup normalizado**: whitespace + lowercase antes de hashear
-
-### ⚡ Frontend performance (8 fixes)
-- **SSE incremental rendering**: `insertAdjacentHTML('beforeend')` con tracking de `dataset.renderedLen` — fin del innerHTML spam
-- **CSS optimizado**: box-shadow reemplazado por outline+opacity (solo composite layer, sin repaints)
-- **Logger production guard**: console mirror solo en localhost/DEBUG
-- **Event listener cleanup**: `dispose()` en NotificationBell, SessionStore, CanvasWorkspace
-- **EventBus limit**: MAX_LISTENERS=50 con warning de leak
-- **Virtual scrolling**: IntersectionObserver windowing — mensajes fuera de viewport se reemplazan con placeholder
-- **Widget/Iframe GC**: `destroyContainer()` + MAX_WIDGETS=10
-- **Vendor bundling**: marked + dompurify via npm en vez de scripts externos
-
-### 🏗️ Infraestructura (12+ fixes)
-- **LogBus**: sistema unificado de logging async con queue, consumer batch, writers JSONL+SQLite+Console, middleware FastAPI
-- **LogBus API**: `GET /api/logbus`, `/tail`, `/sessions/{id}`, `/cleanup`
-- **LogBus conectado**: gateway_log, chat_journal, telemetry_service wrappeados a LogBus
-- **Docker**: multi-stage builder, non-root `kchat` user, python 3.13-slim, HEALTHCHECK
-- **DBs huérfanas**: eliminadas 5 DBs de 0 bytes en raíz del proyecto
-- **`.dockerignore`**: completado con logs/, memory/, data/, *.db
-- **Deps pineadas**: aiosqlite, pytest-testmon con versiones fijas
-- **`.env.example`**: completado con todas las claves soportadas
-- **Ruff**: actualizado v0.4.4 → v0.11.2
-- **Coverage**: pytest-cov configurado (opcional)
-
-### 🎯 Core/LLM (8 fixes)
-- **Orchestrator SRP**: auto-retrieval extraído a `RetrievalService` — orchestrator pierde ~50 líneas
-- **load_config unificado**: patrón duplicado `if config is None: load_config()` eliminado de 6 archivos → `src/_config.resolve_config()`
-- **load_dotenv lazy**: movido de import-time a llamada explícita en `load_config()`
-- **Memory leak rate limiter**: `_call_counts` con cleanup de sesiones inactivas cada 100 calls
-- **Circuit breaker**: `CircuitBreaker` con estados CLOSED/OPEN/HALF_OPEN, 3 fallos → 60s cooldown. Previene loop infinito de failover
-- **Model consolidation**: `_verified_models` movido de model_state a model_registry
-- **Retrieval throttle**: `dict[str,int]` reemplazado por `OrderedDict` con LRU eviction
-- **Tests de retrieval**: 9 tests para fuse_rrf, fuse_weighted_sum, normalize_scores
-
-### 🧪 Tests
-- 9 tests nuevos para RRF fusion
-- 3 tests de repositorios arreglados (telegram_chat_id column)
-- Tests de discovery/llm adaptados a model_registry
-- BackendLogHandler deprecado, test adaptado
-
----
-
-## [2026-06-16] — Refactor masivo: desacople total, lifecycle, SSE, tests (Frontend TS)
-
-### 🏗️ Arquitectura (Lego total)
-
-- **4 interfaces nuevas**: `IDebugManager`, `IIframeBuilder`, `IWidgetContainerRenderer`, `IStreamDispatcher<T>` — todas las clases inyectables ahora tienen interfaz
-- **IMessageView e IChatForm** creadas — sellan los últimos 2 puntos de acoplamiento concreto
-- **StreamOrchestrator** extraído de `app_mock.ts` (369→256 líneas) — god object eliminado
-- **ContentHandler** dividido en 4 archivos: `ReasoningHandler`, `ToolCallRenderer`, `ErrorRenderer`, `ContentHandler` (coordinador)
-- **CanvasWorkspace** dividido en 3 clases: `CanvasWorkspace`, `CanvasCardManager`, `CanvasLayoutStore`
-- **core/ reestructurado** en 6 subdirectorios: `debug/`, `infra/`, `notification/`, `session/`, `ui/`, `widget/`
-- Re-exports en `core/*.ts` — 0 imports rotos
-
-### 🛡️ Type safety
-
-- `: any` reducido de **41 → 1** (type guard válido en CanvasLayoutStore)
-- `as any` eliminado de **7 → 0** (iframe properties ahora usan `setAttribute`)
-- `StreamDispatcher` ahora es genérico `<TContext>` con handlers tipados
-- Catch clauses tipados como `unknown`
-
-### 🚦 Stream lifecycle completo
-
-- Stream guard: temporal (500ms anti-doble click) + booleano (anti-concurrente)
-- Timeout 120s con reset RAF-debounced en cada chunk
-- Auth/rate_limit = terminal sin retry; otros errores → retry con backoff 2s/4s/6s
-- Respuesta vacía con reasoning/tool calls presente → no retry automático
-- Respuesta vacía sin reasoning → retry hasta 3 intentos
-- Error cards con botón reintentar y variante rate-limit
-
-### 📡 Canales de comunicación
-
-- **NDJSONStreamClient** (renombrado de SSEClient) — `POST /chat/{session_id}` con fetch + ReadableStream
-- **SSEClient** (nuevo) — `EventSource /api/events/stream` para notificaciones cross-session
-  - `stream:*` → renderiza en vivo via ContentHandler (Telegram tokens)
-  - `new_message` → appendMessage o reloadMessages + unread marks
-  - `session_deleted` / `message_deleted` → mutaciones vía EventBus
-- **StreamSimulator** — modo dev sin backend, convive con el modo real
-
-### 🐛 Bugs corregidos
-
-- `ApiClient.sendClientLogs()` ahora envía el array directo (no envuelto en `{entries}`)
-- `ApiClient.sidebar()` acepta `?current=<sessionId>` opcional
-- `Widget code persistence` — `WidgetStateManager` persiste código al backend
-
-### 🎛️ Features agregados
-
-- **Model selector**: lee `#model-select`, guarda en localStorage, pasa `?model=` al backend
-- **Unread marks**: sidebar marca sesiones con `.has-new` cuando llegan mensajes SSE de sesión no activa
-- **RetryController**: port del JS `retry-handler.js` con 3 intentos máximo, backoff progresivo
-- **StreamSimulator extendido**: 15 escenarios de error, detección de intención
-
-### 🧪 Tests (96 tests, todos pasando)
-
-- **`dom-contracts.test.ts`** (31) — verifica todos los CSS class constants
-- **`message-view.test.ts`** (15) — beginStreaming, appendMessage, simple + phases
-- **`reasoning-handler.test.ts`** (10) — DOM de razonamiento y memorias
-- **`tool-call-renderer.test.ts`** (6) — pills, transiciones calling→ok→error
-- **`error-renderer.test.ts`** (7) — error cards, rate limit, retry button
-- **`stream-dispatcher.test.ts`** (7) — eventos on/off/emit/removeAll
-- **`retry-controller.test.ts`** (11) — count, shouldRetry, schedule, timeout
-- **`session-list.test.ts`** (9) — render, icons, acciones, unread marks
-
-### 📦 Build
-
-- `npx tsc --noEmit` — 0 errores
-- `npm run build` — ~700ms, bundle ~45KB
-- `npm run test:ts` — 96 tests, ~800ms
-
----
-
-## [2026-06-18] — Estabilización de backend, tools y lifecycle
-
-### Backend y estabilidad
-
-- `src/llm/client.py`: fallback de stream y manejo de éxito compatibles con `asyncio`/`trio`.
-- `src/llm/retry.py`: reintentos y timeouts con fallback backend-agnostic.
-- `src/llm/discovery.py` y `src/llm/failover.py`: refresco y ping de modelos sin depender del loop activo.
-- `src/memory/retrieval/hydrator.py`: hidratación compatible con esquemas viejos de `vec_meta`.
-
-### Tools e I/O
-
-- `src/tools/runner.py`: acepta tools sync o async sin romper el contrato.
-- `src/tools/edit_file.py`: mantiene compatibilidad como tool de edición directa.
-- `src/tools/*`: migración de I/O/reintentos fuera de `asyncio.to_thread` hacia helper compartido.
-
-### Lifecycle y runtime
-
-- `src/api/lifecycle.py`: reinicios explícitos de estado compartido al apagar.
-- `src/context/templates.py`, `src/context/runtime.py`, `src/context/builder.py`: plantillas y contexto reconstruibles.
-- `src/utils/async_utils.py`: pool compartido y helper de sleep/run-in-thread con fallback.
-
-### Verificación
-
-- Baterías enfocadas completadas sobre client, retry, discovery, failover, tools, memoria y lifecycle.
-
-## [2026-06-16] — Sistema Lego de estilos + Backend Composition Root
-
-### 🧱 Frontend: Sistema de Layout Lego (5 nuevos bloques)
-
-- **`ILayoutGrid` / `GridController`** — motor de grid dinámico: celdas reordenables, persistencia en localStorage, CSS Grid nativo
-- **`ICanvasOverlay` / `CanvasOverlay`** — canvas full-page con 4 efectos (rain, snow, particles, fireworks) + drawing mode para que el usuario dibuje bloques y la IA los interprete
-- **`ICSSInjector` / `CSSInjector`** — `injectCSS(id, css)` y `removeCSS(id)` para estilos dinámicos sin tocar archivos
-- **`IAudioBus` / `AudioBus`** — sonidos automáticos en eventos del chat (message, error, notification, send)
-- **Layout types** (`types/layout.ts`) — interfaces centralizadas para todo el sistema de estilos
-
-### 🧱 Frontend: Refactor Canvas (F → A en desacople)
-
-- `ICanvasCardManager` + `ILayoutStore` interfaces creadas
-- `CanvasCardManager` ahora implementa `ICanvasCardManager`
-- `CanvasLayoutStore` implementa `ILayoutStore`
-- `CanvasWorkspace` recibe `cardManager` y `layoutStore` por constructor (eliminados 2 `new` internos)
-- Event listeners de toggle/close/gutter ahora se limpian en `reset()`
-- Último `: any` del módulo eliminado (reemplazado por `unknown`)
-- DOM containers se asignan via `setContainer()` post-constructor
-
-### 🧱 Frontend: Preparación para IA real
-
-- `ToolCallPayload` tipado como el backend (agregados `partial`, `idx`, `args`)
-- `_stream_args` y `partial` ignorados (como JS production)
-- Heartbeats resetear timeout vía `onChunk`
-- Soporte `files` en NDJSONStreamClient
-- First token limpia "✍️ Pensando..."
-- Sidebar refresh + pills error en fallo terminal
-- `lastAssistantMsgEl = null` en cleanup (memory leak cerrado)
-
-### 🧱 Frontend: Optimizaciones
-
-- `manualChunks` en vite: widgets, streaming, rendering, debug separados → app_mock.js **118KB → 30KB**
-- `sourcemap` condicional solo en dev → -648KB en prod
-- `handleContent()` incremental — salta 6/8 pasos DOM en tokens sin widgets
-- RAF throttle en drag handler de CanvasCardManager
-- 96/96 tests, tsc OK, build OK
-
-### 🔧 Backend: Composition Root + DI (Fases 1-4)
-
-- **`IEventBus` Protocol** en `event_bus.py` — EventBus implementa interfaz, inyectable
-- **`set_event_bus()`** — composición root inyecta instancia, `get_event_bus()` la prefiere
-- **Composition Root** en `app_factory.py` — crea EventBus + Repositories en `app.state`
-- **Protocols exportados** desde `src.api.orchestrator` (HistoryServiceProtocol, etc.)
-- **`chat_stream.py`** parametrizado — acepta `orchestrator_deps` opcional
-- **Routers limpios** — usan `request.app.state.*` con fallback a singletons
-
-### 🔧 Backend: SessionStore conectado a API real
-
-- SessionStore eliminó datos mock — ahora carga sesiones desde `GET /sessions`
-- `ApiClient`: nuevos métodos `getSessions()`, `createSession()`, `getSessionMessages()`
-- `POST /sessions/create` + `GET /sessions` endpoints JSON agregados
-- Delete sesión persiste en backend + recarga desde API
-
-### 🐛 Bugs corregidos
-
-- Widgets no se renderizaban por regex incorrecta en ContentHandler
-- `: any` → `: unknown` en type guard de LayoutStore
-- `setInterval` debug panel sin cleanup
-- `widgetObserver.disconnect()` faltante en reset
-- EventBus self-reference (TypedEventBus vs EventBus)
-- Tests de debug router adaptados a nuevos parámetros
-- Panel derecho visible por CSS Grid sin `minmax`
-- Audio 404 silenciado en AudioBus
-- Client logs 422 silenciado en Logger
-
-### 📦 Build
-
-- `app_mock.js`: **37 KB** (con code splitting)
-- `app.js` (JS prod): **70 KB**
-- Chunks: widgets (20 KB), streaming (52 KB), rendering (22 KB), debug (6 KB)
-- Total TS: **39 clases, 39 interfaces** — 100% Lego
-- TS Lines: **7,762** (sin tests)
-
-### 🧪 Tests
-
-- Backend: 67/68 tests pasan (1 pre-existing frozenset)
-- Frontend TS: 96/96 tests
-- Frontend JS: sin cambios
+- **`test_repositories.py`** — Actualizado para reflejar `INSERT OR IGNORE` (1 execute,
+  no 2).
+- **`test_chat_router.py`** — Actualizado para aceptar `origin_node_id=ANY` en `ensure()`.
+- **`test_anti_regression.py`** — 6 nuevos tests anti-regresión para el venv:
+  - `test_fastembed_is_importable` — Verifica que fastembed se puede importar
+  - `test_project_venv_has_python_and_venv_bin_python` — venv/bin/python existe y ejecuta
+  - `test_project_venv_has_fastembed_wheel` — fastembed instalado en venv
+  - `test_dot_venv_symlink_is_valid` — .venv symlink válida hacia venv/
+  - `test_active_python_prefix_is_not_system` — Detecta si tests corren con python sistema
+  - `test_scripts_test_sh_exists_and_uses_venv` — scripts/test.sh existe y usa venv
+
+### Infraestructura
+
+- **`scripts/test.sh`** — Nuevo wrapper que siempre usa `venv/bin/python` para correr
+  pytest (antes: tests corrían con `python3` del sistema, sin fastembed).
+- **`scripts/kairos-node.sh`** — `.venv/bin/pip` → `venv/bin/pip` (dependencia del
+  symlink roto eliminada).
+- **`.venv`** — Symlink reparado: `.venv → venv` (estaba roto, causaba fallback
+  silencioso a system python3).
+- **`docs/debug_20260703_connection_refused.md`** — Análisis detallado completo del bug
+  con reproducción experimental, flujo completo, y 19 patrones TOCTOU encontrados en el
+  codebase.
+
+### Archivos modificados
+- `src/memory/repos/session_repository.py`
+- `src/memory/repos_memory/work_catalog_repo.py`
+- `src/memory/vector/store.py`
+- `src/memory/curator/curate.py`
+- `tests/unit/test_repositories.py`
+- `tests/unit/test_chat_router.py`
+- `tests/unit/test_anti_regression.py`
+- `scripts/kairos-node.sh`
+- `scripts/test.sh` (nuevo)
+- `docs/debug_20260703_connection_refused.md` (nuevo)

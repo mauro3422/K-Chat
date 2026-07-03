@@ -139,19 +139,21 @@ class TestSessionRepository:
 
         await repo.ensure("sess_new")
 
-        assert conn.execute.call_count == 2
+        # INSERT OR IGNORE is atomic — one execute call, no SELECT first
+        assert conn.execute.call_count == 1
         conn.commit.assert_called_once()
 
     @pytest.mark.anyio
     @patch("src.memory.repos.base.get_conn", new_callable=AsyncMock)
     async def test_ensure_skips_when_exists(self, mock_get_conn, mock_conn):
         conn, cursor = mock_conn
-        cursor.fetchone.return_value = (1,)
+        cursor.fetchone.return_value = None
         mock_get_conn.return_value = conn
         repo = SessionRepository()
 
         await repo.ensure("sess_existing")
 
+        # INSERT OR IGNORE — one execute, no SELECT needed
         assert conn.execute.call_count == 1
         conn.commit.assert_called_once()
 

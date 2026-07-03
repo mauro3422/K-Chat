@@ -257,10 +257,21 @@ class MemoryWorkCatalogRepository:
         now = datetime.now().isoformat(timespec="seconds")
         meta_json = json.dumps(metadata or {}, ensure_ascii=True, sort_keys=True)
         with self._connection() as conn:
-            result = conn.execute(
+            # Atomic upsert: INSERT ... ON CONFLICT DO UPDATE eliminates the
+            # race where two concurrent writers both UPDATE (rowcount=0) and
+            # both INSERT, causing IntegrityError.
+            conn.execute(
                 """
-                UPDATE memory_work_catalog
-                SET content_hash = ?,
+                INSERT INTO memory_work_catalog (
+                    source, source_key, item_idx, content_hash,
+                    pipeline, pipeline_version, model_id, model_version,
+                    source_node_id, status, vec_rowid, reason,
+                    created_at, updated_at, metadata
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (source, source_key, item_idx, pipeline, pipeline_version, model_id, model_version)
+                DO UPDATE SET
+                    content_hash = ?,
                     pipeline = ?,
                     pipeline_version = ?,
                     model_id = ?,
@@ -271,11 +282,14 @@ class MemoryWorkCatalogRepository:
                     reason = ?,
                     updated_at = ?,
                     metadata = ?
-                WHERE source = ? AND source_key = ? AND item_idx = ?
-                  AND pipeline = ? AND pipeline_version = ?
-                  AND model_id = ? AND model_version = ?
                 """,
                 (
+                    # VALUES for INSERT
+                    source, source_key, item_idx, content_hash,
+                    pipeline, pipeline_version, model_id, model_version,
+                    source_node_id, status, vec_rowid, reason,
+                    now, now, meta_json,
+                    # SET values for ON CONFLICT DO UPDATE
                     content_hash,
                     pipeline,
                     pipeline_version,
@@ -287,44 +301,8 @@ class MemoryWorkCatalogRepository:
                     reason,
                     now,
                     meta_json,
-                    source,
-                    source_key,
-                    item_idx,
-                    pipeline,
-                    pipeline_version,
-                    model_id,
-                    model_version,
                 ),
             )
-            if result.rowcount == 0:
-                conn.execute(
-                    """
-                    INSERT INTO memory_work_catalog (
-                        source, source_key, item_idx, content_hash,
-                        pipeline, pipeline_version, model_id, model_version,
-                        source_node_id, status, vec_rowid, reason,
-                        created_at, updated_at, metadata
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        source,
-                        source_key,
-                        item_idx,
-                        content_hash,
-                        pipeline,
-                        pipeline_version,
-                        model_id,
-                        model_version,
-                        source_node_id,
-                        status,
-                        vec_rowid,
-                        reason,
-                        now,
-                        now,
-                        meta_json,
-                    ),
-                )
             conn.commit()
 
     def max_processed_idx(self, *, source: str, source_key: str) -> int:
