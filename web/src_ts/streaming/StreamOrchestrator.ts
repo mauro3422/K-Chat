@@ -177,14 +177,14 @@ export class StreamOrchestrator implements IStreamOrchestrator {
           parsed = { type: 'unknown', message: raw };
         }
         const errType = parsed.type || 'unknown';
-        const errMsg = parsed.message || (parsed.error ? (typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error)) : 'Error desconocido');
+        const errMsg = String(parsed.message || (parsed.error ? (typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error)) : 'Error desconocido'));
         streamError = { type: errType, message: errMsg };
         // Surface rate_limit/auth errors immediately
         if (errType === 'rate_limit' || errType === 'auth' || errType === 'quota' || errType === 'insufficient_quota') {
           this._handleStreamError(errType, errMsg);
         }
       } catch {
-        streamError = { type: 'unknown', message: typeof data === 'string' ? data : 'Error de conexión' };
+        streamError = { type: 'unknown', message: typeof data === 'string' ? data : String(data || 'Error de conexión') };
       }
       this._resetTimeout();
     });
