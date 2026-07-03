@@ -273,16 +273,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         asyncio.create_task(_prime_model_registry())
 
-        if os.environ.get("KAIROS_WARMUP_EMBEDDINGS", "false").lower() in ("1", "true"):
-            try:
-                get_model = importlib.import_module("src.memory.embeddings.service").get_model
-                model = await asyncio.to_thread(get_model)
-                if model is not None:
-                    logger.info("Embedding model preloaded successfully")
-                else:
-                    logger.warning("Embedding model not available at startup (will lazy-load)")
-            except Exception as e:
-                logger.warning("Embedding model preload failed (non-fatal): %s", e)
+        # ── Preload ML models so the first request doesn't stall ──────────
+        logger.info("Composition root: preloading ML models...")
+        try:
+            get_emb = importlib.import_module("src.memory.embeddings.service").get_model
+            emb_model = await asyncio.to_thread(get_emb)
+            if emb_model is not None:
+                logger.info("Composition root: embedding model preloaded ✓")
+            else:
+                logger.warning("Composition root: embedding model not available (will lazy-load)")
+        except Exception as e:
+            logger.warning("Composition root: embedding model preload failed (non-fatal): %s", e)
+
+        try:
+            importlib.import_module("src.memory.retrieval.reranker").Reranker()._load_model()
+            logger.info("Composition root: reranker preloaded ✓")
+        except Exception as e:
+            logger.warning("Composition root: reranker preload failed (non-fatal): %s", e)
+
+        logger.info("Composition root: all ML models ready")
+        # ── End ML preload ──────────────────────────────────────────
 
     configured_peers = getattr(cfg, "peer_urls", "")
     has_static_peers = isinstance(configured_peers, str) and bool(configured_peers.strip())
