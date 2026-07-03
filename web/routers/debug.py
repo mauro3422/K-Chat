@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from src.api.llm_client import get_rate_limit_store
+from src.api.llm_client import get_rate_limit_store, ensure_registry_refreshed
 from src.api.repos import get_repos
 
 def get_backend_logs(limit: int = 100) -> list[dict]:
@@ -94,6 +94,17 @@ async def model_availability(request: Request) -> dict:
     reg = getattr(request.app.state, "model_registry", None)
     if reg is None:
         raise HTTPException(status_code=500, detail="Model registry not initialized")
+
+    # Auto-refresh if registry is empty — recovers from startup failures
+    # where the background model discovery task timed out or the Go API
+    # was unreachable during the initial priming call.
+    if reg.summary()["total_models"] == 0:
+        try:
+            await ensure_registry_refreshed()
+            logger.info("Lazy model refresh triggered from /models/availability")
+        except Exception:
+            logger.warning("Lazy model refresh failed", exc_info=True)
+
     result: dict[str, dict] = {}
 
     for model_id in get_available_model_ids(request=request):
