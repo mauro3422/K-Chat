@@ -16,7 +16,7 @@ export class DomTreeSerializer {
 
     const e = el as HTMLElement;
     const tag = e.tagName.toLowerCase();
-    const cls = e.className || '';
+    const cls = e.getAttribute('class') || '';
 
     let html = `<div class="dbg-tree-elem" style="padding-left:${depth * 12}px">`;
     html += `<span class="dbg-tag">&lt;${tag}</span>`;
@@ -51,7 +51,7 @@ export class DomTreeSerializer {
 
     const e = el as HTMLElement;
     const tag = e.tagName.toLowerCase();
-    const cls = e.className || '';
+    const cls = e.getAttribute('class') || '';
     let line = '  '.repeat(depth) + `<${tag}`;
     if (e.id) line += ` #${e.id}`;
     if (cls) line += ` .${cls.split(' ').slice(0, 2).join('.')}`;
