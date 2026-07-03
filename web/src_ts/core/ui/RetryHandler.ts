@@ -18,6 +18,7 @@ export class RetryController implements IRetryController {
   count = 0;
   maxRetries = 3;
   streamTimeout: number | null = null;
+  private _retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private debug?: IDebugManager) {}
 
@@ -45,11 +46,25 @@ export class RetryController implements IRetryController {
 
     assistantEl.remove();
 
+    // Cancel any previous pending retry before scheduling a new one
+    this._cancelPendingRetry();
+
     const delay = 2000 * this.count;
-    setTimeout(onRetry, delay);
+    this._retryTimer = setTimeout(() => {
+      this._retryTimer = null;
+      onRetry();
+    }, delay);
   }
 
   resetRetryCount(): void {
     this.count = 0;
+    this._cancelPendingRetry();
+  }
+
+  private _cancelPendingRetry(): void {
+    if (this._retryTimer !== null) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
   }
 }
