@@ -157,7 +157,11 @@ export class DebugManager implements IDebugManager {
       <summary><strong>📄 DOM Tree</strong></summary>
       <div class="dbg-dom" id="dom-tree">`;
     if (this.activeMsgEl) {
-      html += this.treeSerializer.renderTree(this.activeMsgEl, 0);
+      try {
+        html += this.treeSerializer.renderTree(this.activeMsgEl, 0);
+      } catch (e) {
+        html += `<div class="dbg-muted">(error: ${(e as Error).message || String(e)})</div>`;
+      }
     } else {
       html += '<div class="dbg-muted">(no active message)</div>';
     }
@@ -278,7 +282,11 @@ export class DebugManager implements IDebugManager {
     parts.push('');
     parts.push('=== DOM TREE ===');
     if (this.activeMsgEl) {
-      parts.push(this.treeSerializer.renderTreeText(this.activeMsgEl, 0));
+      try {
+        parts.push(this.treeSerializer.renderTreeText(this.activeMsgEl, 0));
+      } catch (e) {
+        parts.push(`(error rendering DOM tree: ${(e as Error).message || String(e)})`);
+      }
     } else {
       parts.push('(none)');
     }
