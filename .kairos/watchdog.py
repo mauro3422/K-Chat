@@ -42,7 +42,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ERROR_CONTEXT_FILE = PROJECT_ROOT / ".kairos" / "error_context.md"
 HEALTH_URL = os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/health")
 CHECK_INTERVAL = int(os.getenv("WATCHDOG_INTERVAL", "5"))
-STARTUP_GRACE = 10  # Seconds to wait before first check (allow server to start)
+# Allow up to 3 minutes for first-time startup (embedding model download
+# from HuggingFace can take 60-120 seconds on the first run).
+STARTUP_GRACE = int(os.getenv("WATCHDOG_STARTUP_GRACE", "180"))
+# Require 6 consecutive failures before triggering recovery (30s of
+# sustained downtime) to tolerate temporary slowness during model loading.
+REQUIRED_FAILURES = int(os.getenv("WATCHDOG_REQUIRED_FAILURES", "6"))
 
 
 def _git_log(count: int = 5) -> str:
@@ -217,8 +222,8 @@ def main() -> None:
 
             logger.warning("Health check failed (%d consecutive)", consecutive_failures)
 
-            # Require 3 consecutive failures to confirm crash (avoid false positives)
-            if consecutive_failures < 3:
+            # Require N consecutive failures to confirm crash (avoid false positives)
+            if consecutive_failures < REQUIRED_FAILURES:
                 time.sleep(CHECK_INTERVAL)
                 continue
 
