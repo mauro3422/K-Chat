@@ -26,6 +26,12 @@ export interface INDJSONStreamClient {
   readonly isStreaming: boolean;
 }
 
+function _serializeStreamData(d: unknown): string {
+  if (d === null || d === undefined) return '';
+  if (typeof d === 'string') return d;
+  return JSON.stringify(d);
+}
+
 function parseStreamEvent(raw: string): StreamEvent | null {
   if (!raw) return null;
   let msg: Record<string, unknown>;
@@ -37,7 +43,7 @@ function parseStreamEvent(raw: string): StreamEvent | null {
   if (!msg || typeof msg !== 'object') return null;
   if (typeof msg.t !== 'string') return null;
   if (!VALID_EVENT_TYPES.has(msg.t as StreamEventType)) return null;
-  return { t: msg.t as StreamEventType, d: String(msg.d ?? '') };
+  return { t: msg.t as StreamEventType, d: _serializeStreamData(msg.d) };
 }
 
 export class NDJSONStreamClient implements INDJSONStreamClient {

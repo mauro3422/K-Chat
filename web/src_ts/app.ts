@@ -462,14 +462,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     eventBus.removeAllListeners();
   });
 
-  // Expose Lego blocks for AI / widget access
-  (window as any).__k = {
+  // Expose Lego blocks for AI / widget access (preserve properties set by other components)
+  const existing = (window as any).__k || {};
+  (window as any).__k = Object.assign(existing, {
     cssInjector,
     audioBus,
     gridController,
     canvasOverlay,
     eventBus,
-  };
+  });
 
   logger.info('TS ready â€” Lego layout blocks initialized');
   logger.info('Try: __k.canvasOverlay.startEffect("rain")');

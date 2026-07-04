@@ -77,11 +77,25 @@ export class ModelSelector {
     try {
       const data = JSON.parse(script.textContent || '{}') as ModelsByTier;
       this.models = data;
+      this.populateHiddenSelect();
     } catch {
       this.logger.warn('failed_to_parse_model_data');
       this.models = { go_premium: [], go_standard: [], go_economy: [], free_ratelimited: [] };
       this.render();
       if (this.currentEl) this.currentEl.textContent = 'Error loading models';
+    }
+  }
+
+  private populateHiddenSelect(): void {
+    if (!this.hiddenSelect) return;
+    this.hiddenSelect.innerHTML = '';
+    for (const models of Object.values(this.models)) {
+      for (const m of models) {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.name;
+        this.hiddenSelect.appendChild(opt);
+      }
     }
   }
 
