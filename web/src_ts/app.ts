@@ -427,7 +427,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       debug.refresh();
       systemLogPanel.refresh();
     }
-  }, 400);
+  }, 3000);
 
   const lanStatusIntervalId = setInterval(() => {
     void lanStatusPanel.refresh();

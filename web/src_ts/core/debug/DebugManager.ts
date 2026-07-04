@@ -458,11 +458,13 @@ export class DebugManager implements IDebugManager {
     const action = btn.getAttribute('data-copy-action');
     console.log('[debug] copy click', { action, btnText: btn.textContent });
     if (action === 'all') this.copyAll(btn);
+    else if (action === 'all-session') this.copyAll(btn);
     else if (action === 'stream') this.copyStreamSection(btn);
     else if (action === 'ui') this.copyUISection(btn);
     else if (action === 'widgets') this.copyWidgetSection(btn);
     else if (action === 'backend') this.copyBackendSection(btn);
     else if (action === 'text') this.copyPreText(btn);
+    else console.warn('[debug] unhandled copy action:', action);
   }
 
   private copyAll(btnEl: HTMLElement): void {
