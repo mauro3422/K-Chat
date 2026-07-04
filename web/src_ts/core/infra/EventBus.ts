@@ -37,7 +37,9 @@ export class TypedEventBus implements IEventBus {
     if (!list) return;
     for (const callback of list) {
       try {
-        callback(data);
+        Promise.resolve(callback(data)).catch((err) => {
+          console.error(`Unhandled rejection in event listener for ${event}:`, err);
+        });
       } catch (error) {
         console.error(`Error in event listener for ${event}:`, error);
       }

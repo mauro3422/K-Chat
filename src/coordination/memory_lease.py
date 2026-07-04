@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -13,6 +14,8 @@ from typing import Any
 
 from src.config_loader import Config
 from src.memory.memory_db_path import resolve_memory_db_path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -84,6 +87,7 @@ class MemoryLeaseManager:
             try:
                 self._lease_path.unlink(missing_ok=True)
             except Exception:
+                logger.warning("Failed to unlink lease file: %s", self._lease_path)
                 return False
             return True
 
@@ -108,6 +112,7 @@ class MemoryLeaseManager:
                 reason=str(raw.get("reason", "memory_write")),
             )
         except Exception:
+            logger.exception("Failed to parse lease file: %s", self._lease_path)
             return None
         if not lease.owner_node_id:
             return None
@@ -119,7 +124,10 @@ class MemoryLeaseManager:
         self._lease_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self._lease_path.with_suffix(self._lease_path.suffix + ".tmp")
         tmp_path.write_text(json.dumps(lease.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp_path, self._lease_path)
+        try:
+            os.replace(tmp_path, self._lease_path)
+        except OSError as e:
+            logger.error("Failed to persist lease file (disk full?): %s", e)
 
 
 _current_lease_manager: ContextVar[MemoryLeaseManager | None] = ContextVar("kairos_memory_lease_manager", default=None)

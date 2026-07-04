@@ -66,6 +66,14 @@ class NodeLanBridge:
         self._lan_ip_resolver = lan_ip_resolver
         self._on_primary_yield = on_primary_yield
 
+    def _response_json(self, response: httpx.Response) -> dict:
+        """Safely parse JSON response, returning {} for empty bodies."""
+        try:
+            return response.json() if response.content else {}
+        except Exception:
+            logger.warning("Failed to parse JSON response from %s", response.url)
+            return {}
+
     @property
     def peer_urls(self) -> list[str]:
         return list(dict.fromkeys([*self._static_peer_urls, *self._discovered_peer_urls]))
@@ -121,7 +129,7 @@ class NodeLanBridge:
             for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "post", f"{peer}/api/node/heartbeat", json=payload)
-                    data = response.json() if response.content else {}
+                    data = self._response_json(response)
                     peer_state = data.get("state", {}) if isinstance(data, dict) else {}
                     await self._coordinator.record_peer_heartbeat(
                         node_id=str(peer_state.get("node_id") or peer),
@@ -211,7 +219,7 @@ class NodeLanBridge:
             for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "post", f"{peer}/api/node/memory/request", json=payload)
-                    data = response.json() if response.content else {}
+                    data = self._response_json(response)
                     if isinstance(data, dict) and data.get("ok"):
                         return {"ok": True, "granted": bool(data.get("granted", True)), "queued": bool(data.get("queued", False)), "peer": peer, "response": data}
                 except Exception as exc:
@@ -245,7 +253,7 @@ class NodeLanBridge:
             for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "post", f"{peer}/api/node/embeddings/jobs", json=payload)
-                    data = response.json() if response.content else {}
+                    data = self._response_json(response)
                     if isinstance(data, dict) and data.get("ok"):
                         return {"ok": True, "queued": bool(data.get("queued", False)), "peer": peer, "response": data}
                 except Exception as exc:
@@ -263,7 +271,7 @@ class NodeLanBridge:
             for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "get", f"{peer}/api/memory/diagnostics", params={"key_pattern": key_pattern})
-                    data = response.json() if response.content else {}
+                    data = self._response_json(response)
                     if isinstance(data, dict) and data.get("ok"):
                         return {"ok": True, "peer": peer, "snapshot": data}
                 except Exception as exc:
@@ -278,7 +286,7 @@ class NodeLanBridge:
         async with self._client_factory() as client:
             try:
                 response = await self._request_with_retry(client, "get", f"{peer}/api/node/state")
-                data = response.json() if response.content else {}
+                data = self._response_json(response)
                 if isinstance(data, dict):
                     return {"ok": True, "peer": peer, "state": data}
             except Exception as exc:
@@ -293,7 +301,7 @@ class NodeLanBridge:
         async with self._client_factory() as client:
             try:
                 response = await self._request_with_retry(client, "get", f"{peer}/api/node/diagnostics", params={"key_pattern": key_pattern})
-                data = response.json() if response.content else {}
+                data = self._response_json(response)
                 if isinstance(data, dict):
                     return {"ok": True, "peer": peer, "snapshot": data}
             except Exception as exc:
@@ -311,7 +319,7 @@ class NodeLanBridge:
             for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "get", f"{peer}/api/memory/diagnostics", params={"key_pattern": key_pattern})
-                    data = response.json() if response.content else {}
+                    data = self._response_json(response)
                     if not isinstance(data, dict):
                         result["errors"].append({"peer": peer, "error": "invalid response"})
                         continue
@@ -333,7 +341,7 @@ class NodeLanBridge:
             for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "get", f"{peer}/api/node/sessions", params={"limit": limit})
-                    data = response.json() if response.content else {}
+                    data = self._response_json(response)
                     if not isinstance(data, dict):
                         result["errors"].append({"peer": peer, "error": "invalid response"})
                         continue
@@ -378,7 +386,7 @@ class NodeLanBridge:
             for peer in peers:
                 try:
                     response = await self._request_with_retry(client, "get", f"{peer}/api/node/state")
-                    data = response.json() if response.content else {}
+                    data = self._response_json(response)
                     if not isinstance(data, dict):
                         result["errors"].append({"peer": peer, "error": "invalid response"})
                         continue

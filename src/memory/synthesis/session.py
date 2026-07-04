@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import hashlib
 import json
 import re
@@ -18,6 +19,8 @@ from src.memory.memory_db_path import resolve_memory_db_path
 from src.memory.curator.recall_review import load_candidates, write_candidates
 from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
+
+logger = logging.getLogger(__name__)
 
 
 def _project_root() -> Path:
@@ -745,6 +748,7 @@ async def vectorize_session_summary_artifacts(
                     continue
                 candidates.append(artifact)
             except Exception:
+                logger.exception("Failed to check dedup for artifact %s", artifact.get("session_id", "?"))
                 result["failed"] += 1
 
         if candidates:
@@ -777,6 +781,7 @@ async def vectorize_session_summary_artifacts(
                     )
                     result["embedded"] += 1
                 except Exception:
+                    logger.exception("Failed to insert embedding for artifact %s", artifact.get("session_id", "?"))
                     result["failed"] += 1
     finally:
         if own_store:

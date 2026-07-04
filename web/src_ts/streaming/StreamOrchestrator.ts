@@ -432,6 +432,14 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   }
 
   private _handleStreamError(type: string, message: string): void {
+    this._processStreamError(type, message, false);
+  }
+
+  private _handleStreamPostError(error: { type: string; message: string }): void {
+    this._processStreamError(error.type, error.message, true);
+  }
+
+  private _processStreamError(type: string, message: string, postPhase: boolean): void {
     this._clearTimeout();
 
     // Guard: prevent double-invocation after stream already finalized
@@ -441,13 +449,15 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       this._lastError = { type, message };
       this._savedErrorEl = this.lastAssistantMsgEl; // Save before finalization for auto-retry reuse
       this._showErrorCard(type, message);
-      this.debug?.logUI('stream_error_rate_limit', `${type}: ${message}`);
+      const logLabel = postPhase ? 'stream_error_rate_limit_post' : 'stream_error_rate_limit';
+      this.debug?.logUI(logLabel, `${type}: ${message}`);
 
       // Start the rate limit cooldown (triggers ChatForm countdown too)
       this.rateLimitCooldown.start(60000);
 
       // Live-update the countdown inside the error card
-      const countdownId = 'rl-countdown-' + Date.now();
+      const prefix = postPhase ? 'rl-countdown-post-' : 'rl-countdown-';
+      const countdownId = prefix + Date.now();
       this._rlTickHandler = (data: { remainingSec: number }) => {
         const el = document.getElementById(countdownId);
         if (el) el.textContent = String(data.remainingSec);
@@ -482,7 +492,11 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
     if (type === 'auth' || type === 'bad_request') {
       this._lastError = { type, message };
-      this._showErrorCard(type, message);
+      if (!postPhase) {
+        this._showErrorCard(type, message);
+      } else {
+        this._markCallingPillsError();
+      }
       this.debug?.logUI('stream_error_terminal', `${type}: ${message}`);
       this.retryController?.resetRetryCount();
       this._finalizeStream();
@@ -493,92 +507,23 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       const text = this.currentUserText;
       this._lastError = { type, message };
       this.debug?.logUI('stream_error_retry', `${type}: ${message} — attempt ${this.retryController.count + 1}/${this.retryController.maxRetries}`);
-        this.retryController.scheduleRetry({
-          assistantEl: this.lastAssistantMsgEl!,
-          userText: text,
-          reason: message,
-          onRetry: () => this.handleRetry(text, this.currentModel ?? undefined),
-        });
-        this._finalizeStream();
-      return;
-    }
-
-    this._showErrorCard(type, message);
-    this.debug?.logUI('stream_error_final', `${type}: ${message} — retries exhausted`);
-    this.retryController?.resetRetryCount();
-    this._finalizeStream();
-  }
-
-  private _handleStreamPostError(error: { type: string; message: string }): void {
-    this._clearTimeout();
-
-    // Guard: prevent double-invocation after stream already finalized
-    if (!this._streamGuard) return;
-
-    if (error.type === 'rate_limit') {
-      this._lastError = { type: error.type, message: error.message };
-      this._savedErrorEl = this.lastAssistantMsgEl;
-      this._showErrorCard(error.type, error.message);
-      this.debug?.logUI('stream_error_rate_limit_post', `${error.type}: ${error.message}`);
-
-      this.rateLimitCooldown.start(60000);
-
-      const text = this.currentUserText;
-      const model = this.currentModel ?? undefined;
-      const countdownId = 'rl-countdown-post-' + Date.now();
-      this._rlTickHandler = (data: { remainingSec: number }) => {
-        const el = document.getElementById(countdownId);
-        if (el) el.textContent = String(data.remainingSec);
-      };
-      if (this.eventBus && this._rlTickHandler) {
-        this.eventBus.on('rate-limit:tick', this._rlTickHandler);
-      }
-      this._rlExpiryHandler = () => {
-        this._cleanupRlListeners();
-        if (text && this._lastError) {
-          if (this._savedErrorEl) {
-            this.lastAssistantMsgEl = this._savedErrorEl;
-            this._savedErrorEl = null;
-          }
-          this.handleRetry(text, model);
-        }
-      };
-      if (this.eventBus && this._rlExpiryHandler) {
-        this.eventBus.on('rate-limit:expired', this._rlExpiryHandler);
-      }
-      this._retryOnCooldownExpiry = true;
-
-      this.retryController?.resetRetryCount();
-      this._finalizeStream();
-      return;
-    }
-
-    if (error.type === 'auth' || error.type === 'bad_request') {
-      this._lastError = { type: error.type, message: error.message };
-      this.debug?.logUI('stream_error_terminal', `${error.type}: ${error.message}`);
-      this.retryController?.resetRetryCount();
-      this._markCallingPillsError();
-      this._finalizeStream();
-      return;
-    }
-
-    if (this.retryController?.shouldRetry(false) && this.currentUserText) {
-      const text = this.currentUserText;
-      this._lastError = { type: error.type, message: error.message };
-      this.debug?.logUI('stream_error_retry', `${error.type}: ${error.message} — attempt ${this.retryController.count + 1}/${this.retryController.maxRetries}`);
       this.retryController.scheduleRetry({
         assistantEl: this.lastAssistantMsgEl!,
         userText: text,
-        reason: error.message,
+        reason: message,
         onRetry: () => this.handleRetry(text, this.currentModel ?? undefined),
       });
       this._finalizeStream();
       return;
     }
 
-    this.debug?.logUI('stream_error_final', `${error.type}: ${error.message} — retries exhausted`);
+    if (postPhase) {
+      this._markCallingPillsError();
+    } else {
+      this._showErrorCard(type, message);
+    }
+    this.debug?.logUI('stream_error_final', `${type}: ${message} — retries exhausted`);
     this.retryController?.resetRetryCount();
-    this._markCallingPillsError();
     this._finalizeStream();
   }
 
@@ -661,6 +606,13 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       // Show the executed tools instead of an error — the tool loop already
       // saved everything in the backend, the next turn will have the response.
       this.debug?.logUI('stream_tool_only', 'reasoning/tool calls present but no content — showing tool summary, not error');
+      this.sessionStore.addMessage(this.sessionStore.activeSessionId, {
+        role: 'assistant',
+        content: '',
+        ts: new Date().toISOString(),
+        reasoning: ctx.reasoningTexts.join(' '),
+        matched_tools: [],
+      });
       const bodyEl = ctx.bodyEl || assistantEl.querySelector('.' + C.MSG_BODY) as HTMLElement | null;
       if (bodyEl) {
         // Keep tool pills visible (already rendered by ContentHandler),

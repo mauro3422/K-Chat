@@ -159,6 +159,7 @@ def _extract_imports_from_file(file_path: str) -> list[tuple[int, str]]:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
     except Exception:
+        logger.warning("Failed to read file for import analysis: %s", file_path)
         return []
 
     results: list[tuple[int, str]] = []

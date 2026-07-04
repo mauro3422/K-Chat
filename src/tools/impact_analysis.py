@@ -83,6 +83,7 @@ def _find_callers(
                 with open(fpath, "r", encoding="utf-8", errors="replace") as f:
                     content = f.read()
             except Exception:
+                logger.warning("Failed to read file for impact analysis: %s", fpath)
                 continue
 
             # Quick text check first

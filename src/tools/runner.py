@@ -58,7 +58,10 @@ async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], t
             logger.exception("Tool execution failed for '%s'", name)
             tool_result = f"[ERROR in {name}]: Internal error executing tool."
             status = "error"
-        if len(tool_result) > 30000:
+        if tool_result is None:
+            tool_result = f"[ERROR in {name}]: Tool returned None."
+            status = "error"
+        elif len(tool_result) > 30000:
             tool_result = tool_result[:30000] + "\n...[truncated]"
         return tc, name, tool_result, status
 

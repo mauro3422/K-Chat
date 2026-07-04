@@ -26,6 +26,7 @@ def _check_crash_loop() -> bool:
                 if line.strip():
                     crashes.append(float(line.strip()))
         except Exception:
+            logger.warning("Failed to read crash counter file, resetting")
             crashes = []
 
     crashes = [t for t in crashes if now - t < 300]
@@ -76,5 +77,5 @@ def load_error_context() -> str:
             "\n---\n"
         )
     except Exception as e:
-        logger.warning("Failed to read error context: %s", e)
+        logger.warning("Failed to read error context: %s", e, exc_info=True)
         return ""

@@ -42,6 +42,7 @@ export class SessionStore implements ISessionStore {
   private _logger: ILogger;
   private _boundListeners: Array<{ event: string; cb: EventCallback<any> }> = [];
   private _loaded = false;
+  private _selectGeneration = 0;
 
   constructor(apiClient: ApiClient) {
     this._apiClient = apiClient;
@@ -198,8 +199,11 @@ export class SessionStore implements ISessionStore {
 
     if (this._activeSessionId !== id) {
       this._activeSessionId = id;
+      this._selectGeneration++;
+      const gen = this._selectGeneration;
       // Load history for selected session
       await this.loadHistory(id);
+      if (gen !== this._selectGeneration) return;
       this._emit('session:selected', { id });
       if (needsUrlSync) {
         window.history.replaceState({ sessionId: id }, '', canonicalPath);

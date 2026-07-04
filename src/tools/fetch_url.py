@@ -191,7 +191,7 @@ async def _fetch_with_retry(url: str, max_chars: int, _retries: int, config=None
             logger.warning("Error fetching %s: %s", url, e)
             if attempt < _retries:
                 await sleep(1)
-                return f"[ERROR] Error processing {url}."
+            return f"[ERROR] Error processing {url}."
 
 
 async def run(config=None, **kwargs: Any) -> str | None:

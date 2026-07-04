@@ -1,6 +1,11 @@
 """Session operations."""
 
+import logging
+
 from src.memory.repos import Repositories, SessionRepository
+
+
+logger = logging.getLogger(__name__)
 from src.api.session_contract import SessionOpsDeps
 from src.api.exceptions import ServiceException
 from src.api._resolve import resolve_deps
@@ -21,6 +26,7 @@ def _resolve_local_node_id() -> str:
             return ""
         return getattr(coordinator, "node_id", "") or ""
     except Exception:
+        logger.warning("Failed to resolve local node_id")
         return ""
 
 

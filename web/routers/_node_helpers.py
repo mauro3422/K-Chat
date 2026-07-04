@@ -72,7 +72,9 @@ def _get_failover_state(request: Request):
     return getattr(request.app.state, "failover_state", None) or get_failover_state()
 
 
-def _request_base_url(request: Request) -> str:
+def _request_base_url(request: Request | None) -> str:
+    if request is None:
+        return ""
     try:
         return str(request.base_url).rstrip("/")
     except Exception:

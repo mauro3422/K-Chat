@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from src.gateway_log import log_event
 from src.coordination.lan_bridge import NodeLanBridge
-from web.routers._node_helpers import _request_repos
+from web.routers._node_helpers import _request_base_url, _request_repos
 from web.routers._request_repos import is_unconfigured_mock
 from web.services.session_directory import merge_session_entries, session_summary_from_row
 
@@ -39,15 +39,6 @@ def _request_bridge(request: Request | None):
     if state is not None:
         state.node_bridge = bridge
     return bridge
-
-
-def _request_base_url(request: Request | None) -> str:
-    if request is None:
-        return ""
-    try:
-        return str(request.base_url).rstrip("/")
-    except Exception:
-        return ""
 
 
 async def _local_session_entries(request: Request | None, limit: int) -> list[dict]:

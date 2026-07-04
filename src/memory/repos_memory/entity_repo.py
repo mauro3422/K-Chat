@@ -60,6 +60,7 @@ class EntityRepository:
                 from src.memory.memory_schema import init_memory_db
                 await init_memory_db()
         except Exception:
+            logger.warning("Failed to probe entities table — re-initializing schema")
             from src.memory.memory_schema import init_memory_db
             await init_memory_db()
 
@@ -97,6 +98,7 @@ class EntityRepository:
                         (entity_id, name, entity_type, meta_json, timestamp, timestamp, origin_node_id),
                     )
                 except Exception:
+                    logger.warning("origin_node_id column may be missing — trying pre-migration insert")
                     # Pre-migration-016 DB: origin_node_id column missing.
                     await conn.execute(
                         """INSERT INTO entities (id, name, entity_type, metadata, first_seen, last_seen, mention_count)

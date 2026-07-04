@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from collections import deque
@@ -12,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from src.memory.memory_db_path import resolve_memory_db_path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -70,6 +73,7 @@ class MemoryWriteQueue:
         try:
             raw = json.loads(self._persistence_path.read_text(encoding="utf-8"))
         except Exception:
+            logger.exception("Failed to load memory write queue from %s — starting fresh", self._persistence_path)
             return
         items = raw if isinstance(raw, list) else raw.get("items", []) if isinstance(raw, dict) else []
         for item in items:
@@ -84,6 +88,7 @@ class MemoryWriteQueue:
                     )
                 )
             except Exception:
+                logger.warning("Skipping corrupt item in write queue: %s", item.get("key", "?"))
                 continue
 
     def _persist(self) -> None:
@@ -91,7 +96,10 @@ class MemoryWriteQueue:
         tmp_path = self._persistence_path.with_suffix(self._persistence_path.suffix + ".tmp")
         payload = [item.to_dict() for item in self._queue]
         tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp_path, self._persistence_path)
+        try:
+            os.replace(tmp_path, self._persistence_path)
+        except OSError as e:
+            logger.error("Failed to persist write queue (disk full?): %s", e)
 
 
 _current_queue: ContextVar[MemoryWriteQueue | None] = ContextVar("kairos_memory_write_queue", default=None)

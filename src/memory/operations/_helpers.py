@@ -95,7 +95,10 @@ def _write_memory_md(path: str, memories: dict[str, str]) -> None:
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.writelines(lines)
-    os.replace(tmp, path)
+    try:
+        os.replace(tmp, path)
+    except OSError as e:
+        logger.error("Failed to persist memory file (disk full?): %s", e)
 
 
 def _match_key_pattern(key: str, pattern: str) -> bool:

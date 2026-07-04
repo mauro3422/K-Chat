@@ -9,6 +9,10 @@ helper returns an empty string, which the storage layer treats as
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def resolve_local_node_id() -> str:
     """Return the active ``NodeCoordinator.node_id`` or ``""`` when absent.
@@ -24,4 +28,5 @@ def resolve_local_node_id() -> str:
             return ""
         return getattr(coordinator, "node_id", "") or ""
     except Exception:
+        logger.warning("Failed to resolve local node_id from coordinator")
         return ""

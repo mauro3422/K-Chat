@@ -225,7 +225,7 @@ def preflight_check(
     try:
         with open(path, 'r', encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
-    except Exception:
+    except (OSError, UnicodeDecodeError, PermissionError):
         return result
 
     # Lines being touched
