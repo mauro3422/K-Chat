@@ -31,6 +31,14 @@ class ModelState:
         self._failed_models: dict[str, float] = {}  # model → timestamp of failure
         self._cached_models: list[Any] | None = None
 
+    @property
+    def priority(self) -> list[str]:
+        return list(self._priority)
+
+    @property
+    def fallback_model(self) -> str:
+        return self._fallback_model
+
     def is_model_failed(self, model: str) -> bool:
         with self._lock:
             failed_at = self._failed_models.get(model)

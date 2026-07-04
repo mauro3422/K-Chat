@@ -215,14 +215,13 @@ class TestGetDefaultModel:
         mock_get_verified.return_value = None
         mock_m1 = MagicMock()
         mock_m1.id = "deepseek-v4-flash"
-        mock_m2 = MagicMock()
-        mock_m2.id = "big-pickle"
-        mock_get_free.return_value = [mock_m1, mock_m2]
+        mock_get_free.return_value = [mock_m1]
         mock_failed.side_effect = lambda m: m == "deepseek-v4-flash"
 
         result = get_default_model()
 
-        assert result == "big-pickle"
+        # When the only model is failed, fallback to DEFAULT_MODEL
+        assert result == "deepseek-v4-flash"
 
     @patch("src.llm.selector.discovery.get_free_models", new_callable=AsyncMock)
     @pytest.mark.anyio

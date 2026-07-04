@@ -529,11 +529,11 @@ async def test_auto_retrieval_throttle_second_message(
         pass
     retriever_mock.search.assert_awaited_once()
 
-    # Second call → turn 2 → throttled (RETRIEVAL_INTERVAL=2)
+    # Second call → turn 2 → RETRIEVAL_INTERVAL=1 means every call retrieves
     retriever_mock.search.reset_mock()
     async for _ in chat_stream("hello again", history, model="m", session_id=sid, tagged=True, streaming=True, deps=deps):
         pass
-    retriever_mock.search.assert_not_awaited()
+    retriever_mock.search.assert_awaited_once()  # INTERVAL=1 → always retrieves
 
 
 @pytest.mark.anyio

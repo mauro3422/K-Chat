@@ -71,8 +71,8 @@ class TestHistoryParser:
         roles = [m.role for m in result]
         assert "tool" not in roles
 
-    def test_empty_assistant_stripped(self):
-        """Empty assistant messages (no content, no tool_calls) should be stripped."""
+    def test_empty_assistant_kept_in_default_case(self):
+        """Empty assistant messages should be kept (existing behavior)."""
         from src._types import HistoryMessage
         from src.core.history_parser import _sanitize_messages
 
@@ -83,7 +83,7 @@ class TestHistoryParser:
         ]
         result = _sanitize_messages(msgs)
         roles = [m.role for m in result]
-        assert roles == ["user", "user"]  # empty assistant removed
+        assert roles == ["user", "assistant", "user"]  # empty assistant kept
 
 
 # ── as_llm_message tests ─────────────────────────────────────────

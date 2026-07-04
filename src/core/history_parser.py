@@ -117,11 +117,6 @@ def _sanitize_messages(raw_msgs: list[HistoryMessage]) -> list[HistoryMessage]:
             idx += 1
             continue
 
-        # Skip empty assistant messages (no content, no tool_calls)
-        if role == "assistant" and not msg.tool_calls and not (msg.content or "").strip():
-            idx += 1
-            continue
-
         sanitized.append(msg)
         idx += 1
 
