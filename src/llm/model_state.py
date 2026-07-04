@@ -11,7 +11,7 @@ from contextvars import ContextVar
 import threading
 from typing import Any
 
-from src.config_loader import DEFAULT_MODEL, SECONDARY_MODEL
+from src.config_loader import DEFAULT_MODEL, PRIORITY_MODELS
 import time
 
 MODEL_FAIL_TTL = 300  # seconds before a failed model is retried
@@ -26,7 +26,7 @@ class ModelState:
 
     def __init__(self, priority=None, fallback_model=None):
         self._lock = threading.Lock()
-        self._priority = [m for m in (priority or [DEFAULT_MODEL, SECONDARY_MODEL]) if m]
+        self._priority = [m for m in (priority or PRIORITY_MODELS) if m]
         self._fallback_model = fallback_model or DEFAULT_MODEL
         self._failed_models: dict[str, float] = {}  # model → timestamp of failure
         self._cached_models: list[Any] | None = None
@@ -106,7 +106,7 @@ def reset_state() -> None:
 
 
 # Static constants (no dependency on ModelState instance)
-PRIORITY = [m for m in [DEFAULT_MODEL, SECONDARY_MODEL] if m]
+PRIORITY = [m for m in PRIORITY_MODELS if m]
 FALLBACK_MODEL = DEFAULT_MODEL
 
 

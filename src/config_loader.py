@@ -17,7 +17,10 @@ def reset_dotenv_state() -> None:
 
 # ── Model name constants ────────────────────────────────────────────────
 DEFAULT_MODEL: str = "deepseek-v4-flash"
-SECONDARY_MODEL: str = "big-pickle"  # Secondary fallback used by selector/failover
+# Priority list for failover — only include models known to exist.
+# When DEFAULT_MODEL fails, _switch_model tries each candidate in order.
+# Remove big-pickle (ghost model that caused permanent 401 fallback loop).
+PRIORITY_MODELS: list[str] = ["deepseek-v4-flash"]
 
 
 @dataclass

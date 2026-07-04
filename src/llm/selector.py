@@ -4,7 +4,7 @@ import logging
 import src.llm.model_state as models
 import src.llm.model_registry as registry
 import src.llm.discovery as discovery
-from src.config_loader import SECONDARY_MODEL
+from src.config_loader import DEFAULT_MODEL
 from src.utils.async_utils import run_awaitable_sync
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def get_default_model() -> str:
         available_ids, verified_cache_used = _get_default_model_candidates()
         for modelo in models.PRIORITY:
             if not models.is_model_failed(modelo):
-                if modelo in available_ids or (modelo == SECONDARY_MODEL and not verified_cache_used):
+                if modelo in available_ids:
                     return modelo
     except Exception as e:
         logger.warning("Error getting models: %s", e)
