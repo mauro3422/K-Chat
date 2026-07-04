@@ -7,6 +7,7 @@ ERROR_MESSAGES = {
     "network": "Connection error with the model.",
     "tool_error": "A tool or function call failed. Please try again.",
     "model": "The model encountered an error. Please try again.",
+    "bad_request": "The request was rejected by the provider. The message might be too long or malformed.",
     "unknown": "An unexpected error occurred. Please try again.",
 }
 
@@ -89,7 +90,11 @@ def classify_error(error: Exception | str) -> tuple[str, str]:
     """Classifies an error message into a type and a user-friendly message."""
     error_msg = str(error)
     msg_l = error_msg.lower()
+    # Bad request / invalid request — non-retryable (4xx client errors)
+    if "bad request" in msg_l or "400" in msg_l or "invalid_request_error" in msg_l:
+        return "bad_request", ERROR_MESSAGES["bad_request"]
     if "rate limit" in msg_l or "ratelimit" in msg_l or "429" in msg_l:
+        ...
         hint = _extract_rate_limit_hint(error)
         # Detect free-tier quota exhaustion (OpenCode Zen specific)
         if "freeusagelimit" in msg_l or "free usage limit" in msg_l:
