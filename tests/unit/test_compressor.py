@@ -98,3 +98,32 @@ class TestCompressHistory:
         await compress_history(history, "test-model", chat_fn=mock_llm)
 
         assert history == original
+
+    @pytest.mark.anyio
+    async def test_preserves_tool_pairing_at_slice_boundary(self):
+        """Compressor must not orphan tool messages when slice cuts near them."""
+        history = [{"role": "system", "content": "You are a bot."}]
+        # Fill with enough messages to trigger compression
+        history += [make_msg(content=f"old {i}") for i in range(25)]
+
+        # Add tool chain at the end (last KEEP_RECENT messages)
+        tool_call_id = "call_test_123"
+        history.append({"role": "assistant", "content": None, "tool_calls": [
+            {"id": tool_call_id, "type": "function", "function": {"name": "test", "arguments": "{}"}}
+        ]})
+        history.append({"role": "tool", "content": "result", "tool_call_id": tool_call_id})
+
+        mock_response = MagicMock()
+        mock_response.message.content = "Test summary"
+        mock_llm = AsyncMock(return_value=mock_response)
+        await compress_history(history, "test-model", chat_fn=mock_llm)
+
+        # Tool messages must still have their assistant
+        tool_count = sum(1 for m in history if m.get("role") == "tool")
+        assert tool_count == 1, f"Tool messages should be 1, got {tool_count}"
+        # Verify the assistant with tool_calls is still present
+        has_assistant_with_tc = any(
+            m.get("role") == "assistant" and m.get("tool_calls")
+            for m in history
+        )
+        assert has_assistant_with_tc, "Assistant with tool_calls must be preserved"

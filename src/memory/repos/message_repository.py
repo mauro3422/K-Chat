@@ -107,11 +107,17 @@ class MessageRepository(_BaseRepository):
             return False
 
     async def delete_empty_assistant(self, session_id: str) -> None:
-        """Delete assistant messages with empty content (left by tool loop resets)."""
+        """Delete assistant messages with empty content (left by tool loop resets).
+
+        Only deletes messages that have NO tool_calls — otherwise it would
+        orphan tool responses that depend on the assistant's tool_call_ids.
+        """
         try:
             async with self._transaction() as conn:
                 cursor = await conn.execute(
-                    "DELETE FROM messages WHERE session_id = ? AND role = 'assistant' AND (content IS NULL OR content = '')",
+                    "DELETE FROM messages WHERE session_id = ? AND role = 'assistant'"
+                    " AND (content IS NULL OR content = '')"
+                    " AND (tool_calls IS NULL OR tool_calls = '' OR tool_calls = '[]')",
                     (session_id,)
                 )
                 deleted = cursor.rowcount
