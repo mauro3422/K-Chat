@@ -230,6 +230,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
           err.message.toLowerCase().includes('abort') ||
           err.message.includes('already streaming')
         )) {
+          this._finalizeStream();
           return;
         }
         const errMsg = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);

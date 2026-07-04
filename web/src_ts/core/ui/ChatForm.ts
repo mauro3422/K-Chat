@@ -54,6 +54,14 @@ export class ChatForm implements IChatForm {
       this.onRateLimitExpired();
     });
 
+    // Show connection status in the input placeholder
+    this.eventBus.on('connection:lost', () => {
+      if (this.inputEl) this.inputEl.placeholder = '⚡ Reconectando...';
+    });
+    this.eventBus.on('connection:restored', () => {
+      if (this.inputEl) this.inputEl.placeholder = 'Escribe un mensaje...';
+    });
+
     this.restoreModelSelection();
 
     const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;

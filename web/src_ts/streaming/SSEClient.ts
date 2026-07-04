@@ -38,6 +38,8 @@ export class SSEClient implements ISSEClient {
   private liveContentHandler: ContentHandler | null = null;
   private liveContext: StreamHandlerContext | null = null;
   private liveSessionId: string | null = null;
+  private _reconnectTimer: number | null = null;
+  private _reconnectDelay = 1000;
 
   constructor(
     private eventBus: IEventBus,
@@ -52,16 +54,49 @@ export class SSEClient implements ISSEClient {
   }
 
   connect(): void {
-    if (this.eventSource) return;
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
     this.logger.info('Connecting to SSE /api/events/stream');
     this.eventSource = new EventSource('/api/events/stream');
+
+    this.eventSource.onopen = () => {
+      this.logger.info('SSE connected');
+      this.debug?.logUI('sse', 'Connected');
+      this.eventBus.emit('connection:restored', {});
+      this._reconnectDelay = 1000; // reset backoff
+    };
+
     this.eventSource.onmessage = (e: MessageEvent) => this.handleMessage(e);
+
     this.eventSource.onerror = () => {
-      this.debug?.logUI('sse', 'Connection error (will auto-reconnect)');
+      const rs = this.eventSource?.readyState;
+      if (rs === EventSource.CLOSED) {
+        // Browser won't retry CLOSED state — manual reconnect needed
+        this.logger.warn('SSE closed, reconnecting in %dms', this._reconnectDelay);
+        this.debug?.logUI('sse', `Closed — reconnecting in ${this._reconnectDelay}ms`);
+        this.eventSource?.close();
+        this.eventSource = null;
+        this.eventBus.emit('connection:lost', {});
+        this._reconnectTimer = window.setTimeout(() => {
+          this._reconnectTimer = null;
+          this._reconnectDelay = Math.min(this._reconnectDelay * 2, 30000);
+          this.connect();
+        }, this._reconnectDelay);
+      } else {
+        // CONNECTING (0) — browser will auto-retry
+        this.debug?.logUI('sse', 'Connection error (will auto-reconnect)');
+        this.eventBus.emit('connection:lost', {});
+      }
     };
   }
 
   disconnect(): void {
+    if (this._reconnectTimer !== null) {
+      window.clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
     this.eventSource?.close();
     this.eventSource = null;
     this.clearLiveMessage();

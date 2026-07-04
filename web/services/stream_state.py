@@ -15,7 +15,7 @@ class StreamState:
     persisted: bool = False
     dirty: bool = False
     last_persisted_at: float = field(default_factory=time.monotonic)
-    save_interval: float = 30.0
+    save_interval: float = 10.0  # persist partial content every 10s (was 30s)
 
     def append(self, kind: str, token: str) -> None:
         if kind == "reasoning":
