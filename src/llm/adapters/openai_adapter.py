@@ -107,7 +107,7 @@ class OpenAIAdapter(LLMProvider):
                 k: v
                 for k, v in m_raw.items()
                 if k in ("role", "content", "name", "tool_calls", "tool_call_id")
-                and v is not None
+                and (v is not None or k == "content")  # content must be present even if null
             }
             if m.get("tool_calls"):
                 m["tool_calls"] = [
