@@ -329,3 +329,25 @@ La error-card de rate limit mostraba texto estático "Límite del proveedor, rei
 - `tests/unit/test_stream_error_classifier.py`
 - `MEMORY.md`
 - `skills/db-query/tool.py`
+
+---
+
+### Bug #16: Watchdog no reiniciaba el server correctamente (zombies en puerto 8000)
+
+**Archivos:** `.kairos/watchdog.py`, `.kairos/k-chat-watchdog.service`
+
+Cuando el servidor crasheaba, el watchdog llamaba `systemctl --user restart k-chat`. systemd no mataba los procesos zombis que sobrevivían y seguían agarrando el puerto 8000 → el restart fallaba en loop (`[Errno 98] address already in use`). El counter del restart loop llegó a #21 con PID 297116 vivo por horas.
+
+**Fixes (reescritura completa):**
+- **Ya no depende de systemd** para restart. Nueva secuencia `kill_and_restart()`:
+  1. `pgrep -f uvicorn web.server:app` encuentra TODOS los procesos
+  2. SIGTERM primero, verifica `/proc/{pid}`, SIGKILL a los supervivientes
+  3. `fuser -k 8000/tcp` como ultimate fallback
+  4. Verifica que el puerto esté libre (poll cada 500ms, timeout 10s)
+  5. Spawnea uvicorn como `subprocess.Popen` hijo directo (no via systemd)
+- **PID tracking**: guarda el PID en `.kairos/server.pid`
+- **Server logs**: stdout/stderr a `.kairos/server_stdout.log`/`server_stderr.log` (pipe directo evitaba deadlock)
+- **Verificación post-restart**: health check cada 2s por hasta 180s, 3 reintentos si no levanta
+- **Startup inteligente**: si el server ya está corriendo al arrancar, no espera 180s de gracia
+- **Cleanup al salir**: mata el server hijo cuando el watchdog termina
+- **Service file**: `ReadWritePaths` expandido a `%h/dev/K-Chat` (necesario para uvicorn hijo), `Wants=k-chat.service` eliminado

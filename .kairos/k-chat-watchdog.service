@@ -1,18 +1,22 @@
 [Unit]
-Description=K-Chat Watchdog — crash recovery daemon
+Description=K-Chat Watchdog — self-healing crash recovery daemon
 After=network-online.target
-Wants=k-chat.service
 
 [Service]
 Type=simple
 WorkingDirectory=%h/dev/K-Chat
 
 # ── Environment ────────────────────────────────────────────────────
-Environment=WATCHDOG_INTERVAL=5
+Environment=WATCHDOG_INTERVAL=15
+Environment=WATCHDOG_REQUIRED_FAILURES=6
 Environment=WATCHDOG_URL=http://127.0.0.1:8000/health
+Environment=WATCHDOG_STARTUP_TIMEOUT=180
 Environment=PYTHONUNBUFFERED=1
 
 # ── Execute ────────────────────────────────────────────────────────
+# The watchdog spawns uvicorn directly as a child process — no
+# dependency on k-chat.service.  This avoids systemd restart races
+# where zombie uvicorn processes survive and block port 8000.
 ExecStart=%h/dev/K-Chat/venv/bin/python .kairos/watchdog.py
 
 # ── Lifecycle ──────────────────────────────────────────────────────
@@ -23,7 +27,9 @@ RestartSec=5
 User=%u
 NoNewPrivileges=yes
 PrivateTmp=yes
-ReadWritePaths=%h/dev/K-Chat/.kairos
+# The watchdog spawns uvicorn which needs to write logs & pickles
+# anywhere under the project tree.
+ReadWritePaths=%h/dev/K-Chat
 
 [Install]
 WantedBy=default.target
