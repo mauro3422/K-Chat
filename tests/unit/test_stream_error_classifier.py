@@ -41,7 +41,7 @@ async def test_rate_limit_uses_reset_header_hint():
     )
     etype, msg = classify_error(err)
     assert etype == "rate_limit"
-    assert msg == "Request interrupted by rate limit. Please wait a moment before retrying. Retry in ~6m0s."
+    assert msg == "Request interrupted by rate limit. Please wait a moment before retrying. Retry in ~6m."
 
 
 @pytest.mark.anyio

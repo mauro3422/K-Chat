@@ -72,12 +72,32 @@ export class ModelAvailabilityPoller {
       if (!this.badge || !document.getElementById('rl-badge')) {
         this.badge = document.createElement('span');
         this.badge.id = 'rl-badge';
-        this.badge.title = `${limited} modelo(s) rate-limited`;
+        this.badge.title = `${limited} modelo(s) saturado(s) — esperá al countdown`;
+        this.badge.ariaLabel = `${limited} modelo(s) con límite de tasa`;
+        this.badge.role = 'status';
         this.badge.style.cssText =
-          'position:absolute;top:-6px;right:-6px;font-size:9px;background:var(--accent-red);color:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;line-height:1;';
+          'position:absolute;top:-6px;right:-6px;font-size:9px;background:var(--accent-red);color:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;line-height:1;cursor:help;animation:rl-badge-pulse 2s ease-in-out infinite;';
+        // Add keyframe animation
+        if (!document.getElementById('rl-badge-style')) {
+          const style = document.createElement('style');
+          style.id = 'rl-badge-style';
+          style.textContent = `@keyframes rl-badge-pulse { 0%,100% { opacity:1; } 50% { opacity:0.6; } }`;
+          document.head.appendChild(style);
+        }
         selectWrapper.appendChild(this.badge);
       }
       this.badge.textContent = String(limited);
+      // Click on badge: show model names from the payload
+      this.badge.onclick = () => {
+        const names = data.models
+          ? Object.entries(data.models)
+              .filter(([_, entry]) => entry.status === 'rate_limited')
+              .map(([name]) => name)
+          : [];
+        if (names.length > 0) {
+          this.badge!.title = names.join(', ');
+        }
+      };
     } else if (this.badge) {
       this.badge.remove();
       this.badge = null;

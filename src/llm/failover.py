@@ -99,15 +99,21 @@ def _mark_and_refresh(
     breaker = breaker or _resolve_breaker()
     rate_store = rate_store or _resolve_rate_store()
 
-    models.mark_model_failed(model)
-    breaker.record_failure(model)
-
+    should_mark_as_failed = True
     if error is not None:
         err_str = str(error)
         if is_rate_limit_error(error):
             detail = err_str[:200]
             rate_store.mark_rate_limited(model, retry_after=60.0, detail=detail)
-            logger.warning("Rate limit recorded for %s; will retry after cooldown", model)
+            logger.warning("Rate limit recorded for %s; will retry after cooldown (transient — skipping failover)", model)
+            should_mark_as_failed = False  # Don't mark as failed or record breaker failure
+        elif "insufficient balance" in err_str.lower():
+            try:
+                (registry or _resolve_registry()).mark_quota_exhausted()
+                logger.warning("Go quota exhausted detected for %s (transient — skipping failover)", model)
+            except Exception:
+                logger.warning("Failed to mark quota exhausted", exc_info=True)
+            should_mark_as_failed = False  # Credits errors are transient too
         elif _is_not_supported_error(error):
             rate_store.mark_unavailable(model)
             try:
@@ -115,12 +121,10 @@ def _mark_and_refresh(
             except Exception:
                 logger.warning("Failed to remove unsupported model from registry", exc_info=True)
             logger.warning("Model %s marked unavailable: not supported by provider", model)
-        elif "insufficient balance" in err_str.lower():
-            try:
-                (registry or _resolve_registry()).mark_quota_exhausted()
-                logger.warning("Go quota exhausted detected for model %s", model)
-            except Exception:
-                logger.warning("Failed to mark quota exhausted", exc_info=True)
+
+    if should_mark_as_failed:
+        breaker.record_failure(model)
+        models.mark_model_failed(model)
 
     dynamic_model = _dynamic_switch_model(model, registry=registry, rate_store=rate_store)
     if dynamic_model:
@@ -131,6 +135,18 @@ def _mark_and_refresh(
     except RuntimeError:
         if not breaker.is_available(model):
             raise RuntimeError("All models are circuit-broken; no LLM available")
+        # If the model is rate-limited, don't return it as last resort
+        if rate_store and rate_store.is_rate_limited(model):
+            raise RuntimeError(
+                f"Model {model} is rate-limited and no alternative available"
+            )
         logger.critical("All models have failed! Using last resort: %s", model)
         next_model = model
+
+    # Never return a rate-limited model — prevents one extra wasted API call
+    if rate_store and rate_store.is_rate_limited(next_model):
+        raise RuntimeError(
+            f"Model {next_model} is rate-limited; no LLM available"
+        )
+
     return next_model

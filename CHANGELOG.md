@@ -248,3 +248,84 @@ TypeScript type-checking para archivos core (ModelSelector, RetryHandler, NDJSON
 - `scripts/kairos-node.sh`
 - `scripts/test.sh` (nuevo)
 - `docs/debug_20260703_connection_refused.md` (nuevo)
+
+---
+
+# CHANGELOG — 2026-07-04 (Sesión 2: Circuit breaker + Rate limit graceful + Frontend fixes)
+
+## Bug #12: Circuit breaker abre por rate limits → error clasificado como "model"
+
+**Archivo:** `src/llm/failover.py`
+
+**Causa raíz:** `breaker.record_failure(model)` se ejecutaba para TODOS los errores, incluso rate limits. Después de 3 rate limits (reintentos automáticos del SDK), el circuit breaker se abría. En el siguiente reintento, `_mark_and_refresh` raiseaba `RuntimeError("All models are circuit-broken; no LLM available")` que contenía "model" → `classify_error` retornaba `"model"` en vez de `"rate_limit"`.
+
+**Fix:** `breaker.record_failure(model)` movido dentro del guard `should_mark_as_failed` — rate limits y credits ya no incrementan el breaker:
+- Rate limit → `should_mark_as_failed = False` → NO breaker, NO mark_model_failed
+- Credits → `should_mark_as_failed = False` → NO breaker, NO mark_model_failed
+- Genuine errors → `should_mark_as_failed = True` → breaker + mark_model_failed
+
+## Bug #13: Catch-all retorna modelo rate-limited a pesar de estar en cooldown
+
+**Archivo:** `src/llm/failover.py`
+
+`_switch_model()` (el catch-all cuando `_dynamic_switch_model` retorna None) solo checkea `is_model_failed`, no `is_rate_limited`. Como rate limits NO marcan failed, retornaba el mismo modelo rate-limited → el caller reintentaba contra el mismo endpoint → 429 otra vez → loop.
+
+**Fix:** Dos guards nuevos en `_mark_and_refresh`:
+1. En el `except RuntimeError`: si el modelo está rate-limited, raisea en vez de usarlo como last resort
+2. Post `_switch_model`: checkea `rate_store.is_rate_limited(next_model)` y raisea si está rate-limited
+
+## Bug #14: Error card de rate limit estática sin countdown
+
+**Archivos:** `web/src_ts/streaming/StreamOrchestrator.ts`, `web/src_ts/widgets/ModelAvailabilityPoller.ts`
+
+La error-card de rate limit mostraba texto estático "Límite del proveedor, reintentá en unos minutos." sin indicación de cuánto faltaba. El RateLimitCooldown existía (ChatForm muestra countdown en botón de enviar) pero no estaba integrado con la error-card.
+
+**Fixes:**
+- `_handleStreamError('rate_limit')` ahora arranca `RateLimitCooldown.start(60000)`
+- `_showErrorCard('rate_limit')` muestra countdown vivo: `Reintentando en <span id="rl-countdown-N">57</span>s...`
+- Countdown se actualiza cada 1s vía `rate-limit:tick`
+- Botón ✕ para cancelar auto-retry
+- Botón "Reintentar ahora" manual disponible después de cancelar o al expirar cooldown
+- Auto-retry cuando cooldown expira (reusa la misma burbuja assistant)
+- Se cancela auto-retry si usuario envía otro mensaje manualmente
+- `rl-badge`: animación pulse, aria-label, tooltip con nombres de modelos, clic revela modelos saturados
+
+**HandleRetry mejorado:**
+- Guarda referencia a `_savedErrorEl` ANTES de `_finalizeStream` que lo limpia
+- Restaura `lastAssistantMsgEl` cuando el cooldown expira
+- `handleRetry` ya no depende de `_streamGuard` activo (funciona post-finalización)
+
+## Bug #15 (pre-existing): Test esperaba "6m0s" en vez de "6m"
+
+**Archivo:** `tests/unit/test_stream_error_classifier.py`
+
+`_format_duration_hint(360)` retorna "6m" (correcto — no muestra "0s" cuando hay minutos). El test esperaba "6m0s".
+
+**Fix:** Assert actualizado a "6m".
+
+## Nuevos tests anti-regresión
+
+**Archivo:** `tests/unit/test_failover.py` (10 tests nuevos)
+
+| Test | Qué verifica |
+|---|---|
+| `test_mark_and_refresh_rate_limited_does_not_record_breaker` | Rate limits NO llaman `breaker.record_failure` |
+| `test_mark_and_refresh_rate_limited_does_not_mark_model_failed` | Rate limits NO llaman `mark_model_failed` |
+| `test_mark_and_refresh_generic_error_does_record_breaker` | Errores genéricos SÍ llaman `breaker.record_failure` |
+| `test_dynamic_switch_model_selects_preferred_free_fallback` | Prefiere deepseek-v4-flash-free cuando primary rate-limited |
+| `test_dynamic_switch_model_skips_rate_limited_free_model` | None si ambos rate-limited |
+| `test_dynamic_switch_model_returns_none_when_no_candidates` | None si registry vacío |
+| `test_mark_and_refresh_raises_when_only_model_is_rate_limited` | Raisea si único modelo rate-limited |
+| `test_mark_and_refresh_raises_when_fallback_is_also_rate_limited` | Raisea aunque switch_model devuelva otro rate-limited |
+| `test_mark_and_refresh_rate_limited_uses_dynamic_fallback` | Retorna free model cuando disponible |
+| `test_mark_and_refresh_still_records_breaker_for_generic_error` | Breaker se registra para errores NO rate-limit |
+
+## Archivos modificados
+
+- `src/llm/failover.py`
+- `web/src_ts/streaming/StreamOrchestrator.ts`
+- `web/src_ts/widgets/ModelAvailabilityPoller.ts`
+- `tests/unit/test_failover.py`
+- `tests/unit/test_stream_error_classifier.py`
+- `MEMORY.md`
+- `skills/db-query/tool.py`

@@ -191,16 +191,12 @@ def _validate_and_sanitize(
     
     for raw_c in col_list_raw:
         c_clean = raw_c.split(" as ")[0].strip() if " as " in raw_c else raw_c
+        if c_clean == "*":
+            continue
         if c_clean.startswith("substr("):
             continue
         if not c_clean.replace("_", "").isalnum():
-            return f"[ERROR] Columna inválida: '{c_clean}'", None
-    for raw_c in col_list_raw:
-        c_clean = raw_c.split(" as ")[0].strip() if " as " in raw_c else raw_c
-        if c_clean.startswith("substr("):
-            continue
-        if not c_clean.replace("_", "").isalnum():
-            return f"[ERROR] Columna inválida: '{c_clean}'", None
+            return "[ERROR] Columna invalida: '" + c_clean + "'", None
 
     # Sanitizar where param names
     where_safe = None
@@ -255,13 +251,15 @@ def _format_rows_as_table(table: str, rows: list[Any]) -> str:
     if len(result) > 30000:
         result = result[:29997] + "..."
     return result
-
-    db_name = "deleted" if table in DELETED_TABLES else ("memory" if _is_memory_table(table) else "sessions")
 def _execute_query(table: str, session_id: str | None, params: dict[str, Any]) -> str:
     """Ejecuta la consulta SQL y formatea resultados."""
-    db_name = "memory" if _is_memory_table(table) else "sessions"
+    if table in DELETED_TABLES:
+        db_name = "deleted"
+    elif _is_memory_table(table):
+        db_name = "memory"
+    else:
+        db_name = "sessions"
     db_path = _get_db_path(db_name)
-    
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -318,6 +316,24 @@ def _execute_query(table: str, session_id: str | None, params: dict[str, Any]) -
         return _format_rows_as_table(table, rows)
 
     except sqlite3.OperationalError as e:
+        err_str = str(e)
+        # Detectar error de columna inexistente y ofrecer ayuda
+        if "no such column" in err_str.lower():
+            import re as _re
+            col_match = _re.search(r"no such column:\s*(\S+)", err_str, _re.IGNORECASE)
+            bad_col = col_match.group(1) if col_match else "?"
+            # Sugerir columnas de la tabla via PRAGMA
+            try:
+                probe = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+                hint = ""
+                if probe:
+                    # extraer nombres de columna del CREATE TABLE
+                    col_names = _re.findall(r'(\w+)\s+(TEXT|INTEGER|REAL|BLOB|NUMERIC)', probe[0], _re.IGNORECASE)
+                    if col_names:
+                        hint = ". Columnas disponibles: " + ", ".join(c[0] for c in col_names)
+            except Exception:
+                hint = ""
+            return f"[ERROR] Columna '{bad_col}' no existe en '{table}'{hint}"
         return f"[ERROR] Error en la consulta: {e}"
     except Exception as e:
         logger.exception("db_query failed")

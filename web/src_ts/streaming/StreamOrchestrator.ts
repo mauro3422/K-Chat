@@ -44,6 +44,10 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   private contentHandler: ContentHandler | null = null;
   private _isRetry = false;
   private _lastError: { type: string; message: string } | null = null;
+  private _savedErrorEl: HTMLElement | null = null;
+  private _retryOnCooldownExpiry: boolean = false;
+  private _rlTickHandler: ((data: { remainingSec: number }) => void) | null = null;
+  private _rlExpiryHandler: (() => void) | null = null;
   private logger: ILogger;
 
   constructor(
@@ -90,6 +94,14 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     if (!this.rateLimitCooldown.canSubmit()) return;
     if (!text.trim() && (!files || files.length === 0)) return;
 
+    // Cancel pending rate limit auto-retry if user sends a new message
+    if (this._retryOnCooldownExpiry) {
+      this._retryOnCooldownExpiry = false;
+      this.rateLimitCooldown.cancel();
+      this._cleanupRlListeners();
+      this._savedErrorEl = null;
+    }
+
     this._streamGuard = true;
     this._lastStartMs = now;
     this._hasReasoning = false;
@@ -126,7 +138,15 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     }
     this.chatForm.setStreamingState(true);
 
-    const assistantEl = this.messageView.beginStreaming('assistant');
+    // On retry, reuse the existing errored assistant element instead of creating a new bubble
+    const existingRetryEl = this._isRetry ? this.lastAssistantMsgEl : null;
+    let assistantEl: HTMLElement | null;
+    if (existingRetryEl && existingRetryEl.classList.contains(C.LIVE_MSG)) {
+      assistantEl = existingRetryEl;
+      this.logger.info('reuse_assistant_bubble', 'reusing existing element on retry');
+    } else {
+      assistantEl = this.messageView.beginStreaming('assistant');
+    }
     if (!assistantEl) {
       this._streamGuard = false;
       this.chatForm.setStreamingState(false);
@@ -305,6 +325,13 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     this.abortController?.abort();
     this.abortController = null;
 
+    // Clean up rate limit auto-retry if user manually aborts
+    if (this._retryOnCooldownExpiry) {
+      this._retryOnCooldownExpiry = false;
+      this.rateLimitCooldown.cancel();
+      this._cleanupRlListeners();
+    }
+
     if (this.abortStreamFn) {
       this.abortStreamFn();
     }
@@ -328,19 +355,39 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   }
 
   async handleRetry(text: string, model?: string): Promise<void> {
+    // Save reference BEFORE abort() clears it
+    const existingRetryEl = this._lastError ? this.lastAssistantMsgEl : null;
+
     this.abort();
     this.chatForm.setStreamingState(false);
     this.ndjsonClient?.abort();
     this._isRetry = true;
 
     // Inject retry context so the model knows this is a retry
-    const attempt = (this.retryController?.count ?? 0) + 1;
-    const max = this.retryController?.maxRetries ?? 3;
     let retryText = text;
     if (this._lastError) {
       const err = this._lastError;
-      retryText = `[SYSTEM: Retry attempt ${attempt}/${max}. Previous attempt failed with error: ${err.type} — ${err.message}. This is a retry of the same user message, do NOT assume any prior assistant response exists.]\n\n${text}`;
+      // scheduleRetry already incremented count before calling onRetry,
+      // so count = actual attempt number (1-indexed)
+      const count = this.retryController?.count ?? 1;
+      const max = this.retryController?.maxRetries ?? 3;
+      retryText = `[SYSTEM: Retry attempt ${Math.min(count, max)}/${max}. Previous attempt failed with error: ${err.type} — ${err.message}. This is a retry of the same user message, do NOT assume any prior assistant response exists.]\n\n${text}`;
       this._lastError = null; // consume
+    }
+
+    // Reuse the existing errored bubble instead of creating a new one
+    if (existingRetryEl) {
+      // Clear the error card / retry indicator and reset for streaming
+      const bodyEl = existingRetryEl.querySelector('.' + C.MSG_BODY);
+      if (bodyEl) {
+        bodyEl.innerHTML = '';
+      }
+      // Restore as live streaming element (may have been stripped by _finalizeStream)
+      existingRetryEl.classList.add(C.LIVE_MSG);
+      existingRetryEl.classList.remove('streaming');
+      existingRetryEl.dataset.msgId = 'live';
+      // Restore the reference that abort() cleared
+      this.lastAssistantMsgEl = existingRetryEl;
     }
 
     try {
@@ -390,7 +437,50 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     // Guard: prevent double-invocation after stream already finalized
     if (!this._streamGuard) return;
 
-    if (type === 'auth' || type === 'rate_limit' || type === 'bad_request') {
+    if (type === 'rate_limit') {
+      this._lastError = { type, message };
+      this._savedErrorEl = this.lastAssistantMsgEl; // Save before finalization for auto-retry reuse
+      this._showErrorCard(type, message);
+      this.debug?.logUI('stream_error_rate_limit', `${type}: ${message}`);
+
+      // Start the rate limit cooldown (triggers ChatForm countdown too)
+      this.rateLimitCooldown.start(60000);
+
+      // Live-update the countdown inside the error card
+      const countdownId = 'rl-countdown-' + Date.now();
+      this._rlTickHandler = (data: { remainingSec: number }) => {
+        const el = document.getElementById(countdownId);
+        if (el) el.textContent = String(data.remainingSec);
+      };
+      if (this.eventBus && this._rlTickHandler) {
+        this.eventBus.on('rate-limit:tick', this._rlTickHandler);
+      }
+
+      // Auto-retry when cooldown expires (one-shot via on + immediate off)
+      const text = this.currentUserText;
+      const model = this.currentModel ?? undefined;
+      this._rlExpiryHandler = () => {
+        this._cleanupRlListeners();
+        if (text && this._lastError) {
+          // Restore the error element reference so handleRetry can reuse it
+          if (this._savedErrorEl) {
+            this.lastAssistantMsgEl = this._savedErrorEl;
+            this._savedErrorEl = null;
+          }
+          this.handleRetry(text, model);
+        }
+      };
+      if (this.eventBus && this._rlExpiryHandler) {
+        this.eventBus.on('rate-limit:expired', this._rlExpiryHandler);
+      }
+      this._retryOnCooldownExpiry = true;
+
+      this.retryController?.resetRetryCount();
+      this._finalizeStream();
+      return;
+    }
+
+    if (type === 'auth' || type === 'bad_request') {
       this._lastError = { type, message };
       this._showErrorCard(type, message);
       this.debug?.logUI('stream_error_terminal', `${type}: ${message}`);
@@ -425,7 +515,45 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     // Guard: prevent double-invocation after stream already finalized
     if (!this._streamGuard) return;
 
-    if (error.type === 'auth' || error.type === 'rate_limit' || error.type === 'bad_request') {
+    if (error.type === 'rate_limit') {
+      this._lastError = { type: error.type, message: error.message };
+      this._savedErrorEl = this.lastAssistantMsgEl;
+      this._showErrorCard(error.type, error.message);
+      this.debug?.logUI('stream_error_rate_limit_post', `${error.type}: ${error.message}`);
+
+      this.rateLimitCooldown.start(60000);
+
+      const text = this.currentUserText;
+      const model = this.currentModel ?? undefined;
+      const countdownId = 'rl-countdown-post-' + Date.now();
+      this._rlTickHandler = (data: { remainingSec: number }) => {
+        const el = document.getElementById(countdownId);
+        if (el) el.textContent = String(data.remainingSec);
+      };
+      if (this.eventBus && this._rlTickHandler) {
+        this.eventBus.on('rate-limit:tick', this._rlTickHandler);
+      }
+      this._rlExpiryHandler = () => {
+        this._cleanupRlListeners();
+        if (text && this._lastError) {
+          if (this._savedErrorEl) {
+            this.lastAssistantMsgEl = this._savedErrorEl;
+            this._savedErrorEl = null;
+          }
+          this.handleRetry(text, model);
+        }
+      };
+      if (this.eventBus && this._rlExpiryHandler) {
+        this.eventBus.on('rate-limit:expired', this._rlExpiryHandler);
+      }
+      this._retryOnCooldownExpiry = true;
+
+      this.retryController?.resetRetryCount();
+      this._finalizeStream();
+      return;
+    }
+
+    if (error.type === 'auth' || error.type === 'bad_request') {
       this._lastError = { type: error.type, message: error.message };
       this.debug?.logUI('stream_error_terminal', `${error.type}: ${error.message}`);
       this.retryController?.resetRetryCount();
@@ -471,6 +599,17 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     }
   }
 
+  private _cleanupRlListeners(): void {
+    if (this._rlTickHandler && this.eventBus) {
+      this.eventBus.off('rate-limit:tick', this._rlTickHandler);
+    }
+    if (this._rlExpiryHandler && this.eventBus) {
+      this.eventBus.off('rate-limit:expired', this._rlExpiryHandler);
+    }
+    this._rlTickHandler = null;
+    this._rlExpiryHandler = null;
+  }
+
   private _finalizeStream(): void {
     this._clearTimeout();
     this._streamGuard = false;
@@ -481,6 +620,11 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       this.lastAssistantMsgEl.classList.remove('streaming', 'live-msg');
     }
     this.lastAssistantMsgEl = null;
+
+    // Only clear _savedErrorEl if NOT waiting for rate-limit auto-retry
+    if (!this._retryOnCooldownExpiry) {
+      this._savedErrorEl = null;
+    }
 
     this.chatForm.setStreamingState(false);
   }
@@ -576,11 +720,14 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     errorCard.className = C.ERROR_CARD;
 
     if (type === 'rate_limit') {
+      const remaining = this.rateLimitCooldown.remainingSec || 60;
+      const countdownId = 'rl-countdown-' + Date.now();
       errorCard.classList.add(C.RATE_LIMIT_CARD);
+      bodyEl.dataset.rlCountdownId = countdownId;
       errorCard.innerHTML = `
         <div class="${C.ERROR_HEADER} rate-limit-header">⏳ Modelo saturado</div>
         <div class="${C.ERROR_DETAIL}">${this._escHtml(message)}</div>
-        <div class="${C.ERROR_HINT}">Límite del proveedor, reintentá en unos minutos.</div>
+        <div class="${C.ERROR_HINT}">Reintentando en <span id="${countdownId}" class="rl-countdown">${remaining}</span>s... <button class="rl-cancel-btn" data-action="cancel-rate-limit">✕</button></div>
       `;
     } else {
       errorCard.innerHTML = `
@@ -590,6 +737,33 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     }
 
     bodyEl.appendChild(errorCard);
+
+    // Handle cancel button for rate limit countdown
+    if (type === 'rate_limit') {
+      const cancelBtn = errorCard.querySelector('[data-action="cancel-rate-limit"]');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+          this._retryOnCooldownExpiry = false;
+          this.rateLimitCooldown.cancel();
+          this._cleanupRlListeners();
+          this._savedErrorEl = null;
+          // Transform card to expired state
+          const hint = errorCard.querySelector('.' + C.ERROR_HINT);
+          if (hint) hint.innerHTML = 'Reintento cancelado. <button class="error-retry-btn" data-action="manual-retry">Reintentar ahora</button>';
+        });
+      }
+      // Also handle the manual retry button (created when cooldown expires or cancelled)
+      errorCard.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.dataset.action === 'manual-retry') {
+          if (this._savedErrorEl) {
+            this.lastAssistantMsgEl = this._savedErrorEl;
+            this._savedErrorEl = null;
+          }
+          this.handleRetry(this.currentUserText || '', this.currentModel ?? undefined);
+        }
+      });
+    }
   }
 
   private _escHtml(str: string): string {
