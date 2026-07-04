@@ -28,6 +28,15 @@ def make_result(
     )
 
 
+def test_definition_exposes_layered_sources():
+    source_enum = recall_memories_run.__globals__["DEFINITION"]["function"]["parameters"]["properties"]["source"]["enum"]
+
+    assert "memory_candidate" in source_enum
+    assert "memory_inbox" in source_enum
+    assert "session_summary" in source_enum
+    assert "transversal_synthesis" in source_enum
+
+
 @pytest.fixture
 def mock_repos():
     retriever = AsyncMock()
@@ -37,6 +46,56 @@ def mock_repos():
     repos = AsyncMock()
     repos.memory = memory_repos
     return repos
+
+
+class FakeEntityGraph:
+    def __init__(self):
+        self.searches = []
+        self.explored = []
+        self.curated_lookups = []
+
+    async def search_entities(self, query: str, limit: int = 10):
+        self.searches.append((query, limit))
+        if query != "Kairos":
+            return []
+        return [{"id": "entity:kairos", "name": "Kairos", "entity_type": "project"}]
+
+    async def explore_graph(self, entity_id: str, depth: int = 1):
+        self.explored.append((entity_id, depth))
+        if entity_id == "memory:user:lenguaje":
+            return [
+                {
+                    "id": "candidate:cand-1",
+                    "name": "cand-1",
+                    "entity_type": "candidate",
+                    "relation_type": "REFINES",
+                    "weight": 0.8,
+                    "depth": 1,
+                }
+            ]
+        return [
+            {
+                "id": "entity:memory",
+                "name": "memoria",
+                "entity_type": "topic",
+                "relation_type": "USES",
+                "depth": 1,
+            }
+        ]
+
+    async def list_curated_relations_for_node(self, node_id: str, limit: int = 20):
+        self.curated_lookups.append((node_id, limit))
+        if node_id != "memory:user:lenguaje":
+            return []
+        return [
+            {
+                "source_id": "candidate:cand-1",
+                "target_id": "memory:user:lenguaje",
+                "relation_type": "REFINES",
+                "weight": 0.8,
+                "evidence": "Mauro refined how language memories should be curated.",
+            }
+        ]
 
 
 @pytest.mark.anyio
@@ -133,9 +192,66 @@ async def test_returns_formatted_results(mock_repos):
     assert "Mauro lives in Argentina" in result
     assert "Chat about Python" in result
     assert "user:location" in result
+    assert "`canon` curated" in result
+    assert "`session` episodic" in result
     assert "vec85%" in result
     assert "kw60" in result
     assert "2 resultados" in result
+
+
+@pytest.mark.anyio
+async def test_include_graph_context_adds_connected_entities(mock_repos):
+    graph = FakeEntityGraph()
+    mock_repos.memory.entity_graph = graph
+    mock_repos.memory.hybrid_retriever.search.return_value = [
+        make_result(
+            text="Kairos usa memoria por capas",
+            fusion_score=0.9,
+            rank=1,
+            source_key="project:kairos-memory",
+        ),
+    ]
+
+    result = await recall_memories_run(
+        query="Kairos memoria",
+        known_entities=["Kairos"],
+        include_graph_context=True,
+        _repos=mock_repos,
+    )
+
+    assert "## Graph context" in result
+    assert "Kairos (project)" in result
+    assert "memoria (topic) [USES] depth=1" in result
+    assert graph.searches[0] == ("Kairos", 2)
+    assert ("memory:project:kairos-memory", 1) in graph.explored
+    assert ("entity:kairos", 1) in graph.explored
+
+
+@pytest.mark.anyio
+async def test_graph_context_links_result_nodes_to_curated_relations(mock_repos):
+    graph = FakeEntityGraph()
+    mock_repos.memory.entity_graph = graph
+    mock_repos.memory.hybrid_retriever.search.return_value = [
+        make_result(
+            text="Mauro prefiere memoria contextual y lenguaje natural",
+            fusion_score=0.9,
+            rank=1,
+            source="memory",
+            source_key="user:lenguaje",
+        ),
+    ]
+
+    result = await recall_memories_run(
+        query="recordas como hablo de memoria?",
+        include_graph_context=True,
+        _repos=mock_repos,
+    )
+
+    assert "## Graph context" in result
+    assert "user:lenguaje -> cand-1 [curated:REFINES] weight=0.8" in result
+    assert "user:lenguaje -> cand-1 (candidate) [REFINES] weight=0.8 depth=1" in result
+    assert ("memory:user:lenguaje", 5) in graph.curated_lookups
+    assert ("memory:user:lenguaje", 1) in graph.explored
 
 
 @pytest.mark.anyio
@@ -208,6 +324,52 @@ async def test_passes_source_filter(mock_repos):
     mock_repos.memory.hybrid_retriever.search.assert_awaited_once_with(
         query="test", top_k=10, source_filter="memory"
     )
+
+
+@pytest.mark.anyio
+async def test_passes_memory_candidate_source_filter(mock_repos):
+    mock_repos.memory.hybrid_retriever.search.return_value = [
+        make_result(
+            text="candidate packet about memory roadmap",
+            source="memory_candidate",
+            source_key="cand-1",
+        )
+    ]
+
+    result = await recall_memories_run(
+        query="roadmap memoria",
+        _repos=mock_repos,
+        source="memory_candidate",
+    )
+
+    mock_repos.memory.hybrid_retriever.search.assert_awaited_once_with(
+        query="roadmap memoria", top_k=10, source_filter="memory_candidate"
+    )
+    assert "`memory_candidate` uncurated" in result
+    assert "cand-1" in result
+
+
+@pytest.mark.anyio
+async def test_passes_memory_inbox_source_filter(mock_repos):
+    mock_repos.memory.hybrid_retriever.search.return_value = [
+        make_result(
+            text="inbox packet about daily memory",
+            source="memory_inbox",
+            source_key="inbox-1",
+        )
+    ]
+
+    result = await recall_memories_run(
+        query="daily memory",
+        _repos=mock_repos,
+        source="memory_inbox",
+    )
+
+    mock_repos.memory.hybrid_retriever.search.assert_awaited_once_with(
+        query="daily memory", top_k=10, source_filter="memory_inbox"
+    )
+    assert "`memory_inbox` temporary" in result
+    assert "inbox-1" in result
 
 
 @pytest.mark.anyio

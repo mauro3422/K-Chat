@@ -47,3 +47,30 @@ async def test_memory_schema_uses_independent_version_table(tmp_path, monkeypatc
     assert {"key", "value", "weight"}.issubset(columns)
     assert version == MEMORY_SCHEMA_VERSION
     assert session_version == 23
+
+
+@pytest.mark.anyio
+async def test_memory_schema_creates_curated_relation_ledger(tmp_path, monkeypatch):
+    database = tmp_path / "memory.db"
+
+    monkeypatch.setenv("KAIROS_MEMORY_DB_PATH", str(database))
+    from src.memory.memory_schema import init_memory_db
+
+    await init_memory_db()
+
+    connection = sqlite3.connect(database)
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(memory_curated_relations)")}
+    connection.close()
+
+    assert "memory_curated_relations" in tables
+    assert {
+        "relation_id",
+        "source_id",
+        "target_id",
+        "relation_type",
+        "candidate_id",
+        "provenance",
+        "evidence",
+        "metadata",
+    }.issubset(columns)

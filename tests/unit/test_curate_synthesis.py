@@ -14,7 +14,7 @@ from src.memory.synthesis.daily import generate_daily_synthesis
 
 
 @pytest.mark.anyio
-async def test_curate_all_passes_sessions_db_to_daily_synthesis():
+async def test_curate_all_passes_sessions_db_to_daily_synthesis(tmp_path):
     save_memory = AsyncMock(return_value="[OK] saved")
     llm_call = AsyncMock(return_value="NO_NEW_INFO")
     synth = AsyncMock(return_value="memory/synthesis/2026/06/27.md")
@@ -35,10 +35,14 @@ async def test_curate_all_passes_sessions_db_to_daily_synthesis():
             llm_call_fn=llm_call,
             run_gardener=False,
             run_tracer=False,
+            artifact_root=tmp_path,
         )
 
     synth.assert_awaited_once_with(db_path="sessions.db")
     assert result["synthesis_path"] == "memory/synthesis/2026/06/27.md"
+    assert result["report_path"]
+    assert os.path.exists(result["report_path"])
+    save_memory.assert_not_awaited()
 
 
 @pytest.mark.anyio
@@ -177,6 +181,7 @@ async def test_curate_all_registers_curator_run_in_processing_catalog(tmp_path):
             llm_call_fn=llm_call,
             run_gardener=False,
             run_tracer=False,
+            artifact_root=tmp_path,
         )
 
     catalog = MemoryProcessingCatalogRepository(str(memory_db))
@@ -184,6 +189,7 @@ async def test_curate_all_registers_curator_run_in_processing_catalog(tmp_path):
     assert row is not None
     assert row["status"] == "processed"
     assert row["processor"] == "curate_all"
+    save_memory.assert_not_awaited()
 
 
 @pytest.mark.anyio

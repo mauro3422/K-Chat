@@ -15,6 +15,7 @@ from typing import Any
 from src.memory.content_hash import content_hash
 from src.memory.memory_db_path import resolve_memory_db_path
 from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
+from src.memory.synthesis.session import load_session_summary_previews
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,7 @@ async def generate_daily_synthesis(
     db_path: str,
     output_dir: str = "memory/synthesis",
     target_date: date | None = None,
+    root: str | Path | None = None,
 ) -> str:
     """Generate a daily synthesis Markdown report.
 
@@ -162,8 +164,8 @@ async def generate_daily_synthesis(
         Absolute path to the created report file.
     """
     mem_db = resolve_memory_db_path()
-    root = _project_root()
-    abs_output_dir = os.path.join(root, output_dir)
+    project_root = Path(root) if root is not None else _project_root()
+    abs_output_dir = os.path.join(project_root, output_dir)
 
     if target_date is None:
         now = datetime.now()
@@ -175,6 +177,10 @@ async def generate_daily_synthesis(
     logger.info("Generating daily synthesis for %s", date_str)
 
     sessions = await get_sessions_for_date(db_path, date_str)
+    session_summary_previews = load_session_summary_previews(
+        [str(session.get("session_id", "")) for session in sessions],
+        root=project_root,
+    )
 
     session_stats: list[dict[str, Any]] = []
     total_messages = 0
@@ -220,6 +226,21 @@ async def generate_daily_synthesis(
                 lines.append(f"- **Duration**: {s['duration']}")
             if s.get("topics"):
                 lines.append(f"- **Topics**: {', '.join(s['topics'])}")
+            summary = session_summary_previews.get(str(s["session_id"])) or {}
+            if summary.get("path"):
+                lines.append(f"- **Summary artifact**: `{summary['path']}`")
+            lines.append("")
+
+    if session_summary_previews:
+        lines.append("## Session Summary Previews")
+        lines.append("")
+        for session_id, summary in sorted(session_summary_previews.items()):
+            lines.append(f"### `{session_id}`")
+            lines.append("")
+            if summary.get("path"):
+                lines.append(f"- Artifact: `{summary['path']}`")
+            for line in summary.get("preview") or []:
+                lines.append(f"- {line}")
             lines.append("")
 
     if memory_entries:
@@ -271,7 +292,7 @@ async def generate_daily_synthesis(
         logger.info("Daily synthesis unchanged for %s", date_str)
         return report_path
 
-    with open(report_path, "w") as f:
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write(report_text)
 
     catalog.mark(
@@ -288,6 +309,7 @@ async def generate_daily_synthesis(
             "memory_entries": len(memory_entries),
             "entities": len(entities),
             "clusters": len(clusters),
+            "session_summaries": len(session_summary_previews),
         },
     )
 

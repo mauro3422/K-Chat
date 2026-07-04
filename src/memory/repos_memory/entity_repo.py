@@ -7,6 +7,8 @@ Creates a fresh aiosqlite connection per operation to avoid thread lifecycle
 issues with aiosqlite's background worker threads.
 """
 
+import hashlib
+import json
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
@@ -135,6 +137,108 @@ class EntityRepository:
                 await conn.rollback()
                 raise
 
+    async def upsert_curated_relation(
+        self,
+        source_id: str,
+        target_id: str,
+        relation_type: str,
+        weight: float = 1.0,
+        candidate_id: str = "",
+        provenance: dict[str, Any] | None = None,
+        evidence: str = "",
+        metadata: dict[str, Any] | None = None,
+        timestamp: str = "",
+    ) -> str:
+        """INSERT OR UPDATE a curator-approved relation with provenance."""
+
+        relation_id = hashlib.sha256(
+            "|".join([source_id, target_id, relation_type, candidate_id]).encode("utf-8")
+        ).hexdigest()[:24]
+        provenance_json = json.dumps(provenance or {}, ensure_ascii=False, sort_keys=True)
+        metadata_json = json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True)
+        async with self._connection() as conn:
+            try:
+                await conn.execute(
+                    """INSERT INTO memory_curated_relations (
+                           relation_id, source_id, target_id, relation_type, weight,
+                           candidate_id, provenance, evidence, metadata,
+                           first_seen, last_seen, promoted_at
+                       )
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(relation_id) DO UPDATE SET
+                           weight = excluded.weight,
+                           provenance = excluded.provenance,
+                           evidence = excluded.evidence,
+                           metadata = excluded.metadata,
+                           last_seen = excluded.last_seen,
+                           promoted_at = excluded.promoted_at""",
+                    (
+                        relation_id,
+                        source_id,
+                        target_id,
+                        relation_type,
+                        weight,
+                        candidate_id,
+                        provenance_json,
+                        evidence,
+                        metadata_json,
+                        timestamp,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+                await conn.commit()
+                return relation_id
+            except Exception:
+                await conn.rollback()
+                raise
+
+    async def get_curated_relation(
+        self,
+        relation_id: str = "",
+        *,
+        source_id: str = "",
+        target_id: str = "",
+        relation_type: str = "",
+        candidate_id: str = "",
+    ) -> dict[str, Any] | None:
+        """Fetch a curator-approved relation by id or identity."""
+
+        async with self._connection() as conn:
+            if relation_id:
+                cursor = await conn.execute(
+                    "SELECT * FROM memory_curated_relations WHERE relation_id = ?",
+                    (relation_id,),
+                )
+            else:
+                cursor = await conn.execute(
+                    """SELECT * FROM memory_curated_relations
+                       WHERE source_id = ? AND target_id = ? AND relation_type = ? AND candidate_id = ?""",
+                    (source_id, target_id, relation_type, candidate_id),
+                )
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        return _decode_curated_relation(dict(row))
+
+    async def list_curated_relations_for_node(
+        self,
+        node_id: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """List curator-approved relations touching a graph node."""
+
+        async with self._connection() as conn:
+            cursor = await conn.execute(
+                """SELECT * FROM memory_curated_relations
+                   WHERE source_id = ? OR target_id = ?
+                   ORDER BY promoted_at DESC, last_seen DESC
+                   LIMIT ?""",
+                (node_id, node_id, limit),
+            )
+            rows = await cursor.fetchall()
+        return [_decode_curated_relation(dict(row)) for row in rows]
+
     async def search_entities(
         self,
         query: str,
@@ -206,7 +310,60 @@ class EntityRepository:
             )
             rows = await cursor.fetchall()
         result = [dict(row) for row in rows]
+        if not result:
+            return await self._explore_raw_relations(entity_id, depth=depth)
         return result
+
+    async def _explore_raw_relations(
+        self,
+        node_id: str,
+        depth: int = 2,
+    ) -> list[dict[str, Any]]:
+        """Fallback traversal for graph nodes that are not rows in entities."""
+
+        async with self._connection() as conn:
+            cursor = await conn.execute(
+                """WITH RECURSIVE chain AS (
+                    SELECT source_id, target_id, relation_type, weight, 1 AS depth
+                    FROM entity_relations WHERE source_id = ? OR target_id = ?
+                    UNION ALL
+                    SELECT r.source_id, r.target_id, r.relation_type, r.weight, c.depth + 1
+                    FROM entity_relations r
+                    JOIN chain c ON (r.source_id = c.target_id OR r.target_id = c.source_id)
+                    WHERE c.depth < ?
+                )
+                SELECT DISTINCT source_id, target_id, relation_type, weight, depth
+                FROM chain
+                ORDER BY depth, weight DESC""",
+                (node_id, node_id, depth),
+            )
+            rows = await cursor.fetchall()
+
+        results: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, int]] = set()
+        for row in rows:
+            source = row["source_id"]
+            target = row["target_id"]
+            neighbor = target if source == node_id else source
+            if neighbor == node_id:
+                continue
+            key = (neighbor, row["relation_type"], row["depth"])
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(
+                {
+                    "id": neighbor,
+                    "name": _node_label(neighbor),
+                    "entity_type": _node_type(neighbor),
+                    "relation_type": row["relation_type"],
+                    "weight": row["weight"],
+                    "depth": row["depth"],
+                    "source_id": source,
+                    "target_id": target,
+                }
+            )
+        return results
 
     async def get_entity_by_name(self, name: str, entity_type: str) -> dict[str, Any] | None:
         """Get an entity by name and type."""
@@ -241,3 +398,30 @@ class EntityRepository:
 
 
 __all__ = ["EntityRepository"]
+
+
+def _node_type(node_id: str) -> str:
+    prefix = node_id.split(":", 1)[0] if ":" in node_id else "node"
+    return {
+        "memory": "memory",
+        "candidate": "candidate",
+        "inbox": "inbox",
+        "inbox_group": "inbox_group",
+        "session": "session",
+        "entity": "entity",
+    }.get(prefix, prefix or "node")
+
+
+def _node_label(node_id: str) -> str:
+    return node_id.split(":", 1)[1] if ":" in node_id else node_id
+
+
+def _decode_curated_relation(row: dict[str, Any]) -> dict[str, Any]:
+    for field in ("provenance", "metadata"):
+        value = row.get(field)
+        if isinstance(value, str):
+            try:
+                row[field] = json.loads(value or "{}")
+            except json.JSONDecodeError:
+                row[field] = {"raw": value}
+    return row

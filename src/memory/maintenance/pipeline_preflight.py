@@ -42,14 +42,17 @@ class ProcessRemoteRunner:
             capture_output=True,
             timeout=timeout,
         )
-        if result.returncode != 0:
-            raise RuntimeError(_remote_error(result.returncode, result.stdout, result.stderr))
         try:
             payload = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
+            if result.returncode != 0:
+                raise RuntimeError(_remote_error(result.returncode, result.stdout, result.stderr)) from exc
             raise RuntimeError(f"remote returned non-JSON output: {exc}") from exc
         if not isinstance(payload, dict):
             raise RuntimeError("remote returned JSON that is not an object")
+        payload.setdefault("command_exit_code", result.returncode)
+        if result.returncode != 0:
+            payload.setdefault("remote_error", _remote_error(result.returncode, result.stdout, result.stderr))
         return payload
 
 

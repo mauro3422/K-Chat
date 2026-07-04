@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 
 from scripts.backfill_processing_catalog import run_backfill
+from scripts.memory_audit import _content_hash
+from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 
 
 def _init_sessions_db(path) -> None:
@@ -56,6 +58,7 @@ def test_processing_catalog_backfill_marks_observed_sessions_and_existing_synthe
     )
 
     assert result["sessions_observed"] == 1
+    assert result["stale_curated_sessions_refreshed"] == 0
     assert result["daily_synthesis_processed"] == 1
 
     conn = sqlite3.connect(memory_db)
@@ -84,6 +87,7 @@ def test_processing_catalog_backfill_dry_run_does_not_write(tmp_path):
     )
 
     assert result["sessions_observed"] == 1
+    assert result["stale_curated_sessions_refreshed"] == 0
 
     conn = sqlite3.connect(memory_db)
     rows = conn.execute(
@@ -92,3 +96,42 @@ def test_processing_catalog_backfill_dry_run_does_not_write(tmp_path):
     conn.close()
 
     assert rows == []
+
+
+def test_processing_catalog_backfill_reopens_stale_curated_session(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    expected_prompt = (
+        "Session: Session One\n\n"
+        "User: hola\nAssistant: memoria distribuida necesita hashes estables y catalogos observables."
+        "\n\nExtract new info or NO_NEW_INFO"
+    )
+    expected_hash = _content_hash(expected_prompt)
+    catalog = MemoryProcessingCatalogRepository(str(memory_db))
+    catalog.mark(
+        source="session",
+        source_key="s1",
+        item_idx=-1,
+        stage="curated",
+        content_hash="old-hash",
+        status="processed",
+        processor="curate_sessions",
+        reason="old",
+    )
+
+    result = run_backfill(
+        sessions_db=str(sessions_db),
+        memory_db=str(memory_db),
+        root=tmp_path,
+        dry_run=False,
+    )
+
+    assert result["stale_curated_sessions_refreshed"] == 1
+    row = catalog.get(source="session", source_key="s1", item_idx=-1, stage="curated")
+    assert row is not None
+    assert row["content_hash"] == expected_hash
+    assert row["status"] == "pending"
+    assert row["processor"] == "backfill_processing_catalog"
+    assert row["reason"] == "content_changed_reprocess_required"

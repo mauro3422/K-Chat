@@ -33,7 +33,7 @@ async def test_parallel_save_unique_keys():
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
             pairs = [("k1", "v1"), ("k2", "v2"), ("k3", "v3"), ("k4", "v4")]
             results = await asyncio.gather(*[
-                save_memory_run(key=k, value=v) for k, v in pairs
+                save_memory_run(key=k, value=v, scope="canonical") for k, v in pairs
             ])
             for res in results:
                 assert "[OK]" in res, f"Failed: {res}"
@@ -57,8 +57,8 @@ async def test_parallel_save_same_key():
     try:
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
             results = await asyncio.gather(
-                save_memory_run(key="key", value="A"),
-                save_memory_run(key="key", value="B"),
+                save_memory_run(key="key", value="A", scope="canonical"),
+                save_memory_run(key="key", value="B", scope="canonical"),
             )
             for res in results:
                 assert "[OK]" in res, f"Failed: {res}"
@@ -80,7 +80,7 @@ async def test_parallel_save_many_keys():
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
             pairs = [(f"k{i}", f"v{i}") for i in range(20)]
             results = await asyncio.gather(*[
-                save_memory_run(key=k, value=v) for k, v in pairs
+                save_memory_run(key=k, value=v, scope="canonical") for k, v in pairs
             ])
             for res in results:
                 assert "[OK]" in res
@@ -105,7 +105,7 @@ async def test_corrupted_file_repair():
             f.write("\n## Memories\n- **k1**: v1\nbasura: sin formato\n")
 
         with patch("src.tools.save_memory.CONTEXT_DIR", temp_dir):
-            res = await save_memory_run(key="k2", value="v2")
+            res = await save_memory_run(key="k2", value="v2", scope="canonical")
             assert "[OK]" in res
 
             with open(filepath, "r", encoding="utf-8") as f:

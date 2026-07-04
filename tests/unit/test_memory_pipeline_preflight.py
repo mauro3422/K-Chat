@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from scripts.memory_audit import _content_hash
-from scripts.memory_pipeline_preflight import build_pipeline_report, compare_snapshots, run_local_pipeline
+from scripts.memory_pipeline_preflight import build_pipeline_report, compare_snapshots, run_local_pipeline, run_remote_pipeline
 
 
 def _init_sessions_db(path) -> str:
@@ -119,3 +119,23 @@ def test_memory_pipeline_report_keeps_node_differences_separate_from_failures():
     assert differences[0]["differences"]["sessions"] == {"local": 2, "remote": 1}
     assert differences[0]["differences"]["vectors"] == {"local": 5, "remote": 4}
     assert report["ok"] is True
+
+
+class _FailingJsonRunner:
+    def run_json(self, command: str, *, timeout: int):
+        return {
+            "node": "remote",
+            "ok": False,
+            "command_exit_code": 2,
+            "snapshot": {"sessions": 37, "vectors": 173, "processing_total": 38},
+            "issues": ["stale session vectors=2"],
+        }
+
+
+def test_run_remote_pipeline_preserves_failed_json_payload():
+    result = run_remote_pipeline(node="remote", runner=_FailingJsonRunner())
+
+    assert result["ok"] is False
+    assert result["command_exit_code"] == 2
+    assert result["snapshot"]["sessions"] == 37
+    assert result["issues"] == ["stale session vectors=2"]

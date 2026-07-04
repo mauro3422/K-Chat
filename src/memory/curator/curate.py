@@ -1,4 +1,4 @@
-"""Curator: reads clusters + sessions, extracts new info to MEMORY.md.
+"""Curator: reads clusters + sessions, extracts candidate memory items.
 Dry run: python3 -m src.memory.curator.curate --dry
 
 Dependency injection: callers can inject save_memory_fn and llm_call_fn
@@ -12,20 +12,14 @@ import logging
 import os
 import sqlite3
 import sys
-import threading
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 
 from src.memory.content_hash import content_hash
-from src.memory.operations._helpers import _get_memory_md_path, _parse_memory_md, _write_memory_md
-from src.memory.repos_memory.memory_index_repo import GlobalMemoryIndexRepository
 from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
-from src.utils.async_utils import run_in_thread
+from src.memory.operations._helpers import _get_memory_md_path
 
 logger = logging.getLogger(__name__)
-
-MEMORY_MD_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "MEMORY.md")
-_SAVE_LOCK = threading.Lock()
 
 CURATOR_PROMPT = """You are a memory curator. From the conversation exchanges below,
 extract NEW information worth saving. Only extract things NOT already known.
@@ -40,12 +34,13 @@ If nothing new, respond: NO_NEW_INFO"""
 
 def _get_memory_context() -> str:
     """Read MEMORY.md and return first 3000 chars as context for LLM dedup."""
+    memory_md_path = _get_memory_md_path()
     try:
-        with open(MEMORY_MD_PATH) as f:
+        with open(memory_md_path) as f:
             content = f.read()
         return content[:3000]
     except FileNotFoundError:
-        logger.warning("MEMORY.md not found at %s", MEMORY_MD_PATH)
+        logger.warning("MEMORY.md not found at %s", memory_md_path)
         return ""
     except Exception:
         logger.exception("Failed to read MEMORY.md")
@@ -86,49 +81,20 @@ async def _noop_save_memory(key: str, value: str) -> str:
     return "[NOOP] save_memory_fn not injected"
 
 
-async def _save_memory_local(key: str, value: str) -> str:
-    """Memory-layer save helper used by curator standalone mode.
+async def _save_memory_inbox_local(key: str, value: str) -> str:
+    """Standalone curator save helper that writes to memory inbox, not canon."""
 
-    Keeps MEMORY.md + memory_index in sync without importing tools.
-    """
-    key_clean = key.strip()
-    value_clean = value.strip()
-    if not key_clean:
-        return "[ERROR] The key cannot be empty."
+    from src.memory.curator.memory_inbox import append_memory_inbox_item
 
-    filepath = _get_memory_md_path()
-
-    def _sync_write() -> str:
-        with _SAVE_LOCK:
-            memories = _parse_memory_md(filepath)
-            if value_clean:
-                memories[key_clean] = value_clean
-                action_msg = f"saved key '{key_clean}' with value '{value_clean}'"
-            else:
-                if key_clean in memories:
-                    del memories[key_clean]
-                    action_msg = f"deleted key '{key_clean}'"
-                else:
-                    action_msg = f"key '{key_clean}' did not exist in memory"
-            _write_memory_md(filepath, memories)
-            return action_msg
-
-    try:
-        action_msg = await run_in_thread(_sync_write)
-    except Exception:
-        logger.exception("Failed to write MEMORY.md in curator local save")
-        return "[ERROR] Could not write to MEMORY.md."
-
-    try:
-        repo = GlobalMemoryIndexRepository()
-        if value_clean:
-            await repo.upsert(key_clean, value_clean)
-        else:
-            await repo.delete(key_clean)
-    except Exception:
-        logger.exception("Failed to sync curator save to memory.db")
-
-    return f"[OK] {action_msg} in MEMORY.md."
+    payload = append_memory_inbox_item(
+        {
+            "key": key.strip(),
+            "value": value.strip(),
+            "channel": "curator",
+            "urgency": "normal",
+        }
+    )
+    return f"[OK] queued memory inbox item '{payload['inbox_id']}' for key '{key.strip()}'."
 
 
 def _get_memory_db_path() -> str:
@@ -528,6 +494,7 @@ async def curate_all(
     llm_call_fn: Optional[Callable[[str, str], str]] = None,
     run_gardener: bool = True,
     run_tracer: bool = True,
+    artifact_root: str | os.PathLike[str] | None = None,
 ) -> dict[str, Any]:
     """Run full curation pipeline: Retention → Gardener → Tracer → Curator.
 
@@ -536,7 +503,7 @@ async def curate_all(
       2. Memory Gardener — prune/merge/cleanup low-value entries
       3. Cross-Session Tracer — detect patterns between sessions
       4. Curator (clusters + sessions) — LLM extraction of new info
-      5. Report — save curation summary to MEMORY.md
+      5. Report - write curation summary artifact
 
     Args:
         dry: If True, don't call LLM or save, just report what would happen.
@@ -549,7 +516,7 @@ async def curate_all(
         dict with all results.
     """
     if save_memory_fn is None:
-        save_memory_fn = _noop_save_memory
+        save_memory_fn = _save_memory_inbox_local
     if llm_call_fn is None:
         llm_call_fn = _default_llm_call
 
@@ -588,7 +555,10 @@ async def curate_all(
     # Step 2: Tracer
     tracer_result: dict[str, Any] = {"patterns": [], "total": 0}
     if run_tracer:
-        tracer_result = await trace({"dry_run": dry}, save_memory_fn=save_memory_fn)
+        tracer_result = await trace(
+            {"dry_run": dry, "artifact_root": artifact_root},
+            save_memory_fn=None,
+        )
         report_lines.append(f"- tracer: {tracer_result['total']} patterns found")
         for p in tracer_result.get("patterns", []):
             report_lines.append(f"  - [{p['type']}] {p}")
@@ -611,13 +581,20 @@ async def curate_all(
                     saved += 1
             except Exception:
                 logger.exception("Failed to save: %s", e.get("key"))
-        report_lines.append(f"- curator: {saved}/{len(entries)} saved to MEMORY.md")
+        report_lines.append(f"- curator: {saved}/{len(entries)} queued to memory inbox")
 
-    # Step 4: Save report to MEMORY.md as a curation checkpoint
+    # Step 4: Write report artifact and processing checkpoint
+    report_path = None
     if not dry:
         report_text = "\n".join(report_lines)
         catalog = _get_processing_catalog()
         report_digest = content_hash("\n".join(report_lines[2:]) or report_text)
+        report_metadata = {
+            "entries": len(entries),
+            "saved": saved,
+            "gardener_actions": len(gardener_results),
+            "tracer_patterns": int(tracer_result.get("total", 0)),
+        }
         _mark_processing_catalog(
             catalog,
             source="curator",
@@ -627,20 +604,19 @@ async def curate_all(
             content_hash=report_digest,
             processor="curate_all",
             reason="completed",
-            metadata={
-                "entries": len(entries),
-                "saved": saved,
-                "gardener_actions": len(gardener_results),
-                "tracer_patterns": int(tracer_result.get("total", 0)),
-            },
+            metadata=report_metadata,
         )
         try:
-            await save_memory_fn(
-                f"checkpoint:curation-{datetime.now().strftime('%Y-%m-%d')}",
-                f"{datetime.now().strftime('%Y-%m-%d %H:%M')} | Curation run.\n{report_text}"
+            from src.memory.curator.curation_events import write_curation_report
+
+            report_path = write_curation_report(
+                report_lines,
+                report_metadata,
+                root=artifact_root,
             )
+            logger.info("Curation report artifact -> %s", report_path)
         except Exception:
-            logger.exception("Failed to save curation report")
+            logger.exception("Failed to write curation report artifact")
 
     # Step 5: Daily synthesis report
     synthesis_path = None
@@ -649,14 +625,7 @@ async def curate_all(
             from src.memory.synthesis.daily import generate_daily_synthesis
             sessions_db = _get_sessions_db_path()
             synthesis_path = await generate_daily_synthesis(db_path=sessions_db)
-            logger.info("Daily synthesis → %s", synthesis_path)
-            try:
-                await save_memory_fn(
-                    f"synthesis:{datetime.now().strftime('%Y-%m-%d')}",
-                    f"{datetime.now().strftime('%Y-%m-%d %H:%M')} | Daily synthesis → {synthesis_path}"
-                )
-            except Exception:
-                logger.exception("Failed to save synthesis reference to MEMORY.md")
+            logger.info("Daily synthesis -> %s", synthesis_path)
         except Exception:
             logger.exception("Failed to generate daily synthesis")
 
@@ -666,6 +635,7 @@ async def curate_all(
         "entries": entries,
         "saved": saved,
         "report": report_lines,
+        "report_path": str(report_path) if report_path else None,
         "synthesis_path": synthesis_path,
         "dry": dry,
     }
@@ -676,7 +646,7 @@ async def curate_all(
 async def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     dry = "--dry" in sys.argv
-    r = await curate_all(dry=dry, save_memory_fn=_save_memory_local)
+    r = await curate_all(dry=dry)
 
     print("\n=== Gardener ===")
     for gr in r.get("gardener", []):

@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from src.memory.retrieval.fusion import FusionConfig, fuse, normalize_scores
 from src.memory.retrieval.keyword_search import keyword_search
@@ -58,6 +58,36 @@ class HybridResult:
         }
 
 
+@dataclass(frozen=True)
+class SourceLayerPolicy:
+    """Score policy for mixing canonical, episodic, synthesis, and candidate layers."""
+
+    weights: Mapping[str, float] = field(default_factory=lambda: {
+        "memory": 1.0,
+        "session": 0.82,
+        "session_summary": 0.9,
+        "transversal_synthesis": 0.94,
+        "memory_candidate": 0.78,
+        "memory_inbox": 0.72,
+    })
+    trust_labels: Mapping[str, str] = field(default_factory=lambda: {
+        "memory": "canon",
+        "session": "episodic",
+        "session_summary": "synthesis",
+        "transversal_synthesis": "cross-session",
+        "memory_candidate": "uncurated",
+        "memory_inbox": "temporary",
+    })
+    default_weight: float = 0.8
+    apply_when_filtered: bool = False
+
+    def weight_for(self, source: str) -> float:
+        return float(self.weights.get(source, self.default_weight))
+
+    def trust_for(self, source: str) -> str:
+        return str(self.trust_labels.get(source, "unknown"))
+
+
 class HybridRetriever:
     """Orchestrates 3 retrieval signals and fuses them.
 
@@ -71,10 +101,12 @@ class HybridRetriever:
         db_path: str,
         fusion_config: Optional[FusionConfig] = None,
         token_budget: Optional[TokenBudgetConfig] = None,
+        source_layer_policy: SourceLayerPolicy | None = None,
     ):
         self._db_path = db_path
         self._fusion_config = fusion_config or FusionConfig()
         self._token_budget = token_budget or TokenBudgetConfig()
+        self._source_layer_policy = source_layer_policy or _load_default_source_layer_policy()
         self._reranker_degraded = False
 
     @property
@@ -208,6 +240,8 @@ class HybridRetriever:
                 self._reranker_degraded = True
                 # Fall through with original results
 
+        self._apply_source_layer_policy(results, source_filter=source_filter)
+
         # Apply token budget if requested
         if apply_budget:
             dicts = [r.to_dict() for r in results]
@@ -227,6 +261,23 @@ class HybridRetriever:
 
         track_retrieval(self._db_path, query, len(results), "hybrid", source_filter)
         return results
+
+    def _apply_source_layer_policy(
+        self,
+        results: list[HybridResult],
+        *,
+        source_filter: Optional[str],
+    ) -> None:
+        """Apply conservative layer weights when multiple source layers compete."""
+
+        policy = self._source_layer_policy
+        if source_filter and not policy.apply_when_filtered:
+            return
+        for result in results:
+            result.fusion_score *= policy.weight_for(result.source)
+        results.sort(key=lambda item: item.fusion_score, reverse=True)
+        for rank, result in enumerate(results, 1):
+            result.rank = rank
 
     def _vector_search(
         self,
@@ -270,3 +321,13 @@ class HybridRetriever:
     def close(self):
         """Close the underlying vector store connection."""
         # No-op: each search creates its own local VectorStore for thread safety
+
+
+def _load_default_source_layer_policy() -> SourceLayerPolicy:
+    try:
+        from src.memory.retrieval.source_policy import source_layer_policy_from_file
+
+        return source_layer_policy_from_file()
+    except Exception:
+        logger.info("Failed to load approved source layer policy; using builtin defaults", exc_info=True)
+        return SourceLayerPolicy()

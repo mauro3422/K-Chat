@@ -5,7 +5,7 @@ import threading
 from typing import Any
 
 from src.memory.content_hash import memory_hashes
-from src.memory.embedding_identity import memory_entry_embedding_identity
+from src.memory.embedding_identity import memory_entry_embedding_identity, memory_inbox_embedding_identity
 from src.memory.operations._helpers import _parse_memory_md, _write_memory_md
 from src.coordination.memory_lease import get_memory_lease_manager
 from src.coordination.memory_write_queue import get_memory_write_queue
@@ -23,7 +23,11 @@ DEFINITION: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "save_memory",
-        "description": "Persists key user or system data to MEMORY.md so it can be recalled in future sessions.",
+        "description": (
+            "Mark important user or system data for memory curation. "
+            "By default writes to the daily memory inbox; use scope='canonical' "
+            "only for durable memories that should go directly to MEMORY.md."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -34,6 +38,28 @@ DEFINITION: dict[str, Any] = {
                 "value": {
                     "type": "string",
                     "description": "The value or detail to save. If passed empty, this key is removed from memory.",
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["inbox", "canonical"],
+                    "description": "inbox marks an item for curator review; canonical writes directly to MEMORY.md.",
+                    "default": "inbox",
+                },
+                "channel": {
+                    "type": "string",
+                    "description": "Optional source channel: web, telegram, cli, curator.",
+                    "default": "",
+                },
+                "message_ref": {
+                    "type": "string",
+                    "description": "Optional message or turn reference for curator source tracing.",
+                    "default": "",
+                },
+                "urgency": {
+                    "type": "string",
+                    "enum": ["normal", "high"],
+                    "description": "Review urgency for the daily curator.",
+                    "default": "normal",
                 },
             },
             "required": ["key", "value"],
@@ -101,12 +127,35 @@ def _sync_read_and_write(filepath: str, key: str, value: str) -> tuple[str | Non
 async def run(**kwargs) -> str:
     key = kwargs.get("key") or kwargs.get("name", "")
     value = kwargs.get("value") or kwargs.get("content") or kwargs.get("text", "")
+    scope = str(kwargs.get("scope") or "inbox").strip().lower()
     _session_id = kwargs.get("_session_id")
     _invalidate_cache_fn = kwargs.get("_invalidate_cache_fn")
     _repos = kwargs.get("_repos")
     _force_local_write = bool(kwargs.get("_force_local_write", False))
+    _root = kwargs.get("_root")
 
     filepath = os.path.join(CONTEXT_DIR, "MEMORY.md")
+    key_clean = key.strip()
+    value_clean = value.strip()
+
+    if scope not in {"inbox", "canonical"}:
+        return "[ERROR] scope must be 'inbox' or 'canonical'."
+    if not key_clean:
+        return "[ERROR] The key cannot be empty."
+
+    # Empty values are deletes; keep delete_memory behavior canonical even
+    # though new memory marks default to inbox.
+    if scope == "inbox" and value_clean:
+        return await _save_memory_inbox(
+            key_clean,
+            value_clean,
+            _repos=_repos,
+            root=_root,
+            session_id=str(_session_id or kwargs.get("session_id") or ""),
+            channel=str(kwargs.get("channel") or ""),
+            message_ref=str(kwargs.get("message_ref") or ""),
+            urgency=str(kwargs.get("urgency") or "normal"),
+        )
 
     coordinator = peek_node_coordinator()
     if coordinator is not None and coordinator.peer_urls and not _force_local_write:
@@ -192,9 +241,6 @@ async def run(**kwargs) -> str:
     if not db_ok:
         return f"[ERROR] {action_msg} but memory.db sync failed."
 
-    key_clean = key.strip()
-    value_clean = value.strip()
-
     if _invalidate_cache_fn is not None:
         _invalidate_cache_fn()
 
@@ -238,6 +284,124 @@ async def run(**kwargs) -> str:
             logger.warning("Failed to broadcast memory events", exc_info=True)
 
     return f"[OK] {action_msg} in MEMORY.md and memory.db."
+
+
+async def _save_memory_inbox(
+    key: str,
+    value: str,
+    *,
+    _repos: Any = None,
+    root: str | None = None,
+    session_id: str = "",
+    channel: str = "",
+    message_ref: str = "",
+    urgency: str = "normal",
+) -> str:
+    """Append a memory inbox item and optionally embed it for curation."""
+
+    from src.memory.curator.memory_inbox import append_memory_inbox_item
+
+    payload = append_memory_inbox_item(
+        {
+            "key": key,
+            "value": value,
+            "session_id": session_id,
+            "channel": channel,
+            "message_ref": message_ref,
+            "urgency": urgency if urgency in {"normal", "high"} else "normal",
+        },
+        root=root,
+    )
+
+    store = _repos.memory.vector_store if _repos and getattr(_repos, "memory", None) is not None else None
+    catalog = getattr(_repos.memory, "work_catalog", None) if _repos and getattr(_repos, "memory", None) is not None else None
+    if store is not None:
+        try:
+            await _embed_inbox_and_store(payload, store, catalog=catalog)
+        except Exception:
+            logger.warning("Failed to embed memory inbox item %s", payload.get("inbox_id"), exc_info=True)
+
+    return (
+        f"[OK] queued memory inbox item '{payload['inbox_id']}' "
+        f"for key '{key}' at {payload['artifact']}."
+    )
+
+
+async def _embed_inbox_and_store(payload: dict[str, Any], store: Any, *, catalog: Any = None) -> None:
+    """Generate an embedding for a memory inbox item."""
+
+    from src.memory.embeddings.service import generate_embedding
+    from src.memory.keywords.extractor import extract_keywords
+
+    inbox_id = str(payload.get("inbox_id") or "")
+    text = f"{payload.get('key', '')}: {payload.get('value', '')}".strip()
+    raw_hash, content_hash = memory_hashes(text)
+    vec = await run_in_thread(generate_embedding, text)
+    try:
+        rowid = store.insert(
+            vec,
+            source="memory_inbox",
+            source_key=inbox_id,
+            text=text[:2000],
+            hash=raw_hash,
+            content_hash=content_hash,
+            source_node_id="",
+        )
+    except Exception as e:
+        raise RuntimeError(f"vector_store insert failed: {e}") from e
+
+    if rowid:
+        try:
+            kws = extract_keywords(text, top_k=5)
+            conn = store._get_conn()
+            for word, score in kws:
+                conn.execute(
+                    "INSERT OR IGNORE INTO vec_keywords (rowid, word, score) VALUES (?, ?, ?)",
+                    (rowid, word, round(score, 3)),
+                )
+            conn.commit()
+        except Exception:
+            logger.warning("Failed to store keywords for inbox item %s", inbox_id, exc_info=True)
+    _mark_inbox_catalog(
+        catalog,
+        inbox_id=inbox_id,
+        content_hash=content_hash,
+        status="embedded",
+        vec_rowid=rowid,
+        metadata={
+            "key": payload.get("key", ""),
+            "artifact": payload.get("artifact", ""),
+            "urgency": payload.get("urgency", ""),
+        },
+    )
+
+
+def _mark_inbox_catalog(
+    catalog: Any,
+    *,
+    inbox_id: str,
+    content_hash: str,
+    status: str,
+    vec_rowid: int | None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    if catalog is None:
+        return
+    identity = memory_inbox_embedding_identity()
+    try:
+        catalog.mark(
+            source="memory_inbox",
+            source_key=inbox_id,
+            item_idx=-1,
+            content_hash=content_hash,
+            status=status,
+            vec_rowid=vec_rowid,
+            reason="save_memory_inbox",
+            metadata=metadata or {},
+            **identity.as_catalog_kwargs(),
+        )
+    except Exception:
+        logger.debug("Failed to mark inbox work catalog for %s", inbox_id, exc_info=True)
 
 
 async def _retry_upsert(memory_index: Any, key: str, value: str, max_retries: int = 3) -> bool:

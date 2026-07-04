@@ -48,7 +48,7 @@ STARTUP_GRACE = int(os.getenv("WATCHDOG_STARTUP_GRACE", "180"))
 # Require 12 consecutive failures (3 min at 15s intervals) before triggering
 # recovery. Tools like recall_memories & web_search can block the main thread
 # for 60-120s during execution — shorter windows cause false-positive kills.
-REQUIRED_FAILURES = int(os.getenv("WATCHDOG_REQUIRED_FAILURES", "12"))
+REQUIRED_FAILURES = int(os.getenv("WATCHDOG_REQUIRED_FAILURES", "6"))
 
 
 def _git_log(count: int = 5) -> str:

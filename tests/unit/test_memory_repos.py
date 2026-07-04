@@ -413,6 +413,20 @@ _MEMORY_SCHEMA = [
         first_seen TEXT NOT NULL DEFAULT '',
         PRIMARY KEY (entity_id, exchange_rowid)
     )""",
+    """CREATE TABLE IF NOT EXISTS memory_curated_relations (
+        relation_id TEXT PRIMARY KEY,
+        source_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        relation_type TEXT NOT NULL,
+        weight REAL NOT NULL DEFAULT 1.0,
+        candidate_id TEXT NOT NULL DEFAULT '',
+        provenance TEXT NOT NULL DEFAULT '{}',
+        evidence TEXT NOT NULL DEFAULT '',
+        metadata TEXT NOT NULL DEFAULT '{}',
+        first_seen TEXT NOT NULL DEFAULT '',
+        last_seen TEXT NOT NULL DEFAULT '',
+        promoted_at TEXT NOT NULL DEFAULT ''
+    )""",
     "CREATE INDEX IF NOT EXISTS idx_entities_name ON entities (name)",
     "CREATE INDEX IF NOT EXISTS idx_entities_type ON entities (entity_type)",
     "CREATE INDEX IF NOT EXISTS idx_entity_relations_target ON entity_relations (target_id)",
@@ -592,6 +606,80 @@ class TestEntityRepository:
         await entity_repo.upsert_relation("e1", "e2", "used_by", 0.8, "2024-01-01")
 
     @pytest.mark.anyio
+    async def test_upsert_curated_relation_records_provenance(self, entity_repo, memory_db_conn):
+        relation_id = await entity_repo.upsert_curated_relation(
+            source_id="entity:kairos",
+            target_id="memory:roadmap",
+            relation_type="LINKS_TO",
+            weight=0.8,
+            candidate_id="cand-1",
+            provenance={"session_id": "sess-1", "channel": "pc"},
+            evidence="Kairos memoria",
+            metadata={"link_reasons": ["semantic_neighbor"]},
+            timestamp="2026-07-02T10:00:00",
+        )
+
+        cursor = await memory_db_conn.execute(
+            "SELECT * FROM memory_curated_relations WHERE relation_id = ?",
+            (relation_id,),
+        )
+        row = await cursor.fetchone()
+
+        assert row is not None
+        assert row["source_id"] == "entity:kairos"
+        assert row["target_id"] == "memory:roadmap"
+        assert row["relation_type"] == "LINKS_TO"
+        assert row["candidate_id"] == "cand-1"
+        assert "sess-1" in row["provenance"]
+        assert "semantic_neighbor" in row["metadata"]
+
+    @pytest.mark.anyio
+    async def test_get_curated_relation_decodes_provenance(self, entity_repo):
+        relation_id = await entity_repo.upsert_curated_relation(
+            source_id="memory:user:pref",
+            target_id="entity:kairos",
+            relation_type="SUPPORTS",
+            weight=0.8,
+            candidate_id="cand-1",
+            provenance={"session_id": "sess-1"},
+            evidence="Mauro prefiere X.",
+            metadata={"reason": "manual"},
+            timestamp="2026-07-02T10:00:00",
+        )
+
+        by_id = await entity_repo.get_curated_relation(relation_id)
+        by_identity = await entity_repo.get_curated_relation(
+            source_id="memory:user:pref",
+            target_id="entity:kairos",
+            relation_type="SUPPORTS",
+            candidate_id="cand-1",
+        )
+
+        assert by_id is not None
+        assert by_id["relation_id"] == relation_id
+        assert by_id["provenance"] == {"session_id": "sess-1"}
+        assert by_id["metadata"] == {"reason": "manual"}
+        assert by_id["evidence"] == "Mauro prefiere X."
+        assert by_identity["relation_id"] == relation_id
+
+    @pytest.mark.anyio
+    async def test_list_curated_relations_for_node(self, entity_repo):
+        await entity_repo.upsert_curated_relation(
+            source_id="memory:user:pref",
+            target_id="entity:kairos",
+            relation_type="SUPPORTS",
+            weight=0.8,
+            candidate_id="cand-1",
+            timestamp="2026-07-02T10:00:00",
+        )
+
+        rows = await entity_repo.list_curated_relations_for_node("memory:user:pref")
+
+        assert len(rows) == 1
+        assert rows[0]["target_id"] == "entity:kairos"
+        assert rows[0]["relation_type"] == "SUPPORTS"
+
+    @pytest.mark.anyio
     async def test_explore_graph(self, entity_repo):
         await entity_repo.upsert_entity(
             "e1", "Python", "tecnologia", timestamp="2024-01-01"
@@ -613,6 +701,31 @@ class TestEntityRepository:
     async def test_explore_graph_nonexistent(self, entity_repo):
         result = await entity_repo.explore_graph("nonexistent", depth=2)
         assert result == []
+
+    @pytest.mark.anyio
+    async def test_explore_graph_returns_raw_non_entity_nodes(self, entity_repo):
+        await entity_repo.upsert_relation(
+            "inbox:i1",
+            "memory:user:lenguaje",
+            "PROMOTED_TO",
+            2.0,
+            "2026-07-03T12:00:00",
+        )
+
+        result = await entity_repo.explore_graph("memory:user:lenguaje", depth=1)
+
+        assert result == [
+            {
+                "id": "inbox:i1",
+                "name": "i1",
+                "entity_type": "inbox",
+                "relation_type": "PROMOTED_TO",
+                "weight": 2.0,
+                "depth": 1,
+                "source_id": "inbox:i1",
+                "target_id": "memory:user:lenguaje",
+            }
+        ]
 
     @pytest.mark.anyio
     async def test_count(self, entity_repo):

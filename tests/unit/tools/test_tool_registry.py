@@ -76,6 +76,46 @@ def test_tool_map_triggers_build():
     assert registry._built is True
 
 
+def test_build_discovers_remember_tool():
+    registry = ToolRegistry()
+    registry.build()
+
+    assert registry.has("remember")
+    assert registry.get_definition("remember")["function"]["name"] == "remember"
+
+
+def test_build_discovers_curator_workbench_tool():
+    registry = ToolRegistry()
+    registry.build()
+
+    assert registry.has("curator_workbench")
+    assert registry.get_definition("curator_workbench")["function"]["name"] == "curator_workbench"
+
+
+def test_build_discovers_daily_memory_report_tool():
+    registry = ToolRegistry()
+    registry.build()
+
+    assert registry.has("daily_memory_report")
+    assert registry.get_definition("daily_memory_report")["function"]["name"] == "daily_memory_report"
+
+
+def test_build_discovers_review_recall_candidate_tool():
+    registry = ToolRegistry()
+    registry.build()
+
+    assert registry.has("review_recall_candidate")
+    assert registry.get_definition("review_recall_candidate")["function"]["name"] == "review_recall_candidate"
+
+
+def test_build_discovers_review_memory_inbox_tool():
+    registry = ToolRegistry()
+    registry.build()
+
+    assert registry.has("review_memory_inbox")
+    assert registry.get_definition("review_memory_inbox")["function"]["name"] == "review_memory_inbox"
+
+
 def test_definitions_triggers_build():
     registry = ToolRegistry()
     assert registry._built is False

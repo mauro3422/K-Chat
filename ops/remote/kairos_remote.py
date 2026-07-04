@@ -445,19 +445,25 @@ class RemotePythonJsonRunner:
 
     def run_json(self, command: str, *, timeout: int) -> dict[str, Any]:
         result = capture_ssh(self.profile, remote_python_command(self.profile, command), timeout=timeout)
-        if result.returncode != 0:
-            message = f"remote exit={result.returncode}"
-            if result.stdout.strip():
-                message += f" stdout={_short(result.stdout)}"
-            if result.stderr.strip():
-                message += f" stderr={_short(result.stderr)}"
-            raise RuntimeError(message)
         try:
             payload = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
+            if result.returncode != 0:
+                message = f"remote exit={result.returncode}"
+                if result.stdout.strip():
+                    message += f" stdout={_short(result.stdout)}"
+                if result.stderr.strip():
+                    message += f" stderr={_short(result.stderr)}"
+                raise RuntimeError(message) from exc
             raise RuntimeError(f"remote returned non-JSON output: {exc}") from exc
         if not isinstance(payload, dict):
             raise RuntimeError("remote returned JSON that is not an object")
+        payload.setdefault("command_exit_code", result.returncode)
+        if result.returncode != 0:
+            message = f"remote exit={result.returncode}"
+            if result.stderr.strip():
+                message += f" stderr={_short(result.stderr)}"
+            payload.setdefault("remote_error", message)
         return payload
 
 

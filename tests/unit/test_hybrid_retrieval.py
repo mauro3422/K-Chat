@@ -14,6 +14,7 @@ from src.memory.retrieval.fusion import (
     normalize_scores,
 )
 from src.memory.vector.store import compute_relevance
+from src.memory.retrieval.hybrid_retriever import HybridRetriever, HybridResult, SourceLayerPolicy
 
 
 class TestFusionRRF:
@@ -176,6 +177,56 @@ class TestComputeRelevance:
         old = compute_relevance(days_old=365.0)
         recent = compute_relevance(days_old=1.0)
         assert old < recent
+
+
+class TestSourceLayerPolicy:
+    def test_policy_weights_mixed_layers_and_reranks(self):
+        retriever = HybridRetriever(
+            db_path=":memory:",
+            source_layer_policy=SourceLayerPolicy(
+                weights={"memory": 1.0, "memory_candidate": 0.5, "session_summary": 0.9}
+            ),
+        )
+        results = [
+            HybridResult(rowid=1, text="candidate", source="memory_candidate", fusion_score=0.9, rank=1),
+            HybridResult(rowid=2, text="canon", source="memory", fusion_score=0.6, rank=2),
+            HybridResult(rowid=3, text="summary", source="session_summary", fusion_score=0.65, rank=3),
+        ]
+
+        retriever._apply_source_layer_policy(results, source_filter=None)
+
+        assert [item.rowid for item in results] == [2, 3, 1]
+        assert [item.rank for item in results] == [1, 2, 3]
+        assert results[0].fusion_score == pytest.approx(0.6)
+        assert results[1].fusion_score == pytest.approx(0.585)
+        assert results[2].fusion_score == pytest.approx(0.45)
+
+    def test_policy_does_not_weight_explicit_source_filter_by_default(self):
+        retriever = HybridRetriever(
+            db_path=":memory:",
+            source_layer_policy=SourceLayerPolicy(weights={"memory_candidate": 0.5}),
+        )
+        results = [
+            HybridResult(rowid=1, text="candidate", source="memory_candidate", fusion_score=0.9, rank=1),
+        ]
+
+        retriever._apply_source_layer_policy(results, source_filter="memory_candidate")
+
+        assert results[0].fusion_score == 0.9
+        assert results[0].rank == 1
+
+    def test_hybrid_retriever_loads_approved_source_policy_by_default(self, tmp_path, monkeypatch):
+        path = tmp_path / "memory" / "policies" / "retrieval_weights.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            '{"version": "v1", "status": "approved", "weights": {"memory": 1.0, "memory_candidate": 0.66}}',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("KAIROS_RETRIEVAL_POLICY_ROOT", str(tmp_path))
+
+        retriever = HybridRetriever(db_path="unused.db")
+
+        assert retriever._source_layer_policy.weight_for("memory_candidate") == 0.66
 
 
 class TestKeywordSearch:

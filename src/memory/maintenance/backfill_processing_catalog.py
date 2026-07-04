@@ -110,6 +110,54 @@ def backfill_session_candidates(
         memory_conn.close()
 
 
+def refresh_stale_curated_sessions(
+    *,
+    sessions_db: str,
+    memory_db: str,
+    catalog: MemoryProcessingCatalogRepository,
+    dry_run: bool,
+) -> int:
+    sessions_conn = _connect(sessions_db)
+    memory_conn = _connect(memory_db)
+    try:
+        if not _table_exists(memory_conn, "memory_processing_catalog"):
+            return 0
+        rows = memory_conn.execute(
+            """
+            SELECT source_key, content_hash, status
+            FROM memory_processing_catalog
+            WHERE source='session' AND item_idx=-1 AND stage='curated'
+            """
+        ).fetchall()
+        refreshed = 0
+        for row in rows:
+            session_id = str(row["source_key"])
+            digest, text_count = _curation_candidate_hash(sessions_conn, memory_conn, session_id)
+            if not digest or digest == str(row["content_hash"] or ""):
+                continue
+            refreshed += 1
+            if dry_run:
+                continue
+            catalog.mark(
+                source="session",
+                source_key=session_id,
+                item_idx=-1,
+                stage="curated",
+                content_hash=digest,
+                status="pending",
+                processor="backfill_processing_catalog",
+                reason="content_changed_reprocess_required",
+                metadata={
+                    "previous_status": str(row["status"] or ""),
+                    "texts": text_count,
+                },
+            )
+        return refreshed
+    finally:
+        sessions_conn.close()
+        memory_conn.close()
+
+
 def backfill_daily_synthesis(
     *,
     root: Path,
@@ -151,11 +199,18 @@ def run_backfill(*, sessions_db: str, memory_db: str, root: Path, dry_run: bool)
         catalog=catalog,
         dry_run=dry_run,
     )
+    stale_curated_sessions = refresh_stale_curated_sessions(
+        sessions_db=sessions_db,
+        memory_db=memory_db,
+        catalog=catalog,
+        dry_run=dry_run,
+    )
     reports = backfill_daily_synthesis(root=root, catalog=catalog, dry_run=dry_run)
     return {
         "ok": True,
         "dry_run": dry_run,
         "sessions_observed": sessions,
+        "stale_curated_sessions_refreshed": stale_curated_sessions,
         "daily_synthesis_processed": reports,
     }
 

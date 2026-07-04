@@ -1,14 +1,26 @@
 # save_memory
-**Persists key user or system data to MEMORY.md so it can be recalled in future sessions.**
+
+Marks important user or system data for memory curation.
+
+By default, `save_memory` writes a pending item to `memory/inbox/YYYY/MM/DD.jsonl`.
+Use `scope="canonical"` only when the fact is durable and should go directly to
+`MEMORY.md`, `memory.db`, and `source=memory` embeddings.
 
 <!-- auto:params -->
-| Parámetro | Tipo | Requerido | Default | Descripción |
+| Parametro | Tipo | Requerido | Default | Descripcion |
 |---|---|---|---|---|
-| `key` | string | Sí |  | The category or key of the information (e.g. 'Name', 'Preference', 'Technology', 'Project'). |
-| `value` | string | Sí |  | The value or detail to save. If passed empty, this key is removed from memory. |
+| `key` | string | Si |  | Category or key of the information. |
+| `value` | string | Si |  | Detail to save. Empty value deletes the key from canonical memory. |
+| `scope` | string | No | inbox | `inbox` for curator review, `canonical` for direct durable memory. |
+| `channel` | string | No |  | Optional source channel: web, telegram, cli, curator. |
+| `message_ref` | string | No |  | Optional source message or turn reference. |
+| `urgency` | string | No | normal | Review urgency: `normal` or `high`. |
 
 ---
 
-⚠️ MEMORY.md se reescribe COMPLETO ordenado alfabéticamente por key cada vez que llamás save_memory.
-🔍 Los valores guardados con `user:` (ej: user:name, user:language) son perfil del usuario.
-💡 Ejemplo: `execute_action(action_name="save_memory", arguments={"key": "user:name", "value": "Mauro"})`
+Rules:
+
+- Normal chat discoveries go to inbox.
+- Use canonical only when Mauro explicitly asks for stable memory or a curator promotes it.
+- Empty `value` remains a canonical delete operation for compatibility with `delete_memory`.
+- Inbox items may be embedded as `source=memory_inbox`; canonical memories embed as `source=memory`.

@@ -189,7 +189,7 @@ async def trace(
     Args:
         config: Override default config.
         save_memory_fn: Injected save function (key, value) → result string.
-                        When provided, meaningful patterns are persisted to MEMORY.md.
+                        Findings are materialized as reviewable candidate artifacts.
     
     Returns:
         Dict with 'patterns' list and 'count' per type.
@@ -203,42 +203,59 @@ async def trace(
     patterns.extend(detect_repeated_queries(cfg))
     patterns.extend(detect_entity_clusters(cfg))
     patterns.extend(detect_debug_sessions(cfg))
+    recall_candidates: list[dict[str, Any]] = []
+    try:
+        from src.memory.curator.recall_events import (
+            detect_recall_candidates,
+            write_recall_candidates,
+        )
+
+        recall_candidates = detect_recall_candidates(
+            root=cfg.get("artifact_root"),
+            lookback_days=cfg["lookback_days"],
+            limit=cfg["max_patterns"],
+        )
+        patterns.extend(recall_candidates)
+        if recall_candidates and not dry:
+            path = write_recall_candidates(
+                recall_candidates,
+                root=cfg.get("artifact_root"),
+            )
+            if path:
+                logger.info("Recall candidates written to %s", path)
+    except Exception:
+        logger.exception("Failed to detect recall candidates")
     
     by_type: dict[str, int] = {}
     for p in patterns:
         by_type[p["type"]] = by_type.get(p["type"], 0) + 1
     
     logger.info("Found %d patterns: %s", len(patterns), by_type)
-    
-    # Save high-confidence patterns to MEMORY.md
-    if save_memory_fn and patterns and not dry:
-        saved_count = 0
-        for p in patterns:
-            key = None
-            if p["type"] == "repeated_query" and p["times"] >= 5:
-                key = f"patron:consulta-repetida-{p['query'][:30]}"
-            elif p["type"] == "entity_cooccurrence" and p["weight"] >= 5:
-                e1 = p["source"].split(" (")[0]
-                e2 = p["target"].split(" (")[0]
-                key = f"patron:entidades-{e1}-{e2}"
-            elif p["type"] == "debug_session":
-                key = f"checkpoint:sesion-debug-{p['session_id'][:8]}"
-            if key:
-                try:
-                    await save_memory_fn(
-                        key,
-                        f"{datetime.now().strftime('%Y-%m-%d %H:%M')} | Tracer detected: {p['type']} — {p}"
-                    )
-                    saved_count += 1
-                except Exception:
-                    logger.exception("Failed to save tracer pattern: %s", key)
-        logger.info("Saved %d/%d high-confidence patterns to MEMORY.md", saved_count, len(patterns))
-    
+
+    tracer_candidate_path = None
+    if patterns and not dry:
+        try:
+            from src.memory.curator.curation_events import (
+                tracer_candidates_from_patterns,
+                write_tracer_candidates,
+            )
+
+            tracer_candidates = tracer_candidates_from_patterns(patterns)
+            tracer_candidate_path = write_tracer_candidates(
+                tracer_candidates,
+                root=cfg.get("artifact_root"),
+            )
+            if tracer_candidate_path:
+                logger.info("Tracer candidates written to %s", tracer_candidate_path)
+        except Exception:
+            logger.exception("Failed to write tracer candidates")
+
     return {
         "patterns": patterns,
         "count_by_type": by_type,
         "total": len(patterns),
         "config": cfg,
+        "candidate_path": str(tracer_candidate_path) if tracer_candidate_path else "",
     }
 
 

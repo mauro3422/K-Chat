@@ -653,6 +653,39 @@ def _migration_019_memory_work_catalog_identity_pk(conn: sqlite3.Connection, eng
     logger.info("memory_work_catalog identity primary key applied")
 
 
+def _migration_020_memory_curated_relations(conn: sqlite3.Connection, engine) -> None:
+    """Create a provenance ledger for curator-approved graph relations."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS memory_curated_relations (
+            relation_id TEXT PRIMARY KEY,
+            source_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            relation_type TEXT NOT NULL,
+            weight REAL NOT NULL DEFAULT 1.0,
+            candidate_id TEXT NOT NULL DEFAULT '',
+            provenance TEXT NOT NULL DEFAULT '{}',
+            evidence TEXT NOT NULL DEFAULT '',
+            metadata TEXT NOT NULL DEFAULT '{}',
+            first_seen TEXT NOT NULL DEFAULT '',
+            last_seen TEXT NOT NULL DEFAULT '',
+            promoted_at TEXT NOT NULL DEFAULT ''
+        )
+    """)
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_curated_relations_identity
+        ON memory_curated_relations (source_id, target_id, relation_type, candidate_id)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_curated_relations_source
+        ON memory_curated_relations (source_id, relation_type)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_memory_curated_relations_target
+        ON memory_curated_relations (target_id, relation_type)
+    """)
+    logger.info("memory_curated_relations table created")
+
+
 _MEMORY_MIGRATIONS = (
     _migration_001_global_memory_index,
     _migration_002_vec_store,
@@ -673,6 +706,7 @@ _MEMORY_MIGRATIONS = (
     _migration_017_topic_clusters_origin_node_id,
     _migration_018_memory_work_catalog_identity,
     _migration_019_memory_work_catalog_identity_pk,
+    _migration_020_memory_curated_relations,
 )
 
 MEMORY_SCHEMA_VERSION = len(_MEMORY_MIGRATIONS)

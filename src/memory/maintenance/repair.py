@@ -264,6 +264,45 @@ def _plan_orphan_memory_catalog_repairs(memory_conn: sqlite3.Connection, report:
         ))
 
 
+def _plan_orphan_session_catalog_repairs(
+    sessions_conn: sqlite3.Connection,
+    memory_conn: sqlite3.Connection,
+    report: RepairReport,
+) -> None:
+    if not _table_exists(memory_conn, "memory_work_catalog") or not _table_exists(sessions_conn, "sessions"):
+        return
+
+    rows = memory_conn.execute(
+        """
+        SELECT c.source, c.source_key, c.item_idx, c.content_hash, c.status, c.vec_rowid
+        FROM memory_work_catalog c
+        LEFT JOIN vec_meta v ON v.rowid = c.vec_rowid
+        WHERE c.source = 'session'
+          AND c.status IN ('embedded', 'deduped')
+          AND c.vec_rowid IS NOT NULL
+          AND v.rowid IS NULL
+        ORDER BY c.source_key, c.item_idx
+        """
+    ).fetchall()
+    for row in rows:
+        session = sessions_conn.execute(
+            "SELECT 1 FROM sessions WHERE session_id = ?",
+            (str(row["source_key"]),),
+        ).fetchone()
+        if session is not None:
+            continue
+        report.actions.append(RepairAction(
+            action="orphan_catalog_row",
+            source=str(row["source"]),
+            source_key=str(row["source_key"]),
+            item_idx=int(row["item_idx"]),
+            content_hash=str(row["content_hash"] or ""),
+            status=str(row["status"] or ""),
+            vec_rowid=int(row["vec_rowid"]) if row["vec_rowid"] is not None else None,
+            reason="session_and_vec_missing",
+        ))
+
+
 def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
     report = RepairReport()
     with _connect(sessions_db, readonly=True) as sessions_conn, _connect(memory_db, readonly=True) as memory_conn:
@@ -387,6 +426,7 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
                     ))
         _plan_memory_vector_catalog_repairs(memory_conn, report)
         _plan_orphan_memory_catalog_repairs(memory_conn, report)
+        _plan_orphan_session_catalog_repairs(sessions_conn, memory_conn, report)
     return report
 
 

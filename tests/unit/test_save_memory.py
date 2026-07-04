@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock
+import json
 import os
 import sqlite3
 import tempfile
@@ -42,7 +43,7 @@ def _reset_node_coord():
 
 @pytest.mark.anyio
 async def test_save_memory_create_new_key(temp_memory_file):
-    res = await save_memory_run(key="Preferencia", value="Python")
+    res = await save_memory_run(key="Preferencia", value="Python", scope="canonical")
     assert "saved" in res
     
     with open(temp_memory_file, "r", encoding="utf-8") as f:
@@ -55,8 +56,8 @@ async def test_save_memory_create_new_key(temp_memory_file):
 
 @pytest.mark.anyio
 async def test_save_memory_update_key(temp_memory_file):
-    await save_memory_run(key="Preferencia", value="Python")
-    res = await save_memory_run(key="Preferencia", value="TypeScript")
+    await save_memory_run(key="Preferencia", value="Python", scope="canonical")
+    res = await save_memory_run(key="Preferencia", value="TypeScript", scope="canonical")
     assert "saved" in res
     
     with open(temp_memory_file, "r", encoding="utf-8") as f:
@@ -67,7 +68,7 @@ async def test_save_memory_update_key(temp_memory_file):
 
 @pytest.mark.anyio
 async def test_save_memory_delete_key(temp_memory_file):
-    await save_memory_run(key="Preferencia", value="Python")
+    await save_memory_run(key="Preferencia", value="Python", scope="canonical")
     res = await save_memory_run(key="Preferencia", value="")
     assert "deleted" in res
     
@@ -78,13 +79,66 @@ async def test_save_memory_delete_key(temp_memory_file):
 
 @pytest.mark.anyio
 async def test_save_memory_empty_key(temp_memory_file):
-    res = await save_memory_run(key="", value="Algo")
+    res = await save_memory_run(key="", value="Algo", scope="canonical")
     assert "ERROR" in res
 
 @pytest.mark.anyio
 async def test_save_memory_delete_nonexistent_key(temp_memory_file):
     res = await save_memory_run(key="Inexistente", value="")
     assert "did not exist" in res
+
+
+@pytest.mark.anyio
+async def test_save_memory_defaults_to_inbox_without_touching_memory_md(temp_memory_file, tmp_path):
+    before = open(temp_memory_file, "r", encoding="utf-8").read()
+
+    res = await save_memory_run(
+        key="user:workflow",
+        value="2026-07-02 10:00 | Mauro wants save_memory as a curator inbox.",
+        _root=tmp_path,
+        _session_id="sess-1",
+        channel="web",
+        message_ref="turn-7",
+        urgency="high",
+    )
+
+    after = open(temp_memory_file, "r", encoding="utf-8").read()
+    inbox_files = list((tmp_path / "memory" / "inbox").rglob("*.jsonl"))
+    payload = json.loads(inbox_files[0].read_text(encoding="utf-8").splitlines()[0])
+
+    assert "[OK] queued memory inbox item" in res
+    assert before == after
+    assert payload["key"] == "user:workflow"
+    assert payload["status"] == "pending"
+    assert payload["session_id"] == "sess-1"
+    assert payload["channel"] == "web"
+    assert payload["message_ref"] == "turn-7"
+    assert payload["urgency"] == "high"
+
+
+@pytest.mark.anyio
+async def test_save_memory_inbox_embeddings_use_inbox_source(temp_memory_file, tmp_path):
+    store = _VectorStoreFake()
+    repos = SimpleNamespace(memory=SimpleNamespace(vector_store=store))
+
+    with (
+        patch("src.memory.embeddings.service.generate_embedding", return_value=[0.1, 0.2]),
+        patch("src.memory.keywords.extractor.extract_keywords", return_value=[("memoria", 1.0)]),
+    ):
+        result = await save_memory_run(
+            key="user:workflow",
+            value="2026-07-02 10:00 | Inbox items should be embedded separately.",
+            _repos=repos,
+            _root=tmp_path,
+        )
+
+    row = store.conn.execute("SELECT source, source_key, text FROM vec_meta").fetchone()
+
+    assert "[OK] queued memory inbox item" in result
+    assert row[0] == "memory_inbox"
+    assert row[1]
+    assert "Inbox items" in row[2]
+    store.conn.close()
 
 
 @pytest.mark.anyio
@@ -97,7 +151,7 @@ async def test_save_memory_blocked_on_secondary_node(temp_memory_file):
         patch("src.tools.save_memory.NodeLanBridge.request_memory_write", new=AsyncMock(return_value={"ok": False, "queued": True, "error": "down"})),
         patch("src.tools.save_memory.NodeLanBridge.broadcast_event", new=AsyncMock(return_value={"ok": True})) as mock_broadcast,
     ):
-        res = await save_memory_run(key="Preferencia", value="Python")
+        res = await save_memory_run(key="Preferencia", value="Python", scope="canonical")
 
     assert "queued" in res
     queue = get_memory_write_queue()
@@ -122,7 +176,7 @@ async def test_save_memory_broadcasts_memory_updated_event(temp_memory_file):
         patch("src.tools.save_memory.get_memory_lease_manager", return_value=fake_lease_manager),
         patch("src.tools.save_memory.NodeLanBridge.broadcast_event", new=AsyncMock(return_value={"ok": True})) as mock_broadcast,
     ):
-        res = await save_memory_run(key="Preferencia", value="Python")
+        res = await save_memory_run(key="Preferencia", value="Python", scope="canonical")
 
     assert "[OK]" in res
     assert coordinator.snapshot()["last_memory_revision"] > 0
@@ -213,6 +267,7 @@ async def test_save_memory_registers_memory_embedding_in_work_catalog(temp_memor
         result = await save_memory_run(
             key="user:preference",
             value="2026-07-01 10:00 | Mauro prefers cataloged memory writes.",
+            scope="canonical",
             _repos=repos,
         )
 
