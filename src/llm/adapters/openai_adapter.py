@@ -21,6 +21,11 @@ from src.llm.protocol import (
 logger = logging.getLogger(__name__)
 
 
+def _is_openai_model(model: str) -> bool:
+    """Check if the model name indicates an OpenAI-native model (supports stream_options)."""
+    return model.startswith(("gpt-", "o1", "o3", "o4"))
+
+
 class OpenAIAdapter(LLMProvider):
     def __init__(self, api_key: str, base_url: str):
         # Custom httpx client with NO keep-alive to avoid Connection error
@@ -78,7 +83,8 @@ class OpenAIAdapter(LLMProvider):
             messages=openai_messages,
             tools=openai_tools,
             stream=True,
-            stream_options={"include_usage": True},
+            # stream_options is OpenAI-specific — DeepSeek & others reject it
+            **({"stream_options": {"include_usage": True}} if _is_openai_model(request.model) else {}),
             temperature=request.temperature,
             max_tokens=request.max_tokens,
         )
@@ -93,7 +99,16 @@ class OpenAIAdapter(LLMProvider):
     def _to_openai_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         result = []
         for msg in messages:
-            m = dict(msg)
+            m_raw = dict(msg) if not isinstance(msg, dict) else msg
+            # Sanitize: only include fields from the OpenAI Chat Completions schema.
+            # DeepSeek & other strict providers reject unknown fields (created_at,
+            # reasoning, phases, id, etc.) that leak from Pydantic model serialization.
+            m = {
+                k: v
+                for k, v in m_raw.items()
+                if k in ("role", "content", "name", "tool_calls", "tool_call_id")
+                and v is not None
+            }
             if m.get("tool_calls"):
                 m["tool_calls"] = [
                     {
