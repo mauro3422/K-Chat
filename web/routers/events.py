@@ -24,7 +24,12 @@ async def sse_stream(request: Request) -> StreamingResponse:
     bus: IEventBus = getattr(request.app.state, "event_bus", None) or get_event_bus()
 
     async def event_generator():
-        async for sse_message in bus.stream(client_id):
+        # Parse Last-Event-ID header for reconnection replay
+        last_event_id_raw = request.headers.get("Last-Event-ID", "")
+        last_event_id: int | None = None
+        if last_event_id_raw and last_event_id_raw.isdigit():
+            last_event_id = int(last_event_id_raw)
+        async for sse_message in bus.stream(client_id, last_event_id=last_event_id):
             if await request.is_disconnected():
                 break
             yield sse_message

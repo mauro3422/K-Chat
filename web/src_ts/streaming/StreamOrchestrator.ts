@@ -326,12 +326,16 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     this.debug?.logUI('stream_aborted', 'cancelado por usuario');
   }
 
-  handleRetry(text: string, model?: string): void {
+  async handleRetry(text: string, model?: string): Promise<void> {
     this.abort();
     this.chatForm.setStreamingState(false);
     this.ndjsonClient?.abort();
     this._isRetry = true;
-    this.handleChatSend(text, undefined, model || (this.currentModel ?? undefined));
+    try {
+      await this.handleChatSend(text, undefined, model || (this.currentModel ?? undefined));
+    } catch {
+      this._finalizeStream();
+    }
     this._isRetry = false;
   }
 

@@ -275,7 +275,7 @@ export class SessionStore implements ISessionStore {
     }
   }
 
-  private async loadHistory(sessionId: string): Promise<void> {
+  async loadHistory(sessionId: string): Promise<void> {
     try {
       const resp = await this._apiClient.getSessionMessages(sessionId);
       const json = await resp.json() as Record<string, unknown>;

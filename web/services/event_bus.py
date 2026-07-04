@@ -20,11 +20,11 @@ class IEventBus(TypingProtocol):
     async def subscribe(self, client_id: str) -> asyncio.Queue: ...
     async def unsubscribe(self, client_id: str) -> None: ...
     async def publish(self, event_type: str, data: Any = None) -> None: ...
-    async def stream(self, client_id: str) -> AsyncGenerator[str, None]: ...
+    async def stream(self, client_id: str, last_event_id: int | None = None) -> AsyncGenerator[str, None]: ...
 
 
 class EventBus(IEventBus):
-    """Simple in-memory pub/sub event bus.
+    """Simple in-memory pub/sub event bus with replay buffer.
 
     Usage::
 
@@ -37,9 +37,13 @@ class EventBus(IEventBus):
         await bus.publish("new_message", {"session_id": "...", "content": "..."})
     """
 
+    MAX_REPLAY = 200  # keep last N events for reconnection replay
+
     def __init__(self) -> None:
         self._queues: dict[str, asyncio.Queue] = {}
         self._lock = asyncio.Lock()
+        self._ring: list[tuple[int, dict]] = []  # (seq, payload) ring buffer
+        self._global_seq = 0
 
     async def subscribe(self, client_id: str) -> asyncio.Queue:
         """Register a client and return its event queue."""
@@ -56,9 +60,15 @@ class EventBus(IEventBus):
             logger.info("SSE client disconnected: %s (total: %d)", client_id, len(self._queues))
 
     async def publish(self, event_type: str, data: Any = None) -> None:
-        """Send an event to ALL connected clients."""
+        """Send an event to ALL connected clients and store in replay buffer."""
         payload = {"type": event_type, "data": data}
         async with self._lock:
+            # Store in replay ring buffer
+            self._global_seq += 1
+            self._ring.append((self._global_seq, payload))
+            if len(self._ring) > self.MAX_REPLAY:
+                self._ring.pop(0)
+
             dead: list[str] = []
             for cid, q in self._queues.items():
                 try:
@@ -69,16 +79,25 @@ class EventBus(IEventBus):
             for cid in dead:
                 self._queues.pop(cid, None)
 
-    async def stream(self, client_id: str) -> AsyncGenerator[str, None]:
+    async def stream(self, client_id: str, last_event_id: int | None = None) -> AsyncGenerator[str, None]:
         """Async generator that yields SSE-formatted strings with event IDs.
 
-        The ``id:`` field lets the browser send ``Last-Event-ID`` on reconnect,
-        enabling the server to resume from where it left off.
-        Use this in the FastAPI StreamingResponse.
+        If ``last_event_id`` is provided, replays buffered events since that ID
+        before streaming live events.
         """
         import json as _json
         q = await self.subscribe(client_id)
         seq = 0
+
+        # Replay buffered events if client reconnected
+        if last_event_id is not None:
+            async with self._lock:
+                for ev_seq, payload in self._ring:
+                    if ev_seq > last_event_id:
+                        seq = ev_seq
+                        yield f"id: {seq}\ndata: {_json.dumps(payload, default=str)}\n\n"
+                seq = self._global_seq
+
         try:
             while True:
                 try:

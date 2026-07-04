@@ -291,6 +291,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // ── 8. Connection recovery ──────────────────────────────
+  eventBus.on('connection:restored', async () => {
+    const currentId = sessionStore.activeSessionId;
+    if (currentId) {
+      await sessionStore.loadHistory(currentId);
+      messageView.clearContainer();
+      for (const msg of sessionStore.activeHistory) {
+        messageView.appendMessage(msg);
+      }
+    }
+  });
+
   eventBus.on<{ sessionId: string }>('session:select', (data) => {
     sessionList.clearUnread(data.sessionId);
     void sessionStore.selectSession(data.sessionId);
