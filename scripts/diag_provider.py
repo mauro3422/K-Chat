@@ -130,6 +130,7 @@ async def main():
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--model", default="deepseek-v4-flash")
     parser.add_argument("--message", default=None)
+    parser.add_argument("--smoke", action="store_true", help="Smoke test mode: exit non-zero on any failure")
     args = parser.parse_args()
 
     if args.message:
@@ -196,14 +197,12 @@ async def main():
         for et, count in sorted(error_types.items()):
             print(f"  {et}: {count}x")
 
-        # Check if failures correlate with anything
-        print("\n── Correlation check ──")
-        for r in results:
-            if not r.get("ok"):
-                print(f"  Failed: msg_len={r['msg_len']}, sp_len={r['sp_len']}, tools={r['tools']}, error={r.get('error_type')}")
-        for r in results:
-            if r.get("ok"):
-                print(f"  OK:     msg_len={r['msg_len']}, sp_len={r['sp_len']}, tools={r['tools']}")
+    if args.smoke:
+        if fail > 0:
+            print("\n❌ SMOKE TEST FAILED")
+            return 1
+        print("\n✅ SMOKE TEST PASSED")
+        return 0
 
     return 0 if fail == 0 else 1
 
