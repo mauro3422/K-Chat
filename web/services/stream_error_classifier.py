@@ -8,6 +8,8 @@ ERROR_MESSAGES = {
     "tool_error": "A tool or function call failed. Please try again.",
     "model": "The model encountered an error. Please try again.",
     "bad_request": "The request was rejected by the provider. The message might be too long or malformed.",
+    "credits": "Saldo insuficiente en la cuenta de Go/OpenCode. Recargá saldo para seguir usando el modelo.",
+    "auth": "Error de autenticación con el provider. Verificá la API key.",
     "unknown": "An unexpected error occurred. Please try again.",
 }
 
@@ -93,6 +95,12 @@ def classify_error(error: Exception | str) -> tuple[str, str]:
     # Bad request / invalid request — non-retryable (4xx client errors)
     if "bad request" in msg_l or "400" in msg_l or "invalid_request_error" in msg_l:
         return "bad_request", ERROR_MESSAGES["bad_request"]
+    # Credits / billing / auth — non-retryable
+    if any(x in msg_l for x in ("creditserror", "insufficient balance", "insufficient_balance",
+                                  "usage limit reached", "goUsageLimit")):
+        return "credits", ERROR_MESSAGES["credits"]
+    if "401" in msg_l or "authenticationerror" in msg_l:
+        return "auth", ERROR_MESSAGES["auth"]
     if "rate limit" in msg_l or "ratelimit" in msg_l or "429" in msg_l:
         ...
         hint = _extract_rate_limit_hint(error)
