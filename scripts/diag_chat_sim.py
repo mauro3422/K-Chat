@@ -115,6 +115,7 @@ async def simulate_turn(session_id: str, message: str, model: str, turn: int) ->
                                   temperature=None, max_tokens=200)
         chunks = 0
         content_parts = []
+        tool_call_chunks: dict[int, dict] = {}  # index → {id, name, args}
         first_token = None
         async for ev_type, delta in adapter.chat_stream(request):
             chunks += 1
@@ -122,16 +123,54 @@ async def simulate_turn(session_id: str, message: str, model: str, turn: int) ->
                 first_token = time.monotonic()
             if ev_type == "content":
                 content_parts.append(delta)
+            elif ev_type == "tool_call":
+                # Accumulate tool call deltas (indexed by call index)
+                idx = delta.index
+                if idx not in tool_call_chunks:
+                    tool_call_chunks[idx] = {"id": delta.id or "", "name": "", "arguments": ""}
+                if delta.name:
+                    tool_call_chunks[idx]["name"] = delta.name
+                if delta.arguments:
+                    tool_call_chunks[idx]["arguments"] += delta.arguments
+
+        full_content = "".join(content_parts)
+
+        # Build final tool_calls list from accumulated deltas
+        tool_calls = []
+        for idx in sorted(tool_call_chunks):
+            tc = tool_call_chunks[idx]
+            tool_calls.append({
+                "id": tc["id"],
+                "type": "function",
+                "function": {
+                    "name": tc["name"],
+                    "arguments": tc["arguments"],
+                }
+            })
 
         result["ok"] = True
         result["chunks"] = chunks
-        result["content"] = "".join(content_parts)[:200]
+        result["has_tool_calls"] = len(tool_calls) > 0
+        result["tool_call_count"] = len(tool_calls)
+        if full_content:
+            result["content"] = full_content[:200]
         result["api_ms"] = round((time.monotonic() - t0) * 1000)
         result["ttft_ms"] = round((first_token - t0) * 1000) if first_token else None
 
-        # Save assistant response
-        full_content = "".join(content_parts)
-        await repos.messages.save(session_id, role="assistant", content=full_content, model=model)
+        # Save assistant response — include tool_calls if present
+        tc_json = json.dumps(tool_calls) if tool_calls else None
+        content_to_save = full_content if full_content else None
+        # Only save if we have content OR tool_calls (not an empty bubble)
+        if content_to_save or tc_json:
+            await repos.messages.save(
+                session_id, role="assistant",
+                content=content_to_save,
+                tool_calls=tc_json if tc_json != "[]" else None,
+                model=model,
+            )
+        else:
+            result["saved"] = False
+            result["note"] = "Empty response (no content, no tool_calls) — not saved"
 
     except Exception as e:
         result["ok"] = False
@@ -191,8 +230,11 @@ def _print_result(r):
           f"assistant_tc: {r.get('assistant_tc_msgs','?')}, orphans: {r.get('orphan_tools','?')}")
     print(f"  SP: {r.get('sp_len','?')} chars, openai_msgs: {r.get('openai_msg_count','?')}")
     if r.get("ok"):
-        print(f"  {status} TTFT={r.get('ttft_ms','?')}ms, {r.get('chunks','?')} chunks, "
+        tc_info = f" tool_calls={r.get('tool_call_count','?')}" if r.get('has_tool_calls') else ""
+        print(f"  {status} TTFT={r.get('ttft_ms','?')}ms, {r.get('chunks','?')} chunks,{tc_info} "
               f"content={r.get('content','')[:80]}...")
+        if r.get("note"):
+            print(f"  ⚠️  {r['note']}")
     else:
         print(f"  {status}: {r.get('error_msg','')[:150]}")
         if r.get("last_msgs"):
