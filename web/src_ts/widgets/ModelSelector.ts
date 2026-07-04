@@ -51,6 +51,7 @@ export class ModelSelector {
   private hiddenSelect: HTMLSelectElement | null = null;
   private models: ModelsByTier = { go_premium: [], go_standard: [], go_economy: [], free_ratelimited: [] };
   private selectedId = '';
+  private _serverDefaultModel = '';
   private _clickCb: ((e: MouseEvent) => void) | null = null;
   private logger: ILogger = getLogger('model-selector');
 
@@ -77,6 +78,11 @@ export class ModelSelector {
     try {
       const data = JSON.parse(script.textContent || '{}') as ModelsByTier;
       this.models = data;
+      // Read server-declared default model from data attribute
+      const defaultModel = (script as HTMLElement).dataset.defaultModel || '';
+      if (defaultModel) {
+        this._serverDefaultModel = defaultModel;
+      }
       this.populateHiddenSelect();
     } catch {
       this.logger.warn('failed_to_parse_model_data');
@@ -102,7 +108,7 @@ export class ModelSelector {
   private render(): void {
     if (!this.dropdownEl || !this.currentEl) return;
 
-    // Pick from localStorage, then hidden select, then first available
+    // Pick from localStorage, then server default, then hidden select, then first available
     const allModels = Object.values(this.models).flat();
     if (allModels.length === 0) {
       this.currentEl.textContent = 'No models available';
@@ -111,9 +117,11 @@ export class ModelSelector {
 
     this.selectedId =
       localStorage.getItem('selected_model') ||
+      this._serverDefaultModel ||
       this.hiddenSelect?.value ||
       allModels[0]?.id ||
       '';
+    this.logger.info('default_model', `selected=${this.selectedId} serverDefault=${this._serverDefaultModel}`);
     this.updateCurrent();
     // Sync hidden select
     if (this.hiddenSelect) this.hiddenSelect.value = this.selectedId;

@@ -84,7 +84,7 @@
             <div id="model-select-dropdown" class="model-select-dropdown" style="display:none"></div>
             <select id="model-select" style="display:none" aria-label="Seleccionar modelo de lenguaje"></select>
           </div>
-          <script id="model-data" type="application/json">{{ models_json | safe }}</script>
+          <script id="model-data" type="application/json" data-default-model="{{ model }}">{{ models_json | safe }}</script>
           <input type="file" id="file-input" multiple accept="image/*,application/pdf,audio/*,*/*" style="display:none">
         </div>
         <div class="toolbar-right">
