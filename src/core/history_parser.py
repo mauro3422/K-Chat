@@ -90,11 +90,17 @@ def _sanitize_messages(raw_msgs: list[HistoryMessage]) -> list[HistoryMessage]:
             responded_tool_ids: set[str] = set()
             scan_idx = idx + 1
 
-            while scan_idx < len(raw_msgs) and raw_msgs[scan_idx].role == "tool":
-                tool_msg = raw_msgs[scan_idx]
-                if tool_msg.tool_call_id in tool_call_ids and tool_msg.tool_call_id not in responded_tool_ids:
-                    consecutive_tool_msgs.append(tool_msg)
-                    responded_tool_ids.add(tool_msg.tool_call_id)
+            while scan_idx < len(raw_msgs):
+                nxt = raw_msgs[scan_idx]
+                # Skip empty assistant messages that might be interleaved
+                if nxt.role == "assistant" and not nxt.tool_calls:
+                    scan_idx += 1
+                    continue
+                if nxt.role != "tool":
+                    break
+                if nxt.tool_call_id in tool_call_ids and nxt.tool_call_id not in responded_tool_ids:
+                    consecutive_tool_msgs.append(nxt)
+                    responded_tool_ids.add(nxt.tool_call_id)
                 scan_idx += 1
 
             filtered_tcs = [tc for tc in msg.tool_calls if tc.get("id") in responded_tool_ids]
@@ -108,6 +114,11 @@ def _sanitize_messages(raw_msgs: list[HistoryMessage]) -> list[HistoryMessage]:
             continue
 
         if role == "tool":
+            idx += 1
+            continue
+
+        # Skip empty assistant messages (no content, no tool_calls)
+        if role == "assistant" and not msg.tool_calls and not (msg.content or "").strip():
             idx += 1
             continue
 

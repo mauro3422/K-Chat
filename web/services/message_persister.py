@@ -37,6 +37,9 @@ async def save_assistant_message(
     logbus: Any | None = None,
 ) -> None:
     """Persists the assistant message and debug info to the database."""
+    # Skip empty messages that would pollute history and break tool pairing
+    if not full_content.strip() and not full_reasoning.strip():
+        return
     _deps = _resolve_persister_deps(deps)
     record_cls = _deps.message_record_cls or MessageRecord
 

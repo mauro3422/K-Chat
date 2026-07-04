@@ -45,7 +45,7 @@ class HistoryMessage(BaseModel):
             "role": self.role,
             "content": self.content,
         }
-        if self.tool_calls is not None:
+        if self.tool_calls:  # exclude None and empty list
             msg["tool_calls"] = self.tool_calls
         if self.reasoning:
             msg["reasoning_content"] = self.reasoning
