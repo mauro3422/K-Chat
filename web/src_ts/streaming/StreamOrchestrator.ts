@@ -370,6 +370,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   private _handleStreamError(type: string, message: string): void {
     this._clearTimeout();
 
+    // Guard: prevent double-invocation after stream already finalized
+    if (!this._streamGuard) return;
+
     if (type === 'auth' || type === 'rate_limit') {
       this._showErrorCard(type, message);
       this.debug?.logUI('stream_error_terminal', `${type}: ${message}`);
@@ -399,6 +402,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
   private _handleStreamPostError(error: { type: string; message: string }): void {
     this._clearTimeout();
+
+    // Guard: prevent double-invocation after stream already finalized
+    if (!this._streamGuard) return;
 
     if (error.type === 'auth' || error.type === 'rate_limit') {
       this.debug?.logUI('stream_error_terminal', `${error.type}: ${error.message}`);

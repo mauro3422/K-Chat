@@ -16,8 +16,7 @@ from fastapi.responses import JSONResponse
 
 from src.coordination.embedding_job_queue import get_embedding_job_queue
 from src.coordination.memory_write_queue import apply_pending_memory_writes
-from src.memory.content_hash import content_hash
-from src.memory.embedding_identity import session_exchange_embedding_identity
+from src.api.memory import content_hash, session_exchange_embedding_identity
 from web.routers._memory_snapshot import build_memory_snapshot, relay_memory_event
 from web.routers._node_helpers import (
     _get_coordinator,
@@ -55,7 +54,7 @@ async def _process_embedding_jobs(request: Request, items: list[Any], *, source_
     if store is None:
         raise RuntimeError("vector store not configured")
 
-    from src.memory.embeddings.service import generate_embeddings_batch
+    from src.api.memory import generate_embeddings_batch
 
     identity = session_exchange_embedding_identity()
     results: list[dict[str, Any]] = []

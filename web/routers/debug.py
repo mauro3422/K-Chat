@@ -11,11 +11,15 @@ from src.api.llm_client import get_rate_limit_store, ensure_registry_refreshed
 from src.api.repos import get_repos
 
 def get_backend_logs(limit: int = 100) -> list[dict]:
-    """Read recent logs from the JSONL server log files."""
+    """Read recent logs from the JSONL server log files (file_logger only, excludes LogBus)."""
     log_dir = Path(__file__).parent.parent.parent / "logs" / "server"
     if not log_dir.exists():
         return []
-    log_files = sorted(log_dir.glob("*.jsonl"), reverse=True)
+    # Only read file_logger JSONL (YYYYMMDD.jsonl), skip logbus_*.jsonl
+    log_files = sorted(
+        (f for f in log_dir.glob("*.jsonl") if not f.name.startswith("logbus_")),
+        reverse=True,
+    )
     if not log_files:
         return []
     logs = []
@@ -24,11 +28,18 @@ def get_backend_logs(limit: int = 100) -> list[dict]:
             with open(lf, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if line:
-                        try:
-                            logs.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            pass
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    # Normalize to {ts, level, message} format expected by frontend
+                    logs.append({
+                        "ts": entry.get("t", ""),
+                        "level": entry.get("l", "I"),
+                        "message": entry.get("msg", entry.get("m", "")),
+                    })
         except (OSError, IOError):
             pass
         if len(logs) >= limit:

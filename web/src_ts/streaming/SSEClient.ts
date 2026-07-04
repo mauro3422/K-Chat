@@ -181,6 +181,14 @@ export class SSEClient implements ISSEClient {
   private ensureLiveMessage(sessionId: string): void {
     if (this.liveSessionId === sessionId && this.liveMsgEl?.parentNode) return;
 
+    // If there's already a streaming message from the Orchestrator, don't create a duplicate
+    const existingLive = document.querySelector('.msg.assistant.streaming, .msg.assistant.live-msg');
+    if (existingLive) {
+      this.liveMsgEl = existingLive as HTMLElement;
+      this.liveSessionId = sessionId;
+      return;
+    }
+
     // Clear previous live message for a different session
     this.clearLiveMessage();
     this.liveSessionId = sessionId;

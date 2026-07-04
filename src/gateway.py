@@ -363,11 +363,6 @@ def main() -> None:
         asyncio.run(_init_logbus())
     except Exception:
         logger.warning("Failed to initialize LogBus", exc_info=True)
-    try:
-        from src.logbus import configure_logbus
-        configure_logbus()
-    except Exception:
-        logger.warning("Failed to configure LogBus", exc_info=True)
 
     parser = argparse.ArgumentParser(description="Kairos Gateway — unified launcher")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show debug logs in console")

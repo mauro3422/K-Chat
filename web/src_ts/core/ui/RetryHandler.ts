@@ -39,12 +39,22 @@ export class RetryController implements IRetryController {
     this.count++;
     this.debug?.logUI('retry', `Retry ${this.count}/${this.maxRetries}: ${reason}`);
 
-    assistantEl.querySelectorAll('.reasoning, .tool-calls').forEach(el => el.remove());
+    // Stop the pulsing animation on the failed message
+    assistantEl.classList.remove('streaming', 'live-msg');
 
+    // Clean up reasoning/tool-calls from the failed attempt, but preserve memory bubble
+    assistantEl.querySelectorAll('.reasoning:not(.memories-phase), .tool-calls').forEach(el => el.remove());
+
+    // Replace body with a retry indicator instead of removing the message
     const body = assistantEl.querySelector('.msg-body');
-    if (body) body.innerHTML = '';
+    if (body) {
+      body.innerHTML = `<p style="color:#e6a817;font-style:italic;padding:8px 12px;margin:0;">
+        🔄 Error del provider — reintentando (${this.count}/${this.maxRetries})...
+      </p>`;
+    }
 
-    assistantEl.remove();
+    // Keep the message in the DOM — don't remove it.
+    // The retry will create a new message via handleChatSend → beginStreaming.
 
     // Cancel any previous pending retry before scheduling a new one
     this._cancelPendingRetry();

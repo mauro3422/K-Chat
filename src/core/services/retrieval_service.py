@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections import OrderedDict
 from typing import Any
@@ -19,13 +20,16 @@ class RetrievalService:
     - Per-session throttling (rate-limit expensive searches)
     - HybridRetriever creation and search
     - Memory formatting for prompt injection
+    - Short-lived cache to avoid re-running retrieval on retries
     """
 
-    RETRIEVAL_INTERVAL = 2
+    RETRIEVAL_INTERVAL = 1  # inject on every user message
     MAX_SESSIONS = 1000
+    MAX_CACHE_SIZE = 50  # LRU cache for retrieval results
 
     def __init__(self, config: Any | None = None, retrieval_service: Any | None = None):
         self._throttle: OrderedDict[str, int] = OrderedDict()
+        self._retrieval_cache: OrderedDict[str, tuple[str | None, bool]] = OrderedDict()
         self._retrieval_service = retrieval_service
         self._config = config
 
@@ -141,4 +145,21 @@ class RetrievalService:
         if not self._check_throttle(session_id or "default", message_user):
             return None, False
 
-        return await self.retrieve(message_user, session_id, db_path)
+        # Cache check: avoid re-running retrieval on retries for the same message
+        message_hash = hashlib.md5(message_user.strip().encode()).hexdigest()
+        cache_key = f"{session_id or 'default'}:{message_hash}"
+        if cache_key in self._retrieval_cache:
+            logger.info("Auto-retrieval cache hit for session %s", (session_id or "default")[:12])
+            self._retrieval_cache.move_to_end(cache_key)
+            return self._retrieval_cache[cache_key]
+
+        result = await self.retrieve(message_user, session_id, db_path)
+
+        # Cache the result
+        self._retrieval_cache[cache_key] = result
+        self._retrieval_cache.move_to_end(cache_key)
+        if len(self._retrieval_cache) > self.MAX_CACHE_SIZE:
+            for _ in range(len(self._retrieval_cache) - self.MAX_CACHE_SIZE):
+                self._retrieval_cache.popitem(last=False)
+
+        return result

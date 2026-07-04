@@ -101,22 +101,21 @@ def tail_logs(
     if source == "server":
         log_dir = get_server_log_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
-        path = _latest_log_path(log_dir)
+        path = _latest_file_logger_path(log_dir)
         entries = _tail_file(path, lines) if path else []
     elif source == "client":
         log_dir = get_client_log_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
-        path = _latest_log_path(log_dir)
+        path = _latest_file_logger_path(log_dir)
         entries = _tail_file(path, lines) if path else []
     else:
-        server_path = _latest_log_path(get_server_log_dir())
-        client_path = _latest_log_path(get_client_log_dir())
+        server_path = _latest_file_logger_path(get_server_log_dir())
+        client_path = _latest_file_logger_path(get_client_log_dir())
         entries = []
         if server_path:
             entries.extend(_tail_file(server_path, lines))
         if client_path:
             entries.extend(_tail_file(client_path, lines))
-        entries.extend(_tail_gateway_logs(lines))
         entries.extend(_tail_logbus_logs(lines))
 
     if source == "server":
@@ -161,6 +160,12 @@ def _resolve_log_path(log_dir: Path, date: Optional[str]) -> Optional[Path]:
 
 def _latest_log_path(log_dir: Path) -> Optional[Path]:
     files = sorted(log_dir.glob("*.jsonl"))
+    return files[-1] if files else None
+
+
+def _latest_file_logger_path(log_dir: Path) -> Optional[Path]:
+    """Get the latest file_logger JSONL (YYYYMMDD.jsonl), excluding logbus_*.jsonl."""
+    files = sorted(f for f in log_dir.glob("*.jsonl") if not f.name.startswith("logbus_"))
     return files[-1] if files else None
 
 

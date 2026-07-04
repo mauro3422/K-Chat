@@ -25,15 +25,10 @@ class TestCheckThrottle:
         service = RetrievalService()
         assert service._check_throttle("s1", "hello") is True
 
-    def test_throttled_on_turn_2(self):
+    def test_all_messages_pass_throttle_with_interval_1(self):
         service = RetrievalService()
         assert service._check_throttle("s1", "hello") is True
-        assert service._check_throttle("s1", "hello") is False
-
-    def test_allowed_when_interval_hits_exactly(self):
-        service = RetrievalService()
         assert service._check_throttle("s1", "hello") is True
-        assert service._check_throttle("s1", "hello") is False
         assert service._check_throttle("s1", "hello") is True
 
     def test_lru_eviction(self):
@@ -130,7 +125,9 @@ class TestRetrieveIfAllowed:
         assert result == (None, False)
 
     @pytest.mark.anyio
-    async def test_returns_none_false_when_throttled(self):
+    @pytest.mark.anyio
+    async def test_retrieval_runs_on_every_message_when_interval_1(self):
+        """With RETRIEVAL_INTERVAL=1, every non-empty message triggers retrieval."""
         config = MagicMock(auto_retrieval_enabled=True)
         service = RetrievalService()
 
@@ -139,8 +136,7 @@ class TestRetrieveIfAllowed:
             assert r1 == ("mem", False)
 
             r2 = await service.retrieve_if_allowed("hello", session_id="s1", config=config)
-            assert r2 == (None, False)
-
+            assert r2 == ("mem", False)  # No longer throttled — runs every turn
     @pytest.mark.anyio
     async def test_propagates_retrieve_result_when_allowed(self):
         config = MagicMock(auto_retrieval_enabled=True)
