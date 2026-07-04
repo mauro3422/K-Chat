@@ -497,17 +497,26 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       });
       this._handleSuccessfulStream();
     } else if (hadReasoning || hadToolCalls) {
-      this.debug?.logUI('stream_empty_response', 'reasoning/tool calls present but no content — no retry');
+      // Model produced reasoning/tool calls but no final text content.
+      // Show the executed tools instead of an error — the tool loop already
+      // saved everything in the backend, the next turn will have the response.
+      this.debug?.logUI('stream_tool_only', 'reasoning/tool calls present but no content — showing tool summary, not error');
       const bodyEl = ctx.bodyEl || assistantEl.querySelector('.' + C.MSG_BODY) as HTMLElement | null;
       if (bodyEl) {
-        const errorCard = document.createElement('div');
-        errorCard.className = C.ERROR_CARD;
-        errorCard.innerHTML = `
-              <div class="${C.ERROR_HEADER}">⚠ Respuesta incompleta</div>
-              <div class="${C.ERROR_DETAIL}">El modelo realizó razonamiento o invocó herramientas pero no generó contenido. No se reintentó automáticamente.</div>
-            `;
-        bodyEl.innerHTML = '';
-        bodyEl.appendChild(errorCard);
+        // Keep tool pills visible (already rendered by ContentHandler),
+        // just add a friendly status message instead of error card
+        const toolCount = assistantEl.querySelectorAll('.' + C.TC_ITEM).length;
+        const statusLine = document.createElement('p');
+        statusLine.className = 'tool-summary';
+        statusLine.innerHTML = toolCount > 0
+          ? `🔧 <em>${toolCount} herramienta(s) ejecutada(s)</em>`
+          : '💭 <em>Razonamiento completado sin respuesta textual</em>';
+        // Prepend to body — keep existing tool pills below
+        if (bodyEl.firstChild) {
+          bodyEl.insertBefore(statusLine, bodyEl.firstChild);
+        } else {
+          bodyEl.appendChild(statusLine);
+        }
       }
       this.retryController?.resetRetryCount();
       this._finalizeStream();

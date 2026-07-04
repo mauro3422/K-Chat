@@ -368,6 +368,15 @@
 .live-msg .tool-calls:empty {
   display: none;
 }
+
+/* Tool-call summary displayed instead of empty body bubble */
+.tool-summary {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+  opacity: 0.85;
+}
+
 .live-msg .tc-item.calling {
   animation: live-pulse 1.5s ease-in-out infinite;
 }

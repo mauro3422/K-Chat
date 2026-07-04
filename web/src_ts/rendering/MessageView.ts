@@ -193,12 +193,20 @@ export class MessageView implements IMessageView {
         }
       });
 
-      // Fallback: if no phase content but main content exists
-      if (!hasAnyContent && content) {
-        const body = document.createElement('div');
-        body.className = C.MSG_BODY + ' ' + C.MD_CONTENT;
-        this.renderWithWidgets(body, content);
-        el.appendChild(body);
+      // Fallback: if no phase content but main content exists — OR tools present without content
+      if (!hasAnyContent) {
+        if (content) {
+          const body = document.createElement('div');
+          body.className = C.MSG_BODY + ' ' + C.MD_CONTENT;
+          this.renderWithWidgets(body, content);
+          el.appendChild(body);
+        } else if (matchedTools.length > 0) {
+          // Tools but no text content — show tool summary in body
+          const body = document.createElement('div');
+          body.className = C.MSG_BODY + ' ' + C.MD_CONTENT;
+          body.innerHTML = `<p class="tool-summary">🔧 <em>${this.escapeHtml(matchedTools.map(t => t.tool_name).join(', '))}</em></p>`;
+          el.appendChild(body);
+        }
       }
     } else {
       // Simple message (no phases)
@@ -209,9 +217,20 @@ export class MessageView implements IMessageView {
         el.appendChild(details);
       }
 
+      const hasVisibleContent = content && content.trim().length > 0;
+      const hasTools = msg.role === 'assistant' && matchedTools.length > 0;
+
       const body = document.createElement('div');
       body.className = msg.role === 'assistant' ? C.MSG_BODY + ' ' + C.MD_CONTENT : C.MSG_BODY;
-      this.renderWithWidgets(body, content);
+
+      if (hasVisibleContent) {
+        this.renderWithWidgets(body, content);
+      } else if (hasTools) {
+        // No text content but tools were called — show tool summary
+        body.innerHTML = `<p class="tool-summary">🔧 <em>${this.escapeHtml(matchedTools.map(t => t.tool_name).join(', '))}</em></p>`;
+      } else {
+        this.renderWithWidgets(body, content);
+      }
       el.appendChild(body);
 
       // Tool pills
