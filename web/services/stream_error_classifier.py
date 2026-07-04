@@ -47,6 +47,9 @@ def _parse_duration_value(value: str | None) -> int | None:
     seconds = int(match.group(2) or 0)
     total = minutes * 60 + seconds
     # Cap at 1 hour — anything above is garbage data
+    if total > _MAX_REASONABLE_SECONDS:
+        return None
+    return total
 
 
 def _format_duration_hint(seconds: int | None) -> str | None:

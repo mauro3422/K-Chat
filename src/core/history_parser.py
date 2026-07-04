@@ -92,8 +92,8 @@ def _sanitize_messages(raw_msgs: list[HistoryMessage]) -> list[HistoryMessage]:
 
             while scan_idx < len(raw_msgs):
                 nxt = raw_msgs[scan_idx]
-                # Skip empty assistant messages that might be interleaved
-                if nxt.role == "assistant" and not nxt.tool_calls:
+                # Skip truly empty assistant messages (no content, no tool_calls)
+                if nxt.role == "assistant" and not nxt.tool_calls and not (nxt.content or "").strip():
                     scan_idx += 1
                     continue
                 if nxt.role != "tool":
