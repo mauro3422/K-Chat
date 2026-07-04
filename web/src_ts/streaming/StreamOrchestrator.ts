@@ -43,6 +43,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   private currentModel: string | null = null;
   private contentHandler: ContentHandler | null = null;
   private _isRetry = false;
+  private _lastError: { type: string; message: string } | null = null;
   private logger: ILogger;
 
   constructor(
@@ -331,8 +332,19 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     this.chatForm.setStreamingState(false);
     this.ndjsonClient?.abort();
     this._isRetry = true;
+
+    // Inject retry context so the model knows this is a retry
+    const attempt = (this.retryController?.count ?? 0) + 1;
+    const max = this.retryController?.maxRetries ?? 3;
+    let retryText = text;
+    if (this._lastError) {
+      const err = this._lastError;
+      retryText = `[SYSTEM: Retry attempt ${attempt}/${max}. Previous attempt failed with error: ${err.type} — ${err.message}. This is a retry of the same user message, do NOT assume any prior assistant response exists.]\n\n${text}`;
+      this._lastError = null; // consume
+    }
+
     try {
-      await this.handleChatSend(text, undefined, model || (this.currentModel ?? undefined));
+      await this.handleChatSend(retryText, undefined, model || (this.currentModel ?? undefined));
     } catch {
       this._finalizeStream();
     }
@@ -379,6 +391,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     if (!this._streamGuard) return;
 
     if (type === 'auth' || type === 'rate_limit' || type === 'bad_request') {
+      this._lastError = { type, message };
       this._showErrorCard(type, message);
       this.debug?.logUI('stream_error_terminal', `${type}: ${message}`);
       this.retryController?.resetRetryCount();
@@ -388,6 +401,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
     if (this.retryController?.shouldRetry(false) && this.currentUserText) {
       const text = this.currentUserText;
+      this._lastError = { type, message };
       this.debug?.logUI('stream_error_retry', `${type}: ${message} — attempt ${this.retryController.count + 1}/${this.retryController.maxRetries}`);
         this.retryController.scheduleRetry({
           assistantEl: this.lastAssistantMsgEl!,
@@ -412,6 +426,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     if (!this._streamGuard) return;
 
     if (error.type === 'auth' || error.type === 'rate_limit' || error.type === 'bad_request') {
+      this._lastError = { type: error.type, message: error.message };
       this.debug?.logUI('stream_error_terminal', `${error.type}: ${error.message}`);
       this.retryController?.resetRetryCount();
       this._markCallingPillsError();
@@ -421,6 +436,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
     if (this.retryController?.shouldRetry(false) && this.currentUserText) {
       const text = this.currentUserText;
+      this._lastError = { type: error.type, message: error.message };
       this.debug?.logUI('stream_error_retry', `${error.type}: ${error.message} — attempt ${this.retryController.count + 1}/${this.retryController.maxRetries}`);
       this.retryController.scheduleRetry({
         assistantEl: this.lastAssistantMsgEl!,
@@ -522,6 +538,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       this._finalizeStream();
     } else if (this.retryController?.shouldRetry(false) && this.currentUserText) {
       const retryText = this.currentUserText;
+      this._lastError = { type: 'empty_response', message: 'model returned no content' };
       this.debug?.logUI('stream_retry', `empty response — attempt ${this.retryController.count + 1}/${this.retryController.maxRetries}`);
       this.retryController.scheduleRetry({
         assistantEl,
