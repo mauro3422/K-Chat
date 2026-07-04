@@ -26,6 +26,7 @@ def main() -> int:
     parser.add_argument("--date", default="", help="Target date YYYY-MM-DD.")
     parser.add_argument("--preview", action="store_true", help="Print without writing the artifact.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--compact-json", action="store_true", help="When used with --json, print a compact operational payload.")
     parser.add_argument(
         "--preflight",
         dest="preflight",
@@ -41,6 +42,7 @@ def main() -> int:
     )
     parser.add_argument("--laptop-status-json", default="", help="Path to a laptop health JSON object.")
     parser.add_argument("--laptop-status-command", default="", help="Command that prints laptop health as JSON.")
+    parser.add_argument("--laptop-status-timeout", type=int, default=45, help="Seconds to wait for laptop health command.")
     args = parser.parse_args()
 
     target = date.fromisoformat(args.date) if args.date else None
@@ -51,8 +53,9 @@ def main() -> int:
             include_preflight=args.preflight,
             laptop_status_json=args.laptop_status_json or None,
             laptop_status_command=args.laptop_status_command or None,
+            laptop_status_timeout=max(1, args.laptop_status_timeout),
         )
-        print(render_morning_plan_json(plan) if args.json else render_morning_plan(plan))
+        print(render_morning_plan_json(plan, compact=args.compact_json) if args.json else render_morning_plan(plan))
         return 0
 
     path = write_morning_plan(
@@ -61,6 +64,7 @@ def main() -> int:
         include_preflight=args.preflight,
         laptop_status_json=args.laptop_status_json or None,
         laptop_status_command=args.laptop_status_command or None,
+        laptop_status_timeout=max(1, args.laptop_status_timeout),
     )
     if args.json:
         plan = build_morning_plan(
@@ -69,8 +73,10 @@ def main() -> int:
             include_preflight=args.preflight,
             laptop_status_json=args.laptop_status_json or None,
             laptop_status_command=args.laptop_status_command or None,
+            laptop_status_timeout=max(1, args.laptop_status_timeout),
         )
-        print(json.dumps({"ok": True, "path": str(path), "plan": plan}, ensure_ascii=False, indent=2, sort_keys=True))
+        payload = render_morning_plan_json(plan, compact=args.compact_json)
+        print(json.dumps({"ok": True, "path": str(path), "plan": json.loads(payload)}, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         print(path)
     return 0

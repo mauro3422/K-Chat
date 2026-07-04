@@ -21,6 +21,7 @@ DEFINITION: dict[str, Any] = {
                     "enum": [
                         "list",
                         "queue",
+                        "runbook",
                         "inspect",
                         "trace",
                         "graph",
@@ -35,13 +36,14 @@ DEFINITION: dict[str, Any] = {
                         "write_weight_policy_draft",
                         "approve_weight_policy",
                         "audit_weight_policy",
+                        "audit_weight_policy_suite",
                     ],
                     "description": "Workbench action.",
                     "default": "list",
                 },
                 "query": {
                     "type": "string",
-                    "description": "Recall/query text for recall_packet.",
+                    "description": "Recall/query text, or a |/newline-separated audit suite override.",
                     "default": "",
                 },
                 "source": {
@@ -71,6 +73,11 @@ DEFINITION: dict[str, Any] = {
                 "candidate_id": {
                     "type": "string",
                     "description": "Candidate id for inspect/trace/graph/map or optional relation provenance.",
+                    "default": "",
+                },
+                "item_id": {
+                    "type": "string",
+                    "description": "Queue item id for focused runbook output.",
                     "default": "",
                 },
                 "source_id": {
@@ -192,12 +199,106 @@ def _format_card(card: dict[str, Any]) -> str:
 def _format_queue_item(item: dict[str, Any]) -> str:
     command = str(item.get("recommended_command") or "").strip()
     command_text = f" command=`{command}`" if command else ""
+    item_id = str(item.get("id") or "").strip()
+    runbook_text = f" runbook=`curator_workbench action=runbook item_id={item_id}`" if item_id else ""
     reasons = ", ".join(str(reason) for reason in item.get("why") or [] if str(reason).strip())
     reasons_text = f" why={reasons}" if reasons else ""
     return (
         f"- **P{item.get('priority', 0)} {item.get('kind', '')}** `{item.get('id', '')}` "
-        f"{item.get('next_action', '')}{command_text}{reasons_text}"
+        f"{item.get('next_action', '')}{command_text}{runbook_text}{reasons_text}"
     )
+
+
+def _format_runbook_command(item: dict[str, Any], command: str, label: str) -> str:
+    title = str(item.get("title") or item.get("kind") or "").strip()
+    return (
+        f"- **P{item.get('priority', 0)} {item.get('kind', '')}** "
+        f"`{item.get('id', '')}` {label}: `{command}`"
+        f"{f' - {title}' if title else ''}"
+    )
+
+
+def _is_preview_action(item: dict[str, Any], command: str) -> bool:
+    action = str(item.get("next_action") or "")
+    return action.startswith("preview") or "preview_" in command or " action=map" in command
+
+
+def _runbook_actions(plan: dict[str, Any], limit: int, item_id: str = "") -> list[dict[str, Any]]:
+    actions = list(plan.get("actions") or [])
+    if item_id == "top":
+        return actions[:1]
+    if item_id:
+        return [item for item in actions if str(item.get("id") or "") == item_id][:1]
+    return actions[:limit]
+
+
+def _render_curator_runbook(plan: dict[str, Any], limit: int, item_id: str = "") -> str:
+    actions = _runbook_actions(plan, limit, item_id)
+    if item_id and not actions:
+        return f"[ERROR] curator queue item not found: {item_id}"
+    pipeline = plan.get("pipeline_status") or {}
+    lines = [
+        "## Curator runbook",
+        f"- status: `{pipeline.get('status', 'unknown')}`",
+        f"- queue_items: `{len(actions)}`",
+    ]
+
+    focus_lines: list[str] = []
+    inspection_lines: list[str] = []
+    preview_lines: list[str] = []
+    mutation_lines: list[str] = []
+    fallback_lines: list[str] = []
+    for item in actions:
+        if item_id:
+            detail = str(item.get("detail") or "").strip()
+            reasons = ", ".join(str(reason) for reason in item.get("why") or [] if str(reason).strip())
+            focus_lines.extend([
+                f"- selector: `{item_id}`",
+                f"- id: `{item.get('id', '')}`",
+                f"- kind: `{item.get('kind', '')}`",
+                f"- title: {item.get('title', '')}",
+                f"- next_action: `{item.get('next_action', '')}`",
+            ])
+            if detail:
+                focus_lines.append(f"- detail: {detail}")
+            if reasons:
+                focus_lines.append(f"- why: {reasons}")
+        recommended = str(item.get("recommended_command") or "").strip()
+        followup = str(item.get("followup_command") or "").strip()
+        fallback = str(item.get("fallback_command") or "").strip()
+        if recommended:
+            if _is_preview_action(item, recommended):
+                preview_lines.append(_format_runbook_command(item, recommended, "preview"))
+            else:
+                inspection_lines.append(_format_runbook_command(item, recommended, "inspect"))
+        if followup:
+            mutation_lines.append(_format_runbook_command(item, followup, "mutate"))
+        if fallback:
+            fallback_lines.append(_format_runbook_command(item, fallback, "fallback"))
+
+    if focus_lines:
+        lines.extend(["", "### Focus"])
+        lines.extend(focus_lines)
+    lines.extend(["", "### 1. Safe inspection"])
+    lines.extend(inspection_lines or ["- no inspection commands queued"])
+    lines.extend(["", "### 2. Preview before mutation"])
+    lines.extend(preview_lines or ["- no preview commands queued"])
+    lines.extend(["", "### 3. Explicit mutations"])
+    lines.extend(mutation_lines or ["- no mutation follow-ups queued"])
+    if fallback_lines:
+        lines.extend(["", "### 4. Reject/fallback paths"])
+        lines.extend(fallback_lines)
+
+    weight_recommendations = list(plan.get("weight_recommendations") or [])
+    if weight_recommendations:
+        lines.extend([
+            "",
+            "### Weight policy gate",
+            "- Audit: `curator_workbench action=audit_weight_policy_suite`",
+            "- Draft only after audit: `curator_workbench action=write_weight_policy_draft`",
+        ])
+
+    return "\n".join(lines)
 
 
 def _format_entity(item: dict[str, Any]) -> str:
@@ -288,6 +389,26 @@ def _mermaid_label(value: str) -> str:
     )
 
 
+def _weight_policy_regression_queries(query: str) -> list[str]:
+    """Return curator-approved queries for retrieval weight regression checks."""
+
+    explicit = [
+        item.strip()
+        for chunk in query.splitlines()
+        for item in chunk.split("|")
+        if item.strip()
+    ]
+    if explicit:
+        return explicit
+    return [
+        "Que recuerda Kairos sobre Mauro y sus preferencias?",
+        "Que decisiones arquitectonicas tomamos sobre memoria por capas?",
+        "Que bugs recientes afectan el sistema de memoria o retrieval?",
+        "Que tareas pendientes hay para los curadores de memoria?",
+        "Que conexiones hay entre embeddings, grafo y memoria canonica?",
+    ]
+
+
 async def run(**kwargs) -> str:
     action = str(kwargs.get("action") or "list")
     limit = min(int(kwargs.get("limit", 20)), 50)
@@ -373,7 +494,13 @@ async def run(**kwargs) -> str:
                 lines.append("- no queued curator action")
             return "\n".join(lines)
 
-        if action in {"preview_weight_policy", "write_weight_policy_draft", "approve_weight_policy", "audit_weight_policy"}:
+        if action in {
+            "preview_weight_policy",
+            "write_weight_policy_draft",
+            "approve_weight_policy",
+            "audit_weight_policy",
+            "audit_weight_policy_suite",
+        }:
             from src.memory.synthesis.morning_plan import build_morning_plan
             from src.memory.retrieval.source_policy import (
                 approve_weight_policy_draft,
@@ -412,6 +539,75 @@ async def run(**kwargs) -> str:
                         )
                 else:
                     lines.append("- no results to compare")
+                return "\n".join(lines)
+
+            if action == "audit_weight_policy_suite":
+                retriever = _retriever_from_kwargs(kwargs)
+                if retriever is None:
+                    return "[ERROR] hybrid retriever is required for weight policy audit."
+                queries = _weight_policy_regression_queries(query)
+                source_filter = str(kwargs.get("source") or "") or None
+                lines = [
+                    "## Retrieval weight policy regression suite",
+                    f"- queries: `{len(queries)}`",
+                    f"- source_filter: `{source_filter or 'all'}`",
+                ]
+                changed_queries = 0
+                empty_queries = 0
+                rank_changed_queries = 0
+                score_changed_queries = 0
+                max_abs_delta = 0.0
+                for index, regression_query in enumerate(queries[:limit], 1):
+                    results = await retriever.search(
+                        query=regression_query,
+                        top_k=limit,
+                        source_filter=source_filter,
+                    )
+                    audit = compare_policy_rankings(results, root=_root(kwargs), limit=limit)
+                    rows = audit.get("rows") or []
+                    if not rows:
+                        empty_queries += 1
+                    rank_changes = [row for row in rows if int(row.get("rank_delta") or 0) != 0]
+                    score_deltas = [row for row in rows if float(row.get("delta") or 0.0) != 0.0]
+                    if rank_changes:
+                        rank_changed_queries += 1
+                    if score_deltas:
+                        score_changed_queries += 1
+                    for row in rows:
+                        max_abs_delta = max(max_abs_delta, abs(float(row.get("delta") or 0.0)))
+                    if rank_changes or score_deltas:
+                        changed_queries += 1
+                    lines.extend([
+                        "",
+                        f"### {index}. `{regression_query}`",
+                        f"- results: `{len(rows)}`",
+                        f"- rank_changes: `{len(rank_changes)}`",
+                        f"- score_deltas: `{len(score_deltas)}`",
+                    ])
+                    for row in rows[: min(3, limit)]:
+                        lines.append(
+                            f"- {row.get('builtin_rank')} -> {row.get('approved_rank')} "
+                            f"`{row.get('source', '')}` `{row.get('source_key', '')}` "
+                            f"builtin={row.get('builtin_score', '')} approved={row.get('approved_score', '')} "
+                            f"delta={row.get('delta', '')}"
+                        )
+                if empty_queries or rank_changed_queries:
+                    verdict = "review_required"
+                    next_action = "Next: revisar queries vacias/cambios de rank antes de aprobar cualquier draft de pesos."
+                elif score_changed_queries:
+                    verdict = "score_shift_only"
+                    next_action = "Next: revisar deltas de score; el ranking no cambio en la suite."
+                else:
+                    verdict = "no_policy_impact"
+                    next_action = "Next: no hay impacto observable en esta suite; se puede revisar el draft con menor riesgo."
+                lines.insert(3, f"- changed_queries: `{changed_queries}`")
+                lines.insert(4, f"- empty_queries: `{empty_queries}`")
+                lines.insert(5, f"- rank_changed_queries: `{rank_changed_queries}`")
+                lines.insert(6, f"- score_changed_queries: `{score_changed_queries}`")
+                lines.insert(7, f"- max_abs_delta: `{round(max_abs_delta, 4)}`")
+                lines.insert(8, f"- verdict: `{verdict}`")
+                lines.append("")
+                lines.append(next_action)
                 return "\n".join(lines)
 
             if action == "approve_weight_policy":
@@ -484,6 +680,15 @@ async def run(**kwargs) -> str:
             ]
             lines.extend(_format_queue_item(item) for item in actions)
             return "\n".join(lines)
+
+        if action == "runbook":
+            from src.memory.synthesis.morning_plan import build_morning_plan
+
+            return _render_curator_runbook(
+                build_morning_plan(root=_root(kwargs)),
+                limit,
+                item_id=str(kwargs.get("item_id") or "").strip(),
+            )
 
         if action in {"inspect", "trace"} and not candidate_id:
             return "[ERROR] candidate_id is required."

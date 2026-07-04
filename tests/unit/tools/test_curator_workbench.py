@@ -135,6 +135,7 @@ def test_definition_structure():
     assert "explain" in fdef["parameters"]["properties"]["action"]["enum"]
     assert "map" in fdef["parameters"]["properties"]["action"]["enum"]
     assert "queue" in fdef["parameters"]["properties"]["action"]["enum"]
+    assert "runbook" in fdef["parameters"]["properties"]["action"]["enum"]
     assert "preview_hints" in fdef["parameters"]["properties"]["action"]["enum"]
     assert "materialize_hints" in fdef["parameters"]["properties"]["action"]["enum"]
     assert "upsert_relation" in fdef["parameters"]["properties"]["action"]["enum"]
@@ -144,8 +145,10 @@ def test_definition_structure():
     assert "write_weight_policy_draft" in fdef["parameters"]["properties"]["action"]["enum"]
     assert "approve_weight_policy" in fdef["parameters"]["properties"]["action"]["enum"]
     assert "audit_weight_policy" in fdef["parameters"]["properties"]["action"]["enum"]
+    assert "audit_weight_policy_suite" in fdef["parameters"]["properties"]["action"]["enum"]
     assert "query" in fdef["parameters"]["properties"]
     assert "source" in fdef["parameters"]["properties"]
+    assert "item_id" in fdef["parameters"]["properties"]
     assert "memory_key" in fdef["parameters"]["properties"]
 
 
@@ -176,7 +179,70 @@ async def test_queue_shows_prioritized_curation_commands(tmp_path):
     assert "Curator queue" in result
     assert "inspect_inbox" in result
     assert "review_memory_inbox action=inspect" in result
+    assert "curator_workbench action=runbook item_id=" in result
     assert "temporary_memory_pending_review" in result
+
+
+@pytest.mark.anyio
+async def test_runbook_groups_safe_and_mutating_commands(tmp_path):
+    append_memory_inbox_item(
+        {"key": "user:pref", "value": "Mauro quiere plan diario."},
+        root=tmp_path,
+        timestamp="2026-07-04T08:00:00",
+    )
+
+    result = await run(root=str(tmp_path), action="runbook")
+
+    assert "Curator runbook" in result
+    assert "Safe inspection" in result
+    assert "Preview before mutation" in result
+    assert "Explicit mutations" in result
+    assert "Reject/fallback paths" in result
+    assert "inspect: `review_memory_inbox action=inspect" in result
+    assert "mutate: `review_memory_inbox action=promote" in result
+    assert "fallback: `review_memory_inbox action=reject" in result
+
+
+@pytest.mark.anyio
+async def test_runbook_can_focus_one_queue_item(tmp_path):
+    item = append_memory_inbox_item(
+        {"key": "user:pref", "value": "Mauro quiere plan diario."},
+        root=tmp_path,
+        timestamp="2026-07-04T08:00:00",
+    )
+
+    result = await run(root=str(tmp_path), action="runbook", item_id=item["inbox_id"])
+
+    assert "Curator runbook" in result
+    assert "queue_items: `1`" in result
+    assert "### Focus" in result
+    assert f"id: `{item['inbox_id']}`" in result
+    assert "kind: `inbox`" in result
+    assert "next_action: `inspect_inbox`" in result
+    assert "temporary_memory_pending_review" in result
+
+
+@pytest.mark.anyio
+async def test_runbook_can_focus_top_queue_item(tmp_path):
+    item = append_memory_inbox_item(
+        {"key": "user:pref", "value": "Mauro quiere plan diario."},
+        root=tmp_path,
+        timestamp="2026-07-04T08:00:00",
+    )
+
+    result = await run(root=str(tmp_path), action="runbook", item_id="top")
+
+    assert "Curator runbook" in result
+    assert "selector: `top`" in result
+    assert f"id: `{item['inbox_id']}`" in result
+    assert "kind: `inbox`" in result
+
+
+@pytest.mark.anyio
+async def test_runbook_reports_missing_queue_item(tmp_path):
+    result = await run(root=str(tmp_path), action="runbook", item_id="missing")
+
+    assert result == "[ERROR] curator queue item not found: missing"
 
 
 @pytest.mark.anyio
@@ -272,6 +338,63 @@ async def test_audit_weight_policy_compares_rankings(tmp_path):
     assert "approved_policy_version: `v1`" in result
     assert "Ranking impact" in result
     assert "memory_candidate" in result
+
+
+@pytest.mark.anyio
+async def test_audit_weight_policy_suite_runs_regression_queries(tmp_path):
+    policy_path = tmp_path / "memory" / "policies" / "retrieval_weights.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        (
+            '{"version": "v1", "status": "approved", '
+            '"weights": {"memory": 1.0, "memory_candidate": 0.5}}'
+        ),
+        encoding="utf-8",
+    )
+
+    result = await run(
+        root=str(tmp_path),
+        action="audit_weight_policy_suite",
+        query="memoria|grafo",
+        source="memory_candidate",
+        _repos=FakeRepos(),
+    )
+
+    assert "Retrieval weight policy regression suite" in result
+    assert "queries: `2`" in result
+    assert "source_filter: `memory_candidate`" in result
+    assert "changed_queries: `2`" in result
+    assert "rank_changed_queries: `0`" in result
+    assert "score_changed_queries: `2`" in result
+    assert "verdict: `score_shift_only`" in result
+    assert "### 1. `memoria`" in result
+    assert "### 2. `grafo`" in result
+    assert "Next: revisar deltas de score" in result
+
+
+@pytest.mark.anyio
+async def test_audit_weight_policy_suite_reports_no_policy_impact(tmp_path):
+    policy_path = tmp_path / "memory" / "policies" / "retrieval_weights.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        (
+            '{"version": "v1", "status": "approved", '
+            '"weights": {"memory": 1.0, "memory_candidate": 0.78}}'
+        ),
+        encoding="utf-8",
+    )
+
+    result = await run(
+        root=str(tmp_path),
+        action="audit_weight_policy_suite",
+        query="memoria",
+        source="memory_candidate",
+        _repos=FakeRepos(),
+    )
+
+    assert "changed_queries: `0`" in result
+    assert "max_abs_delta: `0.0`" in result
+    assert "verdict: `no_policy_impact`" in result
 
 
 @pytest.mark.anyio

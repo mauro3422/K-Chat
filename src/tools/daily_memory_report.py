@@ -44,6 +44,11 @@ DEFINITION: dict[str, Any] = {
                     "description": "Output format for preview/result payload.",
                     "default": "markdown",
                 },
+                "compact": {
+                    "type": "boolean",
+                    "description": "When format=json, return the compact operational payload for daily automations.",
+                    "default": False,
+                },
                 "laptop_status_json": {
                     "type": "string",
                     "description": "Optional path to a laptop health JSON object.",
@@ -53,6 +58,11 @@ DEFINITION: dict[str, Any] = {
                     "type": "string",
                     "description": "Optional command that prints laptop health as a JSON object.",
                     "default": "",
+                },
+                "laptop_status_timeout": {
+                    "type": "integer",
+                    "description": "Seconds to wait for laptop_status_command before reporting timeout.",
+                    "default": 45,
                 },
             },
         },
@@ -73,8 +83,10 @@ async def run(**kwargs) -> str:
     should_write = bool(kwargs.get("write", True))
     include_preflight = bool(kwargs.get("preflight", True))
     output_format = str(kwargs.get("format") or "markdown").strip().lower()
+    compact = bool(kwargs.get("compact", False))
     laptop_status_json = str(kwargs.get("laptop_status_json") or "").strip() or None
     laptop_status_command = str(kwargs.get("laptop_status_command") or "").strip() or None
+    laptop_status_timeout = max(1, int(kwargs.get("laptop_status_timeout") or 45))
 
     try:
         from src.memory.synthesis.morning_plan import (
@@ -91,6 +103,7 @@ async def run(**kwargs) -> str:
                 include_preflight=include_preflight,
                 laptop_status_json=laptop_status_json,
                 laptop_status_command=laptop_status_command,
+                laptop_status_timeout=laptop_status_timeout,
             )
             if output_format == "json":
                 plan = build_morning_plan(
@@ -99,9 +112,12 @@ async def run(**kwargs) -> str:
                     include_preflight=include_preflight,
                     laptop_status_json=laptop_status_json,
                     laptop_status_command=laptop_status_command,
+                    laptop_status_timeout=laptop_status_timeout,
                 )
+                from src.memory.synthesis.morning_plan import compact_morning_plan
+
                 return json.dumps(
-                    {"ok": True, "path": str(path), "plan": plan},
+                    {"ok": True, "path": str(path), "plan": compact_morning_plan(plan) if compact else plan},
                     ensure_ascii=False,
                     indent=2,
                     sort_keys=True,
@@ -114,9 +130,10 @@ async def run(**kwargs) -> str:
             include_preflight=include_preflight,
             laptop_status_json=laptop_status_json,
             laptop_status_command=laptop_status_command,
+            laptop_status_timeout=laptop_status_timeout,
         )
         if output_format == "json":
-            return render_morning_plan_json(plan)
+            return render_morning_plan_json(plan, compact=compact)
         return render_morning_plan(plan)
     except Exception as exc:
         return f"[ERROR] daily_memory_report failed: {exc}"

@@ -1283,10 +1283,76 @@ Flujo futuro:
 
 Siguiente paso recomendado:
 
-- ampliar la auditoria de pesos con una bateria fija de queries de regresion
-  de memoria antes de automatizar cualquier ajuste;
 - agregar una vista visual de curador para ejecutar `link_neighbor`,
-  `apply_target`, `promote_ready` y `materialize_hints` sin escribir comandos.
+  `apply_target`, `promote_ready` y `materialize_hints` sin escribir comandos;
+- evolucionar la sintesis extractiva hacia sintesis LLM/curatorial con
+  evaluacion de calidad, manteniendo artifacts idempotentes y auditables.
+
+Avance:
+
+- `curator_workbench action=audit_weight_policy_suite` ejecuta una bateria fija
+  de queries de memoria, o una lista explicita separada por `|`/saltos de
+  linea, y compara ranking builtin vs politica aprobada para cada query sin
+  escribir archivos ni activar cambios. La salida resume `changed_queries`,
+  `rank_changed_queries`, `score_changed_queries`, `max_abs_delta` y un
+  `verdict` (`review_required`, `score_shift_only` o `no_policy_impact`);
+- el plan matinal muestra `curator_workbench action=audit_weight_policy_suite`
+  antes de `write_weight_policy_draft`, dejando la politica de pesos en modo
+  revisar -> auditar -> escribir draft -> aprobar manualmente.
+- `curator_workbench action=runbook` funciona como CLI guiada minima: toma la
+  cola curatorial del plan matinal y separa inspecciones seguras, previews,
+  mutaciones explicitas y caminos de rechazo/fallback. Esto cubre el primer
+  escalon antes de una UI visual para `link_neighbor`, `apply_target`,
+  `promote_ready` y `materialize_hints`;
+- `curator_workbench action=runbook item_id=<id>` enfoca un solo item de la
+  cola, muestra `kind`, `title`, `next_action`, `detail`, razones y los
+  comandos seguros/mutantes asociados. Esto permite que el diario diga "empeza
+  por P90" y el curador abra una ficha concreta sin recorrer toda la cola.
+- `item_id=top` abre automaticamente el primer item por prioridad, y
+  `curator_workbench action=queue` muestra el comando de runbook enfocado en
+  cada fila. Asi el curador puede arrancar por el mayor riesgo sin copiar IDs.
+- el health de laptop dentro del plan matinal compacta `stdout`/`stderr` largos
+  de checks remotos, preservando `name`, `ok`, `detail`, `hint` y warnings.
+  Esto permite usar `--laptop-status-command "... doctor --json"` en la
+  automatizacion diaria sin llenar el contexto con logs completos.
+- el timeout del health remoto de laptop es configurable con
+  `--laptop-status-timeout` / `laptop_status_timeout`, con default operativo de
+  45 segundos para evitar falsos `blocked` cuando el doctor remoto tarda pero
+  responde.
+- cuando la laptop falla por `memory_audit`, el JSON compacto agrega
+  `health.laptop.remediation`: primero audit remoto detallado con
+  `scripts/memory_audit.py --json`, despues preview de repair con
+  `scripts/memory_repair.py --json`, y deja el repair con `--apply` como
+  comando manual explicito. La tarea diaria puede recomendar diagnostico sin
+  mutar el nodo remoto.
+- el planner de `scripts/memory_repair.py` deduplica acciones logicas repetidas
+  antes de devolver el plan. Esto evita que identidades legacy del catalogo
+  inflen `orphan_catalog_row` o hagan que un preview remoto parezca mas grande
+  de lo que realmente se aplicaria.
+- `scripts/daily_memory_report.py --json --compact-json` y
+  `daily_memory_report(format="json", compact=true)` devuelven un payload
+  operativo chico: `pipeline_status`, conteos, health resumido, acciones con
+  runbook, recomendaciones de pesos y rutas de artifacts. El JSON completo
+  sigue disponible sin `compact`.
+- el JSON compacto incluye `priorities`: una lista corta ya ordenada para la
+  tarea diaria. Prioriza cola curatorial/runbook, preflight local, laptop
+  degradada, cambios locales y auditoria de pesos, con comandos sugeridos.
+- tambien incluye `summary` y `risk` para que la automatizacion pueda devolver
+  estado general y riesgo principal sin inferir desde dumps extensos.
+- el plan matinal expone `pipeline_commands.prepare_layers`, que corre la
+  preparacion diaria completa antes de curar:
+  `generate_session_summaries.py --embed --candidates --transversal
+  --transversal-candidates --embed-transversal --embed-candidates
+  --embed-inbox --daily-synthesis --curation-report --json`. El compacto
+  tambien incluye `commands.prepare_layers` y lo prioriza si faltan artifacts
+  base como curation report, daily synthesis o transversal synthesis.
+- `pipeline_commands.compact_report` queda alineado con la automatizacion real:
+  incluye `--laptop-status-command "python ops\\remote\\kairos_remote.py doctor
+  --node laptop --json"` y `--laptop-status-timeout 60`, para que el comando
+  sugerido sea ejecutable tal cual y no pierda health remoto.
+- el flujo operativo diario queda explicito: preparar capas -> generar reporte
+  compacto -> abrir `curator_workbench action=runbook item_id=top` -> auditar
+  pesos si aparecen recomendaciones -> recien ahi decidir mutaciones.
 
 ## Decisiones abiertas
 

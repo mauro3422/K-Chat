@@ -263,6 +263,7 @@ def _normalize_laptop_status(payload: Mapping[str, Any], source: str) -> dict[st
         status = "ok" if payload.get("ok") is True else "degraded" if payload.get("ok") is False else "unknown"
     available = bool(payload.get("available", status not in {"not_configured", "unknown", "error"}))
     normalized = dict(payload)
+    normalized["checks"] = _compact_laptop_checks(payload.get("checks"))
     normalized.update(
         {
             "available": available,
@@ -272,6 +273,28 @@ def _normalize_laptop_status(payload: Mapping[str, Any], source: str) -> dict[st
         }
     )
     return normalized
+
+
+def _compact_laptop_checks(checks: Any, *, text_limit: int = 420) -> Any:
+    if not isinstance(checks, list):
+        return checks
+    compacted: list[Any] = []
+    for check in checks:
+        if not isinstance(check, Mapping):
+            compacted.append(check)
+            continue
+        row = dict(check)
+        for field in ("stdout", "stderr"):
+            if field in row:
+                row[field] = _truncate_text(str(row.get(field) or ""), text_limit)
+        compacted.append(row)
+    return compacted
+
+
+def _truncate_text(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return f"{value[:limit]}... [truncated {len(value) - limit} chars]"
 
 
 def _doctor_payload_warnings(payload: Mapping[str, Any]) -> list[str]:
@@ -290,6 +313,59 @@ def _doctor_payload_warnings(payload: Mapping[str, Any]) -> list[str]:
             warning = f"{warning} ({hint})"
         warnings.append(warning)
     return warnings
+
+
+def laptop_remediation_commands(laptop: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Return safe follow-up commands for laptop health failures."""
+
+    failed = [
+        item for item in laptop.get("failed_checks") or []
+        if isinstance(item, Mapping)
+    ]
+    for check in laptop.get("checks") or []:
+        if isinstance(check, Mapping) and check.get("ok") is not True:
+            failed.append(check)
+
+    commands: list[dict[str, str]] = []
+    names = {str(item.get("name") or "") for item in failed}
+    if "memory_audit" in names:
+        commands.extend(
+            [
+                {
+                    "kind": "diagnose",
+                    "label": "Remote memory audit detail",
+                    "command": (
+                        "python ops\\remote\\kairos_remote.py kairos-python "
+                        "--node laptop --command \"scripts/memory_audit.py --json\""
+                    ),
+                },
+                {
+                    "kind": "preview",
+                    "label": "Remote memory repair plan",
+                    "command": (
+                        "python ops\\remote\\kairos_remote.py kairos-python "
+                        "--node laptop --command \"scripts/memory_repair.py --json\""
+                    ),
+                },
+                {
+                    "kind": "manual_apply",
+                    "label": "Remote repair apply, manual only",
+                    "command": (
+                        "python ops\\remote\\kairos_remote.py kairos-python "
+                        "--node laptop --command \"scripts/memory_repair.py --apply --vectorize-missing --prune-stale --json\""
+                    ),
+                },
+            ]
+        )
+    if not commands and str(laptop.get("status") or "") in {"degraded", "error", "unknown"}:
+        commands.append(
+            {
+                "kind": "diagnose",
+                "label": "Remote doctor detail",
+                "command": "python ops\\remote\\kairos_remote.py doctor --node laptop --json",
+            }
+        )
+    return commands
 
 
 def _parse_laptop_command_payload(result: subprocess.CompletedProcess[str]) -> dict[str, Any] | None:
@@ -315,7 +391,7 @@ def laptop_health(
     root: str | Path | None = None,
     status_json: str | Path | None = None,
     command: str | None = None,
-    timeout: int = 20,
+    timeout: int = 45,
 ) -> dict[str, Any]:
     """Collect laptop health from a configured JSON file or command."""
 
@@ -402,6 +478,7 @@ def build_health(
     include_preflight: bool = False,
     laptop_status_json: str | Path | None = None,
     laptop_status_command: str | None = None,
+    laptop_status_timeout: int = 45,
 ) -> dict[str, Any]:
     """Build local operational health for the morning report."""
 
@@ -412,6 +489,7 @@ def build_health(
             root=root,
             status_json=laptop_status_json,
             command=laptop_status_command,
+            timeout=laptop_status_timeout,
         ),
     }
     if include_preflight:
@@ -770,6 +848,45 @@ def _relation_explain_command(
     return ""
 
 
+def _queue_item_id_for_command(action: Mapping[str, Any]) -> str:
+    item_id = str(action.get("id") or "").strip()
+    if item_id:
+        return item_id
+    for field in ("recommended_command", "followup_command", "fallback_command"):
+        command = str(action.get(field) or "")
+        for marker in ("group_id=", "candidate_id="):
+            if marker not in command:
+                continue
+            raw = command.split(marker, 1)[1].split()[0].strip()
+            return raw.strip('"').strip("'")
+    return ""
+
+
+def memory_layer_pipeline_command(target_date: date | str) -> str:
+    """Return the daily command that prepares memory layers before curation."""
+
+    date_str = target_date.isoformat() if isinstance(target_date, date) else str(target_date)
+    return (
+        "python scripts\\generate_session_summaries.py "
+        f"--date {date_str} "
+        "--embed --candidates --transversal --transversal-candidates "
+        "--embed-transversal --embed-candidates --embed-inbox "
+        "--daily-synthesis --curation-report --json"
+    )
+
+
+def morning_report_command(target_date: date | str) -> str:
+    """Return the compact morning report command for the given date."""
+
+    date_str = target_date.isoformat() if isinstance(target_date, date) else str(target_date)
+    return (
+        "python scripts\\daily_memory_report.py "
+        f"--date {date_str} --preview --preflight "
+        "--laptop-status-command \"python ops\\remote\\kairos_remote.py doctor --node laptop --json\" "
+        "--laptop-status-timeout 60 --json --compact-json"
+    )
+
+
 def build_morning_plan(
     root: str | Path | None = None,
     target_date: date | None = None,
@@ -778,6 +895,7 @@ def build_morning_plan(
     include_preflight: bool = False,
     laptop_status_json: str | Path | None = None,
     laptop_status_command: str | None = None,
+    laptop_status_timeout: int = 45,
 ) -> dict[str, Any]:
     """Collect artifacts and build a deterministic morning work plan."""
 
@@ -840,8 +958,15 @@ def build_morning_plan(
             include_preflight=include_preflight,
             laptop_status_json=laptop_status_json,
             laptop_status_command=laptop_status_command,
+            laptop_status_timeout=laptop_status_timeout,
         ),
         "actions": actions,
+        "pipeline_commands": {
+            "prepare_layers": memory_layer_pipeline_command(target),
+            "compact_report": morning_report_command(target),
+            "runbook": "curator_workbench action=runbook",
+            "runbook_top": "curator_workbench action=runbook item_id=top",
+        },
     }
     plan["pipeline_status"] = memory_pipeline_status(plan)
     return plan
@@ -862,10 +987,260 @@ def _build_weight_policy_draft(
         return {}
 
 
-def render_morning_plan_json(plan: Mapping[str, Any]) -> str:
+def compact_morning_plan(plan: Mapping[str, Any], *, action_limit: int = 12) -> dict[str, Any]:
+    """Return a compact operational JSON payload for daily automations."""
+
+    health = plan.get("health") or {}
+    git = health.get("git") if isinstance(health.get("git"), Mapping) else {}
+    laptop = health.get("laptop") if isinstance(health.get("laptop"), Mapping) else {}
+    preflight = health.get("preflight") if isinstance(health.get("preflight"), Mapping) else {}
+    failed_laptop_checks = [
+        dict(item)
+        for item in laptop.get("failed_checks") or []
+        if isinstance(item, Mapping)
+    ]
+    for check in laptop.get("checks") or []:
+        if not isinstance(check, Mapping) or check.get("ok") is True:
+            continue
+        failed_laptop_checks.append(
+            {
+                "name": check.get("name", ""),
+                "detail": check.get("detail", ""),
+                "hint": check.get("hint", ""),
+            }
+        )
+
+    actions = []
+    for action in list(plan.get("actions") or [])[:action_limit]:
+        item_id = _queue_item_id_for_command(action)
+        row = {
+            "priority": action.get("priority", 0),
+            "kind": action.get("kind", ""),
+            "id": item_id or action.get("id", ""),
+            "title": action.get("title", ""),
+            "next_action": action.get("next_action", ""),
+            "recommended_command": action.get("recommended_command", ""),
+            "followup_command": action.get("followup_command", ""),
+            "fallback_command": action.get("fallback_command", ""),
+            "why": action.get("why", []),
+        }
+        if item_id:
+            row["runbook_command"] = f"curator_workbench action=runbook item_id={item_id}"
+        actions.append(row)
+
+    compact = {
+        "date": plan.get("date", ""),
+        "commands": dict(plan.get("pipeline_commands") or {}),
+        "pipeline_status": plan.get("pipeline_status") or {},
+        "counts": {
+            "pending_inbox": len(plan.get("pending_inbox") or []),
+            "inbox_groups": len(plan.get("inbox_groups") or []),
+            "pending_candidates": len(plan.get("candidate_cards") or []),
+            "ready_candidates": len(plan.get("ready_candidate_cards") or []),
+            "actions": len(plan.get("actions") or []),
+        },
+        "health": {
+            "git": {
+                "branch": git.get("branch", ""),
+                "changed": git.get("changed", 0),
+                "untracked": git.get("untracked", 0),
+                "ahead": git.get("ahead", 0),
+                "behind": git.get("behind", 0),
+                "stashes": git.get("stashes", 0),
+                "warnings": git.get("warnings", []),
+            },
+            "preflight": {
+                "ok": preflight.get("ok") if preflight else None,
+                "issues": preflight.get("issues", []) if preflight else [],
+                "snapshot": preflight.get("snapshot", {}) if preflight else {},
+            },
+            "laptop": {
+                "status": laptop.get("status", "unknown"),
+                "available": laptop.get("available", False),
+                "passed": laptop.get("passed", 0),
+                "total": laptop.get("total", 0),
+                "warnings": laptop.get("warnings", []),
+                "failed_checks": failed_laptop_checks,
+                "remediation": laptop_remediation_commands(
+                    {
+                        **dict(laptop),
+                        "failed_checks": failed_laptop_checks,
+                    }
+                ),
+            },
+        },
+        "actions": actions,
+        "runbook": {
+            "all": "curator_workbench action=runbook",
+            "top": "curator_workbench action=runbook item_id=top",
+        },
+        "weight_recommendations": list(plan.get("weight_recommendations") or [])[:10],
+        "weight_policy_draft": plan.get("weight_policy_draft") or {},
+        "artifacts": {
+            "curation_report": (plan.get("curation_report") or {}).get("path", ""),
+            "daily_synthesis": (plan.get("daily_synthesis") or {}).get("path", ""),
+            "transversal_synthesis": (plan.get("transversal_synthesis") or {}).get("path", ""),
+        },
+        "previews": {
+            "curation": (plan.get("curation_report") or {}).get("preview", [])[:6],
+            "daily_synthesis": (plan.get("daily_synthesis") or {}).get("preview", [])[:6],
+            "transversal_synthesis": (plan.get("transversal_synthesis") or {}).get("preview", [])[:6],
+        },
+    }
+    compact["priorities"] = morning_plan_priorities(compact)
+    compact["summary"] = morning_plan_summary(compact)
+    compact["risk"] = morning_plan_risk(compact)
+    return compact
+
+
+def morning_plan_summary(compact_plan: Mapping[str, Any]) -> str:
+    """Build a one-line operational summary for the daily automation."""
+
+    pipeline = compact_plan.get("pipeline_status") if isinstance(compact_plan.get("pipeline_status"), Mapping) else {}
+    counts = compact_plan.get("counts") if isinstance(compact_plan.get("counts"), Mapping) else {}
+    health = compact_plan.get("health") if isinstance(compact_plan.get("health"), Mapping) else {}
+    laptop = health.get("laptop") if isinstance(health.get("laptop"), Mapping) else {}
+    preflight = health.get("preflight") if isinstance(health.get("preflight"), Mapping) else {}
+    status = str(pipeline.get("status") or "unknown")
+    preflight_text = "ok" if preflight.get("ok") is True else "issues" if preflight.get("ok") is False else "not_run"
+    return (
+        f"status={status}; actions={counts.get('actions', 0)}; "
+        f"preflight={preflight_text}; laptop={laptop.get('status', 'unknown')}"
+    )
+
+
+def morning_plan_risk(compact_plan: Mapping[str, Any]) -> str:
+    """Return the main risk if Mauro does not touch anything today."""
+
+    priorities = list(compact_plan.get("priorities") or [])
+    pipeline = compact_plan.get("pipeline_status") if isinstance(compact_plan.get("pipeline_status"), Mapping) else {}
+    issues = [str(item) for item in pipeline.get("issues") or [] if str(item).strip()]
+    if priorities:
+        top = priorities[0]
+        return f"{top.get('title', 'Prioridad pendiente')}: {top.get('reason', '')}".strip()
+    if issues:
+        return issues[0]
+    return "Sin riesgo operativo inmediato; mantener monitoreo diario."
+
+
+def morning_plan_priorities(compact_plan: Mapping[str, Any], *, limit: int = 3) -> list[dict[str, Any]]:
+    """Derive a small ordered worklist from a compact morning plan."""
+
+    priorities: list[dict[str, Any]] = []
+    actions = list(compact_plan.get("actions") or [])
+    health = compact_plan.get("health") if isinstance(compact_plan.get("health"), Mapping) else {}
+    git = health.get("git") if isinstance(health.get("git"), Mapping) else {}
+    preflight = health.get("preflight") if isinstance(health.get("preflight"), Mapping) else {}
+    laptop = health.get("laptop") if isinstance(health.get("laptop"), Mapping) else {}
+    weights = list(compact_plan.get("weight_recommendations") or [])
+
+    if actions:
+        top = actions[0]
+        priorities.append(
+            {
+                "priority": "P1",
+                "title": f"Curar cola de memoria: {top.get('title', top.get('kind', 'item'))}",
+                "reason": f"Hay {len(actions)} accion(es) curatoriales pendientes.",
+                "command": top.get("runbook_command") or "curator_workbench action=runbook item_id=top",
+            }
+        )
+    if preflight and preflight.get("ok") is False:
+        priorities.append(
+            {
+                "priority": f"P{len(priorities) + 1}",
+                "title": "Resolver preflight local de memoria",
+                "reason": "; ".join(str(item) for item in list(preflight.get("issues") or [])[:3]) or "preflight local con issues",
+                "command": "python scripts\\daily_memory_report.py --preview --preflight --json --compact-json",
+            }
+        )
+    laptop_status = str(laptop.get("status") or "")
+    if laptop_status in {"degraded", "error", "unknown"}:
+        failed = laptop.get("failed_checks") or []
+        failed_names = ", ".join(str(item.get("name", "")) for item in failed if isinstance(item, Mapping))
+        remediation = list(laptop.get("remediation") or [])
+        command = "python ops\\remote\\kairos_remote.py doctor --node laptop --json"
+        followup_command = ""
+        manual_apply_command = ""
+        for item in remediation:
+            if not isinstance(item, Mapping):
+                continue
+            kind = str(item.get("kind") or "")
+            if kind == "diagnose" and str(item.get("command") or ""):
+                command = str(item.get("command"))
+            elif kind == "preview" and str(item.get("command") or ""):
+                followup_command = str(item.get("command"))
+            elif kind == "manual_apply" and str(item.get("command") or ""):
+                manual_apply_command = str(item.get("command"))
+        priorities.append(
+            {
+                "priority": f"P{len(priorities) + 1}",
+                "title": "Revisar health de laptop",
+                "reason": failed_names or f"laptop status={laptop_status}",
+                "command": command,
+                "followup_command": followup_command,
+                "manual_apply_command": manual_apply_command,
+            }
+        )
+    if int(git.get("changed") or 0) > 0 or int(git.get("untracked") or 0) > 0:
+        priorities.append(
+            {
+                "priority": f"P{len(priorities) + 1}",
+                "title": "Revisar cambios locales antes de cerrar el tramo",
+                "reason": f"changed={git.get('changed', 0)}, untracked={git.get('untracked', 0)}",
+                "command": "git status --short --branch",
+            }
+        )
+    if weights:
+        priorities.append(
+            {
+                "priority": f"P{len(priorities) + 1}",
+                "title": "Auditar pesos de retrieval antes de aprobar draft",
+                "reason": f"{len(weights)} recomendacion(es) de peso requieren revision manual.",
+                "command": "curator_workbench action=audit_weight_policy_suite",
+            }
+        )
+    pipeline = compact_plan.get("pipeline_status") if isinstance(compact_plan.get("pipeline_status"), Mapping) else {}
+    pipeline_issues = [str(item) for item in pipeline.get("issues") or []]
+    missing_artifact = any(
+        issue in {
+            "no curation report found",
+            "no daily synthesis found",
+            "no transversal synthesis found",
+            "transversal synthesis has no sessions",
+        }
+        for issue in pipeline_issues
+    )
+    if missing_artifact:
+        commands = compact_plan.get("commands") if isinstance(compact_plan.get("commands"), Mapping) else {}
+        priorities.append(
+            {
+                "priority": f"P{len(priorities) + 1}",
+                "title": "Preparar capas de memoria antes del plan",
+                "reason": "; ".join(pipeline_issues[:3]),
+                "command": commands.get("prepare_layers")
+                or "python scripts\\generate_session_summaries.py --embed --candidates --transversal --transversal-candidates --embed-transversal --embed-candidates --embed-inbox --daily-synthesis --curation-report --json",
+            }
+        )
+    if not priorities:
+        priorities.append(
+            {
+                "priority": "P1",
+                "title": "Sin trabajo curatorial pendiente",
+                "reason": "Pipeline sin acciones pendientes; mantener monitoreo diario.",
+                "command": "python scripts\\daily_memory_report.py --preview --preflight --json --compact-json",
+            }
+        )
+
+    for index, item in enumerate(priorities[:limit], 1):
+        item["priority"] = f"P{index}"
+    return priorities[:limit]
+
+
+def render_morning_plan_json(plan: Mapping[str, Any], *, compact: bool = False) -> str:
     """Render a morning plan as stable JSON."""
 
-    return json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    payload = compact_morning_plan(plan) if compact else plan
+    return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
 def render_morning_plan(plan: Mapping[str, Any]) -> str:
@@ -921,6 +1296,24 @@ def render_morning_plan(plan: Mapping[str, Any]) -> str:
         lines.extend(f"  - {step}" for step in next_steps[:8])
     lines.append("")
 
+    commands = plan.get("pipeline_commands") or {}
+    if commands:
+        lines.append("## Operational Commands")
+        lines.append("")
+        prepare_layers = str(commands.get("prepare_layers") or "").strip()
+        compact_report = str(commands.get("compact_report") or "").strip()
+        runbook = str(commands.get("runbook") or "").strip()
+        runbook_top = str(commands.get("runbook_top") or "").strip()
+        if prepare_layers:
+            lines.append(f"- Prepare memory layers: `{prepare_layers}`")
+        if compact_report:
+            lines.append(f"- Compact report: `{compact_report}`")
+        if runbook:
+            lines.append(f"- Curator runbook: `{runbook}`")
+        if runbook_top:
+            lines.append(f"- First curator item: `{runbook_top}`")
+        lines.append("")
+
     health = plan.get("health") or {}
     git = health.get("git") or {}
     preflight = health.get("preflight") or {}
@@ -943,6 +1336,15 @@ def render_morning_plan(plan: Mapping[str, Any]) -> str:
     else:
         lines.append("- Memory preflight: not run")
     lines.append(f"- Laptop: {laptop.get('status', 'unknown')}")
+    remediation = laptop_remediation_commands(laptop) if isinstance(laptop, Mapping) else []
+    if remediation:
+        lines.append("")
+        lines.append("### Laptop Remediation")
+        for item in remediation:
+            label = str(item.get("label") or item.get("kind") or "command")
+            command = str(item.get("command") or "").strip()
+            if command:
+                lines.append(f"- {label}: `{command}`")
     warnings = list(git.get("warnings") or []) + list(laptop.get("warnings") or [])
     if preflight.get("issues"):
         warnings.extend(str(issue) for issue in preflight.get("issues", []))
@@ -956,6 +1358,9 @@ def render_morning_plan(plan: Mapping[str, Any]) -> str:
     lines.append("## Today's Work")
     lines.append("")
     if actions:
+        lines.append("- Guided runbook: `curator_workbench action=runbook`")
+        lines.append("- Start here: `curator_workbench action=runbook item_id=top`")
+        lines.append("")
         for idx, action in enumerate(actions[:12], 1):
             lines.append(f"{idx}. **P{action.get('priority', 0)} {action.get('kind', '')}** - {action.get('title', '')}")
             detail = str(action.get("detail") or "").strip()
@@ -963,8 +1368,11 @@ def render_morning_plan(plan: Mapping[str, Any]) -> str:
             recommended_command = str(action.get("recommended_command") or "").strip()
             followup_command = str(action.get("followup_command") or "").strip()
             fallback_command = str(action.get("fallback_command") or "").strip()
+            item_id = _queue_item_id_for_command(action)
             if detail:
                 lines.append(f"   - Detail: {detail}")
+            if item_id:
+                lines.append(f"   - Runbook: `curator_workbench action=runbook item_id={item_id}`")
             if recommended_command:
                 lines.append(f"   - Command: `{recommended_command}`")
             if followup_command:
@@ -1035,6 +1443,8 @@ def render_morning_plan(plan: Mapping[str, Any]) -> str:
     if weight_recommendations:
         lines.append("## Retrieval Weight Recommendations")
         lines.append("")
+        lines.append("- Audit first: `curator_workbench action=audit_weight_policy_suite`")
+        lines.append("- Draft after review: `curator_workbench action=write_weight_policy_draft`")
         for item in weight_recommendations[:10]:
             lines.append(
                 f"- `{item.get('layer', '')}` from `{item.get('source', '')}`: "
@@ -1085,6 +1495,7 @@ def write_morning_plan(
     include_preflight: bool = False,
     laptop_status_json: str | Path | None = None,
     laptop_status_command: str | None = None,
+    laptop_status_timeout: int = 45,
 ) -> Path:
     """Build, render, and write the morning plan artifact."""
 
@@ -1094,6 +1505,7 @@ def write_morning_plan(
         include_preflight=include_preflight,
         laptop_status_json=laptop_status_json,
         laptop_status_command=laptop_status_command,
+        laptop_status_timeout=laptop_status_timeout,
     )
     path = morning_plan_path(str(plan["date"]), root=root)
     path.parent.mkdir(parents=True, exist_ok=True)

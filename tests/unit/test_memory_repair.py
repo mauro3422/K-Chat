@@ -4,6 +4,7 @@ import sqlite3
 
 from scripts.memory_audit import _content_hash
 from scripts.memory_repair import apply_catalog_repairs, plan_repairs, prune_stale_vectors
+from src.memory.maintenance.repair import RepairAction, _dedupe_actions
 from src.memory.embedding_identity import memory_entry_embedding_identity, session_exchange_embedding_identity
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
 
@@ -136,6 +137,30 @@ def test_memory_repair_reports_stale_and_missing(tmp_path):
 
     report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
     assert report.counts == {"stale_vector": 1, "missing_vector": 1}
+
+
+def test_memory_repair_dedupes_repeated_logical_actions():
+    action = RepairAction(
+        action="orphan_catalog_row",
+        source="session",
+        source_key="deleted-session",
+        item_idx=0,
+        content_hash="ghost-hash",
+        status="embedded",
+        vec_rowid=99,
+        reason="session_and_vec_missing",
+    )
+    other = RepairAction(
+        action="stale_vector",
+        source="session",
+        source_key="s1",
+        item_idx=0,
+        content_hash="old-hash",
+        vec_rowid=8,
+        reason="current_hash=new",
+    )
+
+    assert _dedupe_actions([action, action, other]) == [action, other]
 
 
 def test_memory_repair_prunes_only_planned_stale_vectors(tmp_path):

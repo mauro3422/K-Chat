@@ -76,6 +76,29 @@ class RepairReport:
         }
 
 
+def _dedupe_actions(actions: list[RepairAction]) -> list[RepairAction]:
+    """Collapse repeated logical repair actions from legacy catalog identities."""
+
+    seen: set[tuple[Any, ...]] = set()
+    deduped: list[RepairAction] = []
+    for action in actions:
+        key = (
+            action.action,
+            action.source,
+            action.source_key,
+            action.item_idx,
+            action.content_hash,
+            action.status,
+            action.vec_rowid,
+            action.reason,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(action)
+    return deduped
+
+
 @contextmanager
 def _connect(path: str, *, readonly: bool) -> Iterator[sqlite3.Connection]:
     if readonly:
@@ -427,6 +450,7 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
         _plan_memory_vector_catalog_repairs(memory_conn, report)
         _plan_orphan_memory_catalog_repairs(memory_conn, report)
         _plan_orphan_session_catalog_repairs(sessions_conn, memory_conn, report)
+    report.actions = _dedupe_actions(report.actions)
     return report
 
 
