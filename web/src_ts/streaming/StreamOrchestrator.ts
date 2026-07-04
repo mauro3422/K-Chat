@@ -281,6 +281,8 @@ export class StreamOrchestrator implements IStreamOrchestrator {
           delay = 1;
         } else if (ev.t === 'memory') {
           delay = 40 + Math.random() * 80;
+        } else {
+          this.debug?.logUI('stream_unknown_event', String(ev.t));
         }
 
         const id = window.setTimeout(playNext, delay);
