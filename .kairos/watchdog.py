@@ -41,13 +41,14 @@ logger = logging.getLogger("watchdog")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ERROR_CONTEXT_FILE = PROJECT_ROOT / ".kairos" / "error_context.md"
 HEALTH_URL = os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/health")
-CHECK_INTERVAL = int(os.getenv("WATCHDOG_INTERVAL", "5"))
+CHECK_INTERVAL = int(os.getenv("WATCHDOG_INTERVAL", "15"))
 # Allow up to 3 minutes for first-time startup (embedding model download
 # from HuggingFace can take 60-120 seconds on the first run).
 STARTUP_GRACE = int(os.getenv("WATCHDOG_STARTUP_GRACE", "180"))
-# Require 6 consecutive failures before triggering recovery (30s of
-# sustained downtime) to tolerate temporary slowness during model loading.
-REQUIRED_FAILURES = int(os.getenv("WATCHDOG_REQUIRED_FAILURES", "6"))
+# Require 12 consecutive failures (3 min at 15s intervals) before triggering
+# recovery. Tools like recall_memories & web_search can block the main thread
+# for 60-120s during execution — shorter windows cause false-positive kills.
+REQUIRED_FAILURES = int(os.getenv("WATCHDOG_REQUIRED_FAILURES", "12"))
 
 
 def _git_log(count: int = 5) -> str:
