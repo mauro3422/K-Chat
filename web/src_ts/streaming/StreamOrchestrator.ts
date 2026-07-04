@@ -411,7 +411,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     // Guard: prevent double-invocation after stream already finalized
     if (!this._streamGuard) return;
 
-    if (error.type === 'auth' || error.type === 'rate_limit') {
+    if (error.type === 'auth' || error.type === 'rate_limit' || error.type === 'bad_request') {
       this.debug?.logUI('stream_error_terminal', `${error.type}: ${error.message}`);
       this.retryController?.resetRetryCount();
       this._markCallingPillsError();
