@@ -12,33 +12,38 @@ import threading
 from typing import Any
 
 from src.config_loader import DEFAULT_MODEL, SECONDARY_MODEL
+import time
 
-logger: logging.Logger = logging.getLogger(__name__)
+MODEL_FAIL_TTL = 300  # seconds before a failed model is retried
 
 
 class ModelState:
+    """Tracks which models have failed and handles failover.
+
+    Failed models auto-recover after MODEL_FAIL_TTL seconds to avoid
+    permanent fallback to non-existent secondary models.
+    """
+
     def __init__(self, priority=None, fallback_model=None):
         self._lock = threading.Lock()
         self._priority = [m for m in (priority or [DEFAULT_MODEL, SECONDARY_MODEL]) if m]
         self._fallback_model = fallback_model or DEFAULT_MODEL
-        self._failed_models: set[str] = set()
+        self._failed_models: dict[str, float] = {}  # model → timestamp of failure
         self._cached_models: list[Any] | None = None
-
-    @property
-    def priority(self) -> list[str]:
-        return list(self._priority)
-
-    @property
-    def fallback_model(self) -> str:
-        return self._fallback_model
 
     def is_model_failed(self, model: str) -> bool:
         with self._lock:
-            return model in self._failed_models
+            failed_at = self._failed_models.get(model)
+            if failed_at is None:
+                return False
+            if time.monotonic() - failed_at > MODEL_FAIL_TTL:
+                del self._failed_models[model]
+                return False
+            return True
 
     def mark_model_failed(self, model: str) -> None:
         with self._lock:
-            self._failed_models.add(model)
+            self._failed_models[model] = time.monotonic()
 
     def clear_failed_models(self) -> None:
         with self._lock:
@@ -66,9 +71,13 @@ class ModelState:
         """
         candidates = self._candidates()
         with self._lock:
-            # First try candidates that aren't failed
+            now = time.monotonic()
+            # First try candidates that aren't failed (or have expired)
             for m in candidates:
-                if m not in self._failed_models:
+                failed_at = self._failed_models.get(m)
+                if failed_at is None or now - failed_at > MODEL_FAIL_TTL:
+                    if failed_at is not None:
+                        del self._failed_models[m]
                     return m
         raise RuntimeError(f"All models have failed: {candidates}")
 

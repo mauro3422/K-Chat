@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""Diagnose provider rejections — trace full request lifecycle with timing.
+"""Deep provider diagnostic — stress-test the full pipeline to find failure patterns.
 
 Usage:
-    python scripts/diag_provider.py "hola, como estas?" [--model deepseek-v4-flash] [--retries 3]
-
-Shows:
-- Each step timing (system prompt, history, messages, API call)
-- Raw request body sent to provider
-- Provider response or error details
-- Retry attempts and fallback models
+    python scripts/diag_provider.py              # run all tests
+    python scripts/diag_provider.py --quick       # just 2 fast tests
+    python scripts/diag_provider.py --model deepseek-v4-flash --message "hola"
 """
 
 from __future__ import annotations
@@ -21,120 +17,189 @@ import time
 import traceback
 from pathlib import Path
 
-# Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
-async def main():
-    parser = argparse.ArgumentParser(description="Diagnose provider rejections")
-    parser.add_argument("message", nargs="?", default="hola, como estas?", help="Test message")
-    parser.add_argument("--model", default="deepseek-v4-flash")
-    parser.add_argument("--retries", type=int, default=1)
-    parser.add_argument("--session-id", default=None)
-    args = parser.parse_args()
-
-    print("=" * 60)
-    print("🔬 Provider Diagnostic")
-    print(f"   Message: {args.message[:80]}...")
-    print(f"   Model:   {args.model}")
-    print(f"   Retries: {args.retries}")
-    print("=" * 60)
-
-    # ── Step 1: Load config ──────────────────────────────────────
-    t0 = time.monotonic()
+async def test_one(name: str, message: str, model: str, with_tools: bool = False) -> dict:
+    """Run a single test and return timing/error info."""
     from src.config_loader import load_config
-    cfg = load_config()
-    print(f"\n[{(time.monotonic()-t0)*1000:6.0f}ms] Config loaded")
-
-    # ── Step 2: Build system prompt ──────────────────────────────
-    t0 = time.monotonic()
     from src.context.builder import build_system_prompt
-    try:
-        system_prompt = build_system_prompt(args.model)
-        print(f"[{(time.monotonic()-t0)*1000:6.0f}ms] System prompt: {len(system_prompt)} chars")
-    except Exception as e:
-        print(f"[{(time.monotonic()-t0)*1000:6.0f}ms] System prompt FAILED: {e}")
-        system_prompt = "You are a helpful assistant."
-
-    # ── Step 3: Prepare messages ─────────────────────────────────
-    t0 = time.monotonic()
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": args.message},
-    ]
-    print(f"[{(time.monotonic()-t0)*1000:6.0f}ms] Messages prepared: {len(messages)} total")
-
-    # ── Step 4: Try API call ─────────────────────────────────────
     from src.llm.adapters.openai_adapter import OpenAIAdapter
     from src.llm.protocol import UnifiedRequest
 
+    cfg = load_config()
+    result = {"name": name, "model": model, "msg_len": len(message), "tools": with_tools}
+
+    try:
+        system_prompt_raw = build_system_prompt(model)
+        if isinstance(system_prompt_raw, dict):
+            system_prompt = json.dumps(system_prompt_raw)
+        else:
+            system_prompt = str(system_prompt_raw) if system_prompt_raw else "You are a helpful assistant."
+    except Exception as e:
+        system_prompt = "You are a helpful assistant."
+        result["sp_error"] = str(e)[:100]
+
+    result["sp_len"] = len(system_prompt)
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": message},
+    ]
+
+    tools = None
+    if with_tools:
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "get_time",
+                "description": "Get current time",
+                "parameters": {"type": "object", "properties": {}}
+            }
+        }]
+
     adapter = OpenAIAdapter(
-        api_key=cfg.opencode_zen_api_key or "no-key",
-        base_url=getattr(cfg, "opencode_zen_base_url", "https://opencode.ai/zen/go/v1") or "https://opencode.ai/zen/go/v1",
+        api_key=cfg.opencode_zen_api_key or "",
+        base_url=getattr(cfg, "opencode_zen_base_url", None) or "https://opencode.ai/zen/go/v1",
     )
 
-    for attempt in range(1, args.retries + 1):
-        t0 = time.monotonic()
-        print(f"\n── Attempt {attempt}/{args.retries} ──")
-
-        # Sanitize messages
-        t1 = time.monotonic()
+    t0 = time.monotonic()
+    try:
         openai_messages = adapter._to_openai_messages(messages)
-        print(f"[{(time.monotonic()-t1)*1000:6.0f}ms] Messages sanitized: {len(openai_messages)} msgs")
+        result["msg_keys"] = [list(m.keys()) for m in openai_messages]
+        result["msg_sizes"] = {m["role"]: sum(len(str(v)) for v in m.values()) for m in openai_messages}
 
-        # Show message structure
-        for i, m in enumerate(openai_messages):
-            keys = list(m.keys())
-            sizes = {k: len(str(v)) for k, v in m.items()}
-            print(f"   msg[{i}] role={m.get('role','?')} keys={keys} sizes={sizes}")
-
-        # Build request
         request = UnifiedRequest(
-            model=args.model,
-            messages=messages,  # raw messages (adapter handles sanitization)
-            tools=None,
-            temperature=None,
-            max_tokens=32768,
+            model=model, messages=messages, tools=tools,
+            temperature=None, max_tokens=4096,
         )
 
-        try:
-            t_api = time.monotonic()
-            chunks = 0
-            first_token = None
-            content_parts = []
-            async for event in adapter.chat_stream(request):
-                chunks += 1
-                if first_token is None and event.delta:
-                    first_token = time.monotonic()
-                if event.delta:
-                    content_parts.append(event.delta)
-            elapsed = (time.monotonic() - t_api) * 1000
-            ttft = (first_token - t_api) * 1000 if first_token else None
-            content = "".join(content_parts)
-            print(f"[{elapsed:6.0f}ms] ✅ SUCCESS — {chunks} chunks, {len(content)} chars content")
-            if ttft:
-                print(f"[{elapsed:6.0f}ms]    TTFT: {ttft:.0f}ms")
-            return 0
+        chunks = 0
+        first_token_ts = None
+        content = []
+        reasoning = []
+        tool_calls_seen = 0
+        errors_seen = []
 
-        except Exception as e:
-            elapsed = (time.monotonic() - t0) * 1000
-            err_type = type(e).__name__
-            err_str = str(e)[:300]
-            print(f"[{elapsed:6.0f}ms] ❌ {err_type}: {err_str}")
+        async for event in adapter.chat_stream(request):
+            chunks += 1
+            if first_token_ts is None:
+                first_token_ts = time.monotonic()
+            if event.event_type == "content" and event.delta:
+                content.append(event.delta)
+            elif event.event_type == "reasoning" and event.delta:
+                reasoning.append(event.delta)
+            elif event.event_type == "tool_call":
+                tool_calls_seen += 1
+            elif event.event_type == "error":
+                errors_seen.append(event.delta)
 
-            # Show full traceback for debugging
-            if hasattr(e, '__cause__') and e.__cause__:
-                cause_type = type(e.__cause__).__name__
-                cause_str = str(e.__cause__)[:200]
-                print(f"   Caused by: {cause_type}: {cause_str}")
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        ttft_ms = (first_token_ts - t0) * 1000 if first_token_ts else None
 
-            if attempt < args.retries:
-                delay = 2 * attempt
-                print(f"   Retrying in {delay}s...")
-                await asyncio.sleep(delay)
+        result["ok"] = True
+        result["elapsed_ms"] = round(elapsed_ms)
+        result["ttft_ms"] = round(ttft_ms) if ttft_ms else None
+        result["chunks"] = chunks
+        result["content_len"] = len("".join(content))
+        result["reasoning_len"] = len("".join(reasoning))
+        result["tool_calls"] = tool_calls_seen
+        result["errors"] = errors_seen
 
-    print("\n❌ All attempts failed")
-    return 1
+    except Exception as e:
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        result["ok"] = False
+        result["elapsed_ms"] = round(elapsed_ms)
+        result["error_type"] = type(e).__name__
+        result["error_msg"] = str(e)[:400]
+        if hasattr(e, '__cause__') and e.__cause__:
+            result["cause_type"] = type(e.__cause__).__name__
+            result["cause_msg"] = str(e.__cause__)[:200]
+
+    return result
+
+
+async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--model", default="deepseek-v4-flash")
+    parser.add_argument("--message", default=None)
+    args = parser.parse_args()
+
+    if args.message:
+        # Single test mode
+        r = await test_one("single", args.message, args.model)
+        print(json.dumps(r, indent=2, ensure_ascii=False))
+        return 0 if r.get("ok") else 1
+
+    # ── Test matrix ────────────────────────────────────────────
+    tests = [
+        ("short_no_tools", "hola", False),
+        ("medium_no_tools", "explicame brevemente que es Python y para que sirve", False),
+        ("long_no_tools", "explicame detalladamente la diferencia entre una lista y una tupla en Python, con ejemplos de codigo y casos de uso. tambien explicame cuando conviene usar cada una.", False),
+        ("short_with_tools", "que hora es?", True),
+    ]
+
+    if not args.quick:
+        tests += [
+            ("short_no_tools", "hola", False),  # repeat to check consistency
+            ("medium_no_tools", "cual es la capital de Francia?", False),
+            ("short_no_tools", "como estas?", False),
+        ]
+
+    print(f"{'Test':<25} {'Model':<22} {'Msg':>5} {'SP':>6} {'TTFT':>6} {'Total':>7} {'Chunks':>7} {'Content':>8} {'Status'}")
+    print("-" * 110)
+
+    ok = 0
+    fail = 0
+    results = []
+
+    for name, msg, tools in tests:
+        r = await test_one(name, msg, args.model, tools)
+        results.append(r)
+
+        status = "✅" if r.get("ok") else f"❌ {r.get('error_type','?')}"
+        ttft = f"{r.get('ttft_ms','-')}ms" if r.get('ttft_ms') else "-"
+        total = f"{r.get('elapsed_ms','-')}ms"
+        chunks = str(r.get('chunks', '-'))
+        clen = str(r.get('content_len', '-'))
+
+        print(f"{r['name']:<25} {r['model']:<22} {r['msg_len']:>5} {r['sp_len']:>6} {ttft:>6} {total:>7} {chunks:>7} {clen:>8} {status}")
+
+        if r.get("ok"):
+            ok += 1
+        else:
+            fail += 1
+            # Show error detail for failures
+            print(f"  └─ {r.get('error_type','?')}: {r.get('error_msg','')[:150]}")
+            if r.get('cause_msg'):
+                print(f"     Caused by: {r.get('cause_type','?')}: {r['cause_msg'][:150]}")
+
+        await asyncio.sleep(1)  # avoid rate limiting ourselves
+
+    print(f"\n✅ {ok} passed, ❌ {fail} failed out of {ok+fail}")
+
+    # Show patterns
+    if fail > 0:
+        print("\n── Failure patterns ──")
+        error_types = {}
+        for r in results:
+            if not r.get("ok"):
+                et = r.get("error_type", "?")
+                error_types[et] = error_types.get(et, 0) + 1
+        for et, count in sorted(error_types.items()):
+            print(f"  {et}: {count}x")
+
+        # Check if failures correlate with anything
+        print("\n── Correlation check ──")
+        for r in results:
+            if not r.get("ok"):
+                print(f"  Failed: msg_len={r['msg_len']}, sp_len={r['sp_len']}, tools={r['tools']}, error={r.get('error_type')}")
+        for r in results:
+            if r.get("ok"):
+                print(f"  OK:     msg_len={r['msg_len']}, sp_len={r['sp_len']}, tools={r['tools']}")
+
+    return 0 if fail == 0 else 1
 
 
 if __name__ == "__main__":
