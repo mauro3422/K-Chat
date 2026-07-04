@@ -28,6 +28,9 @@ async def test_one(name: str, message: str, model: str, with_tools: bool = False
     from src.llm.protocol import UnifiedRequest
 
     cfg = load_config()
+    # Use the correct base URL based on llm_mode (go → go URL, else → zen URL)
+    base_url = getattr(cfg, "opencode_go_base_url", None) if getattr(cfg, "llm_mode", "go") == "go" else getattr(cfg, "opencode_zen_base_url", None)
+    base_url = base_url or "https://opencode.ai/zen/go/v1"
     result = {"name": name, "model": model, "msg_len": len(message), "tools": with_tools}
 
     try:
@@ -60,7 +63,7 @@ async def test_one(name: str, message: str, model: str, with_tools: bool = False
 
     adapter = OpenAIAdapter(
         api_key=cfg.opencode_zen_api_key or "",
-        base_url=getattr(cfg, "opencode_zen_base_url", None) or "https://opencode.ai/zen/go/v1",
+        base_url=base_url,
     )
 
     t0 = time.monotonic()
@@ -82,17 +85,20 @@ async def test_one(name: str, message: str, model: str, with_tools: bool = False
         errors_seen = []
 
         async for event in adapter.chat_stream(request):
+            # adapter yields tuples (event_type, delta) not objects
+            ev_type = event[0] if isinstance(event, tuple) else getattr(event, 'event_type', '?')
+            delta = event[1] if isinstance(event, tuple) else getattr(event, 'delta', '')
             chunks += 1
             if first_token_ts is None:
                 first_token_ts = time.monotonic()
-            if event.event_type == "content" and event.delta:
-                content.append(event.delta)
-            elif event.event_type == "reasoning" and event.delta:
-                reasoning.append(event.delta)
-            elif event.event_type == "tool_call":
+            if ev_type == "content" and delta:
+                content.append(delta)
+            elif ev_type == "reasoning" and delta:
+                reasoning.append(delta)
+            elif ev_type == "tool_call":
                 tool_calls_seen += 1
-            elif event.event_type == "error":
-                errors_seen.append(event.delta)
+            elif ev_type == "error":
+                errors_seen.append(delta)
 
         elapsed_ms = (time.monotonic() - t0) * 1000
         ttft_ms = (first_token_ts - t0) * 1000 if first_token_ts else None
