@@ -58,7 +58,7 @@ export class MessageView implements IMessageView {
 
     // Always scroll to show the user's own message
     if (msg.role === 'user') {
-      this.containerEl.scrollTop = this.containerEl.scrollHeight;
+      requestAnimationFrame(() => { this.containerEl.scrollTop = this.containerEl.scrollHeight; });
     }
 
     return msgEl;
@@ -89,8 +89,8 @@ export class MessageView implements IMessageView {
     }
 
     this.containerEl.appendChild(msgEl);
-    // Scroll to show response starts (unconditional — user sent message, expects to see it)
-    this.containerEl.scrollTop = this.containerEl.scrollHeight;
+    // Scroll to show response starts (unconditional)
+    requestAnimationFrame(() => { this.containerEl.scrollTop = this.containerEl.scrollHeight; });
     msgEl.dataset.msgId = 'live';
 
     return msgEl;

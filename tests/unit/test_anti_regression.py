@@ -640,3 +640,175 @@ async def test_lifespan_model_prime_runs_as_create_task() -> None:
     content = _read("web/app_factory.py")
     assert "asyncio.create_task(_prime_model_registry())" in content, \
         "Model registry priming must run as background task (not blocking lifespan)."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 28. RetryController cancels pending retry on abort (2026-07-03)
+#     resetRetryCount() must clear any pending setTimeout for scheduled retries.
+#     Without this, aborted streams would auto-retry after the timeout fires.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_retry_controller_has_retry_timer_field() -> None:
+    """RetryHandler.ts must have _retryTimer field to track scheduled retries."""
+    content = _read("web/src_ts/core/ui/RetryHandler.ts")
+    assert "_retryTimer" in content, \
+        "RetryHandler.ts missing _retryTimer field — cannot cancel pending retries."
+
+
+async def test_retry_controller_has_cancel_pending_retry() -> None:
+    """RetryHandler.ts must have _cancelPendingRetry() to cancel scheduled retries."""
+    content = _read("web/src_ts/core/ui/RetryHandler.ts")
+    assert "_cancelPendingRetry" in content, \
+        "RetryHandler.ts missing _cancelPendingRetry() method — retries fire after abort."
+
+
+async def test_retry_controller_calls_clear_timeout() -> None:
+    """RetryHandler.ts must call clearTimeout to cancel pending retry timers."""
+    content = _read("web/src_ts/core/ui/RetryHandler.ts")
+    assert "clearTimeout" in content, \
+        "RetryHandler.ts missing clearTimeout call — _cancelPendingRetry is a no-op."
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 29. Model selector sends empty string, not 'default' (2026-07-03)
+#     Backend uses get_default_model() when model is falsy. Sending 'default'
+#     as a literal string bypasses that logic and selects a possibly invalid model.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_ndjson_client_no_default_model_fallback() -> None:
+    """NDJSONStreamClient.ts must NOT use 'default' as a fallback model string."""
+    content = _read("web/src_ts/streaming/NDJSONStreamClient.ts")
+    assert "'default'" not in content, \
+        "NDJSONStreamClient.ts uses 'default' as fallback model — backend " \
+        "get_default_model() is bypassed!"
+
+
+async def test_stream_orchestrator_no_default_model_fallback() -> None:
+    """StreamOrchestrator.ts must NOT use 'default' as a fallback model string."""
+    content = _read("web/src_ts/streaming/StreamOrchestrator.ts")
+    assert "'default'" not in content, \
+        "StreamOrchestrator.ts uses 'default' as fallback model — backend " \
+        "get_default_model() is bypassed!"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 30. Error messages wrapped in String() (2026-07-03)
+#     Without String(), non-string error values (objects) render as
+#     "[object Object]" in the UI, making error messages useless.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_stream_orchestrator_wraps_error_in_string() -> None:
+    """StreamOrchestrator.ts must wrap parsed.message in String()."""
+    content = _read("web/src_ts/streaming/StreamOrchestrator.ts")
+    assert "String(parsed.message" in content, \
+        "StreamOrchestrator.ts missing String(parsed.message) — error objects " \
+        "render as '[object Object]' in the UI!"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 31. DomTreeSerializer uses getAttribute('class') for SVG compatibility
+#     e.className returns SVGAnimatedString for SVG elements (not a plain string).
+#     getAttribute('class') always returns a string, supporting both HTML and SVG.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_dom_tree_serializer_uses_get_attribute_class() -> None:
+    """DomTreeSerializer.ts must use getAttribute('class'), not e.className."""
+    content = _read("web/src_ts/core/debug/DomTreeSerializer.ts")
+    assert "getAttribute('class')" in content, \
+        "DomTreeSerializer.ts missing getAttribute('class') — SVG elements break!"
+    assert "e.className" not in content, \
+        "DomTreeSerializer.ts uses e.className — SVGAnimatedString breaks debug panel!"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 32. Debug panel refresh interval increased from 400ms to 3000ms (2026-07-03)
+#     400ms is too aggressive — it keeps the Connection Pool full and wastes CPU.
+#     3000ms is a reasonable balance between responsiveness and resource usage.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_debug_refresh_interval_is_reasonable() -> None:
+    """app.ts debug refresh interval must be >=2000ms, not 400ms."""
+    content = _read("web/src_ts/app.ts")
+    # Find the debug setInterval call and the next setInterval call
+    debug_start = content.find("const debugIntervalId = setInterval")
+    next_interval = content.find("const lanStatusIntervalId = setInterval", debug_start)
+    debug_section = content[debug_start:next_interval]
+    assert ", 400)" not in debug_section, \
+        "app.ts debug refresh interval is 400ms — regression to aggressive polling!"
+    assert "}, 3000)" in debug_section, \
+        "app.ts debug refresh interval is NOT 3000ms — changed or regressed!"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 33. Scroll restoration uses requestAnimationFrame in DebugManager (2026-07-03)
+#     Synchronous scrollTop assignment before the browser has re-laid-out the
+#     DOM causes scroll positions to be lost. requestAnimationFrame ensures the
+#     browser has completed layout before we restore scroll positions.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_debug_manager_scroll_restoration_uses_raf() -> None:
+    """DebugManager.ts must use requestAnimationFrame before restoring scrollTop."""
+    content = _read("web/src_ts/core/debug/DebugManager.ts")
+    # Find the scroll restoration block (after "Restore scroll positions")
+    restore_start = content.find("// Restore scroll positions")
+    restore_section = content[restore_start:restore_start + 500]
+    assert "requestAnimationFrame" in restore_section, \
+        "DebugManager.ts scroll restoration missing requestAnimationFrame — " \
+        "scroll positions lost after layout!"
+    assert "scrollTop" in restore_section, \
+        "DebugManager.ts scroll restoration missing scrollTop assignment."
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 34. Copy handler handles text node targets (2026-07-03)
+#     When clicking on an emoji or text inside a button, e.target is a Text node.
+#     closest() only exists on Element, so calling it on a Text node would throw.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_debug_manager_copy_handles_text_nodes() -> None:
+    """DebugManager.ts handleCopyClick must check for Node.TEXT_NODE."""
+    content = _read("web/src_ts/core/debug/DebugManager.ts")
+    assert "Node.TEXT_NODE" in content, \
+        "DebugManager.ts missing Node.TEXT_NODE check — copy button breaks " \
+        "when clicking on emoji or inline text!"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 35. Copy has execCommand fallback for non-HTTPS (2026-07-03)
+#     navigator.clipboard.writeText() requires a secure context (HTTPS or
+#     localhost). On non-secure contexts, execCommand('copy') is the fallback.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_debug_manager_copy_has_exec_command_fallback() -> None:
+    """DebugManager.ts copyText must have execCommand('copy') fallback."""
+    content = _read("web/src_ts/core/debug/DebugManager.ts")
+    assert "execCommand" in content, \
+        "DebugManager.ts missing execCommand fallback — clipboard copy fails " \
+        "on non-HTTPS connections!"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 36. handleCopyClick handles all-session copy action (2026-07-03)
+#     The "Copy" button in the Session Data section uses data-copy-action="all-session".
+#     Without this handler, clicking it does nothing silently.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_debug_manager_handle_copy_click_all_session() -> None:
+    """DebugManager.ts handleCopyClick must handle 'all-session' action."""
+    content = _read("web/src_ts/core/debug/DebugManager.ts")
+    assert "all-session" in content, \
+        "DebugManager.ts missing 'all-session' copy action — Session Data " \
+        "copy button is a dead click!"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 37. handleCopyClick has else clause for unhandled actions (2026-07-03)
+#     Unknown data-copy-action values should log a warning instead of failing
+#     silently. This makes debugging new copy buttons easier.
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def test_debug_manager_handle_copy_click_has_else_clause() -> None:
+    """DebugManager.ts handleCopyClick must have else clause for unhandled actions."""
+    content = _read("web/src_ts/core/debug/DebugManager.ts")
+    assert "unhandled copy action" in content, \
+        "DebugManager.ts missing 'unhandled copy action' else clause — " \
+        "unknown copy actions fail silently!"

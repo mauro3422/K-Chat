@@ -165,12 +165,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Scroll to the last assistant message after loading a session
     const msgsEl = document.getElementById('messages');
     if (msgsEl) {
-      const lastAssistant = msgsEl.querySelector('.msg.assistant:last-child') as HTMLElement | null;
-      if (lastAssistant) {
-        msgsEl.scrollTop = lastAssistant.offsetTop;
-      } else {
-        msgsEl.scrollTop = msgsEl.scrollHeight;
-      }
+      requestAnimationFrame(() => {
+        const lastAssistant = msgsEl.querySelector('.msg.assistant:last-child') as HTMLElement | null;
+        if (lastAssistant) {
+          msgsEl.scrollTop = lastAssistant.offsetTop;
+        } else {
+          msgsEl.scrollTop = msgsEl.scrollHeight;
+        }
+      });
     }
   };
   refreshUI();
@@ -248,7 +250,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const messagesEl = document.getElementById('messages');
   if (messagesEl) {
     messagesEl.addEventListener('click', (e: Event) => {
-      const btn = (e.target as HTMLElement).closest('.error-retry-btn') as HTMLElement | null;
+      const target = e.target as Node;
+      const targetEl = target.nodeType === Node.TEXT_NODE ? target.parentElement : target as Element;
+      const btn = targetEl?.closest('.error-retry-btn') as HTMLElement | null;
       if (btn) {
         const msgEl = btn.closest('.msg.assistant') as HTMLElement | null;
         const userText = msgEl?.dataset.userText;

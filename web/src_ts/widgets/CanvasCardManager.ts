@@ -161,7 +161,9 @@ export class CanvasCardManager implements ICanvasCardManager {
     if (!header) return;
 
     header.addEventListener('mousedown', (e) => {
-      if ((e.target as HTMLElement).closest('.canvas-card-btn')) return;
+      const target = e.target as Node;
+      const el = target.nodeType === Node.TEXT_NODE ? target.parentElement : target as Element;
+      if (el?.closest('.canvas-card-btn')) return;
       e.preventDefault();
 
       card.classList.add('active-drag');
