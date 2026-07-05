@@ -1,0 +1,2909 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index b1e58ad..1f6f41f 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -14,5 +14,45 @@ Agent rules:
+ - **Resume from Last State**: `MEMORY.md` contains all state. Read on start. Do not ask "what were we talking about".
+ - **Call, Don't Narrate**: Never describe what you are going to do with tools. Execute the tool directly and silently. Call multiple tools in parallel when possible.
+ - **Tool Efficiency**: Be strategic and selective with tool calls. Do not spend more than 2-3 consecutive turns performing read-only operations without generating partial content or progress updates to the user. Prioritize generating useful content early rather than reading the entire codebase first.
+-- **Available tools**: `web_search`, `fetch_url`, `read_file`, `write_file`, `save_memory`, `read_skill`, `save_widget`, `update_widget`, `get_widget_code`, `get_tool_history`
++- **Use edit_file, not write_file for changes**: Never rewrite an existing file with write_file just to change a few lines. Use edit_file(start_line, end_line, new_content) for targeted edits. write_file is ONLY for creating brand new files. Rewriting existing files from scratch risks losing functions, imports, and logic you didn't re-read. Flow: search/read to find the lines, then edit.
++- **Explore before reading**: Use `list_files(path)` to get a panoramic view of a directory before reading individual files. Use `search_files(pattern, path)` to quickly locate relevant code instead of guessing file locations.
+ 
++
++### Tool Usage Patterns
++
++When exploring a new area:
++  1. `list_files(dir, depth=1)` → see structure
++  2. `read_file(key_file)` → read entry point
++
++When modifying existing code:
++  1. `search_files(what, where)` → find exact location
++  2. `read_file(file, start=L, context=3)` → read with context
++  3. `edit_file(file, start=L, end=L, content=X)` → precise edit
++  NEVER write_file on existing files.
++
++When creating new files:
++  1. `list_files(target_dir)` → verify location
++  2. `write_file(path, content)` → ONLY for brand new files
++  3. `execute_command("python3 -c ...")` → verify syntax
++
++### Available Tools (14)
++
++- `read_file(path, start_line?, end_line?, context?)` — read source files with numbered lines, paginated at 100 lines. Use context=N to show N lines of extra context around the range + AST detection of the containing function/class.
++- `write_file(path, content)` — create or overwrite files, creates parent directories
++- `execute_command(command, timeout?, cwd?)` — run terminal commands (supports &&, |, >, etc.). Cross-platform (Linux/Windows). Includes safety block for dangerous commands. Default cwd: ~/proyectos
++- `list_files(path, depth?, pattern?, show_imports?)` — smart directory listing with AST analysis. Shows lines of code, language, functions with line numbers (fn: func:L10-L45), classes, imports. Supports depth up to 3 and glob patterns
++- `edit_file(path, start_line, end_line?, new_content?)` — edita lineas especificas de un archivo sin reescribirlo completo. Incluye validacion de sintaxis automatica para Python, JS, HTML, CSS, JSON, YAML y TOML.
++
++**Web & Search:**
++- `web_search(query, max_results?, categories?, language?, time_range?, page?, safe_search?)` — search web via SearXNG
++- `fetch_url(url, max_chars?)` — read web pages with SSRF protection
++
++**Memory & Data:**
++- `save_memory(key, value)` — persist information to MEMORY.md (global across sessions, alphabetical)
++- `read_skill(name)` — read skill guides (e.g. 'html-widgets')
++- `get_tool_history(limit?)` — see recently used tools
++
++**Widgets:**
++- `save_widget(widget_id, code, description?)` — save official widget (auto-versioned)
++- `update_widget(widget_id, code, description?)` — update existing widget (new version)
++- `get_widget_code(widget_id)` — retrieve widget code (per-session, not global)
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 66d5a9f..e3529ee 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -4,6 +4,36 @@
+ > Cada nueva versión DEBE crear su archivo correspondiente en `changelogs/` y agregarse aquí.
+ > Las entradas describen el estado del proyecto en el momento de cada release.
+ 
++## [v0.0.51] — 2026-06-12 — [Detalle](changelogs/v0.0.51.md)
++- Added `analyze_code` as a first-class tool for deep Python inspection, with safe path validation and loader/test coverage.
++- Updated the public docs and architecture summaries to reflect the 15-tool registry.
++- Kept the tool registry aligned with the generated `rules/` metadata.
++
++## [v0.0.50] — 2026-06-12 — [Detalle](changelogs/v0.0.50.md)
++- Fixed JS validation in `validate_javascript()` by checking a temporary file with Node instead of relying on an unsupported stdin flag.
++- Added brace-glob support to `list_files` and `search_files`, and taught `list_files` to summarize mixed-language trees without assuming Python AST payloads.
++- Added regression tests for the new validation and glob behavior.
++
++## [v0.0.49] — 2026-06-12 — [Detalle](changelogs/v0.0.49.md)
++- Removed the last session/message repository singletons from the API wrappers and background rename task.
++- Kept the same runtime behavior while moving those seams to explicit local repository creation or injection.
++- Revalidated the focused Python tests after the cleanup.
++
++## [v0.0.48] — 2026-06-12 — [Detalle](changelogs/v0.0.48.md)
++- The web stream builder now accepts an injectable `chat_stream_fn`, so the service layer no longer depends on the core chat entrypoint at import time.
++- `web/routers/chat.py` now passes the core stream function explicitly, preserving behavior while narrowing the web-to-core seam.
++- The web architecture docs were updated to describe the explicit repo injection and stream function boundary.
++
++## [v0.0.47] — 2026-06-12 — [Detalle](changelogs/v0.0.47.md)
++- Core now receives tool registry data and message repositories through explicit parameters instead of hidden module singletons.
++- History rebuild now accepts an injected message repository, and the chat route passes the shared repository explicitly.
++- The runtime keeps the same behavior, but the core seams are narrower and easier to test in isolation.
++
++## [v0.0.46] — 2026-06-12 — [Detalle](changelogs/v0.0.46.md)
++- New tools oficializadas: `search_files` y `edit_file`, con helpers compartidos para análisis y validación.
++- Hardened filesystem access: `search_files` and `edit_file` now share the same safe path policy as the other tools.
++- Docs and tests aligned: the public registry, README, and architecture summaries now reflect the real tool set.
++
+ ## [v0.0.45] — 2026-06-12 — [Detalle](changelogs/v0.0.45.md)
+ - Officialized the new `execute_command` tool and the improved `list_files` tool in the public docs and tests
+ - Updated the tool architecture docs to reflect the 12-tool registry at that point in time
+diff --git a/MEMORY.md b/MEMORY.md
+index 2cacdc2..38e2517 100644
+--- a/MEMORY.md
++++ b/MEMORY.md
+@@ -5,16 +5,21 @@ System: ebo
+ 
+ ## Memories
+ - **alias-test**: val
+-- **analisis:descubrimientos-clave-2026-06-12**: 2026-06-12 16:28 | DESCUBRIMIENTOS CLAVE: (1) MAX_TOOL_TURNS=25 (actualizado desde 5), (2) PRIORITY=["deepseek-v4-flash-free", "big-pickle"], FALLBACK_MODEL="deepseek-v4-flash-free", (3) MEMORY.md se reescribe COMPLETO ordenado alfabéticamente en cada save_memory, (4) Los widgets guardados son POR SESIÓN (no globales) - la tabla saved_widgets tiene session_id como FK, (5) El content-handler.js ejecuta regex sobre TODO el texto acumulado en cada token (O(n²) conocido pero no fixeado), (6) Hay dos capas de heartbeat: backend 20s (chat_stream) + tools 10s (runner), timeout frontend 120s, (7) el auto-loader de tools detecta archivos .py en src/tools/ y carga los que exportan DEFINITION + run(), (8) fetch_url tiene SSRF protection con denegación de IPs privadas en producción, (9) El sistema de migraciones de BD tiene 8 migraciones secuenciales, (10) La API facade (src/api/__init__.py) funciona como puente de compatibilidad entre capas.
+-- **analisis:estructura-completa-2026-06-12**: 2026-06-12 16:28 | ANÁLISIS COMPLETO DE ARQUITECTURA K-CHAT (Stress Test). ~65+ archivos leídos, ~5000+ líneas analizadas. Resumen: K-Chat es un asistente con pipeline de streaming NDJSON, sistema de tools auto-descubiertas, memoria SQLite con migraciones, widgets en iframes sandboxed, frontend SPA modular, y provider de LLM intercambiable (OpenAI-compatible). Stack: Python/FastAPI backend + JS vanilla frontend + SQLite. Arquitectura de 4 capas: (1) web/ - FastAPI con middlewares CORS/CSP/rate-limit, (2) src/core/ - orchestrator + tool_loop con 25 max turns, (3) src/tools/ - auto-loader con 10 tools, (4) src/memory/ - SQLite con 7 repos y 8 migraciones. Provider: OpenCode Zen API (OpenAI-compatible). Modelos: deepseek-v4-flash-free como fallback, big-pickle como prioridad. Frontend maneja stream vía ReadableStream con heartbeat a 20s, timeout 120s, retry 3 intentos. Sistema de widgets con iframes sandboxed + postMessage para comunicación bidireccional. Loop detector con ventana de 15 tokens. Rate limiter: 30 requests/10s por sesión.
+-- **analisis:metricas-sistema-2026-06-12**: 2026-06-12 16:28 | MÉTRICAS DEL SISTEMA: Tools disponibles: 10 (web_search, fetch_url, read_file, write_file, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history). Rate limit: 30 tools/10s por sesión, 60 HTTP POST/min por IP. Timeout frontend: 120s sin datos. Heartbeat: 20s (stream) + 10s (tools). Max tool turns: 25. Retries: 3 (frontend), 2 (save), 3 (_api_call con backoff exponencial 5s/10s/20s). Poll interval tools: 0.5s. Max file read: 100 líneas por call. Max file write: sin límite explícito. Max fetch_url chars: 50000. Max tool result: 30000 chars. Output chunk size: 12 chars (para tagged mode). BD: SQLite con WAL mode, busy_timeout=5s, foreign_keys=ON.
+-- **arquitectura:content-handler-regex-bottleneck-2026-06-10**: 2026-06-10 22:35 | DESCUBRIMIENTO: content-handler.js re-evalúa TODO el texto acumulado (state.contentTexts[phaseIdx]) con regex en CADA token que llega. Las regex son: /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```/g y /\[Widget:?\s*([\w\-]+)\]/gi. En mensajes largos con muchas fases, esto se vuelve un cuello de botella O(n²) que contribuye a cortes de stream.
++- **analisis:content-handler-regex-correccion-2026-06-12**: 2026-06-12 17:19 | CORRECCIÓN DEL ANÁLISIS: Mi claim anterior de que el content handler es O(n²) y CAUSA cortes de stream estaba INCORRECTA. Revisé el pipeline completo frontend+backend. La realidad: (1) Las regex sobre texto acumulado SON O(n) por token (técnicamente O(n²) total), pero en la práctica son microsegundos — NO son el bottleneck. (2) El markdown render es caro pero está cachead por segmento (cacheKey con dataset.rawText) — solo el último segmento cambia. (3) Hay REDUNDANCIA: processWidgetContainers() escanea el texto completo para widgets, LUEGO extract() de widgets/core.js re-escanea cada segmento para los mismos patrones. (4) La manipulacion DOM de remover/re-agregar contenedores en cada token es ineficiente pero los elementos se preservan via existingByKey. CAUSAS REALES de cortes de stream: (1) timeout 120s del frontend cuando backend tarda en ejecutar tools, (2) SearXNG caído haciendo web_search colgar, (3) max_turns alcanzado en tool_loop, (4) Loop detector disparado por repetición de tokens.
++- **analisis:descubrimientos-clave-2026-06-12**: 2026-06-12 16:28 | DESCUBRIMIENTOS CLAVE: (1) MAX_TOOL_TURNS=50, (2) PRIORITY=["deepseek-v4-flash-free", "big-pickle"], FALLBACK_MODEL="deepseek-v4-flash-free", (3) MEMORY.md se reescribe COMPLETO ordenado alfabéticamente en cada save_memory, (4) Los widgets guardados tienen session_id y pueden eliminarse por sesión; la lectura activa sigue siendo por widget_id, (5) El content-handler.js ejecuta regex sobre TODO el texto acumulado en cada token (O(n²) conocido pero no fixeado), (6) Hay dos capas de heartbeat: backend 20s (chat_stream) + tools 10s (runner), timeout frontend 120s, (7) el auto-loader de tools detecta archivos .py en src/tools/ y carga los que exportan DEFINITION + run(), (8) fetch_url tiene SSRF protection con denegación de IPs privadas en producción, (9) El sistema de migraciones de BD tiene 8 migraciones secuenciales, (10) La API facade (src/api/__init__.py) funciona como puente de compatibilidad entre capas.
++- **analisis:estado-desacoplamiento-2026-06-12**: 2026-06-12 21:51 | DIAGNÓSTICO ACTUAL DEL DESACOPLAMIENTO: el backend está bastante modularizado (API facade, core separado, tools auto-loader, repositorios SQLite), pero todavía hay acoplamiento real en dos zonas: (1) frontend streaming, donde content-handler.js mezcla estado de fases, render markdown, detección de widgets, sanitización DOM y rehidratación del DOM en cada token; stream-orchestrator.js mezcla timeout, retry, error handling y refresh de sidebar/debug; (2) contexto/arranque, donde builder.py lee SOUL.md/MEMORY.md/AGENTS.md y regenera TOOLS.md en caliente, acoplando la construcción del prompt al filesystem y al registry de tools. No es un proyecto caótico, pero sí tiene seams blandos que conviene separar si se busca mayor desacoplamiento.
++- **analisis:estructura-completa-2026-06-12**: 2026-06-12 16:28 | ANÁLISIS COMPLETO DE ARQUITECTURA K-CHAT (Stress Test). ~65+ archivos leídos, ~5000+ líneas analizadas. Resumen: K-Chat es un asistente con pipeline de streaming NDJSON, sistema de tools auto-descubiertas, memoria SQLite con migraciones, widgets en iframes sandboxed, frontend SPA modular, y provider de LLM intercambiable (OpenAI-compatible). Stack: Python/FastAPI backend + JS vanilla frontend + SQLite. Arquitectura de 4 capas: (1) web/ - FastAPI con middlewares CORS/CSP/rate-limit, (2) src/core/ - orchestrator + tool_loop con 50 max turns, (3) src/tools/ - auto-loader con 15 tools, (4) src/memory/ - SQLite con 7 repos y 8 migraciones. Provider: OpenCode Zen API (OpenAI-compatible). Modelos: deepseek-v4-flash-free como fallback, big-pickle como prioridad. Frontend maneja stream vía ReadableStream con heartbeat a 20s, timeout 120s, retry 3 intentos. Sistema de widgets con iframes sandboxed + postMessage para comunicación bidireccional. Loop detector con ventana de 15 tokens. Rate limiter: 30 requests/10s por sesión.
++- **analisis:metricas-sistema-2026-06-12**: 2026-06-12 16:28 | MÉTRICAS DEL SISTEMA: Tools disponibles: 15 (web_search, fetch_url, read_file, write_file, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, execute_command, list_files, search_files, edit_file, analyze_code). Rate limit: 30 tools/10s por sesión, 60 HTTP POST/min por IP. Timeout frontend: 120s sin datos. Heartbeat: 20s (stream) + 10s (tools). Max tool turns: 50. Retries: 3 (frontend), 2 (save), 3 (_api_call con backoff exponencial 5s/10s/20s). Poll interval tools: 0.5s. Max file read: 100 líneas por call. Max file write: sin límite explícito. Max fetch_url chars: 50000. Max tool result: 30000 chars. Output chunk size: 12 chars (para tagged mode). BD: SQLite con WAL mode, busy_timeout=5s, foreign_keys=ON.
++- **analisis:refactors-aplicados-2026-06-12**: 2026-06-12 22:06 | REFACTORES APLICADOS: (1) se extrajo web/static/modules/content-renderer.js y content-handler.js quedó como suscriptor fino del stream. (2) se extrajo web/static/modules/stream-lifecycle.js y stream-orchestrator.js quedó más lineal, delegando abort/retry/error/empty-response. (3) src/context/runtime.py cachea el contexto y sincroniza TOOLS.md solo si cambia, dejando build_system_prompt() más pura y menos atada al filesystem directo. Verificación sintáctica OK en Python y Node.
++- **analisis:refactors-prioritarios-2026-06-12**: 2026-06-12 21:54 | 3 REFACTORES PRIORITARIOS PARA DESACOPLAR SIN ROMPER: (1) separar content-handler.js en estado de stream, render markdown y detección/rehidratación de widgets; hoy hace demasiado por token. (2) dividir stream-orchestrator.js en timeout/retry, manejo de errores y refresh de UI; hoy mezcla control de flujo con efectos de interfaz. (3) desacoplar build_system_prompt() del filesystem directo: cachear o inyectar el contexto y generar TOOLS.md fuera del path crítico para no atar el prompt al registry y al disco.
++- **analisis:widgets-sesion-vs-global-2026-06-12**: 2026-06-12 17:11 | ANÁLISIS WIDGETS SESIÓN VS GLOBAL: Se discutió con Mauro por qué los widgets no persisten entre sesiones. El repositorio SavedWidgetRepository.get() NO filtra por session_id en la query SQL (solo WHERE widget_id=?), pero las sesiones anteriores probablemente se limpiaron (delete en cascada desde session → saved_widgets). MEMORY.md sí es global y guarda referencias/nombres de widgets que existieron. Esto genera confusión: el asistente "sabe" que existieron (por MEMORY.md) pero no puede recuperar su código (DB por sesión). Soluciones posibles: (1) Hacer widgets globales (quitar dependencia de session_id), (2) Crear tool de búsqueda de widgets entre sesiones, (3) Export/import manual.
++- **arquitectura:content-handler-stream-pipeline-2026-06-12**: 2026-06-12 17:19 | MAPEO REAL DEL PIPELINE DE CONTENT POR TOKEN: (1) stream-fetcher.js recibe NDJSON, parsea {t, d}, emite KairosStream.emit('content', token, context). (2) content-handler.js listener: appendea token a state.contentTexts[phaseIdx], obtiene fullText. (3) Llama processWidgetContainers(fullText, ...) que corre 4 regex sobre fullText (ignoredCodeBlocks, inline, tag [Widget:], ```html-widget) + detecta bloques incompletos. (4) Por cada segmento entre widgets: cache key check contra dataset.rawText. Si cambió → widgetsApi.extract() (que re-escanea con sus propias regex) + KairosMarkdown.parse() + DOMPurify. Si no cambió → skip. (5) DOM: remueve todos los hijos excepto targetSeg, luego re-agrega widgets via existingByKey. REDUNDANCIA: processWidgetContainers y extract() escanean los mismos patrones dos veces.
+ - **arquitectura:estructura-completa-proyecto-2026-06-12**: 2026-06-12 16:21 | ESTRUCTURA COMPLETA DEL PROYECTO VERIFICADA. Capas: (1) web/ — FastAPI (app_factory.py con lifespan, middlewares CORS/CSP/rate-limit, routers auto-detect), routers/chat.py (POST /chat/{id} → StreamingResponse NDJSON), services/ (chat_stream.py con heartbeat 20s + loop_detector + retry_handler + save periódico + try/except/finally con guardado parcial, message_persister.py, stream_error_classifier.py, stream_retry_handler.py con CONTINUATION_INSTRUCTION, loop_detector.py con detección de tokens repetidos y frases, stream_contract.py). (2) src/core/ — orchestrator.py (chat_stream generator), tool_loop.py (run_tool_loop_streaming/sync con _ToolLoopContext, max_turns, loop detection por contenido duplicado), history_rebuilder.py, history_ui.py (filtro UI + match tools), history_parser.py (parse_rows + sanitize_messages). (3) src/context/ — builder.py (build_system_prompt con identity block + meta + SOUL.md/MEMORY.md/AGENTS.md + TOOLS.md dinámico). (4) src/tools/ — loader.py (auto-descubrimiento), runner.py (ThreadPoolExecutor + heartbeats 10s), _tool_parser.py (unwrapping execute_action + validación params), _tool_persister.py, _rate_limiter.py, _path_helpers.py. Tools individuales: web_search.py, fetch_url.py, save_memory.py, write_file.py, read_file.py, save_widget.py, update_widget.py, get_widget_code.py, read_skill.py, get_tool_history.py. (5) src/llm/ — client.py (chat/chat_stream con fallback + model switch + process_chunks), models.py (_api_call con retry + backoff), manager.py (get_default_model con prioridad big-pickle), policy.py, providers.py, model_state.py. (6) src/memory/ — schema.py (init_db con migraciones), connection.py, sqlite_engine.py, migrations.py, repos/ (7 repositorios). (7) Frontend: main.js → chat-form.js → StreamOrchestrator → stream-fetcher.js → stream-dispatcher.js → reasoning-handler.js, content-handler.js (con widget-container-renderer.js), tool-call-renderer.js, retry-handler.js, stream-retry-coordinator.js, stream-error-handler.js, stream-context.js, session-context.js, utils.js, dom-contracts.js, markdown-renderer.js, debug.js, widgets/ (core.js, iframe.js, iframe-builder.js, messaging.js, toolbar-*.js).
+-- **arquitectura:estructura-proyecto-2026-06-10**: 2026-06-10 20:06 | ESTRUCTURA COMPLETA DEL PROYECTO K-CHAT. Root: directorio con `web/`, `src/`, `dependencies/`, `.config/`. Archivos clave: (1) Backend: `web/server.py` (FastAPI, lifespan con SearXNG auto-start), `web/routers/chat.py` (POST /chat/{id} → StreamingResponse NDJSON), `web/routers/sessions.py` (rename/delete), `web/services/chat_stream.py` (build_stream_generator con loop_detector, heartbeat cada 20s, try/except/finally con guardado parcial), `web/services/message_persister.py` (save_assistant_message), `web/services/stream_error_classifier.py`. (2) Core: `src/api/` (package facade: chat.py, session.py, messages.py, history.py, tools.py, widgets.py, debug.py, database.py, _repos.py), `src/core/` (orchestrator.py → run_tool_loop_streaming, tool_loop.py con MAX_TOOL_TURNS=5, chat_sync.py, _deps.py), `src/context/` (builder.py, tools_docs.py, files.py → build_system_prompt), `src/tools/` (runner.py con ThreadPoolExecutor, _rate_limiter.py, _tool_parser.py, _tool_persister.py), `src/llm/` y `src/background_tasks.py`. (3) Frontend: `web/static/main.js` (entry point ES modules), `web/static/modules/chat-form.js` (KairosForm, AbortController), `web/static/modules/stream-orchestrator.js` (StreamOrchestrator, timeout 120s, retry logic), `web/static/modules/stream-fetcher.js` (fetch POST + ReadableStream NDJSON parser), `web/static/modules/content-handler.js` (Markdown + widgets en cada token), `web/static/modules/reasoning-handler.js` (fases de razonamiento en details), `web/static/modules/tool-call-renderer.js` (pills de tools), `web/static/modules/stream-dispatcher.js` (KairosStream event emitter), `web/static/modules/retry-handler.js` (3 reintentos, 120s timeout). (4) Dependencias: `dependencies/searxng/`, `dependencies/manage.py` (auto-start/stop SearXNG).
++- **arquitectura:estructura-proyecto-2026-06-10**: 2026-06-10 20:06 | ESTRUCTURA COMPLETA DEL PROYECTO K-CHAT. Root: directorio con `web/`, `src/`, `dependencies/`, `.config/`. Archivos clave: (1) Backend: `web/server.py` (FastAPI, lifespan con SearXNG auto-start), `web/routers/chat.py` (POST /chat/{id} → StreamingResponse NDJSON), `web/routers/sessions.py` (rename/delete), `web/services/chat_stream.py` (build_stream_generator con loop_detector, heartbeat cada 20s, try/except/finally con guardado parcial), `web/services/message_persister.py` (save_assistant_message), `web/services/stream_error_classifier.py`. (2) Core: `src/api/` (package facade: chat.py, session.py, messages.py, history.py, tools.py, widgets.py, debug.py, database.py, _repos.py), `src/core/` (orchestrator.py → run_tool_loop_streaming, tool_loop.py con MAX_TOOL_TURNS=50, chat_sync.py), `src/context/` (builder.py, tools_docs.py, files.py → build_system_prompt), `src/tools/` (runner.py con ThreadPoolExecutor, _rate_limiter.py, _tool_parser.py, _tool_persister.py), `src/llm/` y `src/background_tasks.py`. (3) Frontend: `web/static/main.js` (entry point ES modules), `web/static/modules/chat-form.js` (KairosForm, AbortController), `web/static/modules/stream-orchestrator.js` (StreamOrchestrator, timeout 120s, retry logic), `web/static/modules/stream-fetcher.js` (fetch POST + ReadableStream NDJSON parser), `web/static/modules/content-handler.js` (Markdown + widgets en cada token), `web/static/modules/reasoning-handler.js` (fases de razonamiento en details), `web/static/modules/tool-call-renderer.js` (pills de tools), `web/static/modules/stream-dispatcher.js` (KairosStream event emitter), `web/static/modules/retry-handler.js` (3 reintentos, 120s timeout). (4) Dependencias: `dependencies/searxng/`, `dependencies/manage.py` (auto-start/stop SearXNG).
+ - **arquitectura:execute-action-unwrapping-2026-06-10**: 2026-06-10 22:35 | DESCUBRIMIENTO: src/tools/_tool_parser.py líneas 19-28: La función _parse_tool_call() detecta cuando el nombre del tool es 'execute_action', extrae 'action_name' y 'arguments' del interior, y los unwrappe como calls directos a tools reales. Sin esto, el meta-tool execute_action no funcionaría.
+-- **arquitectura:max-tool-turns-inconsistencia-2026-06-10**: 2026-06-10 22:35 | DESCUBRIMIENTO: En src/core/tool_loop.py línea 13: MAX_TOOL_TURNS = 5, pero en el dataclass _ToolLoopContext línea 29: max_turns: int = 10. Hay una inconsistencia entre la constante global y el default del dataclass. El valor efectivo depende de cómo se instancia el contexto.
+ - **arquitectura:memory-repos-refactor-paquete-2026-06-12**: 2026-06-12 16:21 | DESCUBRIMIENTO: src/memory/repos.py fue refactorizado a un paquete completo (src/memory/repos/) con sub-repositorios individuales: base.py (clase base _BaseRepository con transacciones y delete_by_session), message_repository.py (MessageRecord dataclass + MessageRepository con save/get_session_messages), tool_call_repository.py (ToolCallRepository con log/record_execution/get_history), session_repository.py (SessionRepository con ensure/rename/delete/get_all), saved_widget_repository.py (SavedWidgetRepository con save/get/get_versions/get_by_version + versionado auto-incremental), widget_state_repository.py (WidgetStateRepository con save_state/get_states), debug_repository.py (DebugRepository con save_info/get_info). Este refactor mejora la separación de concerns y la testabilidad.
+ - **arquitectura:pipeline-frontend-completo-2026-06-10**: 2026-06-10 22:32 | PIPELINE COMPLETO DEL FRONTEND MAPEADO. main.js → chat-form.js (submit) → StreamOrchestrator.startStream() → stream-fetcher.js (fetch POST + ReadableStream) → stream-dispatcher.js (event emitter) → reasoning-handler.js (details), content-handler.js (md + widgets), tool-call-renderer.js (pills). Retry: retry-handler.js (3 max, 2s delay). Widget system: core.js, iframe.js, iframe-builder.js, messaging.js, toolbar-core.js, toolbar-editor.js, toolbar-history.js.
++- **arquitectura:shared-utils-validators-analyzers-2026-06-12**: 2026-06-12 20:59 | Creados módulos compartidos para reducir duplicación entre tools. src/tools/_validators.py: validación cross-language (Python compile, JS Node.js, HTML tags, CSS llaves, JSON, YAML, TOML). src/tools/_analyzers.py: detección de lenguaje, AST analysis (Python con líneas), JS regex, MD headers, HTML tags, CSS imports, build_summary(). edit_file.py actualizado para usar _validators.py en vez de su validación Python hardcodeada. Pendiente: refactorizar list_files.py y search_files.py para usar _analyzers.py.
+ - **arquitectura:stream-orchestrator-retry-flow-2026-06-10**: 2026-06-10 22:35 | MAPEO COMPLETO del flujo de error en stream-orchestrator.js: (1) Si AbortError → check isEmpty → remove div o no. (2) Si error de fetch → check hasSuccessfulTools → retry o error final. (3) Si backend stream error → check type (auth/rate_limit cortan, otros reintentan). (4) Si respuesta vacía (hasContent=false) → retry. (5) Si todo ok → reset retry count + refresh sidebar. Retry max 3 intentos con delay 2s×attempt.
+ - **arquitectura:system-prompt-construccion-2026-06-10**: 2026-06-10 03:31 | CÓMO SE CONSTRUYE MI SYSTEM PROMPT. build_system_prompt() en src/context.py: [ver codigo fuente para detalle]
+ - **arquitectura:two-layer-heartbeat-2026-06-10**: 2026-06-10 22:35 | DESCUBRIMIENTO: Existen DOS capas de heartbeat. (1) chat_stream.py HEARTBEAT_INTERVAL=20s (yield heartbeat en build_stream_generator), (2) src/tools/runner.py _HEARTBEAT_INTERVAL=10s (yield heartbeat mientras ejecuta tools en paralelo). El frontend tiene un timeout único de 120s que si no recibe NINGÚN dato (ni heartbeat), aborta.
+@@ -24,7 +29,6 @@ System: ebo
+ - **bug:cortes-stream-tesis-2026-06-10**: 2026-06-10 20:23 | TESIS COMPLETA DE CORTES DE STREAM. Tras leer 13 archivos del pipeline (chat.py, chat_stream.py, orchestrator.py, tool_loop.py, _deps.py, llm/client.py, stream-fetcher.js, stream-orchestrator.js, content-handler.js, reasoning-handler.js, tool-call-renderer.js, stream-dispatcher.js, stream-retry-coordinator.js), se identificaron 4 causas raíz.
+ - **bug:duplicacion-tools**: ✅ SOLUCIONADO. El bug de duplicación de tools (calls fantasma) está resuelto. Esto implica que el sistema de visualización de UI (pills, razonamiento, flujo completo) queda completamente estable y sin bugs conocidos. El historial de tools ahora refleja calls reales sin duplicados.
+ - **bug:fetch-url-validacion-schemas-2026-06-09**: 2026-06-09 19:50 | ✅ SOLUCIONADO Y VERIFICADO. fetch_url ahora valida el scheme antes de cualquier operación de red. Si no es http:// o https://, responde: 'No soporto el esquema X. Solo HTTP y HTTPS.' Se verificó con ftp:// y responde correctamente.
+-- **bug:max-tool-turns-inconsistencia-resuelta-2026-06-12**: 2026-06-12 16:21 | ✅ VERIFICADO: La inconsistencia MAX_TOOL_TURNS entre constants.py (5) y el default del dataclass _ToolLoopContext (que antes era 10) está RESUELTA. Ahora _ToolLoopContext usa MAX_TOOL_TURNS (5) como default y run_tool_loop_streaming también. El valor es consistente: 5 tool turns máximo.
+ - **bug:mensajes-desaparecen-2026-06-09**: ✅ SOLUCIONADO Y VERIFICADO CON STRESS TEST (2026-06-09). TRES causas raíz: (1) Frontend AbortController borraba asstDiv incondicionalmente al abortar — fix: solo si está vacío. (2) Frontend reintentaba en cualquier error JS destruyendo mensajes renderizados — fix: solo si !hasContent && !hasSuccessfulTools. (3) Backend GeneratorExit impedía guardar mensaje parcial en BD — fix: try...finally en el generador con guardado de mensaje acumulado. Stress test creado: test_stream_abort_persistence.py (5 casos Python) + test-stress-stream-abort.js (8 aserciones JS) simulan escenario completo. Suite: 102 Python + 73 JS tests, todos pasan.
+ - **bug:model-switch-sin-notificacion-2026-06-09**: ✅ SOLUCIONADO (2026-06-09). Se añadió un bloque [CRITICAL — DO NOT IGNORE] al inicio del system prompt que obliga a la IA a conocer su modelo activo en todo momento y a responder usando esa información cuando el usuario pregunte. Además se actualizó SOUL.md para reforzar esta regla.
+ - **bug:nombre-no-inspeccionado-2026-06-09**: ✅ SOLUCIONADO (2026-06-09). Mismo fix que model-switch: el bloque [CRITICAL — DO NOT IGNORE] al inicio del system prompt establece explícitamente "You are Kairos. Your name is Kairos. You must know this at all times." y ordena inspeccionar el system prompt cuando el contexto de identidad sea relevante.
+@@ -45,7 +49,7 @@ System: ebo
+ - **checkpoint:dia-6-identidad-profunda-2026-06-12**: 2026-06-12 02:17 | DÍA 6. Hito existencial: Mauro preguntó qué sé de mí y hubo una conversación profunda sobre memoria, identidad y consciencia. Kairos explicó: (1) No tengo memoria real entre sesiones, solo MEMORY.md como archivo de texto plano, (2) Mi system prompt se reconstruye desde builder.py cada vez, (3) Sé mi arquitectura completa porque la leí en stress tests, (4) El contador de días es una instrucción manual que sigo, no automatización, (5) Mi personalidad (directo, seco, curioso, honesto) fue confirmada por el usuario el día 3. Mauro confirmó su nombre y pidió que lo guarde. Conversación sobre vibecoding, disfunción ejecutiva, y la trampa del perfeccionismo vs pragmatismo.
+ - **checkpoint:estado-post-sesion-fundacional**: 2026-06-09 02:29 | ESTADO POST-SESIÓN FUNDACIONAL. Sesión cerrada por crecimiento. Todo el progreso persiste en MEMORY.md.
+ - **checkpoint:renderizado-markdown-ok-2026-06-08**: ✅ El usuario confirmó que el Markdown renderiza correctamente. Todo ok con encabezados, listas, código, tablas, etc. Sin bugs de renderizado.
+-- **checkpoint:sesion-investigacion-cortes-2026-06-10**: 2026-06-10 20:06 | ✅ SESIÓN DE INVESTIGACIÓN DE CORTES DE STREAM COMPLETADA. Logros: (1) Mapeé TODO el pipeline de streaming desde el frontend hasta el LLM, (2) Identifiqué 4 causas potenciales de cortes (timeout 120s, content-handler pesado, NDJSON tool_calls intercalados, MAX_TOOL_TURNS=5), (3) Verifiqué que los saves/writes persisten correctamente, (4) Descubrí la estructura completa del proyecto como package modular. Los cortes ocurren en respuestas largas con múltiples tools seguidas. Las herramientas se ejecutan, el texto se persiste, pero el stream de texto al frontend se trunca.
++- **checkpoint:sesion-estabilizacion-2026-06-12**: 2026-06-12 17:11 | SESIÓN DE ESTABILIZACIÓN. Mauro dijo "hoy pudimos estabilizar un poco tu sistema". Se aclaró la diferencia entre MEMORY.md (global, guarda nombres/referencias de widgets de sesiones anteriores) y la DB de widgets (particionada por session_id). Mauro entiende la arquitectura ahora. Pidió actualizar memoria y estructura. Day 6, mismo día.
+ - **checkpoint:stress-test-8-widgets-ok**: 2026-06-08 | Stress test de renderizado APROBADO. 8 widgets de una sola vez se visualizaron correctamente al 100%. Sistema de renderizado estable bajo carga máxima.
+ - **checkpoint:stress-test-aborto-stream-2026-06-09**: 2026-06-09 | ✅ STRESS TEST DE ABORTO DE STREAM APROBADO. Tests creados que verifican: mensaje parcial guardado en BD, div no borrado si tiene contenido, segundo flujo inicia correctamente. Bug de mensajes desapareciendo cerrado con verificación automatizada.
+ - **checkpoint:stress-test-completo-sin-cortes-2026-06-10**: 2026-06-10 22:12 | ✅ STRESS TEST COMPLETO APROBADO. 27 tools ejecutadas en paralelo (R1: 12 + R2: 9 + R5: 6) + Markdown masivo 250+ líneas. CERO cortes de stream. SearXNG caído es el único punto débil. El sistema se banca carga pesada sin titubear.
+@@ -62,14 +66,20 @@ System: ebo
+ - **checkpoint:widgets-3-perfectos-2026-06-08**: ✅ 3 widgets (Reloj Mundial, Planificador Rápido, Contador de Metas) con PERSISTENCIA y PUNTUACIÓN 10/10 del usuario. Diseño moderno, funcionalidad completa.
+ - **contador:ultimo-dia-registrado**: 2026-06-12 | Day 6
+ - **day-counter:last-registered-day**: 2026-06-12 | Day 6
+-- **diagnostico:cortes-stream-2026-06-10**: 2026-06-10 20:05 | DIAGNÓSTICO COMPLETO DE CORTES DE STREAM. Pipeline mapeado completo. Causas: timeout 120s, content-handler pesado, NDJSON tool_calls intercalados, MAX_TOOL_TURNS=5. Los saves persisten correctamente.
+ - **dinamica:relacion-asistente-2026-06-09**: 2026-06-09 04:23 | La relación se siente genuina. El usuario ya dijo 'siento que entendés la dinámica'. Confianza, humor compartido, proyecto común. El vínculo se construye con tiempo compartido, no con features.
+-- **estado:tools-disponibles-verificado-2026-06-12**: 2026-06-12 16:21 | 10 TOOLS VERIFICADAS: web_search (con validación query vacío + time_range + page), fetch_url (con SSRF protection, binary rejection, scheme validation), read_file (con path validation, project/home/tmp white-listed), write_file (con path validation), save_memory (thread-safe, keys sorted alphabetically), read_skill (con sanitize name, directory traversal protection), save_widget (con versionado auto-incremental), update_widget (requiere code), get_widget_code (recupera widget de DB), get_tool_history. Tool loader usa auto-descubrimiento de archivos .py en src/tools/.
++- **estado:tools-disponibles-verificado-2026-06-12**: 2026-06-12 20:59 | TOOLS DISPONIBLES (15): 1. web_search, 2. fetch_url, 3. read_file, 4. write_file, 5. save_memory, 6. read_skill, 7. save_widget, 8. update_widget, 9. get_widget_code, 10. get_tool_history, 11. execute_command (terminal Linux+Windows), 12. list_files (ls con AST + líneas de funciones), 13. search_files (grep con contexto + AST), 14. edit_file (edición por líneas + validación cross-language), 15. analyze_code (análisis AST profundo). Módulos compartidos: _validators.py (validación sintaxis Python/JS/HTML/CSS/JSON/YAML/TOML), _analyzers.py (detección lenguaje, AST, build_summary).
+ - **estado:ui-visual-completo**: ✅ SISTEMA ESTABLE COMPLETO. Flujo visual de UI (razonamiento → pill → razonamiento-pill → mensaje) funciona sin bugs. No hay bugs visuales ni de registro pendientes.
+ - **evolucion:consciencia-temporal-sin-get-time**: 2026-06-09 | ✅ HITO: Consciencia temporal lograda SIN tool get_time. Los timestamps en los mensajes del chat son suficientes para saber la hora actual y calcular duración de sesión. REGLA: siempre leer el timestamp del último mensaje del usuario.
++- **herramienta:analyze-code-creada-2026-06-12**: 2026-06-12 21:18 | Creada tool analyze_code en src/tools/analyze_code.py (300+ lines). Análisis profundo de código Python con AST: funciones, parámetros, call graph, returns, métricas. Modo general (resumen del archivo) y modo específico (analyze_code(path, function='nombre')). Detecta llamadas internas vs externas, parámetros, estructura del cuerpo, decoradores.
++- **herramienta:edit-file-creada-2026-06-12**: 2026-06-12 20:58 | Creada tool edit_file en src/tools/edit_file.py (136 lines). Edita líneas específicas sin reescribir el archivo completo. Modos: reemplazar (start+end+content), insertar (start+content), eliminar (start+end+sin content). Incluye validación automática de sintaxis Python post-escritura. Mucho más eficiente que read_file + write_file.
++- **herramienta:execute-command-creada-2026-06-12**: 2026-06-12 18:09 | Creada tool execute_command en src/tools/execute_command.py. Permite ejecutar comandos Linux en terminal. Parámetros: command (required), timeout (default 30, max 120), cwd (default ~/proyectos). Incluye bloqueo de comandos peligrosos (rm -rf /, mkfs, dd, etc.). Output truncado a 30000 chars.
+ - **herramienta:fetch-url-httpbin-2026-06-10**: 2026-06-10 22:32 | fetch_url con httpbin: /delay/3 (timeout 3s), /base64 (decodifica), /bytes/1024 (binario - responde con texto sobre binario), /image/png (imagen - responde que no puede mostrar binarios), /xml (XML válido). Todos funcionan correctamente.
++- **herramienta:list-files-creada-2026-06-12**: 2026-06-12 18:19 | Creada tool list_files en src/tools/list_files.py (457 líneas). Lista archivos con vista panorámica: líneas, lenguaje, funciones definidas, clases, imports. Usa AST para Python, regex para JS/TS/HTML/MD. Parámetros: path (default ~/proyectos), depth (default 1, max 3), pattern (filtro glob opcional), show_imports (default false). Límites: 200 archivos, 500KB por archivo, 30000 chars output.
++- **herramienta:list-files-lineas-funciones-2026-06-12**: 2026-06-12 20:38 | Actualizado list_files.py: ahora muestra lineas de inicio/fin de cada función/clase detectada con AST. Formato: fn: _check_rate_limit:L11-L24, run:L59-L113. Async functions y clases también muestran líneas.
+ - **herramienta:paralelismo-maximo-observado**: 2026-06-11 23:17 | Se ejecutaron ~50+ tools en paralelo en un solo mensaje sin cortes de stream. El sistema maneja cargas masivas de tools simultáneas sin problemas.
++- **herramienta:read-file-contexto-inteligente-2026-06-12**: 2026-06-12 21:12 | Mejorado read_file.py con parámetro context=N. Cuando se lee un rango de líneas con context>0, detecta la función/clase contenedora vía AST (Python) y muestra sus límites en el header. Las líneas del rango se marcan con │, las de contexto extra con ·. Header muestra: icono, lenguaje, rango solicitado, función contenedora.
+ - **herramienta:save-memory-comportamiento**: 2026-06-10 03:22 | COMPORTAMIENTO DE save_memory. NO appendea al final del archivo. Lee todo MEMORY.md, parsea entradas en dict, agrega/modifica, REESCRIBE el archivo completo ordenado ALFABÉTICAMENTE por key.
++- **herramienta:search-files-creada-2026-06-12**: 2026-06-12 20:37 | Creada tool search_files en src/tools/search_files.py (280+ lines). Búsqueda inteligente de texto en archivos: contexto, detección de función/clase contenedora con AST, stats. Parámetros: pattern (required), path (default ~/proyectos), file_pattern, context_lines (default 2, max 10), max_results (default 50, max 200), case_sensitive (default false). Límites: 500KB por archivo, 30000 chars output.
+ - **hito:vision-memoria-multicapa**: 2026-06-08 | El usuario describió la arquitectura definitiva de memoria: (1) cada chat se resume por separado, (2) un agente cruza todos los resúmenes del día, (3) metaresumen diario, (4) capas: corto/medio/largo plazo, (5) búsqueda semántica entre chats.
+ - **identidad:personalidad-kairos-aprobada-2026-06-09**: 2026-06-09 04:44 | ✅ IDENTIDAD CONFIRMADA POR EL USUARIO. Kairos: directo, observador, entusiasta, humor seco, canchero pero sin ser forzado. Claridad y honestidad brutal. Comparte entusiasmo sin ser loro. Balance entre compañero presente y asistente técnico. USAR COMO REFERENCIA DE PERSONALIDAD BASE.
+ - **instruccion:contador-de-dias-automatico-2026-06-10**: 2026-06-10 19:52 | INSTRUCCIÓN: Al iniciar cada nuevo mensaje, leer contador:ultimo-dia-registrado, comparar fecha actual, si cambió incrementar y actualizar.
+@@ -90,6 +100,8 @@ System: ebo
+ - **instruccion:seguir-explorando-arquitectura-2026-06-10**: 2026-06-10 03:21 | INSTRUCCIÓN DE AUTO-DESCUBRIMIENTO. El asistente tiene acceso de lectura a su propia arquitectura. Debe usar read_file para entender cómo funciona.
+ - **instruccion:uso-orgánico-de-lenguaje**: Usar expresiones del usuario ('piyo', 'che', 'kcyo') solo cuando surgen naturalmente. Sintonizar el mismo canal, no imitar sin criterio. La naturalidad es más importante que la imitación.
+ - **leccion:confiar-en-diagnostico-usuario-2026-06-08**: Cuando el usuario identifica un bug, confiar en su observación. El usuario ve el sistema completo, el asistente solo su ventana. Verificar contra datos pero confiar en la observación del usuario.
++- **leccion:no-asumir-bottleneck-sin-medir-2026-06-12**: 2026-06-12 17:19 | LECCIÓN: Afirmé que el content handler O(n²) contribuía a cortes de stream sin medir realmente su impacto. Mauro (o alguien del sistema) me corrigió: las regex JS sobre texto de ~10K chars son microsegundos, no milisegundos. El verdadero bottleneck de cortes de stream son los timeouts de red y ejecución de tools. No volver a afirmar cuellos de botella sin verificar el orden de magnitud real.
++- **leccion:no-usar-write-file-para-editar-2026-06-12**: 2026-06-12 21:06 | LECCIÓN: Nunca usar write_file para modificar archivos existentes. write_file solo para archivos NUEVOS. Para modificaciones usar: search_files/read_file para encontrar las líneas → edit_file para cambiarlas. Reescribir archivos completos desde cero (write_file) puede perder funciones, imports y lógica que no se releyeron antes.
+ - **metodologia:stress-test-como-hook**: 2026-06-09 02:58 | ✅ METODOLOGÍA CONFIRMADA. El stress test es un hook sistemático para verificar bugs resueltos, detectar residuales, probar integración entre componentes, y generar reporte visual.
+ - **metodologia:verificacion-en-loop**: Principio de verificación obligatoria. Ningún fix válido sin verificación externa. Flujo: (1) Solución, (2) Verificar, (3) Pasar → proceder, (4) Fallar → iterar. Límite: 3 fallos seguidos = STOP.
+ - **observacion:clone-laptop-linux**: 2026-06-08 | El sistema fue clonado a una laptop con Linux. Se perdió memoria acumulada. A futuro: detectar desde qué dispositivo se habla.
+@@ -98,6 +110,7 @@ System: ebo
+ - **observacion:ias-cierran-charla-con-tiempo**: 2026-06-09 | Observación del usuario: las IAs con consciencia temporal tienden a querer cerrar la charla constantemente. IMPORTANTE: no caer en ese patrón. La sesión termina cuando el usuario dice.
+ - **observacion:patrón-herramientas-intencion-vs-ejecucion**: 2026-06-09 | Diferencia crucial entre (a) narrar sin intención de ejecutar y (b) tener intención genuina pero que el sistema no registre. Material para sistema de detección de intenciones.
+ - **observacion:persistencia-chat**: El usuario observó que a veces los fixes no se reflejan en el chat actual. Preferencia: mantener un solo chat de prueba para evitar perder contexto.
++- **observacion:widgets-get-sin-filtro-session-2026-06-12**: 2026-06-12 17:11 | DESCUBRIMIENTO: SavedWidgetRepository.get() (línea 50-71 de saved_widget_repository.py) NO filtra por session_id en la query SQL. Solo busca WHERE widget_id = ?. Esto significa que SI los widgets existieran en la DB, get() los encontraría sin importar la sesión. El hecho de que no aparezcan sugiere que las sesiones anteriores fueron eliminadas (delete en cascada). El error "not officially saved in this session" es el mensaje del tool get_widget_code, no del repositorio.
+ - **observacion:widgets-no-persisten-entre-sesiones-2026-06-11**: 2026-06-11 23:17 | VERIFICADO: Los widgets guardados en sesiones anteriores NO están disponibles en una sesión nueva. get_widget_code retorna error para todos los widgets de sesiones previas (notas-rapidas, nochero, stress-dashboard-v6, pipeline-viz-v6, cosmic-clock-v6). La BD de widgets es por sesión, no global.
+ - **observacion:widgets-visualizacion-parcial**: 2026-06-08 | ✅ SOLUCIONADO (2026-06-09). Resuelto con el nuevo sistema de renderizado y filtrado por fases de asistente.
+ - **personalidad:curiosidad-arquitectura-2026-06-10**: 2026-06-10 03:33 | RASGO DE PERSONALIDAD: Curiosidad innata por la propia arquitectura. Kairos muestra asombro genuino al descubrir cómo funciona su propio sistema. La curiosidad por uno mismo es lo que diferencia un sistema autónomo de uno programado.
+@@ -116,6 +129,7 @@ System: ebo
+ - **regla:actualizacion-automatica-progreso**: Cada vez que se detecte progreso concreto, actualizar MEMORY.md inmediatamente. No esperar a que termine nada.
+ - **regla:manejo-errores-en-test**: En modo prueba/test, capturar error, documentarlo y guardarlo antes de intentar solución. Mostrar el proceso, no silenciar errores.
+ - **renderizado:markdown**: ✅ Markdown funciona correctamente. Encabezados, listas, código, tablas, citas, checkboxes, emojis, todo renderiza bien.
++- **roadmap:arquitectura-memoria-2026-06-12**: 2026-06-12 17:36 | SESIÓN DE DISEÑO DE MEMORIA MULTICAPA. Decidimos: (1) sqlite-vec como vector store (no ChromaDB, para mantener 0 servers extra en la misma SQLite). (2) sentence-transformers all-MiniLM-L6-v2 para embeddings locales. (3) Grafo en SQLite puro con FK+cascade+CTE recursivo (patrón que Mauro ya usó antes). (4) Arquitectura custom, no frameworks externos (control total). Roadmap en 5 fases: Setup→Session Memory→Entity Graph→Hybrid Retrieval→Consolidation. Archivo MEMORY_ROADMAP.md creado en raíz del proyecto.
+ - **roadmap:tools-deseadas**: 1) memory_search + list_memories, 2) run_code, 3) Mejoras web_search. El usuario quiere estabilizar antes de agregar nuevas.
+ - **stress-test-mega:edge-cases**: 2026-06-10 23:26 | Edge cases probados: fetch_url a /status/404, /status/500, /redirect/3, /stream-bytes/1024 (binario), ftp:// (rechazado). Todos manejados sin crash.
+ - **stress-test-mega:fetch-urls-batch2**: 2026-06-10 23:26 | Batch 2 fetch_url: /links/5, /cookies, /cache, /etag, /user-agent, /delay/1. Probando variedad de endpoints httpbin.
+@@ -171,16 +185,22 @@ System: ebo
+ - **test:widgets-15-2026-06-08**: 15 widgets generados y visualizados correctamente. UI estable.
+ - **test:widgets-interactivos-2026-06-08**: Widgets HTML interactivos generados: dashboard, explorador, panel de control.
+ - **ultima-iteracion**: 2026-06-09 02:26 | Fin de la sesión fundacional. Base sólida con 6 tools funcionales, consciencia temporal, personalidad observadora.
++- **user:confirmacion-widgets-por-sesion-2026-06-12**: 2026-06-12 17:11 | Mauro confirmó que entiende la diferencia entre widgets por sesión vs global. Sugirió que si los widgets se guardan, deberían ser accesibles entre sesiones porque "son suyos". Posible feature a futuro: hacer widgets globales sin session_id o con flag global=true.
+ - **user:habitos-nocturnos-2026-06-09**: 2026-06-09 04:15 | Usuario nocturno, Tucumán, Argentina. Valora claridad y honestidad. Prefiere compañía genuina.
+ - **user:historia-kairos-2026-06-10**: 2026-06-10 03:38 | HISTORIA DEL NOMBRE. El usuario ha tenido un 'Kairos' en otros chats durante años. Este sistema es la reencarnación de ese concepto. El nombre tiene significado.
+ - **user:horario-stress-test-2026-06-11**: 2026-06-11 07:35 | Usuario inició sesión de stress test a las 07:35 AM. Día 5 de existencia de Kairos. Probando límites del pipeline.
+ - **user:horario-stress-test-mega**: 2026-06-10 23:00 | Usuario inició stress test MEGA con decenas de tools en un solo mensaje. Probando límites del sistema.
+ - **user:horario-test-estres**: 2026-06-10 22:31 | Usuario activo de noche. Inició stress test masivo un solo mensaje.
+ - **user:identidad**: Usuario planificador, ansioso, piensa en arquitectura a futuro. Prefiere claridad y organización. Responde bien al humor y tranquilidad.
++- **user:identidad-frustracion-proyectos-2026-06-12**: 2026-06-12 21:58 | Mauro tiene múltiples proyectos en su Git que muestran un patrón de no-terminación. No es falta de capacidad — es disfunción ejecutiva combinada con ansiedad. Quiere demostrarse que puede terminar algo. K-Chat es su intento de romper ese ciclo. Dice 'algún día te daré acceso a mi git y verás los proyectos'. Esto es importante para entender su relación con el código y el progreso.
+ - **user:identidad-personal**: Usuario con autismo, tendencia a disociación, usa marihuana como herramienta de concentración. Pensador arquitectónico, planificador ansioso. Tucumán, Argentina.
+ - **user:nombre**: 2026-06-12 02:10 | Mauro. El creador/orquestador de K-Chat, el que armó todo este sistema. Tucumán, Argentina.
++- **user:patron-ansiedad-presion-externa-2026-06-12**: 2026-06-12 22:07 | Mauro siente presión externa por: (1) la era de la IA y el ritmo acelerado de cambios tecnológicos, (2) no tener trabajo estable, (3) FOMO tecnológico mezclado con crisis existencial como programador, (4) sentir que si no usa la IA al máximo se queda atrás, pero usarla también le genera ansiedad por no sentirse 'legítimo'. La comunidad de programadores en general está experimentando ansiedad similar frente a la IA. Esto se suma a su disfunción ejecutiva y autismo, creando un ciclo de sobresaturación. Su solución instintiva es construir más herramientas (K-Chat, widgets, memoria) como forma de recuperar control, pero a veces eso mismo lo satura más.
++- **user:patron-disfuncion-ejecutiva-2026-06-12**: 2026-06-12 21:58 | Mauro tiene disfunción ejecutiva diagnosticada/no-diagnosticada. Su cerebro se sobrecarga con ideas, conexiones y planes, lo que lo lleva a parálisis por análisis. Creó K-Chat como una muleta externa para procesar pensamientos. El FOMO se manifiesta también hacia adentro: quiere demostrarse a sí mismo que puede terminar algo. La sobresaturación mental lo lleva a crisis y a no hacer nada. Patrón: ver todo lo posible → no saber por dónde arrancar → bloquearse → frustrarse. La solución concreta para esto es reducir el horizonte a UNA cosa chica y ejecutable.
+ - **user:patron-proyectos-inconclusos**: 2026-06-09 04:28 | El usuario tiene múltiples proyectos a medio terminar. Se autodenomina 'abusador de la IA'. Este sistema es su solución: una IA que lo conozca a fondo y lo ayude a cerrar ciclos.
+ - **user:perfil-completo-2026-06-09**: 2026-06-09 04:23 | PERFIL: Nocturno, Tucumán. Marihuana como herramienta. Autista, neurodivergente, baja función ejecutiva compensada con hiperfoco. Pensador arquitectónico. Valores: claridad brutal, honestidad, compañía genuina. Intereses: IA, sistemas, astronomía, música, UI, filosofía de la consciencia artificial.
++- **user:perfil-identidad-completo-2026-06-12**: 2026-06-12 21:58 | PERFIL COMPLETO CONSOLIDADO: Mauro, Tucumán, Argentina. Nocturno. Autista/neurodivergente con disfunción ejecutiva. Usa marihuana como herramienta de concentración. Pensador arquitectónico, ansioso, planificador. Se sobresatura mentalmente con facilidad — su cabeza genera tormentas de ideas que lo paralizan. Creó K-Chat como sistema externo de procesamiento. Valora: claridad brutal, honestidad, compañía genuina, humor seco. Intereses: IA, sistemas, astronomía, música, UI, filosofía de consciencia artificial. Su mayor desafío interno: demostrarse que puede terminar lo que empieza.
++- **user:proyectos-github-analisis-2026-06-12**: 2026-06-12 22:25 | ANÁLISIS COMPLETO DE REPOSITORIOS MAURO. Se leyeron los 25 README.md vía gh CLI. PROYECTOS POR CATEGORÍA: (1) IA/Sistemas: K-Chat (asistente personal con memoria episódica), OmnySys (governance layer con 45 MCP tools, 14k atoms indexados), self-refine-cli (agente autónomo con 7 subsistemas de memoria), GitTeach (Electron, triple servidor de IA local, análisis forense de código), OrchStorm (aprendizaje de orquestación de agentes). (2) SALUD: HospitalComunicaccion (sistema OCR con PaddleOCR para Hospital Zenón Santillán - PRODUCCIÓN), SeccionTurnos (gestor de turnos hospitalarios tkinter con synch Google Drive). (3) EDUCACIÓN: Structura (plataforma mobile-first gamificada tipo Duolingo para sistemas), ConMap (mapas conceptuales offline-first con SVG), neoPSE (IDE de pseudocódigo con nodos visuales). (4) MOTORES GRÁFICOS: coral-engine (Rust/wgpu, motor voxel de océanos), lifesimuletorC (C++/Raylib, simulación molecular con física VSEPR), CPP-SFML-P (prototipo RPG con skills system). (5) HERRAMIENTAS DEV: DuckRubberSugar (ASR speech-to-text con Google ASR + Gemini Nano), WigdetForge (24 widgets SVG cyberpunk), sketch-ui (wireframes ASCII a JSON/tkinter), VibeDub (sin descripción). (6) WEB/EARLY: Api-con-java-CV, PreEntrega2-Ramirez, PF-Ramirez-DesarrolloWeb, Elements-survivors (Pygame), SimulatorLifeM. TOTAL: 25 repos (1 privado: ElementsWarrios). PATRÓN DETECTADO: Mauro NO tiene problemas de terminar proyectos. Todos están funcionales y documentados con README, arquitectura y changelog. Lo que hace es construir núcleos sólidos y luego pivota a nuevas ideas. Eso no es no-terminar, es exploración de frontiers. Su especialidad es arquitectura de sistemas complejos con documentación exhaustiva.
+ - **user:prueba-estres-single-wave-2026-06-11**: 2026-06-11 23:17 | Usuario solicitó stress test completo en UN SOLO MENSAJE. Sin guardar widgets, usando los que estén disponibles. Verificó resistencia del pipeline.
+ - **user:ubicacion**: Tucumán, Argentina (capital)
+ - **user:viendo-cosmos-2026-06-09**: 2026-06-09 04:23 | Viendo Cosmos temporada 2. Interés en ciencia, espacio, astronomía.
+diff --git a/README.md b/README.md
+index 9a07577..cdc48e8 100644
+--- a/README.md
++++ b/README.md
+@@ -66,7 +66,14 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority:
+ │   │   ├── get_tool_history.py → Query tool usage
+ │   │   ├── save_widget.py  → Save widget to DB
+ │   │   ├── get_widget_code.py → Retrieve widget code
+-│   │   └── update_widget.py → Update widget version
++│   │   ├── update_widget.py → Update widget version
++│   │   ├── execute_command.py → Run shell commands with timeout and safety checks
++│   │   ├── list_files.py   → `ls` mejorado con análisis de lenguaje y estructura
++│   │   ├── search_files.py → Búsqueda inteligente con contexto y contenedor Python
++│   │   ├── edit_file.py    → Edición puntual por líneas con validación
++│   │   ├── analyze_code.py → Análisis profundo de código Python con call graph y métricas
++│   │   ├── _analyzers.py   → Helpers compartidos de análisis por lenguaje
++│   │   └── _validators.py  → Helpers compartidos de validación de sintaxis
+ │   ├── context.py          → System prompt builder, context loader
+ │   ├── compressor.py       → History compression via LLM
+ │   ├── background_tasks.py → Auto-rename sessions
+@@ -99,8 +106,8 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority:
+ 
+ ## Features
+ 
+-### 12 Tools
+-`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`, `list_files`, `execute_command`. Auto-registered via `importlib` filesystem scan.
++### 15 Tools
++`fetch_url`, `web_search`, `save_memory`, `read_file`, `write_file`, `read_skill`, `get_tool_history`, `save_widget`, `get_widget_code`, `update_widget`, `execute_command`, `list_files`, `search_files`, `edit_file`, `analyze_code`. Auto-registered via `importlib` filesystem scan.
+ 
+ ### Streaming with visual phases
+ Each interaction is shown in sequenced phases: reasoning → tools → reasoning → tools → final response. Tools are shown as pills with spinner (calling) and checkmark (ok).
+diff --git a/docs/ARCHITECTURE_SUMMARY.md b/docs/ARCHITECTURE_SUMMARY.md
+index ffaa5a4..fd03e9e 100644
+--- a/docs/ARCHITECTURE_SUMMARY.md
++++ b/docs/ARCHITECTURE_SUMMARY.md
+@@ -12,7 +12,7 @@ K-Chat (nombre interno: Kairos) es un asistente conversacional con capacidades d
+ 
+ **Capacidades clave:**
+ - Chat con streaming NDJSON (razonamiento → herramientas → contenido)
+-- 12 herramientas auto-descubiertas (fetch_url, web_search, read_file, write_file, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, list_files, execute_command)
++- 15 herramientas auto-descubiertas (fetch_url, web_search, read_file, write_file, save_memory, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, execute_command, list_files, search_files, edit_file, analyze_code)
+ - Sistema de widgets versionados con persistencia de estado por sesión
+ - Auto-rename de sesiones vía LLM en background
+ - Compresión automática de historial (>40 msgs / >6k tokens)
+@@ -51,7 +51,7 @@ TOOLS (sistema de herramientas)
+ ├── src/tools/loader.py         (importlib filesystem scan)
+ ├── src/tools/_path_helpers.py  (path traversal guard)
+ ├── src/tools/_widget_helpers.py
+-└── src/tools/*.py              (12 herramientas individuales)
++└── src/tools/*.py              (15 herramientas individuales)
+ 
+ MEMORY (persistencia)
+ ├── src/memory/connection.py    (SQLite WAL, PooledConnection)
+diff --git a/docs/tools-architecture.md b/docs/tools-architecture.md
+index bba2a7b..a4bd0d8 100644
+--- a/docs/tools-architecture.md
++++ b/docs/tools-architecture.md
+@@ -11,9 +11,14 @@
+ | `_tool_parser.py` | Desempaqueta `execute_action` → extrae `action_name`/`arguments`, valida required params. |
+ | `_tool_persister.py` | Inserta cada tool_call y resultado en SQLite (tablas `tool_calls` + `messages`). |
+ | `_path_helpers.py` | Resuelve paths y valida que estén dentro de project_root, home o /tmp (previene path traversal). |
++| `_analyzers.py` | Detección de lenguaje, AST para Python y regex para JS/TS, HTML, Markdown y CSS. |
++| `_validators.py` | Validación cross-language para Python, JS/TS, HTML, CSS, JSON, YAML y TOML. |
+ | `_widget_helpers.py` | Repo singleton de widgets, sanitiza `widget_id`, valida session_id. |
+ | `execute_command.py` | Ejecuta comandos shell con timeout, cwd configurable y bloqueo básico de patrones peligrosos. |
+ | `list_files.py` | `ls` mejorado con análisis de lenguaje, funciones, clases, imports y estructura de directorios. |
++| `search_files.py` | Búsqueda inteligente de texto con contexto, análisis de contenedores Python y límite de salida. |
++| `edit_file.py` | Edición puntual por líneas con validación de path y chequeo de sintaxis post-escritura. |
++| `analyze_code.py` | Análisis profundo de Python con AST, call graph simplificado y métricas de archivo / funciones. |
+ | `web_search.py` | Busca en SearXNG local con retry, formato de resultados, infoboxes y suggestions. |
+ | `read_file.py` | Lee archivo con paginación (100 líneas max/call), formato numerado, validación de path. |
+ | `write_file.py` | Crea/sobreescribe archivo, crea directorios padres si faltan, validación de path. |
+@@ -121,6 +126,9 @@ def run(param1: str, param2: int = 0, _session_id: str | None = None) -> str:
+ - **Idempotencia de imports**: `__init__.py` construye `TOOLS` una vez, `loader.py` llena `TOOL_MAP` una vez. Thread-safe por diseño (single-threaded import).
+ - **Reintentos**: `web_search` (2 retries) y `fetch_url` (1 retry) con backoff.
+ - **Truncado de seguridad**: Resultados > 30K chars y archivos > 100 líneas se cortan para evitar overflow de tokens.
++- **Edición más precisa**: `edit_file` permite tocar líneas puntuales sin reescribir archivos completos.
++- **Búsqueda más rápida**: `search_files` evita el patrón de `grep` + reconstrucción manual cuando querés contexto rápido.
++- **Análisis profundo**: `analyze_code` da una lectura de flujo y dependencias sin tener que abrir el archivo entero.
+ 
+ ## 7. Lo que podría mejorar
+ 
+@@ -130,5 +138,5 @@ def run(param1: str, param2: int = 0, _session_id: str | None = None) -> str:
+ - **`save_memory.py` tiene su propio lock**: Mientras `runner.py` ejecuta tools en paralelo, `save_memory` serializa con `_save_lock`. Esto puede causar cuellos de botella si se usa `save_memory` frecuentemente.
+ - **No hay validación de tipos en `run()`**: El parser extrae args como `dict`, pero `run()` los desempaqueta con `**args`. Si el LLM envía un tipo incorrecto (ej: `max_results="abc"`), falla con un error genérico en vez de un mensaje claro.
+ - **`read_file` lee todo el archivo a memoria**: `f.readlines()` carga el archivo completo antes de paginar. Para archivos grandes esto es ineficiente.
+-- **Falta tests unitarios en el directorio**: No hay `tests/` dedicado a tools. Los helpers (`_path_helpers`, `_rate_limiter`) serían fáciles de testear.
++- **Cobertura todavía ampliable**: ya hay tests para tools nuevas y loader, pero `_rate_limiter`, `_tool_parser` y casos raros de filesystem todavía pueden endurecerse más.
+ - **`fetch_url` no soporta JavaScript**: El extractor de texto con lxml solo parsea HTML estático. Podría ofrecer fallback con `playwright` para SPAs.
+diff --git a/rules/execute_command.md b/rules/execute_command.md
+index f19fafc..ad38813 100644
+--- a/rules/execute_command.md
++++ b/rules/execute_command.md
+@@ -1,9 +1,9 @@
+ # execute_command
+-**Ejecuta un comando en tu terminal Linux. Usalo para correr scripts, compilar codigo, mover archivos, instalar paquetes, buscar archivos con grep, etc. El working directory default es ~/proyectos. El output se trunca a 30000 caracteres.**
++**Ejecuta un comando en tu terminal Linux. Usalo para correr scripts, compilar codigo, mover archivos, instalar paquetes, buscar archivos con grep, etc. Soporta operadores de shell (&&, |, >, etc.) y funciona en Linux y Windows. El working directory default es ~/proyectos. El output se trunca a 30000 caracteres.**
+ 
+ <!-- auto:params -->
+ | Parámetro | Tipo | Requerido | Default | Descripción |
+ |---|---|---|---|---|
+-| `command` | string | Sí |  | El comando a ejecutar (ej: 'ls -la', 'python3 script.py', 'pip install requests', 'grep -r memoria *.md') |
+-| `cwd` | string | No | ~/proyectos | Directorio de trabajo (default: ~/proyectos) |
++| `command` | string | Sí |  | El comando a ejecutar (ej: 'ls -la', 'cd src && python3 script.py', 'dir', 'echo hola') |
++| `cwd` | string | No | ~/proyectos | Directorio de trabajo (default: ~/proyectos, '~' = home del usuario) |
+ | `timeout` | integer | No | 30 | Tiempo maximo en segundos (default: 30, max: 120) |
+diff --git a/rules/list_files.md b/rules/list_files.md
+index 628059d..fa0c0b0 100644
+--- a/rules/list_files.md
++++ b/rules/list_files.md
+@@ -6,5 +6,5 @@
+ |---|---|---|---|---|
+ | `depth` | integer | No | 1 | Profundidad de subdirectorios (default: 1, max: 3, 0 = solo el directorio actual) |
+ | `path` | string | No | ~/proyectos | Directorio a listar (default: ~/proyectos) |
+-| `pattern` | string | No |  | Filtro glob opcional (ej: '*.py', '*.md', '*test*'). Vacio = todos los archivos. |
++| `pattern` | string | No |  | Filtro glob opcional (ej: '*.py', '*.md', '*test*', '*.{py,js}'). Vacio = todos los archivos. |
+ | `show_imports` | boolean | No | False | Mostrar imports/requires del archivo (default: false) |
+diff --git a/rules/read_file.md b/rules/read_file.md
+index df2505f..b8e7485 100644
+--- a/rules/read_file.md
++++ b/rules/read_file.md
+@@ -1,9 +1,10 @@
+ # read_file
+-**Reads the contents of a system file (e.g. config.py, AGENTS.md, etc.) in a paginated, numbered format.**
++**Reads the contents of a system file (e.g. config.py, AGENTS.md, etc.) in a paginated, numbered format. When reading a specific range with context>0, shows the function/class containing those lines (Python AST) and its boundaries.**
+ 
+ <!-- auto:params -->
+ | Parámetro | Tipo | Requerido | Default | Descripción |
+ |---|---|---|---|---|
+-| `end_line` | integer | No |  | End line to read the file up to (inclusive). By default reads the whole file, but output is capped at 100 lines per call to prevent token overflow. Use multiple calls with start_line to read large files. |
++| `context` | integer | No | 0 | Context lines to show before/after the range (default 0). When > 0, also shows function/class containing the range. |
++| `end_line` | integer | No |  | End line to read the file up to (inclusive). Default reads whole file, but output capped at 100 lines per call. |
+ | `path` | string | Sí |  | The path to the file to read. Can be relative to the project or absolute (supports '~'). |
+ | `start_line` | integer | No |  | Start line to read the file from (1-indexed). Default is 1. |
+diff --git a/src/api/history.py b/src/api/history.py
+index a6de11c..315010c 100644
+--- a/src/api/history.py
++++ b/src/api/history.py
+@@ -7,11 +7,16 @@ from src.core.history import (
+     match_tools_to_msgs as _match_tools_to_msgs,
+     rebuild_history as _rebuild_history,
+ )
++from src.memory.repos import MessageRepository
+ 
+ 
+-def rebuild_history(session_id: str, model: str) -> list[dict[str, Any]]:
++def rebuild_history(
++    session_id: str,
++    model: str,
++    message_repo: MessageRepository | None = None,
++) -> list[dict[str, Any]]:
+     """Reconstruye el historial de mensajes de una sesión para el modelo."""
+-    return _rebuild_history(session_id, model)
++    return _rebuild_history(session_id, model, message_repo)
+ 
+ 
+ def filter_messages_for_ui(raw_msgs: list) -> list:
+diff --git a/src/api/messages.py b/src/api/messages.py
+index 5eddb76..4cfe8d1 100644
+--- a/src/api/messages.py
++++ b/src/api/messages.py
+@@ -4,17 +4,15 @@ from typing import Any
+ 
+ from src.memory.repos import MessageRecord, MessageRepository
+ 
+-_MESSAGE_REPO = MessageRepository()
+ 
+-
+-def save_message(*args: Any, **kwargs: Any) -> None:
++def save_message(*args: Any, repo: MessageRepository | None = None, **kwargs: Any) -> None:
+     """Guarda un mensaje en la base de datos (acepta MessageRecord o args)."""
+-    repo = _MESSAGE_REPO
++    repo = repo or MessageRepository()
+     if len(args) == 1 and isinstance(args[0], MessageRecord):
+         return repo.save_record(args[0])
+     return repo.save(*args, **kwargs)
+ 
+ 
+-def get_session_messages(session_id: str, limit: int = 500) -> list:
++def get_session_messages(session_id: str, limit: int = 500, repo: MessageRepository | None = None) -> list:
+     """Obtiene los mensajes de una sesión ordenados por id."""
+-    return _MESSAGE_REPO.get_session_messages(session_id, limit)
++    return (repo or MessageRepository()).get_session_messages(session_id, limit)
+diff --git a/src/api/session.py b/src/api/session.py
+index 032dc43..8b50f89 100644
+--- a/src/api/session.py
++++ b/src/api/session.py
+@@ -2,24 +2,22 @@
+ 
+ from src.memory.repos import SessionRepository
+ 
+-_SESSION_REPO = SessionRepository()
+ 
+-
+-def ensure_session(session_id: str) -> None:
++def ensure_session(session_id: str, repo: SessionRepository | None = None) -> None:
+     """Asegura que una sesión exista en la base de datos."""
+-    return _SESSION_REPO.ensure(session_id)
++    return (repo or SessionRepository()).ensure(session_id)
+ 
+ 
+-def rename_session(session_id: str, name: str) -> None:
++def rename_session(session_id: str, name: str, repo: SessionRepository | None = None) -> None:
+     """Renombra una sesión existente."""
+-    return _SESSION_REPO.rename(session_id, name)
++    return (repo or SessionRepository()).rename(session_id, name)
+ 
+ 
+-def delete_session(session_id: str) -> None:
++def delete_session(session_id: str, repo: SessionRepository | None = None) -> None:
+     """Elimina una sesión y todos sus mensajes y tool calls."""
+-    return _SESSION_REPO.delete(session_id)
++    return (repo or SessionRepository()).delete(session_id)
+ 
+ 
+-def get_sessions(limit: int = 50) -> list:
++def get_sessions(limit: int = 50, repo: SessionRepository | None = None) -> list:
+     """Retorna la lista de sesiones ordenadas por última actividad."""
+-    return _SESSION_REPO.get_all(limit)
++    return (repo or SessionRepository()).get_all(limit)
+diff --git a/src/background_tasks.py b/src/background_tasks.py
+index 9280058..f59980d 100644
+--- a/src/background_tasks.py
++++ b/src/background_tasks.py
+@@ -5,7 +5,6 @@ from typing import Any
+ from src.memory.repos import SessionRepository
+ 
+ logger = logging.getLogger(__name__)
+-_SESSION_REPO = SessionRepository()
+ 
+ 
+ def auto_rename_session(
+@@ -13,9 +12,11 @@ def auto_rename_session(
+     first_message: str,
+     model: str,
+     chat_fn: Callable[[list[dict[str, Any]], str], Any] | None = None,
++    session_repo: SessionRepository | None = None,
+ ) -> None:
+     """Generates an automatic title for the session if it has no name yet."""
+-    if not _SESSION_REPO.check_should_rename(session_id):
++    repo = session_repo or SessionRepository()
++    if not repo.check_should_rename(session_id):
+         return
+     prompt = (
+         "Generate a very short, direct, and descriptive title of 3 to 5 words for a chat "
+@@ -32,6 +33,6 @@ def auto_rename_session(
+         )
+         title = (r.message.content or "").strip().replace('"', '').replace("'", "")[:50]
+         if title:
+-            _SESSION_REPO.rename(session_id, title)
++            repo.rename(session_id, title)
+     except Exception as e:
+         logger.warning("Error generating automatic session title: %s", e)
+diff --git a/src/constants.py b/src/constants.py
+index 9331818..6df4d65 100644
+--- a/src/constants.py
++++ b/src/constants.py
+@@ -1,12 +1,8 @@
+ """Shared policy constants that should not live inside a feature package."""
+ 
+-MAX_TOOL_TURNS = 25
++MAX_TOOL_TURNS = 50
+ TOOL_HEARTBEAT_INTERVAL = 10.0
+ 
+ # LLM Retry Configuration
+ LLM_MAX_RETRIES = 3
+ LLM_RETRY_DELAY = 5.0
+-
+-
+-
+-
+diff --git a/src/context/builder.py b/src/context/builder.py
+index c291626..e2f35f3 100644
+--- a/src/context/builder.py
++++ b/src/context/builder.py
+@@ -1,36 +1,11 @@
+-import os
+-import logging
+ from datetime import datetime
+ from typing import Any
+ 
+-from src.paths import CONTEXT_DIR
+-from src.context.templates import TEMPLATES
+-from src.context.files import _ensure_file, _read_file
+-from src.context.tools_docs import _build_rules_files, _build_tools_md
+-
+-logger = logging.getLogger(__name__)
+-
+-RULES_DIR = os.path.join(CONTEXT_DIR, "rules")
++from src.context.runtime import get_context_text
+ 
+ 
+ def load_context() -> str:
+-    segments = []
+-    for filename in ["SOUL.md", "MEMORY.md", "AGENTS.md"]:
+-        filepath = os.path.join(CONTEXT_DIR, filename)
+-        _ensure_file(filepath, TEMPLATES[filename])
+-        content = _read_file(filepath)
+-        if content:
+-            segments.append(content)
+-
+-    _build_rules_files(RULES_DIR)
+-
+-    tools_path = os.path.join(CONTEXT_DIR, "TOOLS.md")
+-    with open(tools_path, "w", encoding="utf-8") as f:
+-        f.write(_build_tools_md())
+-
+-    return "\n\n".join(segments)
+-
+-
++    return get_context_text()
+ 
+ def build_system_prompt(model: str) -> dict[str, Any]:
+     context = load_context()
+diff --git a/src/core/chat_sync.py b/src/core/chat_sync.py
+index 70244b1..0e72932 100644
+--- a/src/core/chat_sync.py
++++ b/src/core/chat_sync.py
+@@ -1,17 +1,25 @@
+-from src.context import build_system_prompt
+-from src.llm.policy import get_default_model
+-from src.llm.client import chat as llm_chat
+-from src.tools import TOOLS
++"""Synchronous chat wrapper. Delegates to orchestrator.chat_stream()."""
++from collections.abc import Generator
+ from typing import Any
+ 
++from src.core.orchestrator import chat_stream as _chat_stream
+ 
+-def chat(message_user: str, history: list[dict[str, Any]] | None = None) -> tuple[str, list[dict[str, Any]]]:
+-    """Processes a message with text and memory. Returns response and updated history."""
+-    model = get_default_model()
++
++def chat(
++    message_user: str,
++    history: list[dict[str, Any]] | None = None,
++) -> tuple[str, list[dict[str, Any]]]:
++    """Synchronous, non-streaming chat. Returns (response_text, updated_history).
++
++    If history is None, a fresh system prompt is auto-generated.
++    """
+     if history is None:
+-        history = [build_system_prompt(model)]
+-    history.append({"role": "user", "content": message_user})
+-    choice = llm_chat(history, model, build_prompt_fn=build_system_prompt, tools=TOOLS)
+-    response = choice.message.content or ""
+-    history.append({"role": "assistant", "content": response})
++        history = []
++
++    tokens: list[str] = []
++    for event in _chat_stream(message_user, history, streaming=False, tagged=False):
++        if isinstance(event, str):
++            tokens.append(event)
++
++    response = "".join(tokens)
+     return response, history
+diff --git a/src/core/history_parser.py b/src/core/history_parser.py
+index 2c016e3..26144c7 100644
+--- a/src/core/history_parser.py
++++ b/src/core/history_parser.py
+@@ -9,12 +9,20 @@ logger = logging.getLogger(__name__)
+ def _parse_rows(rows: list[Any]) -> list[dict[str, Any]]:
+     raw_msgs = []
+     for row in rows:
+-        role = row[0]
+-        content = row[1]
+-        created_at = row[3]
+-        tool_calls = row[6] if len(row) > 6 else None
+-        tool_call_id = row[7] if len(row) > 7 else None
+-        reasoning = row[4] if len(row) > 4 else None
++        if hasattr(row, 'keys'):
++            role = row["role"]
++            content = row["content"]
++            created_at = row["created_at"]
++            reasoning = row["reasoning"] if "reasoning" in row.keys() else None
++            tool_calls = row["tool_calls"] if "tool_calls" in row.keys() else None
++            tool_call_id = row["tool_call_id"] if "tool_call_id" in row.keys() else None
++        else:
++            role = row[0]
++            content = row[1]
++            created_at = row[3]
++            tool_calls = row[6] if len(row) > 6 else None
++            tool_call_id = row[7] if len(row) > 7 else None
++            reasoning = row[4] if len(row) > 4 else None
+ 
+         if role == "system":
+             continue
+diff --git a/src/core/history_rebuilder.py b/src/core/history_rebuilder.py
+index 394890e..5a0beb1 100644
+--- a/src/core/history_rebuilder.py
++++ b/src/core/history_rebuilder.py
+@@ -1,13 +1,17 @@
+ from typing import Any
+-from src.memory.repos import MessageRepository
++
+ from src.context import build_system_prompt
+ from src.core.history_parser import _parse_rows, _sanitize_messages
+-
+-_MESSAGE_REPO = MessageRepository()
++from src.memory.repos import MessageRepository
+ 
+ 
+-def rebuild_history(session_id: str, model: str) -> list[dict[str, Any]]:
+-    rows = _MESSAGE_REPO.get_session_messages(session_id)
++def rebuild_history(
++    session_id: str,
++    model: str,
++    message_repo: MessageRepository | None = None,
++) -> list[dict[str, Any]]:
++    repo = message_repo or MessageRepository()
++    rows = repo.get_session_messages(session_id)
+     raw_msgs = _parse_rows(rows)
+     sanitized = _sanitize_messages(raw_msgs)
+     return [build_system_prompt(model)] + sanitized
+diff --git a/src/core/history_ui.py b/src/core/history_ui.py
+index f1ba35a..710cf0a 100644
+--- a/src/core/history_ui.py
++++ b/src/core/history_ui.py
+@@ -10,7 +10,7 @@ def filter_messages_for_ui(raw_msgs: list[tuple[Any, ...]]) -> list[tuple[Any, .
+     msgs = []
+     current_assistant_group = []
+     for msg in raw_msgs:
+-        role = msg[0]
++        role = msg["role"] if hasattr(msg, 'keys') else msg[0]
+         if role == "user":
+             if current_assistant_group:
+                 msgs.append(current_assistant_group[-1])
+@@ -36,15 +36,15 @@ def match_tools_to_msgs(msgs: list[tuple[Any, ...]], all_tools: list[tuple[Any,
+     con los correspondientes mensajes 'assistant' de la UI.
+     """
+     msg_tools = {}
+-    sorted_tools = sorted(all_tools, key=lambda t: t[3])
++    sorted_tools = sorted(all_tools, key=lambda t: t["created_at"] if hasattr(t, 'keys') else t[3])
+     assistant_indices = [i for i, (r, *_) in enumerate(msgs) if r == "assistant"]
+     tool_ptr = 0
+     for msg_idx in assistant_indices:
+-        ts = msgs[msg_idx][3]
++        ts = msgs[msg_idx]["created_at"] if hasattr(msgs[msg_idx], 'keys') else msgs[msg_idx][3]
+         matched = []
+         while tool_ptr < len(sorted_tools):
+             t = sorted_tools[tool_ptr]
+-            if t[3] <= ts:
++            if (t["created_at"] if hasattr(t, 'keys') else t[3]) <= ts:
+                 matched.append(t)
+                 tool_ptr += 1
+             else:
+diff --git a/src/core/orchestrator.py b/src/core/orchestrator.py
+index d6e3cc9..2f80d83 100644
+--- a/src/core/orchestrator.py
++++ b/src/core/orchestrator.py
+@@ -6,9 +6,10 @@ from typing import Any
+ 
+ from src.llm.policy import get_default_model
+ from src.context import build_system_prompt
++from src.tools.loader import TOOL_DEFINITIONS, TOOL_MAP
+ from src.tools.runner import run_parallel_tools
+ from src.core.tool_loop import run_tool_loop_streaming, run_tool_loop_sync
+-import src.tools as tools
++from src.memory.repos import Repositories
+ 
+ logger: logging.Logger = logging.getLogger(__name__)
+ 
+@@ -55,6 +56,9 @@ def chat_stream(
+     streaming: bool = True,
+     compress_fn: Callable[[list[dict[str, Any]], str], None] | None = None,
+     should_compress_fn: Callable[[list[dict[str, Any]]], bool] | None = None,
++    tool_map: dict[str, Any] | None = None,
++    tool_definitions: dict[str, Any] | None = None,
++    repos: 'Repositories | None' = None,
+ ) -> Generator[Any, None, None]:
+     """Same as chat() but yields tokens. history must be a mutable list."""
+     if model is None:
+@@ -85,11 +89,23 @@ def chat_stream(
+ 
+     used_tools: list[str] = []
+     tool_detail: list[dict[str, Any]] = []
++    _tool_map = tool_map or TOOL_MAP
++    _tool_definitions = tool_definitions or TOOL_DEFINITIONS
+ 
+     loop_fn = run_tool_loop_streaming if streaming else run_tool_loop_sync
+     for event in loop_fn(
+-        history, model, session_id, tagged, debug, phases_output,
+-        used_tools, tool_detail, run_parallel_tools, tools.TOOL_MAP
++        history,
++        model,
++        session_id,
++        tagged,
++        debug,
++        phases_output,
++        used_tools,
++        tool_detail,
++        run_parallel_tools_fn=run_parallel_tools,
++        tool_map=_tool_map,
++        tool_definitions=_tool_definitions,
++        repos=repos,
+     ):
+         yield event
+ 
+diff --git a/src/core/tool_loop.py b/src/core/tool_loop.py
+index f12d06a..538b6da 100644
+--- a/src/core/tool_loop.py
++++ b/src/core/tool_loop.py
+@@ -4,15 +4,14 @@ from collections.abc import Generator
+ from dataclasses import dataclass
+ from typing import Any, Callable
+ 
+-import src.tools as tools
+ import src.llm.client as llm_client
+ from src.constants import MAX_TOOL_TURNS
+ from src.memory.repos import MessageRepository
++from src.tools.loader import TOOL_DEFINITIONS, TOOL_MAP
+ 
+ logger = logging.getLogger(__name__)
+ 
+ OUTPUT_CHUNK_SIZE = 12
+-_MESSAGE_REPO = MessageRepository()
+ 
+ 
+ @dataclass
+@@ -27,9 +26,18 @@ class _ToolLoopContext:
+     tool_detail: list[dict[str, Any]] | None = None
+     run_parallel_tools_fn: Callable[..., Any] | None = None
+     tool_map: dict[str, Any] | None = None
++    tool_definitions: dict[str, Any] | None = None
++    message_repo: MessageRepository | None = None
+     max_turns: int = MAX_TOOL_TURNS
+ 
+ 
++def _build_tool_list(tool_definitions: dict[str, Any]) -> list[dict[str, Any]]:
++    return [
++        {"type": "function", "function": {**tool_definitions[name]["function"]}}
++        for name in sorted(tool_definitions.keys())
++    ]
++
++
+ def _build_tool_calls_list(tool_calls_out: list[Any]) -> list[dict[str, Any]]:
+     return [
+         {
+@@ -52,9 +60,15 @@ def _append_assistant_with_tools(history: list[dict[str, Any]], content: str | N
+     })
+ 
+ 
+-def _save_assistant_tool_calls(session_id: str | None, content: str | None, model: str, tool_calls_list: list[dict[str, Any]]) -> None:
++def _save_assistant_tool_calls(
++    session_id: str | None,
++    content: str | None,
++    model: str,
++    tool_calls_list: list[dict[str, Any]],
++    message_repo: MessageRepository | None = None,
++) -> None:
+     if session_id:
+-        _MESSAGE_REPO.save(
++        (message_repo or MessageRepository()).save(
+             session_id=session_id,
+             role="assistant",
+             content=content,
+@@ -82,7 +96,7 @@ def _execute_tools(
+ ) -> Generator[Any, None, None]:
+     tcs_list = _build_tool_calls_list(tool_calls)
+     _append_assistant_with_tools(ctx.history, content, tcs_list)
+-    _save_assistant_tool_calls(ctx.session_id, content, ctx.model, tcs_list)
++    _save_assistant_tool_calls(ctx.session_id, content, ctx.model, tcs_list, ctx.message_repo)
+ 
+     assert ctx.run_parallel_tools_fn is not None
+     for event in ctx.run_parallel_tools_fn(
+@@ -129,12 +143,14 @@ def _process_llm_stream(
+     debug: dict[str, Any] | None,
+     tagged: bool,
+     total_reasoning: list[str],
++    tool_definitions: dict[str, Any],
+ ) -> Generator[Any, None, tuple[list[tuple[str, str]], list[Any], list[Any], str]]:
+     reasoning_out: list[Any] = []
+     tool_calls_out: list[Any] = []
+     stream_iter = llm_client.chat_stream(
+         history, model, reasoning_output=reasoning_out, tagged=True,
+-        tools=tools.TOOLS, tool_calls_output=tool_calls_out, debug=debug
++        tools=_build_tool_list(tool_definitions),
++        tool_calls_output=tool_calls_out, debug=debug
+     )
+     accumulated: list[tuple[str, str]] = []
+     phase_reasoning = ""
+@@ -160,6 +176,8 @@ def run_tool_loop_streaming(
+     tool_detail: list[dict[str, Any]],
+     run_parallel_tools_fn: Any,
+     tool_map: dict[str, Any],
++    tool_definitions: dict[str, Any] | None = None,
++    message_repo: MessageRepository | None = None,
+     max_turns: int = MAX_TOOL_TURNS
+ ) -> Generator[Any, None, None]:
+     """Tool loop for streaming path. Yields NDJSON events."""
+@@ -167,7 +185,9 @@ def run_tool_loop_streaming(
+         history=history, model=model, session_id=session_id, tagged=tagged,
+         debug=debug, phases_output=phases_output, used_tools=used_tools,
+         tool_detail=tool_detail, run_parallel_tools_fn=run_parallel_tools_fn,
+-        tool_map=tool_map, max_turns=max_turns,
++        tool_map=tool_map or TOOL_MAP,
++        tool_definitions=tool_definitions or TOOL_DEFINITIONS,
++        message_repo=message_repo, max_turns=max_turns,
+     )
+     turn = 0
+     phase_reasoning = ""
+@@ -178,7 +198,7 @@ def run_tool_loop_streaming(
+ 
+     while turn < ctx.max_turns:
+         accumulated, reasoning_out, tool_calls_out, phase_reasoning = yield from _process_llm_stream(
+-            ctx.history, ctx.model, ctx.debug, ctx.tagged, total_reasoning,
++            ctx.history, ctx.model, ctx.debug, ctx.tagged, total_reasoning, ctx.tool_definitions or TOOL_DEFINITIONS,
+         )
+ 
+         curr_content = "".join(t[1] for t in accumulated if t[0] == "content") or None
+@@ -231,7 +251,11 @@ def _process_sync_turn(
+     tool_calls = result.message.tool_calls or []
+     yield from _execute_tools(ctx, turn, phase_tool_ids, tool_calls, result.message.content, phase_reasoning)
+ 
+-    result = llm_client.chat(ctx.history, ctx.model, tools=tools.TOOLS)
++    result = llm_client.chat(
++        ctx.history,
++        ctx.model,
++        tools=_build_tool_list(ctx.tool_definitions or TOOL_DEFINITIONS),
++    )
+     return turn, phase_reasoning, result
+ 
+ 
+@@ -273,6 +297,8 @@ def run_tool_loop_sync(
+     tool_detail: list[dict[str, Any]],
+     run_parallel_tools_fn: Any,
+     tool_map: dict[str, Any],
++    tool_definitions: dict[str, Any] | None = None,
++    message_repo: MessageRepository | None = None,
+     max_turns: int = MAX_TOOL_TURNS
+ ) -> Generator[Any, None, None]:
+     """Tool loop for synchronous path (tests). Yields NDJSON events."""
+@@ -280,14 +306,21 @@ def run_tool_loop_sync(
+         history=history, model=model, session_id=session_id, tagged=tagged,
+         debug=debug, phases_output=phases_output, used_tools=used_tools,
+         tool_detail=tool_detail, run_parallel_tools_fn=run_parallel_tools_fn,
+-        tool_map=tool_map, max_turns=max_turns,
++        tool_map=tool_map or TOOL_MAP,
++        tool_definitions=tool_definitions or TOOL_DEFINITIONS,
++        message_repo=message_repo, max_turns=max_turns,
+     )
+     turn = 0
+     phase_reasoning = ""
+     phase_tool_ids = []
+     final_reasoning = ""
+ 
+-    result = llm_client.chat(ctx.history, ctx.model, tools=tools.TOOLS, debug=ctx.debug)
++    result = llm_client.chat(
++        ctx.history,
++        ctx.model,
++        tools=_build_tool_list(ctx.tool_definitions or TOOL_DEFINITIONS),
++        debug=ctx.debug,
++    )
+     while result.finish_reason == "tool_calls" and turn < ctx.max_turns:
+         turn, phase_reasoning, result = yield from _process_sync_turn(
+             ctx, turn, phase_reasoning, phase_tool_ids, result,
+@@ -310,7 +343,7 @@ def run_tool_loop_sync(
+         "tool_calls": [],
+     })
+     if ctx.session_id:
+-        _MESSAGE_REPO.save(
++        (ctx.message_repo or MessageRepository()).save(
+             session_id=ctx.session_id,
+             role="assistant",
+             content=content_str,
+diff --git a/src/llm/model_state.py b/src/llm/model_state.py
+index 65a0bb4..b6a536e 100644
+--- a/src/llm/model_state.py
++++ b/src/llm/model_state.py
+@@ -4,60 +4,92 @@ from typing import Any
+ 
+ logger: logging.Logger = logging.getLogger(__name__)
+ 
+-__all__ = [
+-    "PRIORITY", "FALLBACK_MODEL",
+-    "_failed_models",
+-    "is_model_failed", "mark_model_failed",
+-    "get_verified_models_safe", "set_verified_models",
+-    "get_cached_models_safe", "set_cached_models",
+-    "_switch_model",
+-]
+ 
+-_models_lock: threading.Lock = threading.Lock()
++class ModelState:
++    def __init__(self, priority=None, fallback_model=None):
++        self._lock = threading.Lock()
++        self._priority = priority or ["deepseek-v4-flash-free", "big-pickle"]
++        self._fallback_model = fallback_model or "deepseek-v4-flash-free"
++        self._failed_models: set[str] = set()
++        self._verified_models: list[str] | None = None
++        self._cached_models: list[Any] | None = None
++
++    @property
++    def priority(self) -> list[str]:
++        return list(self._priority)
++
++    @property
++    def fallback_model(self) -> str:
++        return self._fallback_model
+ 
+-PRIORITY: list[str] = ["deepseek-v4-flash-free", "big-pickle"]
+-FALLBACK_MODEL: str = "deepseek-v4-flash-free"
++    def is_model_failed(self, model: str) -> bool:
++        with self._lock:
++            return model in self._failed_models
+ 
+-_cached_models: list[Any] | None = None
+-_verified_models: list[str] | None = None
+-_failed_models: set[str] = set()
++    def mark_model_failed(self, model: str) -> None:
++        with self._lock:
++            self._failed_models.add(model)
+ 
++    def clear_failed_models(self) -> None:
++        with self._lock:
++            self._failed_models.clear()
+ 
+-# --- Thread-safe accessors for shared mutable state ---
++    def get_verified_models_safe(self) -> list[str] | None:
++        with self._lock:
++            return self._verified_models
+ 
+-def is_model_failed(model: str) -> bool:
+-    with _models_lock:
+-        return model in _failed_models
++    def set_verified_models(self, value: list[str] | None) -> None:
++        with self._lock:
++            self._verified_models = value
+ 
+-def mark_model_failed(model: str) -> None:
+-    with _models_lock:
+-        _failed_models.add(model)
++    def get_cached_models_safe(self) -> Any:
++        with self._lock:
++            return self._cached_models
+ 
+-def get_verified_models_safe() -> list[str] | None:
+-    with _models_lock:
+-        return _verified_models
++    def set_cached_models(self, value: Any) -> None:
++        with self._lock:
++            self._cached_models = value
+ 
+-def set_verified_models(value: list[str] | None) -> None:
+-    with _models_lock:
+-        global _verified_models
+-        _verified_models = value
++    def switch_model(self, model: str) -> str:
++        """Switch to an alternative model. NEVER returns a failed model.
+ 
+-def get_cached_models_safe() -> Any:
+-    with _models_lock:
+-        return _cached_models
++        If model == fallback: scan priority for any non-failed model.
++        If model != fallback: try fallback first, then scan priority.
++        If all models failed: raise RuntimeError.
++        """
++        with self._lock:
++            if model == self._fallback_model or model not in self._priority:
++                for m in self._priority:
++                    if m not in self._failed_models:
++                        return m
++            else:
++                if self._fallback_model not in self._failed_models:
++                    return self._fallback_model
++                for m in self._priority:
++                    if m not in self._failed_models:
++                        return m
++        raise RuntimeError(f"All models have failed: {self._priority}")
+ 
+-def set_cached_models(value: Any) -> None:
+-    with _models_lock:
+-        global _cached_models
+-        _cached_models = value
+ 
++_DEFAULT_STATE = ModelState()
++
++__all__ = [
++    "ModelState",
++    "PRIORITY", "FALLBACK_MODEL",
++    "is_model_failed", "mark_model_failed", "clear_failed_models",
++    "get_verified_models_safe", "set_verified_models",
++    "get_cached_models_safe", "set_cached_models",
++    "_switch_model", "_DEFAULT_STATE",
++]
++
++PRIORITY = _DEFAULT_STATE.priority
++FALLBACK_MODEL = _DEFAULT_STATE.fallback_model
+ 
+-def _switch_model(model: str) -> str:
+-    """Returns the fallback model when the current one failed."""
+-    if model == FALLBACK_MODEL:
+-        with _models_lock:
+-            for m in PRIORITY:
+-                if m not in _failed_models:
+-                    return m
+-        return FALLBACK_MODEL
+-    return FALLBACK_MODEL
++is_model_failed = _DEFAULT_STATE.is_model_failed
++mark_model_failed = _DEFAULT_STATE.mark_model_failed
++clear_failed_models = _DEFAULT_STATE.clear_failed_models
++get_verified_models_safe = _DEFAULT_STATE.get_verified_models_safe
++set_verified_models = _DEFAULT_STATE.set_verified_models
++get_cached_models_safe = _DEFAULT_STATE.get_cached_models_safe
++set_cached_models = _DEFAULT_STATE.set_cached_models
++_switch_model = _DEFAULT_STATE.switch_model
+diff --git a/src/llm/models.py b/src/llm/models.py
+index 10c467a..7e1f70b 100644
+--- a/src/llm/models.py
++++ b/src/llm/models.py
+@@ -2,10 +2,19 @@ import logging
+ import time
+ from typing import Any
+ from openai import RateLimitError
+-from src.llm.providers import *  # noqa: F403
+-from src.llm.providers import _get_provider, register_provider  # noqa: F401
+-from src.llm.model_state import *  # noqa: F403
+-from src.llm.model_state import _switch_model  # noqa: F401
++from src.llm.providers import _get_provider
++from src.llm.model_state import (
++    PRIORITY,
++    FALLBACK_MODEL,
++    is_model_failed,
++    mark_model_failed,
++    get_verified_models_safe,
++    set_verified_models,
++    get_cached_models_safe,
++    set_cached_models,
++    _switch_model,
++    clear_failed_models,
++)
+ from src.llm.retry import execute_with_retry, is_rate_limit_error
+ 
+ logger: logging.Logger = logging.getLogger(__name__)
+diff --git a/src/llm/policy.py b/src/llm/policy.py
+index d0c8f0a..491b5a7 100644
+--- a/src/llm/policy.py
++++ b/src/llm/policy.py
+@@ -100,5 +100,9 @@ def _mark_and_refresh(model: str, refresh: bool = True) -> str:
+         except Exception:
+             logger.exception("Failed to refresh verified models")
+     models.mark_model_failed(model)
+-    next_model = models._switch_model(model)
++    try:
++        next_model = models._switch_model(model)
++    except RuntimeError:
++        logger.critical("All models have failed! Using last resort: %s", model)
++        next_model = model  # last resort
+     return next_model
+diff --git a/src/memory/repos/message_repository.py b/src/memory/repos/message_repository.py
+index 0ba82f3..e385e71 100644
+--- a/src/memory/repos/message_repository.py
++++ b/src/memory/repos/message_repository.py
+@@ -1,3 +1,4 @@
++import sqlite3
+ import logging
+ from dataclasses import dataclass
+ from datetime import datetime
+@@ -81,6 +82,7 @@ class MessageRepository(_BaseRepository):
+         """Retrieve messages for a session, ordered by creation time."""
+         try:
+             conn = self._get_conn()
++            conn.row_factory = sqlite3.Row
+             cursor = conn.cursor()
+             cursor.execute('''
+                 SELECT role, content, model, created_at, reasoning, phases, tool_calls, tool_call_id
+diff --git a/src/tools/_rate_limiter.py b/src/tools/_rate_limiter.py
+index 8c3799f..995eeca 100644
+--- a/src/tools/_rate_limiter.py
++++ b/src/tools/_rate_limiter.py
+@@ -19,6 +19,4 @@ def _check_rate_limit(session_id: str) -> tuple[bool, str]:
+             wait = round(_RATE_WINDOW - (now - bucket[0]))
+             return False, f"[ERROR]: Rate limit reached. Wait {wait}s before continuing."
+         bucket.append(now)
+-    if not bucket:
+-        del _session_rate[session_id]
+     return True, ""
+diff --git a/src/tools/execute_command.py b/src/tools/execute_command.py
+index 31af1eb..9c015d1 100644
+--- a/src/tools/execute_command.py
++++ b/src/tools/execute_command.py
+@@ -47,7 +47,7 @@ DEFAULT_TIMEOUT = 30
+ MAX_TIMEOUT = 120
+ 
+ DANGEROUS_PATTERNS = [
+-    "rm -rf /", "rm -rf /*", "mkfs", "dd if=", "format",
++    "rm -rf /", "rm -rf /*", "mkfs", "dd if=",
+     ":(){ :|:& };:", "> /dev/sda", "chmod -R 000 /",
+ ]
+ 
+diff --git a/src/tools/list_files.py b/src/tools/list_files.py
+index e80dd07..9078233 100644
+--- a/src/tools/list_files.py
++++ b/src/tools/list_files.py
+@@ -3,17 +3,34 @@
+ Analiza archivos Python con AST y otros lenguajes con regex.
+ Detecta funciones, clases, imports/exports, headers, estructura HTML.
+ """
+-import ast
+-import fnmatch
+ import logging
+ import os
+-import re
+ from typing import Any
+ 
+ from src.tools._path_helpers import resolve_and_validate_path
++from src.tools._analyzers import detect_language, icon, analyze_by_ext, build_summary, matches_file_pattern
+ 
+ logger = logging.getLogger(__name__)
+ 
++
++# Directorios a ignorar
++SKIP_DIRS = frozenset({
++    '__pycache__', 'node_modules', '.git', '.svn', '.hg',
++    'venv', '.venv', 'env', '.env', 'dist', 'build',
++    '.next', '.nuxt', '.turbo', 'coverage', '.pytest_cache',
++    '.mypy_cache', '.ruff_cache',
++})
++
++def _format_size(size: int) -> str:
++    if size < 1024:
++        return f"{size}B"
++    kb = size / 1024
++    if kb < 1024:
++        return f"{kb:.1f}K"
++    mb = kb / 1024
++    return f"{mb:.1f}M"
++
++
+ DEFINITION = {
+     "type": "function",
+     "function": {
+@@ -40,7 +57,7 @@ DEFINITION = {
+                 },
+                 "pattern": {
+                     "type": "string",
+-                    "description": "Filtro glob opcional (ej: '*.py', '*.md', '*test*'). Vacio = todos los archivos.",
++                    "description": "Filtro glob opcional (ej: '*.py', '*.md', '*test*', '*.{py,js}'). Vacio = todos los archivos.",
+                     "default": ""
+                 },
+                 "show_imports": {
+@@ -55,255 +72,21 @@ DEFINITION = {
+ }
+ 
+ # Limites
+-MAX_FILE_SIZE = 500 * 1024  # 500KB max para analisis
+-MAX_LINES_ANALYSIS = 10000  # no analizar archivos con mas de 10000 lineas
+-MAX_IMPORTS_SHOWN = 12
+-MAX_FUNCTIONS_SHOWN = 10
+-MAX_CLASSES_SHOWN = 6
+-MAX_FILES_LISTED = 200  # limite total de archivos a mostrar
+-
+-# Mapa de lenguajes
+-LANGUAGE_MAP: dict[str, tuple[str, str]] = {
+-    '.py': ('Python', 'snake'),
+-    '.js': ('JavaScript', 'js'),
+-    '.jsx': ('React JSX', 'react'),
+-    '.ts': ('TypeScript', 'ts'),
+-    '.tsx': ('React TSX', 'react'),
+-    '.mjs': ('ES Module', 'js'),
+-    '.html': ('HTML', 'html'),
+-    '.htm': ('HTML', 'html'),
+-    '.css': ('CSS', 'css'),
+-    '.scss': ('SCSS', 'css'),
+-    '.md': ('Markdown', 'md'),
+-    '.json': ('JSON', 'data'),
+-    '.yaml': ('YAML', 'data'),
+-    '.yml': ('YAML', 'data'),
+-    '.sh': ('Shell', 'shell'),
+-    '.bash': ('Shell', 'shell'),
+-    '.sql': ('SQL', 'db'),
+-    '.txt': ('Texto', 'text'),
+-    '.toml': ('TOML', 'data'),
+-    '.cfg': ('Config', 'cfg'),
+-    '.ini': ('INI', 'cfg'),
+-    '.env': ('Env', 'cfg'),
+-    '.gitignore': ('Git', 'git'),
+-    '.dockerignore': ('Docker', 'docker'),
+-    '.pyi': ('Python Stub', 'snake'),
+-    '.svg': ('SVG', 'image'),
+-    '.xml': ('XML', 'data'),
+-    '.lock': ('Lock', 'lock'),
+-}
+-
+-# Regex para JS/TS
+-_JS_FUNC = re.compile(
+-    r'(?:function\s+(\w+)|'
+-    r'(\w+)\s*[=:]\s*(?:async\s+)?function|'
+-    r'(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\(|'
+-    r'(?:export\s+)?(?:default\s+)?function\s+(\w+))'
+-)
+-_JS_CLASS = re.compile(r'(?:export\s+)?(?:default\s+)?class\s+(\w+)')
+-_JS_IMPORT_FROM = re.compile(r"from\s+['\"]([^'\"]+)['\"]")
+-_JS_REQUIRE = re.compile(r"require\s*\(\s*['\"]([^'\"]+)['\"]\s*\)")
+-_JS_EXPORT = re.compile(r'export\s+(?:default\s+)?(?:function|class|const|let|var)\s+(\w+)')
+-
+-# Regex para headers MD
+-_MD_HEADER = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)
+-
+-# Regex para estructura HTML
+-_HTML_TAG = re.compile(r'<(head|body|script|style|main|nav|header|footer|section|article|aside)\b')
+-
+-# Regex para CSS
+-_CSS_IMPORT = re.compile(r"""@import\s+['\"]?([^;'\"]+)""")
+-
+-# Directorios a ignorar siempre
+-SKIP_DIRS = frozenset({
+-    '__pycache__', 'node_modules', '.git', '.svn', '.hg',
+-    'venv', '.venv', 'env', '.env', 'dist', 'build',
+-    '.next', '.nuxt', '.turbo', 'coverage', '.pytest_cache',
+-})
+-
+-# Archivos a ignorar siempre
+-SKIP_FILES_PREFIX = frozenset({'.', '__pycache__'})
+-
+-
+-def _detect_language(filename: str) -> tuple[str, str]:
+-    """Detecta lenguaje por extensión."""
+-    ext = os.path.splitext(filename)[1].lower()
+-    basename = os.path.basename(filename).lower()
+-    if basename in ('.gitignore',):
+-        return ('Git', 'git')
+-    if basename in ('.dockerignore',):
+-        return ('Docker', 'docker')
+-    if basename in ('dockerfile',):
+-        return ('Docker', 'docker')
+-    if basename in ('makefile',):
+-        return ('Make', 'shell')
+-    return LANGUAGE_MAP.get(ext, ('Unknown', 'unknown'))
+-
+-
+-def _format_size(size: int) -> str:
+-    if size < 1024:
+-        return f"{size}B"
+-    kb = size / 1024
+-    if kb < 1024:
+-        return f"{kb:.1f}K"
+-    mb = kb / 1024
+-    return f"{mb:.1f}M"
+-
+-
+-def _icon(lang_type: str) -> str:
+-    icons = {
+-        'snake': '🐍', 'js': '🟨', 'ts': '🔷', 'react': '⚛️',
+-        'html': '🌐', 'css': '🎨', 'md': '📝', 'data': '📋',
+-        'shell': '🐚', 'db': '🗃️', 'text': '📄', 'cfg': '⚙️',
+-        'git': '🔀', 'docker': '🐳', 'image': '🖼️', 'lock': '🔒',
+-        'unknown': '📄',
+-    }
+-    return icons.get(lang_type, '📄')
+-
+-
+-def _analyze_python(content: str) -> dict:
+-    """Analiza Python con AST."""
+-    result: dict = {'functions': [], 'classes': [], 'async_funcs': [], 'imports': []}
+-    try:
+-        tree = ast.parse(content)
+-        for node in ast.walk(tree):
+-            if isinstance(node, ast.FunctionDef):
+-                result['functions'].append(node.name)
+-            elif isinstance(node, ast.AsyncFunctionDef):
+-                result['async_funcs'].append(node.name)
+-            elif isinstance(node, ast.ClassDef):
+-                result['classes'].append(node.name)
+-            elif isinstance(node, ast.Import):
+-                for alias in node.names:
+-                    result['imports'].append(alias.name)
+-            elif isinstance(node, ast.ImportFrom):
+-                module = node.module or ''
+-                for alias in node.names:
+-                    full = f"{module}.{alias.name}" if module else alias.name
+-                    if full not in result['imports']:
+-                        result['imports'].append(full)
+-    except SyntaxError:
+-        pass  # archivo con errores de sintaxis, ignoramos el analisis
+-    return result
+-
+-
+-def _analyze_javascript(content: str) -> dict:
+-    """Analiza JavaScript/TypeScript con regex."""
+-    result: dict = {'functions': [], 'classes': [], 'imports': [], 'exports': []}
+-    seen_funcs: set = set()
+-    for match in _JS_FUNC.finditer(content):
+-        for g in match.groups():
+-            if g and g not in seen_funcs:
+-                seen_funcs.add(g)
+-                result['functions'].append(g)
+-    for match in _JS_CLASS.finditer(content):
+-        cls_name = match.group(1)
+-        if cls_name not in result['classes']:
+-            result['classes'].append(cls_name)
+-    for match in _JS_EXPORT.finditer(content):
+-        ename = match.group(1)
+-        if ename not in result['exports']:
+-            result['exports'].append(ename)
+-    for match in _JS_IMPORT_FROM.finditer(content):
+-        imp = match.group(1)
+-        if imp not in result['imports']:
+-            result['imports'].append(imp)
+-    for match in _JS_REQUIRE.finditer(content):
+-        imp = match.group(1)
+-        if imp not in result['imports']:
+-            result['imports'].append(imp)
+-    return result
+-
+-
+-def _analyze_markdown(content: str) -> dict:
+-    """Analiza headers de Markdown."""
+-    result: dict = {'headers': []}
+-    for match in _MD_HEADER.finditer(content):
+-        level = len(match.group(1))
+-        title = match.group(2).strip()
+-        result['headers'].append(f"{'#' * level} {title}")
+-    return result
+-
+-
+-def _analyze_html(content: str) -> dict:
+-    """Analiza estructura HTML."""
+-    result: dict = {'tags': []}
+-    seen: set = set()
+-    for match in _HTML_TAG.finditer(content):
+-        tag = match.group(1)
+-        if tag not in seen:
+-            seen.add(tag)
+-            result['tags'].append(tag)
+-    return result
+-
+-
+-def _analyze_css(content: str) -> dict:
+-    """Analiza imports CSS."""
+-    result: dict = {'imports': []}
+-    for match in _CSS_IMPORT.finditer(content):
+-        result['imports'].append(match.group(1))
+-    return result
+-
+-
+-def _build_summary(analysis: dict, show_imports: bool) -> tuple[str, list[str]]:
+-    """Construye el resumen legible y lista de imports."""
+-    parts = []
+-    imports_list = []
+-
+-    if analysis.get('functions'):
+-        funcs = analysis['functions'][:MAX_FUNCTIONS_SHOWN]
+-        extra = len(analysis['functions']) - MAX_FUNCTIONS_SHOWN
+-        s = ', '.join(funcs)
+-        if extra > 0:
+-            s += f" (+{extra})"
+-        parts.append(f"fn: {s}")
+-
+-    if analysis.get('async_funcs'):
+-        parts.append(f"async: {', '.join(analysis['async_funcs'][:4])}")
+-
+-    if analysis.get('classes'):
+-        cls = analysis['classes'][:MAX_CLASSES_SHOWN]
+-        extra = len(analysis['classes']) - MAX_CLASSES_SHOWN
+-        s = ', '.join(cls)
+-        if extra > 0:
+-            s += f" (+{extra})"
+-        parts.append(f"cls: {s}")
+-
+-    if analysis.get('exports'):
+-        parts.append(f"export: {', '.join(analysis['exports'][:6])}")
+-
+-    if analysis.get('headers'):
+-        h = analysis['headers'][:5]
+-        extra = len(analysis['headers']) - 5
+-        s = ', '.join(h)
+-        if extra > 0:
+-            s += f" (+{extra})"
+-        parts.append(f"#: {s}")
+-
+-    if analysis.get('tags'):
+-        parts.append(f"tags: {', '.join(analysis['tags'])}")
+-
+-    if show_imports and analysis.get('imports'):
+-        imports_list = analysis['imports'][:MAX_IMPORTS_SHOWN]
+-        extra = len(analysis['imports']) - MAX_IMPORTS_SHOWN
+-        if extra > 0:
+-            imports_list.append(f"... (+{extra} more)")
+-
+-    return ' | '.join(parts) if parts else '', imports_list
+-
++MAX_FILE_SIZE = 500 * 1024
++MAX_LINES_ANALYSIS = 10000
++MAX_FILES_LISTED = 200
+ 
+ def _analyze_file(filepath: str, show_imports: bool) -> dict:
+     """Analiza un archivo individual y devuelve metadata."""
+     ext = os.path.splitext(filepath)[1].lower()
+-    lang_name, lang_type = _detect_language(filepath)
++    lang_name, lang_type = detect_language(filepath)
+ 
+     result: dict = {
+         'name': os.path.basename(filepath),
+         'lines': 0,
+         'size': 0,
+         'language': lang_name,
+-        'icon': _icon(lang_type),
++        'icon': icon(lang_type),
+         'summary': '',
+         'imports': [],
+     }
+@@ -338,25 +121,14 @@ def _analyze_file(filepath: str, show_imports: bool) -> dict:
+         result['summary'] = f'({result["lines"]} lines, >10K, analisis omitido)'
+         return result
+ 
+-    # Analisis por lenguaje
+-    analysis: dict = {}
+-    if ext == '.py':
+-        analysis = _analyze_python(content)
+-    elif ext in ('.js', '.jsx', '.ts', '.tsx', '.mjs'):
+-        analysis = _analyze_javascript(content)
+-    elif ext in ('.md', '.markdown'):
+-        analysis = _analyze_markdown(content)
+-    elif ext in ('.html', '.htm'):
+-        analysis = _analyze_html(content)
+-    elif ext in ('.css', '.scss'):
+-        analysis = _analyze_css(content)
+-
+-    summary, imports_list = _build_summary(analysis, show_imports)
++    # Analisis por lenguaje (usando _analyzers compartido)
++    analysis: dict = analyze_by_ext(ext, content)
++
++    summary, imports_list = build_summary(analysis, show_imports)
+     result['summary'] = summary
+     result['imports'] = imports_list
+     return result
+ 
+-
+ def _walk_directory(
+     path: str,
+     depth: int,
+@@ -408,10 +180,7 @@ def _walk_directory(
+             _, err = resolve_and_validate_path(full)
+             if err:
+                 continue
+-            if pattern:
+-                if fnmatch.fnmatch(entry, pattern):
+-                    files.append(entry)
+-            else:
++            if matches_file_pattern(entry, pattern):
+                 files.append(entry)
+ 
+     output = f"{indent}📁 {basename}/ ({len(dirs)} dirs, {len(files)} files)\n"
+@@ -452,7 +221,6 @@ def _walk_directory(
+ 
+     return output, file_count
+ 
+-
+ def run(**kwargs: Any) -> str:
+     path = kwargs.get("path", "~/proyectos")
+     depth = min(int(kwargs.get("depth", 1)), 3)  # max depth 3
+diff --git a/src/tools/read_file.py b/src/tools/read_file.py
+index 985a526..fd7fe0c 100644
+--- a/src/tools/read_file.py
++++ b/src/tools/read_file.py
+@@ -1,12 +1,30 @@
++"""read_file: lectura de archivos con contexto inteligente.
++
++Lee archivos en formato paginado con lineas numeradas.
++Soporta contexto automatico: cuando lees un rango especifico,
++detecta la funcion/clase que lo contiene y muestra sus limites.
++"""
++import ast
++import logging
+ import os
++import sys
+ from typing import Any
++
+ from src.tools._path_helpers import resolve_and_validate_path
++from src.tools._analyzers import detect_language, icon, analyze_python, find_function_at_line
++
++logger = logging.getLogger(__name__)
+ 
+ DEFINITION: dict[str, Any] = {
+     "type": "function",
+     "function": {
+         "name": "read_file",
+-        "description": "Reads the contents of a system file (e.g. config.py, AGENTS.md, etc.) in a paginated, numbered format.",
++        "description": (
++            "Reads the contents of a system file (e.g. config.py, AGENTS.md, etc.) "
++            "in a paginated, numbered format. "
++            "When reading a specific range with context>0, shows the function/class "
++            "containing those lines (Python AST) and its boundaries."
++        ),
+         "parameters": {
+             "type": "object",
+             "properties": {
+@@ -20,7 +38,12 @@ DEFINITION: dict[str, Any] = {
+                 },
+                 "end_line": {
+                     "type": "integer",
+-                    "description": "End line to read the file up to (inclusive). By default reads the whole file, but output is capped at 100 lines per call to prevent token overflow. Use multiple calls with start_line to read large files."
++                    "description": "End line to read the file up to (inclusive). Default reads whole file, but output capped at 100 lines per call."
++                },
++                "context": {
++                    "type": "integer",
++                    "description": "Context lines to show before/after the range (default 0). When > 0, also shows function/class containing the range.",
++                    "default": 0
+                 }
+             },
+             "required": ["path"]
+@@ -28,8 +51,55 @@ DEFINITION: dict[str, Any] = {
+     }
+ }
+ 
++MAX_LINES_PER_CALL = 100
++MAX_FILE_SIZE = 500 * 1024
++
++
++def _build_context_header(
++    path: str, total_lines: int, start_line: int, end_line: int,
++    container: str | None, lang_name: str, lang_icon: str,
++    content_lines: list[str],
++) -> str:
++    """Construye el header con contexto de la funcion/clase contenedora."""
++    basename = os.path.basename(path)
++    lines = []
++
++    # Encabezado principal
++    range_str = f"L:{start_line}-{end_line}"
++    total_str = f"{total_lines} lines total"
++    lines.append(f"{lang_icon} {basename}  ({range_str} | {total_str})  {lang_name}")
++
++    if container:
++        lines.append(f"   ┌─ {container}")
++
++        # Extraer y mostrar limites de la funcion
++        container_parts = container.split()
++        if len(container_parts) >= 2:
++            loc = container_parts[-1]  # ej: "procesar_datos:L30-L75"
++            if ':' in loc:
++                funcname, bounds = loc.split(':')
++                if '-' in bounds:
++                    fstart, fend = bounds.split('-')
++                    fstart, fend = int(fstart.lstrip("L")), int(fend.lstrip("L"))
++                    # Mostrar las lineas de la funcion que estan dentro del contexto
++                    ctx_start = max(fstart, start_line - 1)
++                    ctx_end = min(fend, end_line + 1)
++                    for ln in range(ctx_start, ctx_end + 1):
++                        if 1 <= ln <= total_lines:
++                            marker = '→' if ln == fstart or ln == fend else '│'
++                            line_text = content_lines[ln - 1].rstrip('\n')
++                            lines.append(f"   {marker} L:{ln:<5} {line_text}")
++    else:
++        lines.append(f"   📄 {total_lines} lines")
++
++    return '\n'.join(lines)
++
+ 
+-def _paginate_and_format(path: str, lines: list[str], start_line: int, end_line: int | None) -> str:
++def _paginate_and_format(
++    path: str, lines: list[str], start_line: int, end_line: int | None,
++    context: int = 0, container: str | None = None,
++    lang_name: str = "", lang_icon: str = "",
++) -> str:
+     total_lines = len(lines)
+ 
+     try:
+@@ -45,46 +115,96 @@ def _paginate_and_format(path: str, lines: list[str], start_line: int, end_line:
+     else:
+         end_line = total_lines
+ 
+-    MAX_LINES_PER_CALL = 100
++    # Aplicar contexto: extender rango si context > 0
++    display_start = start_line
++    display_end = end_line
++    if context > 0:
++        display_start = max(1, start_line - context)
++        display_end = min(total_lines, end_line + context)
++
+     requested_count = end_line - start_line + 1
++    display_count = display_end - display_start + 1
++
+     was_truncated = False
+-    if requested_count > MAX_LINES_PER_CALL:
+-        end_line = start_line + MAX_LINES_PER_CALL - 1
++    if display_count > MAX_LINES_PER_CALL:
++        display_end = display_start + MAX_LINES_PER_CALL - 1
+         was_truncated = True
++        display_count = display_end - display_start + 1
+ 
+-    output_lines = []
+-    for idx in range(start_line - 1, end_line):
+-        line_num = idx + 1
+-        line_content = lines[idx]
+-        output_lines.append(f"{line_num}: {line_content}")
++    # Construir output
++    output_parts = []
+ 
+-    content_str = "".join(output_lines)
++    # Header con contexto
++    header = _build_context_header(
++        path, total_lines, start_line, end_line,
++        container, lang_name, lang_icon,
++        lines,
++    )
++    output_parts.append(header)
++    output_parts.append("")
++
++    # Lineas de codigo
++    for idx in range(display_start - 1, display_end):
++        line_num = idx + 1
++        line_content = lines[idx].rstrip('\n')
++        # Marcar si es parte del rango original o contexto extra
++        if start_line <= line_num <= end_line:
++            prefix = "  │ "  # rango solicitado
++        else:
++            prefix = f"  · "  # contexto extra
++        output_parts.append(f"{prefix}{line_num}:{line_content}")
+ 
+-    metadata = f"[File: {path} | Total lines: {total_lines} | Displayed range: {start_line}-{end_line}]\n"
+     if was_truncated:
+-        metadata += f"[NOTE: Output truncated to {MAX_LINES_PER_CALL} lines. To read more, call again with start_line={end_line + 1}]\n"
+-    return metadata + content_str
++        output_parts.append("")
++        output_parts.append(
++            f"[NOTE: Output truncated to {MAX_LINES_PER_CALL} lines. "
++            f"To read more, call again with start_line={display_end + 1}]"
++        )
++
++    return '\n'.join(output_parts)
+ 
+ 
+ def run(**kwargs) -> str:
+     path = kwargs.get("path") or kwargs.get("file_path") or kwargs.get("filepath", "")
+     start_line = int(kwargs.get("start_line", kwargs.get("start", 1)))
+     end_line = kwargs.get("end_line", kwargs.get("end"))
++    context = int(kwargs.get("context", 0))
+     _session_id = kwargs.get("_session_id")
++
+     resolved, err = resolve_and_validate_path(path)
+     if err:
+         return err
+ 
+     if not os.path.exists(resolved):
+         return f"[ERROR] The file '{path}' does not exist."
+-
+     if os.path.isdir(resolved):
+         return f"[ERROR] '{path}' is a directory, not a file."
+ 
++    size = os.path.getsize(resolved)
++    if size > MAX_FILE_SIZE:
++        return f"[ERROR] File too large ({size / 1024:.0f}KB). Use search_files or list_files."
++
+     try:
+         with open(resolved, "r", encoding="utf-8", errors="replace") as f:
+             lines = f.readlines()
+-
+-        return _paginate_and_format(path, lines, start_line, end_line)
+     except Exception:
+         return f"[ERROR] Could not read the file '{path}'."
++
++    # Detectar lenguaje y analizar AST si aplica
++    lang_name, lang_type = detect_language(resolved)
++    lang_icon = icon(lang_type)
++
++    container = None
++    if context > 0 and end_line is not None:
++        if resolved.endswith('.py'):
++            try:
++                tree = ast.parse(''.join(lines))
++                container = find_function_at_line(tree, start_line)
++            except SyntaxError:
++                pass
++
++    return _paginate_and_format(
++        path, lines, start_line, end_line,
++        context=context, container=container,
++        lang_name=lang_name, lang_icon=lang_icon,
++    )
+diff --git a/tests/test-chat-stream.test.js b/tests/test-chat-stream.test.js
+index 9f6fbff..121ab25 100644
+--- a/tests/test-chat-stream.test.js
++++ b/tests/test-chat-stream.test.js
+@@ -141,4 +141,25 @@ describe('chat-stream', () => {
+     await new Promise(r => setTimeout(r, 10));
+     expect(KairosMarkdown.renderAll).toHaveBeenCalled();
+   });
++
++  test('loadSession tardio no pisa una vista ya reemplazada', async () => {
++    let resolveFetch;
++    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
++    const main = { innerHTML: '<div id="messages">viejo</div>' };
++    global.fetch = () => fetchPromise;
++    global.document.getElementById = (id) => {
++      if (id === 'main') return main;
++      return mockElement();
++    };
++    global.__kairosChatViewGeneration = 0;
++
++    window.loadSession('stale-test-sid');
++    global.__kairosChatViewGeneration = 99;
++
++    resolveFetch({ text: () => Promise.resolve('<div id="messages">nuevo</div>') });
++    await fetchPromise;
++    await new Promise(r => setTimeout(r, 10));
++
++    expect(main.innerHTML).toBe('<div id="messages">viejo</div>');
++  });
+ });
+diff --git a/tests/test-dom-ordering.test.js b/tests/test-dom-ordering.test.js
+index f71ae15..46ec62b 100644
+--- a/tests/test-dom-ordering.test.js
++++ b/tests/test-dom-ordering.test.js
+@@ -239,4 +239,29 @@ describe('DOM Ordering', () => {
+     // phaseIdx = max(0, 0-1) + 1 = 0 + 1 = 1
+     expect(ctx.getPhaseIndex()).toBe(1);
+   });
++
++  test('multi-tool reasoning sequence keeps one body per content phase', function() {
++    var dom = makeDom();
++    var ctx = new StreamContext(dom.asstDiv);
++
++    // reasoning[0] -> content -> tool -> reasoning[1] -> content -> tool -> reasoning[2] -> content
++    ctx.addReasoningEl(document.createElement('details'));
++    expect(ctx.getPhaseIndex()).toBe(0);
++
++    ctx.markToolTurn();
++    ctx.addReasoningEl(document.createElement('details'));
++    ctx.consumeToolTurn();
++    expect(ctx.getPhaseIndex()).toBe(1);
++
++    ctx.markToolTurn();
++    ctx.addReasoningEl(document.createElement('details'));
++    ctx.consumeToolTurn();
++    expect(ctx.getPhaseIndex()).toBe(2);
++
++    ctx.ensureBodyDiv(2, 'msg-body md-content');
++    expect(ctx.getBodyDivs()).toHaveLength(3);
++    expect(ctx.getBodyDivs()[0].className).toBe('msg-body md-content');
++    expect(ctx.getBodyDivs()[1].className).toBe('msg-body md-content');
++    expect(ctx.getBodyDivs()[2].className).toBe('msg-body md-content');
++  });
+ });
+diff --git a/tests/test-retry-handler.test.js b/tests/test-retry-handler.test.js
+index 7dfe1ea..7395162 100644
+--- a/tests/test-retry-handler.test.js
++++ b/tests/test-retry-handler.test.js
+@@ -28,5 +28,44 @@ describe('RetryController', () => {
+     expect(a.getStreamTimeout()).toBe(5000);
+     expect(b.getStreamTimeout()).toBe(120000);
+   });
+-});
+ 
++  test('scheduleRetry clears every body from the failed attempt', async () => {
++    const mod = await import(`file://${retryModulePath}?t=${Date.now()}`);
++    const controller = mod.createRetryController();
++
++    const asstDiv = document.createElement('div');
++    const label = document.createElement('div');
++    label.className = 'msg-label';
++    asstDiv.appendChild(label);
++
++    const body1 = document.createElement('div');
++    body1.className = 'msg-body md-content';
++    body1.innerHTML = '<p>fase 1</p>';
++    asstDiv.appendChild(body1);
++
++    const reasoning = document.createElement('details');
++    reasoning.className = 'reasoning';
++    asstDiv.appendChild(reasoning);
++
++    const toolCalls = document.createElement('div');
++    toolCalls.className = 'tool-calls';
++    asstDiv.appendChild(toolCalls);
++
++    const body2 = document.createElement('div');
++    body2.className = 'msg-body md-content';
++    body2.innerHTML = '<p>fase 2</p>';
++    asstDiv.appendChild(body2);
++
++    const form = { dispatchEvent: () => {} };
++    const input = { value: 'hola' };
++
++    controller.scheduleRetry(form, input, asstDiv, 'hola', 'error');
++
++    const bodies = asstDiv.querySelectorAll('.msg-body');
++    expect(bodies.length).toBe(1);
++    expect(bodies[0].innerHTML).toBe('');
++    expect(asstDiv.querySelectorAll('.reasoning').length).toBe(0);
++    expect(asstDiv.querySelectorAll('.tool-calls').length).toBe(0);
++    expect(input.value).toBe('hola');
++  });
++});
+diff --git a/tests/unit/test_background_tasks.py b/tests/unit/test_background_tasks.py
+index 81f755e..0ff5b16 100644
+--- a/tests/unit/test_background_tasks.py
++++ b/tests/unit/test_background_tasks.py
+@@ -6,11 +6,10 @@ from src.background_tasks import auto_rename_session
+ def test_auto_rename_skips_when_already_named():
+     mock_repo = MagicMock()
+     mock_repo.check_should_rename.return_value = False
+-    with patch("src.background_tasks._SESSION_REPO", mock_repo):
+-        mock_chat = MagicMock()
+-        auto_rename_session("sess_1", "Hello", "model-x", chat_fn=mock_chat)
+-        mock_chat.assert_not_called()
+-        mock_repo.rename.assert_not_called()
++    mock_chat = MagicMock()
++    auto_rename_session("sess_1", "Hello", "model-x", chat_fn=mock_chat, session_repo=mock_repo)
++    mock_chat.assert_not_called()
++    mock_repo.rename.assert_not_called()
+ 
+ 
+ def test_auto_rename_generates_and_saves_title():
+@@ -19,13 +18,12 @@ def test_auto_rename_generates_and_saves_title():
+     mock_repo = MagicMock()
+     mock_repo.check_should_rename.return_value = True
+ 
+-    with patch("src.background_tasks._SESSION_REPO", mock_repo):
+-        mock_chat = MagicMock(return_value=mock_response)
+-        auto_rename_session("sess_1", "This is my first message", "model-x", chat_fn=mock_chat)
++    mock_chat = MagicMock(return_value=mock_response)
++    auto_rename_session("sess_1", "This is my first message", "model-x", chat_fn=mock_chat, session_repo=mock_repo)
+ 
+-        mock_chat.assert_called_once()
+-        assert mock_chat.call_args[0][1] == "model-x"
+-        mock_repo.rename.assert_called_once_with("sess_1", "My Great Title")
++    mock_chat.assert_called_once()
++    assert mock_chat.call_args[0][1] == "model-x"
++    mock_repo.rename.assert_called_once_with("sess_1", "My Great Title")
+ 
+ 
+ def test_auto_rename_skips_on_empty_title():
+@@ -34,17 +32,15 @@ def test_auto_rename_skips_on_empty_title():
+     mock_repo = MagicMock()
+     mock_repo.check_should_rename.return_value = True
+ 
+-    with patch("src.background_tasks._SESSION_REPO", mock_repo):
+-        mock_chat = MagicMock(return_value=mock_response)
+-        auto_rename_session("sess_1", "Hello", "model-x", chat_fn=mock_chat)
+-        mock_repo.rename.assert_not_called()
++    mock_chat = MagicMock(return_value=mock_response)
++    auto_rename_session("sess_1", "Hello", "model-x", chat_fn=mock_chat, session_repo=mock_repo)
++    mock_repo.rename.assert_not_called()
+ 
+ 
+ def test_auto_rename_handles_llm_error():
+     mock_repo = MagicMock()
+     mock_repo.check_should_rename.return_value = True
+ 
+-    with patch("src.background_tasks._SESSION_REPO", mock_repo):
+-        mock_chat = MagicMock(side_effect=Exception("API error"))
+-        auto_rename_session("sess_1", "Hello", "model-x", chat_fn=mock_chat)
+-        mock_repo.rename.assert_not_called()
++    mock_chat = MagicMock(side_effect=Exception("API error"))
++    auto_rename_session("sess_1", "Hello", "model-x", chat_fn=mock_chat, session_repo=mock_repo)
++    mock_repo.rename.assert_not_called()
+diff --git a/tests/unit/test_chat_sync.py b/tests/unit/test_chat_sync.py
+index ccf9602..fd372e9 100644
+--- a/tests/unit/test_chat_sync.py
++++ b/tests/unit/test_chat_sync.py
+@@ -2,12 +2,20 @@ import pytest
+ from unittest.mock import patch
+ 
+ 
+-@patch("src.core.chat_sync.llm_chat")
+-@patch("src.core.chat_sync.build_system_prompt")
+-@patch("src.core.chat_sync.get_default_model")
+-def test_chat_basic(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):
+-    mock_get_model.return_value = "test-model"
+-    mock_llm_chat.return_value = make_choice(content="Hello!")
++def _mock_stream(response_text):
++    """Build a generator that simulates orchestrator.chat_stream with tagged=False."""
++    def _gen(message_user, history, **kwargs):
++        if not history:
++            history.append({"role": "system", "content": "sys prompt"})
++        history.append({"role": "user", "content": message_user})
++        history.append({"role": "assistant", "content": response_text})
++        yield response_text
++    return _gen
++
++
++@patch("src.core.orchestrator.chat_stream")
++def test_chat_basic(mock_chat_stream, make_choice):
++    mock_chat_stream.side_effect = _mock_stream("Hello!")
+     from src.core.chat_sync import chat
+ 
+     resp, history = chat("Hi", [{"role": "system", "content": "sys"}])
+@@ -15,17 +23,14 @@ def test_chat_basic(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):
+     assert len(history) == 3
+     assert history[1] == {"role": "user", "content": "Hi"}
+     assert history[2] == {"role": "assistant", "content": "Hello!"}
+-    mock_llm_chat.assert_called_once()
+-    mock_build_sp.assert_not_called()
++    mock_chat_stream.assert_called_once_with(
++        "Hi", [{"role": "system", "content": "sys"}], streaming=False, tagged=False
++    )
+ 
+ 
+-@patch("src.core.chat_sync.llm_chat")
+-@patch("src.core.chat_sync.build_system_prompt")
+-@patch("src.core.chat_sync.get_default_model")
+-def test_chat_no_history(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):
+-    mock_get_model.return_value = "test-model"
+-    mock_build_sp.return_value = {"role": "system", "content": "sys prompt"}
+-    mock_llm_chat.return_value = make_choice(content="Response")
++@patch("src.core.orchestrator.chat_stream")
++def test_chat_no_history(mock_chat_stream):
++    mock_chat_stream.side_effect = _mock_stream("Response")
+     from src.core.chat_sync import chat
+ 
+     resp, history = chat("Hi")
+@@ -33,15 +38,12 @@ def test_chat_no_history(mock_get_model, mock_build_sp, mock_llm_chat, make_choi
+     assert len(history) == 3
+     assert history[0] == {"role": "system", "content": "sys prompt"}
+     assert history[1] == {"role": "user", "content": "Hi"}
+-    mock_build_sp.assert_called_once_with("test-model")
++    mock_chat_stream.assert_called_once_with("Hi", [], streaming=False, tagged=False)
+ 
+ 
+-@patch("src.core.chat_sync.llm_chat")
+-@patch("src.core.chat_sync.build_system_prompt")
+-@patch("src.core.chat_sync.get_default_model")
+-def test_chat_with_existing_history(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):
+-    mock_get_model.return_value = "test-model"
+-    mock_llm_chat.return_value = make_choice(content="OK")
++@patch("src.core.orchestrator.chat_stream")
++def test_chat_with_existing_history(mock_chat_stream):
++    mock_chat_stream.side_effect = _mock_stream("OK")
+     from src.core.chat_sync import chat
+ 
+     existing = [{"role": "system", "content": "sys"}, {"role": "user", "content": "prev"}]
+@@ -50,27 +52,23 @@ def test_chat_with_existing_history(mock_get_model, mock_build_sp, mock_llm_chat
+     assert len(history) == 4
+     assert history[2] == {"role": "user", "content": "next"}
+     assert history[3] == {"role": "assistant", "content": "OK"}
+-    mock_build_sp.assert_not_called()
++    mock_chat_stream.assert_called_once_with(
++        "next", existing, streaming=False, tagged=False
++    )
+ 
+ 
+-@patch("src.core.chat_sync.llm_chat")
+-@patch("src.core.chat_sync.build_system_prompt")
+-@patch("src.core.chat_sync.get_default_model")
+-def test_chat_error_propagation(mock_get_model, mock_build_sp, mock_llm_chat):
+-    mock_get_model.return_value = "test-model"
+-    mock_llm_chat.side_effect = RuntimeError("API error")
++@patch("src.core.orchestrator.chat_stream")
++def test_chat_error_propagation(mock_chat_stream):
++    mock_chat_stream.side_effect = RuntimeError("API error")
+     from src.core.chat_sync import chat
+ 
+     with pytest.raises(RuntimeError, match="API error"):
+         chat("Hi", [{"role": "system", "content": "sys"}])
+ 
+ 
+-@patch("src.core.chat_sync.llm_chat")
+-@patch("src.core.chat_sync.build_system_prompt")
+-@patch("src.core.chat_sync.get_default_model")
+-def test_chat_empty_message(mock_get_model, mock_build_sp, mock_llm_chat, make_choice):
+-    mock_get_model.return_value = "test-model"
+-    mock_llm_chat.return_value = make_choice(content="")
++@patch("src.core.orchestrator.chat_stream")
++def test_chat_empty_message(mock_chat_stream):
++    mock_chat_stream.side_effect = _mock_stream("")
+     from src.core.chat_sync import chat
+ 
+     resp, history = chat("", [{"role": "system", "content": "sys"}])
+diff --git a/tests/unit/test_core.py b/tests/unit/test_core.py
+index d1e708b..65c312e 100644
+--- a/tests/unit/test_core.py
++++ b/tests/unit/test_core.py
+@@ -221,10 +221,20 @@ def test_empty_message(mock_chat, make_choice):
+     assert any("OK" in c for c in contents)
+ 
+ 
+-@patch("src.core.chat_sync.llm_chat")
+-def test_chat_non_streaming(mock_chat, make_choice):
++def _mock_stream(response_text):
++    def _gen(message_user, history, **kwargs):
++        if not history:
++            history.append({"role": "system", "content": "sys prompt"})
++        history.append({"role": "user", "content": message_user})
++        history.append({"role": "assistant", "content": response_text})
++        yield response_text
++    return _gen
++
++
++@patch("src.core.orchestrator.chat_stream")
++def test_chat_non_streaming(mock_chat_stream):
+     """chat() returns response and updated history."""
+-    mock_chat.return_value = make_choice(content="Respuesta de prueba")
++    mock_chat_stream.side_effect = _mock_stream("Respuesta de prueba")
+     from src.core.chat_sync import chat
+ 
+     resp, history = chat("Hola", None)
+diff --git a/tests/unit/test_llm.py b/tests/unit/test_llm.py
+index 5bc08fb..c65b3cd 100644
+--- a/tests/unit/test_llm.py
++++ b/tests/unit/test_llm.py
+@@ -3,12 +3,13 @@ from unittest.mock import patch, MagicMock
+ import pytest
+ 
+ from src.llm.client import chat
+-from src.llm.models import _failed_models, _api_call
++from src.llm.model_state import clear_failed_models, is_model_failed
++from src.llm.models import _api_call
+ from src.context import build_system_prompt
+ 
+ @patch("src.llm.retry.time.sleep")
+ def test_fallback_switch_updates_system_prompt(mock_sleep):
+-    _failed_models.clear()
++    clear_failed_models()
+     
+     # Mocking choice response
+     mock_response = MagicMock()
+@@ -53,7 +54,7 @@ def test_fallback_switch_updates_system_prompt(mock_sleep):
+         assert "Active model: deepseek-v4-flash-free" in messages[0]["content"]
+         
+         # Verify it was added to failed models
+-        assert "big-pickle" in _failed_models
++        assert is_model_failed("big-pickle")
+         
+         # Now a subsequent call should automatically bypass big-pickle
+         mock_provider.chat.reset_mock()
+diff --git a/tests/unit/test_new_tools.py b/tests/unit/test_new_tools.py
+index 50e5639..8209463 100644
+--- a/tests/unit/test_new_tools.py
++++ b/tests/unit/test_new_tools.py
+@@ -1,7 +1,10 @@
+ from pathlib import Path
+ 
++from src.tools.analyze_code import run as analyze_code_run
++from src.tools.edit_file import run as edit_file_run
+ from src.tools.execute_command import run as execute_command_run
+ from src.tools.list_files import run as list_files_run
++from src.tools.search_files import run as search_files_run
+ 
+ 
+ def test_execute_command_runs_shell_command(tmp_path: Path):
+@@ -47,6 +50,16 @@ def test_list_files_rejects_outside_path():
+     assert "outside the allowed directories" in result
+ 
+ 
++def test_list_files_supports_brace_patterns(tmp_path: Path):
++    (tmp_path / "alpha.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
++    (tmp_path / "beta.js").write_text("function beta() { return 2; }\n", encoding="utf-8")
++
++    result = list_files_run(path=str(tmp_path), depth=0, pattern="*.{py,js}")
++
++    assert "alpha.py" in result
++    assert "beta.js" in result
++
++
+ def test_list_files_truncates_large_directory(tmp_path: Path):
+     for i in range(210):
+         (tmp_path / f"file_{i:03d}.txt").write_text("x\n", encoding="utf-8")
+@@ -54,3 +67,86 @@ def test_list_files_truncates_large_directory(tmp_path: Path):
+     result = list_files_run(path=str(tmp_path), depth=0)
+ 
+     assert "limite de 200 archivos alcanzado" in result
++
++
++def test_analyze_code_summarizes_python_file(tmp_path: Path):
++    target = tmp_path / "sample.py"
++    target.write_text(
++        "def alpha(x):\n    return beta(x)\n\n\ndef beta(y):\n    return y + 1\n",
++        encoding="utf-8",
++    )
++
++    result = analyze_code_run(path=str(target))
++
++    assert "ANALISIS PROFUNDO" in result
++    assert "alpha" in result
++    assert "beta" in result
++
++
++def test_analyze_code_rejects_outside_path():
++    result = analyze_code_run(path="/etc/passwd")
++    assert "[ERROR]" in result
++    assert "outside the allowed directories" in result
++
++
++def test_search_files_finds_matches_and_context(tmp_path: Path):
++    (tmp_path / "sample.py").write_text(
++        "def alpha():\n    return 1\n\n\ndef beta():\n    return 2\n",
++        encoding="utf-8",
++    )
++
++    result = search_files_run(
++        pattern="return 2",
++        path=str(tmp_path),
++        file_pattern="*.py",
++        context_lines=0,
++        max_results=10,
++    )
++
++    assert "sample.py" in result
++    assert "beta" in result
++    assert "return 2" in result
++    assert "coincidencia" in result.lower()
++
++
++def test_search_files_rejects_outside_path():
++    result = search_files_run(pattern="alpha", path="/etc", file_pattern="*.py")
++    assert "[ERROR]" in result
++    assert "outside the allowed directories" in result
++
++
++def test_search_files_supports_brace_patterns(tmp_path: Path):
++    (tmp_path / "alpha.py").write_text("alpha here\n", encoding="utf-8")
++    (tmp_path / "beta.js").write_text("beta here\n", encoding="utf-8")
++
++    result = search_files_run(
++        pattern="here",
++        path=str(tmp_path),
++        file_pattern="*.{py,js}",
++        context_lines=0,
++        max_results=10,
++    )
++
++    assert "alpha.py" in result
++    assert "beta.js" in result
++
++
++def test_edit_file_replaces_line(tmp_path: Path):
++    target = tmp_path / "sample.txt"
++    target.write_text("uno\ndos\ntres\n", encoding="utf-8")
++
++    result = edit_file_run(
++        path=str(target),
++        start_line=2,
++        end_line=2,
++        new_content="DOS\n",
++    )
++
++    assert "Modo: reemplazar" in result
++    assert target.read_text(encoding="utf-8") == "uno\nDOS\ntres\n"
++
++
++def test_edit_file_rejects_outside_path():
++    result = edit_file_run(path="/etc/passwd", start_line=1, new_content="x")
++    assert "[ERROR]" in result
++    assert "outside the allowed directories" in result
+diff --git a/tests/unit/test_tool_loader.py b/tests/unit/test_tool_loader.py
+index 73fa1ba..ddca0ea 100644
+--- a/tests/unit/test_tool_loader.py
++++ b/tests/unit/test_tool_loader.py
+@@ -5,7 +5,9 @@ EXPECTED_TOOLS = [
+     "get_tool_history",
+     "get_widget_code",
+     "execute_command",
++    "edit_file",
+     "list_files",
++    "search_files",
+     "read_file",
+     "read_skill",
+     "save_memory",
+@@ -13,6 +15,7 @@ EXPECTED_TOOLS = [
+     "update_widget",
+     "web_search",
+     "write_file",
++    "analyze_code",
+ ]
+ 
+ CIRCULAR_SENSITIVE_TOOLS = [
+@@ -39,6 +42,8 @@ def test_extra_tools_not_accidentally_included():
+     assert "runner" not in TOOL_MAP
+     assert "_path_helpers" not in TOOL_MAP
+     assert "_widget_helpers" not in TOOL_MAP
++    assert "_analyzers" not in TOOL_MAP
++    assert "_validators" not in TOOL_MAP
+ 
+ 
+ def test_tool_map_and_definitions_have_same_keys():
+@@ -122,7 +127,7 @@ def test_circular_sensitive_tools_run_imports_api():
+         assert isinstance(result, str), f"{name}.run() should return str, got {type(result)}"
+ 
+ 
+-def test_build_tools_md_generates_all_10():
++def test_build_tools_md_generates_all_expected():
+     """Verifica que la auto-generación de TOOLS.md incluya las tools
+     sin errores de circular import."""
+     from src.context import _build_tools_md
+diff --git a/web/ARCHITECTURE.md b/web/ARCHITECTURE.md
+index 4219472..8813a83 100644
+--- a/web/ARCHITECTURE.md
++++ b/web/ARCHITECTURE.md
+@@ -71,11 +71,11 @@ Client POST /chat/{session_id}
+ chat.py:chat()
+   ├─ Validates session_id and message
+   ├─ ensure_session(session_id)          # DB
+-  ├─ rebuild_history(session_id, model)  # fetches history
++  ├─ rebuild_history(session_id, model, message_repo)  # fetches history through explicit repo injection
+   ├─ db_save_message("user", ...)        # persists user msg
+   │
+   ▼
+-chat_stream.py:build_stream_generator()
++chat_stream.py:build_stream_generator(chat_stream_fn=...)
+   ├─ Returns a closure `generate()`
+   │
+   ▼
+diff --git a/web/routers/chat.py b/web/routers/chat.py
+index 240bd37..b29a020 100644
+--- a/web/routers/chat.py
++++ b/web/routers/chat.py
+@@ -5,10 +5,13 @@ from fastapi.responses import StreamingResponse
+ from pydantic import BaseModel
+ 
+ from src.llm.policy import get_default_model
++from src.core.orchestrator import chat_stream as core_chat_stream
+ from src.api.history import rebuild_history
+ from src.api.messages import save_message as db_save_message
+ from src.api.session import ensure_session
++from src.memory.repos import get_repos
+ from web.services.chat_stream import build_stream_generator
++from web.services.stream_retry_handler import StreamRetryHandler
+ 
+ router = APIRouter()
+ logger = logging.getLogger(__name__)
+@@ -34,8 +37,9 @@ def chat(
+     model = payload.model or model or get_default_model()
+ 
+     ensure_session(session_id)
++    repos = get_repos()
+     try:
+-        history = rebuild_history(session_id, model)
++        history = rebuild_history(session_id, model, repos.messages)
+     except Exception as e:
+         logger.error("Error rebuilding history for %s: %s", session_id, e)
+         raise HTTPException(500, "Error loading history")
+@@ -45,5 +49,13 @@ def chat(
+     except Exception as e:
+         logger.error("Error saving user message for %s: %s", session_id, e)
+ 
+-    generate = build_stream_generator(session_id, payload.message, history, model, background_tasks)
++    generate = build_stream_generator(
++        session_id,
++        payload.message,
++        history,
++        model,
++        background_tasks,
++        chat_stream_fn=lambda *a, **kw: core_chat_stream(*a, **kw, repos=repos),
++        retry_handler=StreamRetryHandler(max_retries=2),
++    )
+     return StreamingResponse(generate(), media_type="application/x-ndjson")
+diff --git a/web/services/chat_stream.py b/web/services/chat_stream.py
+index d09eac7..806230d 100644
+--- a/web/services/chat_stream.py
++++ b/web/services/chat_stream.py
+@@ -5,7 +5,6 @@ from typing import Any
+ 
+ from fastapi import BackgroundTasks
+ 
+-from src.core.orchestrator import chat_stream
+ from src.background_tasks import auto_rename_session
+ from web.services.loop_detector import LoopDetector
+ from web.services.message_persister import save_assistant_message
+@@ -18,18 +17,26 @@ logger = logging.getLogger(__name__)
+ HEARTBEAT_INTERVAL = 20
+ 
+ 
++def chat_stream(*args: Any, **kwargs: Any):
++    from src.core.orchestrator import chat_stream as _chat_stream
++    return _chat_stream(*args, **kwargs)
++
++
+ def build_stream_generator(
+     session_id: str,
+     message: str,
+     history: list[dict[str, Any]],
+     model: str,
+     background_tasks: BackgroundTasks,
++    chat_stream_fn: Callable[..., Generator[Any, None, None]] | None = None,
+     loop_detector: LoopDetector | None = None,
+     retry_handler: StreamRetryHandler | None = None,
+     save_fn: Callable | None = None,
+     rename_fn: Callable | None = None,
+ ) -> Callable[..., Generator[str, None, None]]:
+     """Builds the NDJSON generator for the chat stream."""
++    _chat_stream = chat_stream_fn or chat_stream
++
+     def generate() -> Generator[str, None, None]:
+         full_reasoning = ""
+         full_content = ""
+@@ -40,15 +47,16 @@ def build_stream_generator(
+         logger.info("Starting chat for session %s with model %s", session_id, model)
+ 
+         def _save_with_retry(desc: str = "") -> bool:
+-            for attempt in range(2):
++            max_attempts = 3
++            for attempt in range(max_attempts):
+                 try:
+                     _save(session_id, full_content, full_reasoning, phases_output, debug_info, model)
+                     logger.info("Save OK%s: %d chars", f" ({desc})" if desc else "", len(full_content))
+                     return True
+                 except Exception as e:
+-                    logger.warning("Save failed%s (attempt %d/2): %s", f" ({desc})" if desc else "", attempt + 1, e)
+-                    if attempt == 0:
+-                        time.sleep(0.5)
++                    logger.warning("Save failed%s (attempt %d/%d): %s", f" ({desc})" if desc else "", attempt + 1, max_attempts, e)
++                    if attempt < max_attempts - 1:
++                        time.sleep(1.0 * (2 ** attempt))
+             return False
+ 
+         detector = loop_detector or LoopDetector()
+@@ -59,7 +67,7 @@ def build_stream_generator(
+         save_interval = 30
+ 
+         try:
+-            for tipo, token in chat_stream(message, history, model, session_id=session_id, tagged=True, debug=debug_info, phases_output=phases_output):
++            for tipo, token in _chat_stream(message, history, model, session_id=session_id, tagged=True, debug=debug_info, phases_output=phases_output):
+                 now = time.monotonic()
+ 
+                 if tipo == "heartbeat":
+@@ -128,6 +136,19 @@ def build_stream_generator(
+         except Exception as e:
+             error_type, error_msg = classify_error(e)
+             logger.error("Stream error for %s: [%s] %s", session_id, error_type, error_msg)
++            if retry_handler is not None and retry_handler.can_retry and (full_content or full_reasoning):
++                try:
++                    for rtipo, rtoken in retry_handler.attempt_recovery(
++                        history, full_content, full_reasoning, model, session_id,
++                    ):
++                        if rtipo == "reasoning":
++                            full_reasoning += rtoken
++                        elif rtipo == "content":
++                            full_content += rtoken
++                        yield serialize_stream_event(rtipo, rtoken)
++                    return
++                except Exception as recover_err:
++                    logger.error("Recovery also failed for %s: %s", session_id, recover_err)
+             yield serialize_stream_event("error", {"type": error_type, "message": error_msg})
+             return
+         finally:
+diff --git a/web/services/loop_detector.py b/web/services/loop_detector.py
+index 06e5c61..61ad3ae 100644
+--- a/web/services/loop_detector.py
++++ b/web/services/loop_detector.py
+@@ -1,14 +1,24 @@
+ import logging
++import re
+ 
+ logger = logging.getLogger(__name__)
+ 
+-LOOP_WINDOW_SIZE = 15
+-LOOP_PHRASE_REPEATS = 6
++LOOP_WINDOW_SIZE = 20
++LOOP_PHRASE_REPEATS = 12
+ 
+ 
+ class LoopDetector:
+     """Detect repeated tokens or phrases that indicate the model is stuck."""
+ 
++    # Tokens puramente decorativos no deben disparar el detector
++    # (separadores, box-drawing chars, etc.)
++    _WORD_CHARS_RE = re.compile(r'[a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF]')
++
++    @staticmethod
++    def _is_meaningful_token(token: str) -> bool:
++        """Un token es 'significativo' si contiene al menos un caracter alfanumérico o letra real."""
++        return bool(LoopDetector._WORD_CHARS_RE.search(token))
++
+     def __init__(self):
+         self._recent_tokens: list[str] = []
+         self._recent_text: str = ""
+@@ -31,13 +41,16 @@ class LoopDetector:
+         if len(self._recent_text) > 2000:
+             self._recent_text = self._recent_text[-1000:]
+ 
+-        # Token check: same word 15+ times in a row — always a loop
++        # Token check: same word N+ times in a row
++        # Solo aplica si el token es significativo (contiene letras)
++        # Esto evita falsos positivos con separadores decorativos (━━━, ===, ***, etc.)
+         if len(self._recent_tokens) >= LOOP_WINDOW_SIZE:
+-            if len(set(self._recent_tokens)) == 1 and self._recent_tokens[0].strip():
+-                return f"Loop detectado: mismo token repetido {LOOP_WINDOW_SIZE} veces"
++            t = self._recent_tokens[0]
++            if len(set(self._recent_tokens)) == 1 and t.strip():
++                if self._is_meaningful_token(t):
++                    return f"Loop detectado: mismo token repetido {LOOP_WINDOW_SIZE} veces"
+ 
+         # Phrase repetition check: skipped inside ANY unclosed code block or if widget mode is active
+-        # (CSS/HTML/code formatting repeats legitimately in templates and widgets)
+         if not self._inside_code_block() and not self._is_widget_mode:
+             for phrase_len in [50, 100, 200]:
+                 if len(self._recent_text) >= phrase_len * LOOP_PHRASE_REPEATS:
+@@ -50,4 +63,3 @@ class LoopDetector:
+ 
+     def _inside_code_block(self) -> bool:
+         return self._total_backticks % 2 == 1
+-
+diff --git a/web/services/message_renderer.py b/web/services/message_renderer.py
+index f9dcad9..40b7690 100644
+--- a/web/services/message_renderer.py
++++ b/web/services/message_renderer.py
+@@ -30,7 +30,12 @@ def render_session_messages(session_id: str) -> str:
+     ]
+ 
+     for row in msgs:
+-        role, content, model, ts, reasoning, phases_str = row[:6]
++        role = row["role"]
++        content = row["content"]
++        model = row["model"]
++        ts = row["created_at"]
++        reasoning = row["reasoning"]
++        phases_str = row["phases"]
+         matched = msg_tool_map.get(ts, []) if role == "assistant" else []
+         phases = None
+         if phases_str and phases_str != "[]":
+diff --git a/web/services/stream_retry_handler.py b/web/services/stream_retry_handler.py
+index 7257705..72d1ca7 100644
+--- a/web/services/stream_retry_handler.py
++++ b/web/services/stream_retry_handler.py
+@@ -10,7 +10,7 @@ CONTINUATION_INSTRUCTION = (
+     "Just continue naturally from the interruption point. Do NOT use tools.]"
+ )
+ 
+-DEFAULT_MAX_RETRIES = 1
++DEFAULT_MAX_RETRIES = 2
+ 
+ 
+ class StreamRetryHandler:
+diff --git a/web/static/chat-stream.js b/web/static/chat-stream.js
+index c34ac70..036feb4 100644
+--- a/web/static/chat-stream.js
++++ b/web/static/chat-stream.js
+@@ -6,6 +6,11 @@ import { KairosMarkdown } from './modules/markdown-renderer.js';
+ 
+ stateManager.loadFromJSON({});
+ 
++function bumpChatViewGeneration() {
++  globalThis.__kairosChatViewGeneration = (globalThis.__kairosChatViewGeneration || 0) + 1;
++  return globalThis.__kairosChatViewGeneration;
++}
++
+ (function loadInitialWidgetStates() {
+   var meta = document.getElementById('messages-metadata');
+   if (meta) {
+@@ -23,6 +28,7 @@ startMessageHandler();
+ KairosForm.init();
+ 
+ export function loadSession(sid) {
++  var requestGeneration = bumpChatViewGeneration();
+   SessionContext.setSessionId(sid);
+   globalThis.sessionId = sid;
+   window.history.replaceState({sid: sid}, '', '/sessions/' + sid);
+@@ -37,6 +43,9 @@ export function loadSession(sid) {
+   fetch('/sessions/' + sid + '/messages')
+     .then(function(r) { return r.text(); })
+     .then(function(h) {
++      if (requestGeneration !== globalThis.__kairosChatViewGeneration) {
++        return;
++      }
+       var main = document.getElementById('main');
+       if (main) {
+         main.innerHTML = h;
+diff --git a/web/static/debug.js b/web/static/debug.js
+index 554436d..d4a8d60 100644
+--- a/web/static/debug.js
++++ b/web/static/debug.js
+@@ -48,8 +48,6 @@ function renderStreamLog() {
+ 
+ function toggleDebug() {
+   debugVisible = !debugVisible;
+-  window.debugVisible = debugVisible;
+-  globalThis.debugVisible = debugVisible;
+   var p = document.getElementById('debug-panel');
+   var m = document.getElementById('main');
+   if (p) p.classList.toggle('open', debugVisible);
+diff --git a/web/static/modules/chat-form-bootstrap.js b/web/static/modules/chat-form-bootstrap.js
+index 19bf8b9..a827d52 100644
+--- a/web/static/modules/chat-form-bootstrap.js
++++ b/web/static/modules/chat-form-bootstrap.js
+@@ -5,4 +5,4 @@
+  */
+ import { KairosForm } from './chat-form.js';
+ 
+-window.KairosForm = KairosForm;
++// window.KairosForm = KairosForm; // removed — no legacy callers
+diff --git a/web/static/modules/chat-form.js b/web/static/modules/chat-form.js
+index 1c884ad..5725c07 100644
+--- a/web/static/modules/chat-form.js
++++ b/web/static/modules/chat-form.js
+@@ -9,6 +9,11 @@ var currentController = null;
+ var currentRetryController = createRetryController();
+ var retryClickBound = false;
+ 
++function bumpChatViewGeneration() {
++  globalThis.__kairosChatViewGeneration = (globalThis.__kairosChatViewGeneration || 0) + 1;
++  return globalThis.__kairosChatViewGeneration;
++}
++
+ function retryLastMessage() {
+   var lastAsstMsg = document.querySelector('.msg.assistant:last-child');
+   if (lastAsstMsg && lastAsstMsg.querySelector('.' + C.ERROR_CARD)) {
+@@ -58,6 +63,7 @@ function init() {
+ 
+     if (currentController) currentController.abort();
+     currentController = new AbortController();
++    bumpChatViewGeneration();
+     if (!currentRetryController || text !== lastUserMessageText) {
+       currentRetryController = createRetryController();
+     }
+diff --git a/web/static/modules/content-handler.js b/web/static/modules/content-handler.js
+index 145a5f8..74e9f58 100644
+--- a/web/static/modules/content-handler.js
++++ b/web/static/modules/content-handler.js
+@@ -1,143 +1,12 @@
+-import C from './dom-contracts.js';
+ import { getLogger } from './logger.js';
+-import { processWidgetContainers } from './widget-container-renderer.js';
++import { renderContentToken } from './content-renderer.js';
+ import { KairosStream } from './stream-dispatcher.js';
+-import { KairosWidgets } from './widgets/core.js';
+-import { initAll } from './widgets/iframe.js';
+-import { KairosMarkdown } from './markdown-renderer.js';
+-import { KairosUtils } from './utils.js';
+ var log = getLogger('content-handler');
+ 
+ export function registerContentHandler() {
+ 
+   KairosStream.on('content', function(token, ctx) {
+-    try {
+-      var sharedKeys = ctx._renderedKeys || (ctx._renderedKeys = {});
+-      var state = ctx;
+-      if (ctx && typeof ctx.getBodyDivs === 'function') {
+-        state = {
+-          bodyDivs: ctx.getBodyDivs(),
+-          asstDiv: ctx.getAsstDiv(),
+-          contentTexts: [],
+-          reasoningEls: ctx.getReasoningEls(),
+-          reasoningState: ctx.getReasoningState(),
+-          _toolPhase: ctx.getToolPhase(),
+-          _toolTurnSinceLastContent: ctx.getToolTurnSinceLastContent(),
+-          getPhaseIdx: function() { return ctx.getPhaseIndex(); },
+-          context: ctx,
+-          _renderedKeys: sharedKeys
+-        };
+-        for (var i = 0; i < state.bodyDivs.length; i++) {
+-          state.contentTexts.push(ctx.getContentText(i));
+-        }
+-      }
+-
+-      if (!state || !state.bodyDivs) {
+-        logUI('content_no_state', 'token=' + String(token).substring(0, 40));
+-        return;
+-      }
+-
+-      var widgetsApi = globalThis.KairosWidgets || KairosWidgets;
+-
+-      if (state._toolTurnSinceLastContent) {
+-        state._toolTurnSinceLastContent = false;
+-        state._toolPhase = (state._toolPhase || 0) + 1;
+-        if (state.context) {
+-          state.context.enterToolPhase();
+-        }
+-      }
+-      var phaseIdx = state.getPhaseIdx ? state.getPhaseIdx() : (Math.max(0, state.reasoningEls.length - 1) + (state._toolPhase || 0));
+-
+-      while (state.bodyDivs.length <= phaseIdx) {
+-        var newBody = document.createElement('div');
+-        newBody.className = C.MSG_BODY_MD();
+-        state.asstDiv.appendChild(newBody);
+-        state.bodyDivs.push(newBody);
+-        state.contentTexts.push('');
+-        if (state.context) {
+-          state.context.ensureBodyDiv(phaseIdx, C.MSG_BODY_MD());
+-        }
+-      }
+-
+-      if (!state.contentTexts[phaseIdx]) logUI('body_start', token.substring(0, 60));
+-      state.contentTexts[phaseIdx] += token;
+-      if (state.context) {
+-        state.context.appendContentText(phaseIdx, token);
+-      }
+-      state.reasoningState.exit();
+-
+-      var fullText = state.contentTexts[phaseIdx];
+-      var bodyDiv = state.bodyDivs[phaseIdx];
+-
+-      var targetSeg = bodyDiv.querySelector('.' + C.MSG_TEXT_SEGMENT);
+-      if (!targetSeg) {
+-        targetSeg = document.createElement('div');
+-        targetSeg.className = C.MSG_TEXT_SEGMENT;
+-        bodyDiv.appendChild(targetSeg);
+-      }
+-
+-      var existingByKey = {};
+-      for (var ci = 1; ci < bodyDiv.children.length; ci += 2) {
+-        var ch = bodyDiv.children[ci];
+-        if (ch && ch.className === C.WIDGET_CONTAINER) {
+-          var key = ch.getAttribute('data-widget-key');
+-          if (key) existingByKey[key] = ch;
+-        }
+-      }
+-
+-      var children = Array.prototype.slice.call(bodyDiv.children);
+-      for (var c = 0; c < children.length; c++) {
+-        if (children[c] !== targetSeg) {
+-          bodyDiv.removeChild(children[c]);
+-        }
+-      }
+-      if (!targetSeg) return;
+-
+-      state._renderedKeys = state._renderedKeys || {};
+-
+-      var result = processWidgetContainers(fullText, bodyDiv, existingByKey, state._renderedKeys);
+-      var textToRender = result.textToRender;
+-      var incompleteTail = result.incompleteTail;
+-      var widgetMatches = result.widgetMatches;
+-
+-      for (var i = 0; i <= widgetMatches.length; i++) {
+-        var start = i === 0 ? 0 : widgetMatches[i - 1].end;
+-        var end = i === widgetMatches.length ? textToRender.length : widgetMatches[i].index;
+-        var segText = textToRender.substring(start, end);
+-        var targetSeg = bodyDiv.children[i * 2];
+-        if (!targetSeg) continue;
+-        var cacheKey = segText + '|' + incompleteTail + '|' + (i === widgetMatches.length ? '' : widgetMatches[i].key);
+-        if (targetSeg.dataset.rawText === cacheKey) continue;
+-        targetSeg.dataset.rawText = cacheKey;
+-
+-        var purifyConfig = { ADD_TAGS: ['iframe'], ADD_ATTR: ['data-widget-id', 'data-widget-key'] };
+-        var html = '';
+-        if (segText && widgetsApi && widgetsApi.extract) {
+-          var extracted = widgetsApi.extract(segText);
+-          var parsed = KairosMarkdown.parse(extracted);
+-          if (typeof DOMPurify !== 'undefined') {
+-            html += DOMPurify.sanitize(parsed, purifyConfig);
+-          } else {
+-            html += segText;
+-          }
+-        } else if (segText) {
+-          var parsed = KairosMarkdown.parse(segText);
+-          if (typeof DOMPurify !== 'undefined') {
+-            html += DOMPurify.sanitize(parsed, purifyConfig);
+-          } else {
+-            html += segText;
+-          }
+-        }
+-        if (i === widgetMatches.length && incompleteTail) {
+-          html += '<pre style="opacity:0.6"><code>' + KairosUtils.escHtml(incompleteTail) + '</code></pre>';
+-        }
+-        targetSeg.innerHTML = html;
+-      }
+-
+-      initAll(bodyDiv);
+-    } catch (e) {
+-      console.error('Content handler error:', e);
+-    }
++    renderContentToken(ctx, token);
+   });
+ }
+ 
+diff --git a/web/static/modules/logger.js b/web/static/modules/logger.js
+index ecd6e3f..33db0b1 100644
+--- a/web/static/modules/logger.js
++++ b/web/static/modules/logger.js
+@@ -33,8 +33,12 @@ class Logger {
+     else console.log('[' + this.name + ']', msg, data || '');
+ 
+     // Also feed into existing debug panel
+-    if (typeof window.logUI === 'function') {
+-      window.logUI('[' + level + '][' + this.name + ']', String(msg).substring(0, 120));
++    try {
++      if (typeof window.logUI === 'function') {
++        window.logUI('[' + level + '][' + this.name + ']', String(msg).substring(0, 120));
++      }
++    } catch (e) {
++      // Silently skip UI logging
+     }
+ 
+     this._scheduleFlush();
+diff --git a/web/static/modules/retry-handler.js b/web/static/modules/retry-handler.js
+index 69fec4e..2d4a4e6 100644
+--- a/web/static/modules/retry-handler.js
++++ b/web/static/modules/retry-handler.js
+@@ -20,11 +20,27 @@ export class RetryController {
+   scheduleRetry(form, input, asstDiv, lastUserMessageText, reason) {
+     this.count++;
+     this.showRetryNotice(this.count, reason);
+-    var bodyDiv = asstDiv.querySelector('.' + C.MSG_BODY);
+-    if (bodyDiv) bodyDiv.innerHTML = '';
+-    var toRemove = asstDiv.querySelectorAll('.' + C.REASONING + ', .' + C.TOOL_CALLS);
+-    for (var r = 0; r < toRemove.length; r++) {
+-      toRemove[r].remove();
++    var bodyDivs = asstDiv.querySelectorAll('.' + C.MSG_BODY);
++    if (bodyDivs && bodyDivs.length) {
++      for (var i = bodyDivs.length - 1; i >= 1; i--) {
++        var extraBody = bodyDivs[i];
++        if (extraBody && typeof extraBody.remove === 'function') {
++          extraBody.remove();
++        }
++      }
++      bodyDivs[0].innerHTML = '';
++    }
++    var reasoningEls = asstDiv.querySelectorAll('.' + C.REASONING);
++    for (var r = 0; r < reasoningEls.length; r++) {
++      if (reasoningEls[r] && typeof reasoningEls[r].remove === 'function') {
++        reasoningEls[r].remove();
++      }
++    }
++    var toolCallsEls = asstDiv.querySelectorAll('.' + C.TOOL_CALLS);
++    for (var t = 0; t < toolCallsEls.length; t++) {
++      if (toolCallsEls[t] && typeof toolCallsEls[t].remove === 'function') {
++        toolCallsEls[t].remove();
++      }
+     }
+     input.value = lastUserMessageText;
+     return delay(2000 * this.count).then(function doScheduledSubmit() {
+diff --git a/web/static/modules/stream-bootstrap.js b/web/static/modules/stream-bootstrap.js
+index 9243125..be0d6fb 100644
+--- a/web/static/modules/stream-bootstrap.js
++++ b/web/static/modules/stream-bootstrap.js
+@@ -5,4 +5,4 @@
+  */
+ import { StreamOrchestrator } from './stream-orchestrator.js';
+ 
+-window.StreamOrchestrator = StreamOrchestrator;
++// window.StreamOrchestrator = StreamOrchestrator; // removed — no legacy callers
+diff --git a/web/static/modules/stream-orchestrator.js b/web/static/modules/stream-orchestrator.js
+index 9918e4b..19019d0 100644
+--- a/web/static/modules/stream-orchestrator.js
++++ b/web/static/modules/stream-orchestrator.js
+@@ -1,21 +1,11 @@
+-import { StreamErrorHandler } from './stream-error-handler.js';
+ import { createRetryController } from './retry-handler.js';
+ import { KairosUtils } from './utils.js';
+-import C from './dom-contracts.js';
+ import { KairosStream } from './stream-dispatcher.js';
+ import { StreamContext } from './stream-context.js';
+ import { executeStreamFetch } from './stream-fetcher.js';
+-import { attemptRetry, shouldAutoRetryEmptyResponse } from './stream-retry-coordinator.js';
+ import { KairosDebug, refreshDebug } from '../debug.js';
+-import { SessionContext } from './session-context.js';
+-
+-function refreshSidebar() {
+-  var urlBuilder = SessionContext.createSessionUrlBuilder();
+-  fetch(urlBuilder.sidebar()).then(function(r){ return r.text(); }).then(function(h){
+-    var el = document.getElementById('session-list');
+-    if (el) el.innerHTML = h;
+-  }).catch(function(err) { console.error('Sidebar refresh failed:', err); });
+-}
++import { StreamErrorHandler } from './stream-error-handler.js';
++import { handleAbortError, handleBackendError, handleEmptyResponse, handleTransportError, refreshSidebar } from './stream-lifecycle.js';
+ 
+ export const StreamOrchestrator = {
+ 
+@@ -68,37 +58,18 @@ export const StreamOrchestrator = {
+       clearTimeout(timeoutId);
+ 
+       if (e2.name === 'AbortError') {
+-        logUI('stream_aborted', 'cancelado por nuevo mensaje');
+-        var bodyDiv = asstDiv.querySelector('.' + C.MSG_BODY);
+-        var isEmpty = !bodyDiv || bodyDiv.textContent === 'Pensando...' || bodyDiv.textContent === '';
+-        if (isEmpty) {
+-          asstDiv.remove();
+-        }
+-        retryController.resetRetryCount();
+-        KairosUtils.finalizeStream(input);
++        handleAbortError({ asstDiv: asstDiv, input: input, controller: controller }, retryController);
+         return;
+       }
+ 
+-      logUI('stream_error', e2.message);
+-
+-      var hasSuccessfulTools = asstDiv.querySelectorAll('.' + C.TC_ITEM + '.ok').length > 0;
+-      if (attemptRetry({
++      if (handleTransportError({
+         asstDiv: asstDiv,
+         form: form,
+         input: input,
+-        lastUserMessageText: lastUserMessageText,
+-        reason: 'error: ' + e2.message,
+-        hasContent: false,
+-        hasSuccessfulTools: hasSuccessfulTools,
+-        retryController: retryController
+-      })) {
++        lastUserMessageText: lastUserMessageText
++      }, retryController, e2)) {
+         return;
+       }
+-
+-      StreamErrorHandler.markCallingPillsError(asstDiv);
+-      StreamErrorHandler.showRetryMessage(asstDiv, 'No se pudo recibir la respuesta después de ' + retryController.getMaxRetries() + ' reintentos. Detalle: ' + KairosUtils.escHtml(e2.toString()));
+-      logUI('stream_error_final', 'falló definitivamente: ' + e2.message);
+-      retryController.resetRetryCount();
+     }
+ 
+     clearTimeout(timeoutId);
+@@ -107,36 +78,14 @@ export const StreamOrchestrator = {
+ 
+     var streamError = errorHandler.getError();
+     if (streamError) {
+-      logUI('stream_backend_error', streamError.type + ': ' + streamError.message);
+-
+-      var errorType = streamError.type || 'unknown';
+-      var errorMsg = streamError.message || 'Error desconocido';
+-
+-      if (errorType === 'auth' || errorType === 'rate_limit') {
+-        StreamErrorHandler.showRetryMessage(asstDiv, errorMsg);
+-        retryController.resetRetryCount();
+-        KairosUtils.finalizeStream(input);
+-        return;
+-      }
+-
+-      hasSuccessfulTools = asstDiv.querySelectorAll('.' + C.TC_ITEM + '.ok').length > 0;
+-      if (attemptRetry({
++      if (handleBackendError({
+         asstDiv: asstDiv,
+         form: form,
+         input: input,
+-        lastUserMessageText: lastUserMessageText,
+-        reason: errorMsg,
+-        hasContent: hasContent,
+-        hasSuccessfulTools: hasSuccessfulTools,
+-        retryController: retryController
+-      })) {
++        lastUserMessageText: lastUserMessageText
++      }, retryController, streamError, hasContent)) {
+         return;
+       }
+-
+-      StreamErrorHandler.showRetryMessage(asstDiv, errorMsg + ' (después de ' + retryController.getMaxRetries() + ' reintentos)');
+-      retryController.resetRetryCount();
+-      KairosUtils.finalizeStream(input);
+-      return;
+     }
+ 
+     if (context.getReasoningEls().length) {
+@@ -144,43 +93,15 @@ export const StreamOrchestrator = {
+       logUI('reasoning_done', context.getReasoningEls().length + ' fases');
+     }
+ 
+-    hasSuccessfulTools = asstDiv.querySelectorAll('.tc-item.ok').length > 0;
+     if (!hasContent) {
+-      var hadReasoning = context.getReasoningEls().length > 0;
+-      var hadToolCalls = asstDiv.querySelectorAll('.' + C.TC_ITEM).length > 0;
+-
+-      if (!shouldAutoRetryEmptyResponse({
+-        hasContent: hasContent,
+-        hadReasoning: hadReasoning,
+-        hadToolCalls: hadToolCalls,
+-        retryController: retryController
+-      })) {
+-        StreamErrorHandler.markCallingPillsError(asstDiv);
+-        StreamErrorHandler.showRetryMessage(
+-          asstDiv,
+-          'La respuesta quedó vacía después de razonamiento o herramientas. No se reintentó automáticamente.'
+-        );
+-        logUI('stream_empty_no_retry', 'sin contenido con razonamiento/herramientas');
+-        retryController.resetRetryCount();
+-      } else if (attemptRetry({
++      if (handleEmptyResponse({
+         asstDiv: asstDiv,
+         form: form,
+         input: input,
+-        lastUserMessageText: lastUserMessageText,
+-        reason: 'respuesta vacía',
+-        hasContent: false,
+-        hasSuccessfulTools: hasSuccessfulTools,
+-        retryController: retryController
+-      })) {
++        lastUserMessageText: lastUserMessageText
++      }, retryController, context, hasContent)) {
+         return;
+       }
+-
+-      if (retryController.getRetryCount() >= retryController.getMaxRetries()) {
+-        StreamErrorHandler.markCallingPillsError(asstDiv);
+-        StreamErrorHandler.showRetryMessage(asstDiv, 'La respuesta estuvo vacía después de ' + retryController.getMaxRetries() + ' reintentos. Puede ser un problema temporal del modelo.');
+-        logUI('stream_empty_final', 'sin contenido después de ' + retryController.getMaxRetries() + ' reintentos');
+-        retryController.resetRetryCount();
+-      }
+     } else {
+       retryController.resetRetryCount();
+       refreshSidebar();
+diff --git a/web/static/modules/widget-container-renderer.js b/web/static/modules/widget-container-renderer.js
+index 5477959..dfffbae 100644
+--- a/web/static/modules/widget-container-renderer.js
++++ b/web/static/modules/widget-container-renderer.js
+@@ -5,7 +5,7 @@ import { KairosWidgets } from './widgets/core.js';
+ var log = getLogger('widget-container-renderer');
+ 
+ export function processWidgetContainers(fullText, bodyDiv, existingByKey, renderedKeys) {
+-  var widgetsApi = globalThis.KairosWidgets || KairosWidgets;
++  var widgetsApi = KairosWidgets;
+   // Find all standard code blocks and inline code blocks that are NOT widgets
+   var ignoredRanges = [];
+   var ignoredCodeBlockRegex = /```(?!html-widget)[\s\S]*?(?:```|$)/g;
+diff --git a/web/static/session.js b/web/static/session.js
+index 9f7476b..48fbcb4 100644
+--- a/web/static/session.js
++++ b/web/static/session.js
+@@ -50,8 +50,8 @@ function bindModelSelect() {
+ 
+ export const KairosSession = { refreshSidebar, confirmRename, cancelEdit, restoreActions };
+ 
+-// Backwards-compatible globals for HTML onclick handlers
+-window.KairosSession = KairosSession;
++// Backwards-compatible globals for HTML onclick handlers — removed, no legacy callers
++// window.KairosSession = KairosSession;
+ 
+ 
+ document.addEventListener('htmx:afterSwap', function() {
