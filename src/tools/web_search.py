@@ -123,6 +123,46 @@ async def _search_with_retry(
     return None, "Search error (unreachable)"
 
 
+async def _search_with_engines(
+    query: str,
+    language: str,
+    time_range: str,
+    page: int,
+    safe_search: int,
+    engines: str | None,
+    config=None,
+) -> dict | None:
+    """Hit SearXNG with an optional explicit engine list.
+
+    ``engines`` is a comma-separated engine list (e.g. ``"bing"``) or
+    ``None`` to use the instance's default engine selection.
+    """
+    params: dict[str, Any] = {
+        "q": query,
+        "format": "json",
+        "pageno": page,
+        "safesearch": safe_search,
+    }
+    if engines:
+        params["engines"] = engines
+    if language:
+        params["language"] = language
+    if time_range:
+        params["time_range"] = time_range
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{_searxng_url(config=config)}/search",
+                params=params,
+                timeout=SEARCH_TIMEOUT,
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception:
+        logger.exception("Search with engines=%s failed", engines or "default")
+        return None
+
+
 async def _search_and_format_results(
     query: str,
     max_results: int,
@@ -135,13 +175,23 @@ async def _search_and_format_results(
     config=None,
 ) -> str:
     data, error = await _search_with_retry(
-        query, language, 15.0, _retries,
+        query, language, SEARCH_TIMEOUT, _retries,
         config=config, categories=categories, page=page, safe_search=safe_search, time_range=time_range,
     )
     if error or data is None:
         return error or "Search failed."
 
     results = data.get("results", [])[:max_results]
+
+    # Default engines (DuckDuckGo, Google) often rate-limit automated
+    # queries.  Fall back to Bing which is more permissive with
+    # self-hosted SearXNG instances.
+    if not results:
+        logger.info("No results from default engines — retrying with Bing")
+        bing_data = await _search_with_engines(
+            query, language, time_range, page, safe_search, "bing", config=config,
+        )
+        results = (bing_data.get("results", []) if bing_data else [])[:max_results]
 
     if not results:
         return "No results found."
