@@ -22,7 +22,7 @@ from src.memory.curator.recall_review import write_candidates
 
 
 def _candidate_path(tmp_path):
-    return tmp_path / "memory" / "candidates" / "2026" / "07" / "02.recall_links.jsonl"
+    return tmp_path / "memory" / "2026" / "07" / "02" / "candidates" / "recall_links.jsonl"
 
 
 class FakeEntityRepo:

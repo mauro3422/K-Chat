@@ -65,7 +65,7 @@ class FakeInboxStore:
 def test_memory_inbox_path_uses_daily_partition(tmp_path):
     path = memory_inbox_path("2026-07-02T09:30:00", root=tmp_path)
 
-    assert path == tmp_path / "memory" / "inbox" / "2026" / "07" / "02.jsonl"
+    assert path == tmp_path / "memory" / "2026" / "07" / "02" / "inbox.jsonl"
 
 
 def test_append_memory_inbox_item_writes_pending_jsonl(tmp_path):
@@ -80,7 +80,7 @@ def test_append_memory_inbox_item_writes_pending_jsonl(tmp_path):
         timestamp="2026-07-02T09:30:00",
     )
 
-    path = tmp_path / "memory" / "inbox" / "2026" / "07" / "02.jsonl"
+    path = tmp_path / "memory" / "2026" / "07" / "02" / "inbox.jsonl"
     saved = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
 
     assert payload["inbox_id"]

@@ -14,7 +14,7 @@ from src.memory.curator.recall_events import (
 def test_recall_event_path_uses_daily_partition(tmp_path):
     path = recall_event_path("2026-07-02T09:30:00", root=tmp_path)
 
-    assert path == tmp_path / "memory" / "recall" / "2026" / "07" / "02.jsonl"
+    assert path == tmp_path / "memory" / "2026" / "07" / "02" / "recall.jsonl"
 
 
 def test_recall_candidate_path_uses_daily_partition(tmp_path):
@@ -23,10 +23,11 @@ def test_recall_candidate_path_uses_daily_partition(tmp_path):
     assert path == (
         tmp_path
         / "memory"
-        / "candidates"
         / "2026"
         / "07"
-        / "02.recall_links.jsonl"
+        / "02"
+        / "candidates"
+        / "recall_links.jsonl"
     )
 
 
@@ -227,10 +228,11 @@ def test_write_recall_candidates_materializes_pending_snapshot(tmp_path):
     assert path == (
         tmp_path
         / "memory"
-        / "candidates"
         / "2026"
         / "07"
-        / "02.recall_links.jsonl"
+        / "02"
+        / "candidates"
+        / "recall_links.jsonl"
     )
     payload = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
     assert payload["candidate_id"] == "abc123"

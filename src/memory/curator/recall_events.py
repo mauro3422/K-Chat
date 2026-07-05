@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
@@ -225,13 +226,13 @@ def iter_recall_events(
     """Load recall JSONL events inside the lookback window."""
 
     base = Path(root) if root is not None else _project_root()
-    recall_root = base / "memory" / "recall"
+    recall_root = base / "memory"
     if not recall_root.exists():
         return []
 
     cutoff = datetime.now().timestamp() - max(lookback_days, 0) * 86400
     events: list[dict[str, Any]] = []
-    for path in sorted(recall_root.rglob("*.jsonl")):
+    for path in sorted(recall_root.glob("*/*/*/recall.jsonl")):
         if path.stat().st_mtime < cutoff:
             continue
         with path.open("r", encoding="utf-8") as handle:

@@ -19,7 +19,7 @@ from src.memory.curator.curation_events import (
 def test_curation_report_path_uses_daily_partition(tmp_path):
     path = curation_report_path("2026-07-02T09:30:00", root=tmp_path)
 
-    assert path == tmp_path / "memory" / "events" / "curation" / "2026" / "07" / "02.md"
+    assert path == tmp_path / "memory" / "2026" / "07" / "02" / "events" / "curation.md"
 
 
 def test_curation_decision_path_uses_daily_partition(tmp_path):
@@ -28,11 +28,11 @@ def test_curation_decision_path_uses_daily_partition(tmp_path):
     assert path == (
         tmp_path
         / "memory"
-        / "events"
-        / "curation"
         / "2026"
         / "07"
-        / "02.decisions.jsonl"
+        / "02"
+        / "events"
+        / "decisions.jsonl"
     )
 
 
@@ -45,7 +45,7 @@ def test_append_and_load_curation_decision(tmp_path):
 
     decisions = load_curation_decisions(root=tmp_path)
 
-    assert payload["artifact"].endswith("02.decisions.jsonl")
+    assert "events" in payload["artifact"] and payload["artifact"].endswith("decisions.jsonl")
     assert decisions[0]["kind"] == "memory_inbox"
     assert decisions[0]["action"] == "promote"
     assert decisions[0]["group_id"] == "g1"
@@ -68,7 +68,7 @@ def test_write_curation_report_writes_markdown_with_metadata(tmp_path):
 def test_tracer_candidate_path_uses_daily_partition(tmp_path):
     path = tracer_candidate_path("2026-07-02T09:30:00", root=tmp_path)
 
-    assert path == tmp_path / "memory" / "candidates" / "2026" / "07" / "02.tracer.jsonl"
+    assert path == tmp_path / "memory" / "2026" / "07" / "02" / "candidates" / "tracer.jsonl"
 
 
 def test_tracer_candidates_from_patterns_filters_low_signal():

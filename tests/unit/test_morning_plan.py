@@ -27,7 +27,7 @@ from src.memory.synthesis.morning_plan import (
 def test_morning_plan_path_uses_daily_partition(tmp_path):
     path = morning_plan_path("2026-07-02", root=tmp_path)
 
-    assert path == tmp_path / "memory" / "plans" / "morning" / "2026" / "07" / "02.md"
+    assert path == tmp_path / "memory" / "2026" / "07" / "02" / "morning-plan.md"
 
 
 def test_daily_operational_commands_include_full_layer_pipeline():
@@ -83,7 +83,7 @@ def test_build_morning_plan_collects_inbox_candidates_reports_and_synthesis(tmp_
         root=tmp_path,
         timestamp="2026-07-02T08:01:00",
     )
-    candidate_path = tmp_path / "memory" / "candidates" / "2026" / "07" / "02.recall_links.jsonl"
+    candidate_path = tmp_path / "memory" / "2026" / "07" / "02" / "candidates" / "recall_links.jsonl"
     write_candidates(
         candidate_path,
         [
@@ -163,8 +163,8 @@ def test_build_morning_plan_collects_inbox_candidates_reports_and_synthesis(tmp_
         root=tmp_path,
         timestamp="2026-07-02T08:40:00",
     )
-    synthesis_path = tmp_path / "memory" / "synthesis" / "2026" / "07" / "02.md"
-    synthesis_path.parent.mkdir(parents=True)
+    synthesis_path = tmp_path / "memory" / "2026" / "07" / "02" / "daily.md"
+    synthesis_path.parent.mkdir(parents=True, exist_ok=True)
     synthesis_path.write_text("# Daily Synthesis\n\n- Work happened\n", encoding="utf-8")
 
     plan = build_morning_plan(root=tmp_path, target_date=date(2026, 7, 2))
