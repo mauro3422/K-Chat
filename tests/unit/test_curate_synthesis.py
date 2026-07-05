@@ -234,7 +234,6 @@ async def test_daily_synthesis_registers_generated_report_in_processing_catalog(
     with patch("src.memory.synthesis.daily.resolve_memory_db_path", return_value=str(memory_db)):
         report_path = await generate_daily_synthesis(
             db_path=str(sessions_db),
-            output_dir=str(tmp_path / "synthesis"),
             target_date=datetime.now().date(),
         )
 

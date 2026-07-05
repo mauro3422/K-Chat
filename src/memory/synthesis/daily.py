@@ -147,7 +147,6 @@ async def _get_session_topics(mem_db: str, session_id: str) -> list[str]:
 
 async def generate_daily_synthesis(
     db_path: str,
-    output_dir: str = "memory/synthesis",  # kept for compat but unused — use paths module
     target_date: date | None = None,
     root: str | Path | None = None,
 ) -> str:
@@ -158,7 +157,6 @@ async def generate_daily_synthesis(
 
     Args:
         db_path: Path to sessions.db.
-        output_dir: Unused — kept for compat.
         target_date: Date to synthesize. Defaults to today, or yesterday before 04:00.
 
     Returns:

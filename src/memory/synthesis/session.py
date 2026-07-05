@@ -250,7 +250,6 @@ def render_session_summary(summary: dict[str, Any]) -> str:
 
 async def generate_session_summaries(
     db_path: str,
-    output_dir: str = "memory/session_summaries",  # kept for compat but unused — use paths module
     target_date: date | None = None,
     root: str | Path | None = None,
 ) -> list[dict[str, Any]]:

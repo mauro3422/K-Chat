@@ -217,7 +217,6 @@ async def test_daily_synthesis_consumes_session_summary(setup_test_db, tmp_path,
 
     report = await generate_daily_synthesis(
         setup_test_db,
-        output_dir="memory/synthesis",
         target_date=date(2026, 7, 2),
         root=tmp_path,
     )
