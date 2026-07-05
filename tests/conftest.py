@@ -5,6 +5,11 @@ import tempfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Inject project venv site-packages so fastembed, networkx, sqlite_vec
+# are available even when running under system Python.
+from src._venv_inject import ensure_venv  # noqa: E402
+ensure_venv()
+
 # Set temp DB paths BEFORE any module that imports config_loader.py is loaded.
 # This ensures test DB isolation regardless of .env settings.
 # NOTE: the actual env vars read by the code are SESSIONS_DB_PATH (for sessions.db)

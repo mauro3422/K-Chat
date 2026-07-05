@@ -6,6 +6,7 @@ import asyncio
 import logging
 import hashlib
 import json
+import math
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -20,6 +21,33 @@ from src.memory.memory_db_path import resolve_memory_db_path
 from src.memory.curator.recall_review import load_candidates, write_candidates
 from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
+
+# Mathematical analysis modules (optional — degrade gracefully)
+try:
+    from src.memory.analysis import (
+        MemoryCorpus,
+        EntityGraph,
+        PMIClustering,
+        SemanticSimilarity,
+        CombinedScorer,
+        keyword_rank_with_scores,
+        candidate_confidence_from_scores,
+        compute_statistical_thresholds,
+        textrank_from_messages,
+        LatentSemanticAnalysis,
+        build_cross_turn_matrix,
+        cross_pmi,
+    )
+
+    ANALYSIS_AVAILABLE = True
+except ImportError as _exc:
+    ANALYSIS_AVAILABLE = False
+    CombinedScorer = None
+    textrank_from_messages = None  # type: ignore
+    LatentSemanticAnalysis = None  # type: ignore
+    build_cross_turn_matrix = None  # type: ignore
+    cross_pmi = None  # type: ignore
+    logger.debug("Analysis modules not available: %s", _exc)
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +210,16 @@ def _keywords(messages: list[dict[str, Any]], limit: int = 10) -> list[str]:
         "data", "text", "show", "make", "done", "need", "look", "know",
         "like", "want", "get", "put", "set", "use", "using", "used",
         "maybe", "always", "never", "already", "still", "even", "though",
+        # Debug/error tokens that leak into conversational keywords
+        "attempt", "retry", "error", "failed", "failure", "exception",
+        "timeout", "status", "exists", "assume", "assumed", "assumption",
+        "connection", "connect", "connected", "connecting",
+        "response", "request", "header", "headers", "payload",
+        "server", "client", "protocol", "schema", "endpoint",
+        "config", "configure", "configuration", "setting", "settings",
+        "param", "params", "parameter", "parameters",
+        "string", "integer", "boolean", "array", "object",
+        "method", "function", "attribute", "property",
     }
     counts: dict[str, int] = {}
     for message in messages:
@@ -207,17 +245,171 @@ def _keywords(messages: list[dict[str, Any]], limit: int = 10) -> list[str]:
     return [word for word, _ in ranked[:limit]]
 
 
+def _keywords_scored(
+    messages: list[dict[str, Any]],
+    scorer: "CombinedScorer | None" = None,
+    limit: int = 10,
+) -> list[str]:
+    """Extract keywords with mathematical scoring (TF-IDF/BM25/centrality/PMI).
+
+    Extracts from **both** user and assistant messages, merging their signals.
+    Terms that appear in both roles get a cross-coherence bonus because
+    they represent conversational focus (both parties talking about the
+    same concept).
+
+    Falls back to raw-count ranking if ``scorer`` is None.
+    Uses the consolidated stopword list from ``analysis.corpus.tokenize_doc``.
+    """
+    from src.memory.analysis.corpus import STOP, strip_code
+
+    # Skip system-injected messages (retry errors, forwarded content)
+    def _is_organic(msg: dict[str, Any]) -> bool:
+        content = str(msg.get("content") or "")
+        return not content.startswith("[SYSTEM:")
+
+    # Cap per-term per-message to prevent inline pasted content from dominating
+    _MAX_PER_MSG = 30
+
+    # Extract counts per role separately so we can compute cross-coherence
+    counts: dict[str, int] = {}          # merged count (both roles)
+    user_count: dict[str, int] = {}      # only user
+    asst_count: dict[str, int] = {}      # only assistant
+
+    for message in messages:
+        role = str(message.get("role") or "")
+        if role not in ("user", "assistant"):
+            continue
+        if not _is_organic(message):
+            continue
+
+        msg_tokens: dict[str, int] = {}
+        # Strip code blocks before keyword extraction to prevent code noise
+        clean_content = strip_code(str(message.get("content") or ""))
+        for word in re.findall(r"[A-Za-zÁÉÍÓÚáéíóúÑñ0-9_]{4,}", clean_content):
+            normalized = word.lower().strip("._-")
+            if normalized in STOP or len(normalized) < 4:
+                continue
+            msg_tokens[normalized] = msg_tokens.get(normalized, 0) + 1
+
+        target = user_count if role == "user" else asst_count
+        for token, token_count in msg_tokens.items():
+            capped = min(token_count, _MAX_PER_MSG)
+            target[token] = target.get(token, 0) + capped
+            counts[token] = counts.get(token, 0) + capped
+
+    if not counts:
+        return []
+
+    # Cross-coherence bonus: terms appearing in BOTH roles get a multiplier
+    # because they represent shared conversational focus.
+    cross_terms = set(user_count) & set(asst_count)
+    for term in cross_terms:
+        counts[term] = int(counts[term] * 1.5)  # +50% boost for mutual terms
+
+    if scorer is not None and ANALYSIS_AVAILABLE:
+        doc_len = sum(len(m.get("content", "").split()) for m in messages if _is_organic(m)) + 1
+
+        # Compute TextRank scores per-term for this session
+        textrank_scores: dict[str, float] = {}
+        if textrank_from_messages is not None:
+            try:
+                tr_terms = textrank_from_messages(
+                    messages, include_roles=("user", "assistant"), limit=30
+                )
+                textrank_scores = dict(tr_terms)
+            except Exception:
+                pass
+
+        ranked = scorer.score_keywords_batch(
+            list(counts.items()), doc_len, textrank_scores=textrank_scores
+        )
+        return [term for term, _ in ranked[:limit]]
+
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return [word for word, _ in ranked[:limit]]
+
+
 def build_session_summary(
     session: dict[str, Any],
     messages: list[dict[str, Any]],
+    scorer: "CombinedScorer | None" = None,
 ) -> dict[str, Any]:
-    """Build a deterministic summary payload for one session."""
+    """Build a deterministic summary payload for one session.
+
+    When the scorer is available, also computes:
+    - TextRank (intra-session word graph) — per-term scores
+    - LSA coherence (cross-role topic alignment via SVD)
+    - Cross-PMI (user↔assistant term pair strength)
+
+    Parameters
+    ----------
+    session : dict
+        Session row from the DB.
+    messages : list[dict]
+        Message rows for the session.
+    scorer : CombinedScorer | None
+        Optional mathematical scorer. When provided, keywords are ranked
+        using TF-IDF/BM25/graph centrality/PMI instead of raw frequency.
+        Also enables LSA and cross-PMI computations.
+    """
 
     user_messages = [m for m in messages if m.get("role") == "user"]
     assistant_messages = [m for m in messages if m.get("role") == "assistant"]
     first_user = _clip(user_messages[0].get("content", "")) if user_messages else ""
     last_user = _clip(user_messages[-1].get("content", "")) if user_messages else ""
     last_assistant = _clip(assistant_messages[-1].get("content", "")) if assistant_messages else ""
+
+    # Use scored keywords when scorer is available
+    if scorer is not None and ANALYSIS_AVAILABLE:
+        keywords = _keywords_scored(messages, scorer=scorer)
+    else:
+        keywords = _keywords(messages)
+
+    # Compute conversation-level analytics (LSA, cross-PMI)
+    lsa_coherence = 0.0
+    lsa_reliability = 0.0
+    cross_pmi_score = 0.0
+    pmi_reliability = 0.0
+    blended_coherence = 0.0
+
+    _organic = [m for m in messages if not str(m.get("content", "")).startswith("[SYSTEM:")]
+
+    if LatentSemanticAnalysis is not None and len(_organic) >= 4:
+        try:
+            lsa = LatentSemanticAnalysis(n_topics=min(5, len(_organic) // 2)).fit(_organic)
+            cross_sims = lsa.cross_role_similarities()
+            if cross_sims:
+                raw_coherence = sum(s for _, _, s in cross_sims) / len(cross_sims)
+                # Clamp to [0, 1]: SVD topic vectors can be negative (opposite
+                # directions), which gives negative cosine.  Zero means "no
+                # topic alignment" which is the floor for coherence.
+                lsa_coherence = round(max(0.0, raw_coherence), 4)
+            # Reliability: LSA needs user turns to find topics
+            lsa_reliability = round(min(1.0, lsa.n_user_turns / 5), 4)
+        except Exception as exc:
+            logger.debug("LSA coherence failed: %s", exc)
+
+    if build_cross_turn_matrix is not None and cross_pmi is not None and len(_organic) >= 4:
+        try:
+            matrix = build_cross_turn_matrix(_organic, window=1)
+            pmi_scores = cross_pmi(matrix, min_cooc=1)
+            n_pairs = len(pmi_scores)
+            if pmi_scores:
+                mean_pmi = sum(pmi_scores.values()) / n_pairs
+                # Sigmoid normalisation: PMI ∈ ℝ → [0, 1]
+                cross_pmi_score = round(1.0 / (1.0 + math.exp(-mean_pmi)), 4)
+            # Reliability: PMI needs enough term pairs to be stable
+            pmi_reliability = round(min(1.0, n_pairs / 10), 4)
+        except Exception as exc:
+            logger.debug("Cross-PMI failed: %s", exc)
+
+    # Blended coherence: weighted by reliability of each signal
+    denom = lsa_reliability + pmi_reliability + 1e-12
+    blended_coherence = round(
+        (lsa_reliability * lsa_coherence + pmi_reliability * cross_pmi_score) / denom,
+        4,
+    )
+
     return {
         "session_id": session.get("session_id", ""),
         "name": session.get("name") or "",
@@ -227,10 +419,15 @@ def build_session_summary(
         "user_message_count": len(user_messages),
         "assistant_message_count": len(assistant_messages),
         "content_hash": _message_digest(messages),
-        "keywords": _keywords(messages),
+        "keywords": keywords,
         "first_user": first_user,
         "last_user": last_user,
         "last_assistant": last_assistant,
+        "lsa_coherence": lsa_coherence,
+        "lsa_reliability": lsa_reliability,
+        "cross_pmi_score": cross_pmi_score,
+        "pmi_reliability": pmi_reliability,
+        "blended_coherence": blended_coherence,
     }
 
 
@@ -244,6 +441,11 @@ def render_session_summary(summary: dict[str, Any]) -> str:
         "created_at": summary.get("created_at", ""),
         "content_hash": summary.get("content_hash", ""),
         "message_count": summary.get("message_count", 0),
+        "lsa_coherence": summary.get("lsa_coherence", 0.0),
+        "lsa_reliability": summary.get("lsa_reliability", 0.0),
+        "cross_pmi_score": summary.get("cross_pmi_score", 0.0),
+        "pmi_reliability": summary.get("pmi_reliability", 0.0),
+        "blended_coherence": summary.get("blended_coherence", 0.0),
     }
     lines = [
         f"<!-- metadata: {json.dumps(metadata, ensure_ascii=False, sort_keys=True)} -->",
@@ -259,6 +461,13 @@ def render_session_summary(summary: dict[str, Any]) -> str:
     ]
     if summary.get("keywords"):
         lines.append(f"- Keywords: {', '.join(summary['keywords'])}")
+    # Show blended coherence if available
+    blended = summary.get("blended_coherence", 0.0)
+    lsa_r = summary.get("lsa_reliability", 0.0)
+    pmi_r = summary.get("pmi_reliability", 0.0)
+    if blended > 0:
+        lines.append(f"- Blended coherence: **{blended:.3f}** (LSA rel={lsa_r:.2f}, PMI rel={pmi_r:.2f})")
+
     lines.extend(["", "## Extractive Notes", ""])
     for label, key in (
         ("First user message", "first_user"),
@@ -272,6 +481,57 @@ def render_session_summary(summary: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _build_scorer(root: str | Path | None = None) -> "CombinedScorer | None":
+    """Initialise a CombinedScorer from project artifacts.
+
+    Each component is initialised independently so a missing table or
+    unavailable dependency degrades gracefully.  Returns None only when
+    none of the components could be built at all.
+    """
+    if not ANALYSIS_AVAILABLE or CombinedScorer is None:
+        return None
+
+    base = Path(root) if root else _project_root()
+    curated_db = resolve_memory_db_path()
+
+    corpus: Optional["MemoryCorpus"] = None
+    entity_graph: Optional["EntityGraph"] = None
+    pmi: Optional["PMIClustering"] = None
+    semantic: Optional["SemanticSimilarity"] = None
+
+    try:
+        corpus = MemoryCorpus(base)
+    except Exception as exc:
+        logger.debug("MemoryCorpus init failed: %s", exc)
+
+    try:
+        entity_graph = EntityGraph(curated_db)
+    except Exception as exc:
+        logger.debug("EntityGraph init failed: %s", exc)
+
+    try:
+        pmi = PMIClustering(base)
+    except Exception as exc:
+        logger.debug("PMIClustering init failed: %s", exc)
+
+    try:
+        semantic = SemanticSimilarity(curated_db)
+    except Exception as exc:
+        logger.debug("SemanticSimilarity init failed: %s", exc)
+
+    # Return None only if nothing could be built
+    if not any([corpus, entity_graph, pmi, semantic]):
+        logger.warning("All scorer components failed — returning None")
+        return None
+
+    return CombinedScorer(
+        corpus=corpus,
+        entity_graph=entity_graph,
+        pmi=pmi,
+        semantic=semantic,
+    )
+
+
 async def generate_session_summaries(
     db_path: str,
     target_date: date | None = None,
@@ -283,14 +543,21 @@ async def generate_session_summaries(
     date_str = target.isoformat()
     sessions = await get_sessions_for_summary_date(db_path, date_str)
     catalog = MemoryProcessingCatalogRepository(resolve_memory_db_path())
+
+    # Build mathematical scorer (TF-IDF/BM25/graph/PMI) from existing artifacts
+    scorer = _build_scorer(root=root)
+
     results: list[dict[str, Any]] = []
     for session in sessions:
         session_id = str(session.get("session_id") or "")
+        # Skip test sessions — they're ephemeral and add noise
+        if session_id.startswith("test-") or session_id.startswith("test_"):
+            continue
         messages = await get_session_messages_for_summary(db_path, session_id)
         # Skip sessions with no messages — empty summaries add noise
         if not messages:
             continue
-        summary = build_session_summary(session, messages)
+        summary = build_session_summary(session, messages, scorer=scorer)
         digest = str(summary["content_hash"])
         path = session_summary_path(
             session_id,
@@ -605,8 +872,13 @@ def _candidate_relation_hints(
 def candidates_from_session_summary_artifact(
     artifact: Mapping[str, Any],
     timestamp: str | None = None,
+    scorer: "CombinedScorer | None" = None,
 ) -> list[dict[str, Any]]:
-    """Create conservative review candidates from a summary artifact."""
+    """Create conservative review candidates from a summary artifact.
+
+    When ``scorer`` is provided, candidate confidence is enhanced with
+    keyword-significance, entity-centrality, and semantic-novelty boosts.
+    """
 
     text = str(artifact.get("text") or "")
     lines = _candidate_signal_lines(text)
@@ -620,6 +892,56 @@ def candidates_from_session_summary_artifact(
     query = " ".join(line.lstrip("- ").strip() for line in lines[:3])
     entities = _candidate_entity_hints(lines, artifact)
     policy = _candidate_relation_policy(lines, session_id)
+    base_confidence = float(policy["confidence"])
+    candidate_text = " ".join(lines)
+
+    # --- Enhance confidence with mathematical scoring ---
+    if scorer is not None and ANALYSIS_AVAILABLE:
+        from src.memory.analysis.corpus import tokenize_doc
+
+        tokens = tokenize_doc(candidate_text)
+        term_counts: dict[str, int] = {}
+        for t in tokens:
+            term_counts[t] = term_counts.get(t, 0) + 1
+        if term_counts:
+            doc_len = len(tokens) + 1
+            kw_scores = scorer.score_keywords_batch(
+                list(term_counts.items()), doc_len
+            )
+        else:
+            kw_scores = []
+
+        entity_names = [str(e.get("name", "")) for e in entities if e.get("name")]
+
+        # Read pre-computed coherence + reliability from artifact metadata
+        meta = artifact.get("metadata") or {}
+        lsa_coherence = float(meta.get("lsa_coherence", 0.0))
+        lsa_reliability = float(meta.get("lsa_reliability", 0.0))
+        cross_pmi_score = float(meta.get("cross_pmi_score", 0.0))
+        pmi_reliability = float(meta.get("pmi_reliability", 0.0))
+
+        enhanced_confidence = candidate_confidence_from_scores(
+            kw_scores,
+            entity_names,
+            session_text=candidate_text,
+            scorer=scorer,
+            base_confidence=base_confidence,
+            lsa_coherence=lsa_coherence,
+            lsa_reliability=lsa_reliability,
+            cross_pmi_score=cross_pmi_score,
+            pmi_reliability=pmi_reliability,
+        )
+        final_confidence = enhanced_confidence
+        link_score = enhanced_confidence
+        link_reasons = [
+            str(policy.get("reason", "session_summary_signal")),
+            "enhanced_scoring",
+        ]
+    else:
+        final_confidence = base_confidence
+        link_score = base_confidence
+        link_reasons = [str(policy.get("reason", "session_summary_signal")), "summary_entity_hints"]
+
     payload = {
         "type": "session_summary_candidate",
         "source": "session_summary",
@@ -638,13 +960,13 @@ def candidates_from_session_summary_artifact(
             "candidate_id": candidate_id,
             "status": "pending",
             "created_at": ts,
-            "confidence": float(policy["confidence"]),
+            "confidence": round(final_confidence, 4),
             "relation_type": str(policy["relation_type"]),
             "source_id": f"candidate:{candidate_id}",
             "target_id": str(policy["target_id"]),
             "target_needs_resolution": bool(policy["target_needs_resolution"]),
-            "link_score": float(policy["confidence"]),
-            "link_reasons": [str(policy["reason"]), "summary_entity_hints"],
+            "link_score": round(link_score, 4),
+            "link_reasons": link_reasons,
             "entities": entities,
             "temporal": _candidate_temporal_metadata(ts),
             "provenance": {
@@ -668,20 +990,50 @@ def generate_session_summary_candidates(
     root: str | Path | None = None,
     target_date: date | None = None,
     timestamp: str | None = None,
+    scorer: "CombinedScorer | None" = None,
 ) -> dict[str, Any]:
-    """Materialize reviewable candidates derived from session summaries."""
+    """Materialize reviewable candidates derived from session summaries.
+
+    Parameters
+    ----------
+    scorer : CombinedScorer | None
+        Optional mathematical scorer for enhanced confidence estimation.
+    """
 
     target = target_date or _default_target_date()
     path = session_summary_candidate_path(target, root=root)
     existing = load_candidates(path)
     by_id = {str(candidate.get("candidate_id")): dict(candidate) for candidate in existing}
     created = 0
+
+    # Build scorer if not provided
+    if scorer is None:
+        scorer = _build_scorer(root=root)
+
+    # First pass: generate all candidates
+    new_candidates: list[dict[str, Any]] = []
     for artifact in discover_session_summary_artifacts(root=root):
-        for candidate in candidates_from_session_summary_artifact(artifact, timestamp=timestamp):
+        for candidate in candidates_from_session_summary_artifact(
+            artifact, timestamp=timestamp, scorer=scorer
+        ):
             cid = str(candidate.get("candidate_id") or "")
             if cid in by_id:
                 continue
-            by_id[cid] = candidate
+            new_candidates.append(candidate)
+
+    # Second pass: compute batch statistical thresholds and add promotion_decision
+    if new_candidates:
+        confidences = [float(c.get("confidence", 0)) for c in new_candidates]
+        thresh = compute_statistical_thresholds(confidences)
+        for c in new_candidates:
+            conf = float(c.get("confidence", 0))
+            if conf >= thresh["auto_promote_threshold"]:
+                c["promotion_decision"] = "auto_promote"
+            elif conf >= thresh["review_threshold"]:
+                c["promotion_decision"] = "review"
+            else:
+                c["promotion_decision"] = "hold"
+            by_id[str(c.get("candidate_id"))] = c
             created += 1
 
     if by_id:

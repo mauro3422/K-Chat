@@ -1,55 +1,65 @@
 # Handover: Pipeline de Memoria por Capas
 
-**Creado:** 2026-07-04 22:00 (actualizado 2026-07-04 22:30)  
-**Autor:** Mauro + Codex (agente debug)  
+**Creado:** 2026-07-04 22:00  
+**Actualizado:** 2026-07-05 00:49 — Mauro + Debug Agent (opencode)  
 **Propósito:** Que otro agente IA pueda continuar el laburo sin perder contexto.
 
 ---
 
 ## 1. Estado Actual Resumido
 
-### Pipeline funcional
-El pipeline de memoria por capas corre y produce artifacts en:
-- `memory/session_summaries/{channel}/{session_id}.md`
-- `memory/transversal/YYYY/MM/DD.md`
-- `memory/synthesis/YYYY/MM/DD.md`
-- `memory/candidates/YYYY/MM/DD.*.jsonl`
-- `memory/inbox/YYYY/MM/DD.jsonl`
-- `memory/events/curation/YYYY/MM/DD.md`
-- `memory/plans/morning/YYYY/MM/DD.md` (via `daily_memory_report.py`)
+### Pipeline funcional y probado
+El pipeline de memoria por capas corre **sin LLM** (extractivo puro) y produce artifacts en la **nueva estructura unificada**:
 
-### Datasets generados (reales)
-- `memory/transversal/2026/07/02.md` — 0 sesiones (vacío)
-- `memory/transversal/2026/07/03.md` — generado
-- `memory/transversal/2026/07/04.md` — 0 sesiones (vacío)
-- `memory/transversal/2026/06/17.md` — 5 sesiones, 57 mensajes
-- `memory/synthesis/2026/06/17.md` — daily synthesis
-- `memory/candidates/2026/06/17.session_summary.jsonl` — 2 candidatos
-- `memory/candidates/2026/06/17.transversal_synthesis.jsonl`
-- `memory/candidates/2026/06/27.session_summary.jsonl`
-- `memory/inbox/2026/07/03.jsonl` — 2 items (de save_memory scope=inbox)
-- `memory/events/curation/2026/06/17.md` y `2026/06/27.md`, `2026/07/03.md`, `2026/07/04.md`
-
-### Tests pasan
 ```
+memory/
+└── YYYY/
+    └── MM/
+        └── DD/
+            ├── session--{channel}--{id}.md     ← Session summary
+            ├── transversal.md                   ← Síntesis transversal
+            ├── daily.md                         ← Síntesis diaria
+            ├── candidates/
+            │   ├── session_summary.jsonl        ← Candidatos de summaries
+            │   └── transversal_synthesis.jsonl  ← Candidatos de transversal
+            └── events/
+                └── curation.md                  ← Reporte de curaduría
+```
+
+### Datasets generados (2026-07-05, corrida completa)
+Todas las fechas con datos en la DB fueron procesadas exitosamente:
+
+| Fecha | Sessions | Summaries | Candidatos | Transversal |
+|---|---|---|---|---|
+| 2026-06-15 | 4 | 4 | 13 (5 summary + 8 transversal) | 10 topics, 2 entidades |
+| 2026-06-16 | 11 → 10 | 10 | 20 (12 summary + 8 transversal) | 12 topics, 4 entidades |
+| 2026-06-18 | 1 (Telegram) | 1 | 13 (summary) | 0 topics |
+| 2026-06-20 | 2 | 2 | 1 (summary) | 0 topics |
+| 2026-07-03 | 3 | 3 | 21 (15 summary + 6 transversal) | 6 topics |
+| 2026-07-04 | 3 → 2 | 2 | 25 (17 summary + 8 transversal) | 8 topics |
+| **Total** | **24** | **22** | **93 candidatos** | **6 transversals** |
+
+### Tests
+```bash
 20 passed in 15.34s
 ```
-- `tests/unit/test_memory_repair.py` — 10 tests (repair planner + dedup + stale pruning + orphan cleanup)
-- `tests/unit/test_transversal_synthesis.py` — 10 tests (transversal generation, candidates, embeddings, filtering, morning plan integration)
+- `tests/unit/test_memory_repair.py` — 10 tests
+- `tests/unit/test_transversal_synthesis.py` — 10 tests
 
 ### Estado git
 - Branch: `master` (up to date with origin/master)
-- 3 modified files (sin commit): `generate_session_summaries.py`, `transversal.py`, `test_transversal_synthesis.py`
-- Cambios: bugfix UTF-8, filtro metadata basura, política transversal más conservadora, tests nuevos
+- 2 untracked files (`.kairos/server.pid`, `src/memory/synthesis/memory_inbox.py`)
+- 0 modified files
 
 ---
 
-## 2. Arquitectura del Pipeline
+## 2. Arquitectura del Pipeline (NUEVA estructura)
 
 ### Script principal
 ```
 scripts/generate_session_summaries.py
 ```
+
 Flags disponibles:
 | Flag | Función |
 |---|---|
@@ -65,228 +75,165 @@ Flags disponibles:
 | `--curation-report` | Reporte de curaduría |
 | `--json` | Output como JSON estructurado |
 
-### Comando completo para correr todo
+### Comando para correr todo (rápido, extractivo, sin LLM)
 ```bash
 python scripts/generate_session_summaries.py \
-  --date 2026-06-17 \
-  --embed --candidates \
-  --transversal --transversal-candidates --embed-transversal \
-  --embed-candidates --embed-inbox \
+  --date 2026-06-16 \
+  --candidates --transversal --transversal-candidates \
   --daily-synthesis --curation-report --json
-```
-
-### Reporte diario
-```bash
-python scripts/daily_memory_report.py --preview --json
-```
-Lee candidates, inbox, síntesis, curaduría, git status, y genera plan matinal en `memory/plans/morning/YYYY/MM/DD.md`.
-
-### Automatización programada
-La tarea `plan-diario-kairos-k-chat` (en Codex) ejecuta cada día a las 09:00:
-```
-scripts/generate_session_summaries.py --embed --candidates --transversal
-  --transversal-candidates --embed-transversal --embed-candidates
-  --daily-synthesis --curation-report --json
-scripts/daily_memory_report.py --preview --json
 ```
 
 ### Componentes modulares
 ```
 src/memory/synthesis/
-├── session.py       # Síntesis extractiva por sesión
-├── transversal.py   # Síntesis transversal entre sesiones
-├── daily.py         # Síntesis diaria (consume summaries y DB)
+├── session.py       # Síntesis extractiva por sesión (keywords, metadata, first/last)
+├── transversal.py   # Síntesis transversal entre sesiones (tokens repetidos)
+├── daily.py         # Síntesis diaria (consume summaries + DB + embeddings/entities)
 └── morning_plan.py  # Plan matinal (inbox + candidates + síntesis + git)
 
 src/memory/maintenance/
 ├── audit.py         # Auditoría de vectores/catálogo (modo read-only)
 └── repair.py        # Reparación planificada con dedup (--apply para mutar)
+
+src/memory/paths.py  # ← CENTRAL: todas las rutas de la nueva estructura
+```
+
+### Pipeline outputs en vivo (ejemplo 2026-06-16)
+```
+memory/2026/06/16/
+├── session--web--5b34d36f-588.md        ← Summary: "Injected Memories Inquiry"
+├── session--web--0ff70e5c-da2.md        ← Summary: "Memory System Injection Status"
+├── session--web--62778322-9ca.md        ← Summary: "Kairos AI Pet Design"
+├── session--web--6d62c2ae-788.md        ← Summary: "GPT-5.5 Browser Extension"
+├── ... (6 más)                           ← 10 summaries total
+├── transversal.md                        ← 12 topics repetidos, 4 entidades
+├── daily.md                              ← Síntesis diaria con previews
+├── candidates/
+│   ├── session_summary.jsonl             ← 12 candidatos
+│   └── transversal_synthesis.jsonl       ← 8 candidatos
+└── events/
+    └── curation.md                       ← Reporte de corrida
 ```
 
 ---
 
-## 3. Lo que está verde / pendiente
+## 3. Lo detectado / problemas encontrados
 
-### Calidad de summaries
-Actualmente son **extractivos** (no LLM). Extraen keywords, metadata, first/last message. No hay resumen semántico real. Para mejorarlos hay que:
-- Conectar con LLM (deepseek v4 flash) para generar resúmenes reales
-- Guardar el resumen LLM como texto principal del artifact
-- Mantener metadata extractiva como respaldo
+### ✅ Pipeline estable
+- Corre en 1-3 segundos por fecha
+- Idempotente (usa `content_hash` + `processing_catalog`)
+- Sin LLM, 0 dependencias externas
+- Filtra sesiones vacías automáticamente
 
-### Cobertura de datos
-- Solo hay sesiones reales en `2026-06-17` (5 sesiones) y `2026-06-27` (algunas más)
-- El resto de los outputs están vacíos (transversal del 02/03/04 sin datos)
-- Probar con más fechas: `--date 2026-06-27`, `--date 2026-06-18`, etc.
+### 🐛 Problemas detectados
 
-### Sesiones vacías
-Muchas sesiones en la DB tienen `message_count=0`. El pipeline las procesa igual y genera summaries vacíos. Filtrar sesiones sin mensajes.
+#### 1. Sesiones de prueba ensucian los datos
+Las sesiones `test-123`, `test-session-1781660948` aparecen en los summaries. Tienen 1 mensaje cada una. El pipeline las procesa igual. Habría que filtrarlas (por naming `test-*` o por `message_count < 2`).
 
-### Calidad de candidatos
-- Los candidatos actuales son básicos: extraen keywords y señales simples
-- No hay promoción automática a MEMORY.md (solo pending)
-- `review_recall_candidate action=promote_ready` para promover candidatos listos
+#### 2. Sesiones que cruzan medianoche
+La sesión `884d7680` se creó el 2026-07-03 23:58 pero tiene mensajes del 2026-07-04. Se procesa bajo su fecha de creación (07-03), lo cual es correcto, pero los mensajes del 07-04 no aparecen en la daily de esa fecha.
 
-### Embeddings
-- Los embeddings existen como pipeline, pero no se han generado realmente (no hay vector store con datos fresh en PC)
-- Para probar embeddings se necesita vector store activo
+#### 3. Keywords code token filter incompleto
+En 2026-07-04 aparecen keywords como `attempt`, `retry`, `assume`, `exists` que son palabras de código/debug, no conversacionales. El filtro `code_tokens` en `session.py` necesita expandirse.
 
----
+#### 4. Telegram channel no tiene transversal con otros
+La sesión de Telegram (2026-06-18) está aislada — nunca comparte fecha con sesiones web. El transversal da 0 topics porque es la única sesión de ese día.
 
-## 4. Cómo probar
+#### 5. Memory inbox items legacy sin migrar
+Hay 1 archivo en `memory/inbox/2026/07/04.jsonl` (estructura vieja) que la pipeline nueva no consume. Conviene migrarlo a `memory/2026/07/04/inbox.jsonl`.
 
-### Con fecha específica
-```bash
-python scripts/generate_session_summaries.py --date 2026-06-17 --json
-```
-
-### Rápido (solo summaries)
-```bash
-python scripts/generate_session_summaries.py --date 2026-06-17 --json
-```
-
-### Pipeline completo
-```bash
-python scripts/generate_session_summaries.py --date 2026-06-17 --embed --candidates --transversal --transversal-candidates --embed-transversal --embed-candidates --daily-synthesis --curation-report --json
-```
-
-### Corregir/actualizar
-El pipeline es **idempotente**: si corres de nuevo con la misma fecha, no regenera artifacts que no cambiaron (usa `content_hash` + `processing_catalog`).
-
-### Tests
-```bash
-python -m pytest tests/unit/test_transversal_synthesis.py -v --tb=short
-python -m pytest tests/unit/test_memory_repair.py -v --tb=short
-python -m pytest tests/unit/test_memory_audit.py -v --tb=short
-```
+#### 6. El archivo `HANDOVER_AGENTE_MEMORIA.md` original describía la estructura VIEJA
+✅ Ya actualizado a la nueva estructura.
 
 ---
 
-## 5. Arquitectura "Lego" — Principios
-
-Los módulos ya están separados con responsabilidades claras:
-- **Synthesis**: genera artifacts (session, transversal, daily)
-- **Curator**: consume artifacts y produce candidatos/relaciones
-- **Maintenance**: audita y repara catálogos/vectores
-- **Retrieval**: busca en capas
-
-Reglas:
-- No acoplar capas superiores desde inferiores (`src/tools/` no importa `src/core/`)
-- No singletons globales — pasar dependencias como parámetros
-- Los artifacts son el contrato: si generás algo nuevo, tiene que ser legible por `morning_plan`
-- `curation_queue` centraliza la cola de acciones del curador
-
----
-
-## 6. Para el próximo agente que tome esto
+## 4. Lo que está verde / pendiente
 
 ### Prioridad alta
-1. **Correr pipeline con fechas reales** `--date 2026-06-27`, `--date 2026-06-20`, etc. para ver datos frescos
-2. **Mejorar summaries extractivos** a LLM-based (usar deepseek v4 flash)
-3. **Filtrar sesiones vacías** en `session.py` antes de generar summary
-4. **Revivir candidatos pendientes** con `review_recall_candidate action=promote_ready`
-5. **Hacer commit** de los 3 archivos modificados actuales
+1. **Filtrar sesiones test** (`test-*`) en `session.py` antes de generar summary
+2. **Mejorar keywords** — expandir `code_tokens` para filtrar `attempt`, `retry`, `error`, `connection`, `exists`, etc.
+3. **Mejorar summaries extractivos** a LLM-based (usar deepseek v4 flash) cuando haya rate limit
+4. **Migrar inbox legacy** de `memory/inbox/YYYY/MM/DD.jsonl` a `memory/YYYY/MM/DD/inbox.jsonl`
+5. **Hacer commit** del estado actual (sin cambios modified, solo untracked)
 
 ### Prioridad media
-6. **Integrar más con `docs/ideas/curator-hybrid-retrieval.md`** — preguntas sintéticas, facetas, pesos vivos
-7. **Probar embeddings** cuando haya vector store funcionando
-8. **Mejorar UI de revisión** — actualmente todo es CLI+artifacts
-9. **Guardar el plan** de las secciones conectadas (IDs por bloque, grafo relacional entre sesiones)
+6. **Probar `--embed`** para ver si el vector store responde con datos reales
+7. **Generar plan matinal** con `daily_memory_report.py --preview --json`
+8. **Revivir candidatos pendientes** (93 en total) con `review_recall_candidate action=promote_ready`
+9. **Integrar más con `docs/ideas/curator-hybrid-retrieval.md`** — preguntas sintéticas, facetas, pesos vivos
 
-### Prioridad baja (ideas grandes)
-10. **Kairos "pensativo"** — triggers automáticos por contexto sin necesidad de "recordá"
-11. **RAM index rápido** para recall sin búsqueda pesada
-12. **Célula Guardián semanal** — consistencia, merge de duplicados, poda
+### Prioridad baja
+10. **Kairos "pensativo"** — triggers automáticos por contexto
+11. **Célula Guardián semanal** — consistencia, merge de duplicados, poda
+12. **Mejorar UI de revisión** — actualmente todo es CLI+artifacts
 
 ---
 
-## 7. Estructura de directorios relevante
+## 5. Sobre los AGENTS.md que gobiernan este agente
+
+El agente debug (opencode) se rige por **dos** AGENTS.md:
+- **Global**: `~/.config/opencode/AGENTS.md` — reglas base (test efficiency, execution style, response style)
+- **Proyecto**: `K-Chat/AGENTS.md` — reglas específicas (arquitectura, memoria, tools, save_memory)
+
+Ambos se inyectan en el system prompt al inicio. El del proyecto **extiende** al global, no lo reemplaza.
+
+---
+
+## 6. Próximo ciclo
+
+Mauro va a iterar sobre los bugs detectados. Prioridades:
+1. Filtrar sesiones test
+2. Mejorar keywords filter
+3. Probar `--embed` contra vector store real
+4. Dejar pipeline corriendo estable
+
+Cualquier duda sobre el diseño:
+1. Leer `src/memory/paths.py` — estructura de rutas centralizada
+2. Leer `docs/MEMORY_LAYERED_ROADMAP.md` — plan completo
+3. Leer `docs/ideas/curator-hybrid-retrieval.md` — ideas de retrieval híbrido
+4. Correr pipeline en una fecha chica para ver outputs fresh
+
+---
+
+## 7. Estructura de directorios (actualizada 2026-07-05)
 
 ```
 memory/
-├── candidates/YYYY/MM/DD.*.jsonl     # Candidatos revisables
-├── events/curation/YYYY/MM/DD.md     # Reportes de curaduría
-├── inbox/YYYY/MM/DD.jsonl            # save_memory inbox
-├── session_summaries/{channel}/      # Summaries por sesión
-├── synthesis/YYYY/MM/DD.md           # Síntesis diaria
-├── transversal/YYYY/MM/DD.md         # Síntesis transversal
-├── plans/morning/YYYY/MM/DD.md       # Plan matinal (daily report)
-├── kairos_memory.db                  # Memoria SQLite con vectores
-└── kairos_curated_memory.db          # Memoria curada
+├── 2026/06/15/            ← Pipeline outputs (4 sessions, 10 topics)
+├── 2026/06/16/            ← Pipeline outputs (10 sessions, 12 topics) ← más completo
+├── 2026/06/18/            ← Pipeline outputs (1 Telegram session)
+├── 2026/06/20/            ← Pipeline outputs (2 sessions)
+├── 2026/07/03/            ← Pipeline outputs (3 sessions)
+├── 2026/07/04/            ← Pipeline outputs (2 sessions)
+├── synthesis/2026/...     ← 🗄️ Legacy (no tocar, migrar eventualmente)
+├── inbox/2026/...         ← 🗄️ Legacy (migrar a nueva estructura)
+└── recall/2026/...        ← 🗄️ Legacy
+```
 
+```
 scripts/
-├── generate_session_summaries.py     # Pipeline principal
-├── daily_memory_report.py            # Reporte diario
-├── memory_audit.py                   # Auditoría (remoto)
-└── memory_repair.py                  # Reparación (remoto)
+├── generate_session_summaries.py     ← Pipeline principal (✅ probado)
+├── daily_memory_report.py            ← Reporte diario (no probado aún)
+├── memory_audit.py                   ← Auditoría (remoto)
+└── memory_repair.py                  ← Reparación (remoto)
 
-src/memory/synthesis/                 # Generación de artifacts
-src/memory/curator/                   # Curaduría + candidatos
-src/memory/maintenance/               # Auditoría + reparación
-src/memory/retrieval/                 # Búsqueda híbrida
+src/memory/
+├── synthesis/                        ← Generación de artifacts
+│   ├── session.py                    ← Session summaries (extractivo)
+│   ├── transversal.py                ← Cross-session synthesis
+│   ├── daily.py                      ← Daily synthesis
+│   └── morning_plan.py               ← Plan matinal
+├── curator/                          ← Curaduría + candidatos
+├── maintenance/                      ← Auditoría + reparación
+├── retrieval/                        ← Búsqueda híbrida
+└── paths.py                          ← 🎯 Central path computation
 ```
 
 ---
 
-## 8. Cosas que no están hechas (pero están documentadas)
+## 8. Contacto
 
-- `docs/ideas/curator-hybrid-retrieval.md` — triggers, preguntas sintéticas, facetas, pesos vivos, spreading activation, célula guardián
-- `docs/MEMORY_LAYERED_ROADMAP.md` — tiene TODO el plan detallado con fases, y marca qué está "aplicado" vs pendiente
-- Telegram como canal completo (resumir sesiones de Telegram)
-- Promoción automática conservadora (hoy es todo manual/pending)
-- Workbench visual (hoy es tool-only)
-- `docs/archive/laptop-stash-audit/README.md` — auditoría de stashes de laptop preservados
-
----
-
-## 9. Configuración del entorno
-
-- Python: `C:\Users\mauro\AppData\Local\Programs\Python\Python313\python.exe`
-- `.venv` es un archivo (no directorio) que apunta a `/home/maurol/dev/K-Chat/venv` (Linux)
-- En Windows correr con python directo (sin .venv)
-- DB de memoria: `memory/kairos_memory.db`
-- DB de sesiones: la que resuelve `resolve_db_path()` (configurable)
-- Variable de entorno: `KAIROS_MEMORY_DB_PATH` para override
-
----
-
-## 10. Cambios aplicados en sesión 2026-07-04 22:00
-
-### Fix: Filtrar sesiones vacías (session.py)
-- `generate_session_summaries()` ahora salta sesiones con `message_count == 0`
-- Antes generaba summaries vacíos que ensuciaban el pipeline
-- Archivo: `src/memory/synthesis/session.py` — `if not messages: continue`
-
-### Fix: Keywords sin ruido de código (session.py)
-- `_keywords()` ahora solo extrae de mensajes de usuario (no de código del assistant)
-- Filtra tokens de código: none, import, self, return, logger, async, await, etc.
-- Archivo: `src/memory/synthesis/session.py`
-
-### Fix: Daily synthesis sin sesiones vacías (daily.py)
-- `generate_daily_synthesis()` ahora oculta sesiones con 0 mensajes en la sección Sessions
-- Muestra contador: "X with messages (Y total)"
-- Archivo: `src/memory/synthesis/daily.py`
-
-### Fix: Evidencia duplicada en transversal (transversal.py)
-- `build_transversal_synthesis()` ahora usa `seen_token_evidence` por token, no global
-- Antes la misma evidencia se mostraba duplicada para el mismo token
-- Archivo: `src/memory/synthesis/transversal.py`
-
-### Pipeline regenerado
-- 2026-06-17: 2 sesiones (eran 5, 3 vacías filtradas) — transversal con 3 topics
-- 2026-06-27: 1 sesión de 115 mensajes — summary con keywords conversacionales
-- 2026-06-27: 1 sesión de 115 mensajes — summary con keywords conversacionales
-
-### Tests
-- 20/20 tests pasan (memory_repair + transversal_synthesis)
-- Sin commits, sin push, 4 archivos modificados localmente
-
-## 11. Contacto / Próximo ciclo
-
-Mauro va a estar iterando sobre este pipeline unos días hasta que vuelva Codex. Las prioridades son:
-1. Probar pipeline con fechas reales
-2. Mejorar summaries (extractivo → LLM)
-3. Filtrar sesiones vacías
-4. Promover candidatos pendientes
-5. Dejar todo commiteado y sincronizado para el próximo "Codex day"
-
-Cualquier duda sobre el diseño, leer `MEMORY_LAYERED_ROADMAP.md` primero, después `docs/ideas/curator-hybrid-retrieval.md`. La arquitectura base ya corre y está testeada.
+Mauro va a estar iterando sobre los bugs detectados. Para cualquier duda:
+- `src/memory/paths.py` define TODAS las rutas de la nueva estructura
+- `scripts/generate_session_summaries.py --help` para flags
+- La DB es `memory/kairos_memory.db` (40 sessions, ~3071 mensajes)

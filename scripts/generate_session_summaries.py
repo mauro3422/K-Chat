@@ -14,6 +14,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# --------------------------------------------------------------------------
+# Auto-detect project venv — re-exec with venv Python if needed
+# --------------------------------------------------------------------------
+_VENV_PYTHON = ROOT / "venv" / "bin" / "python3"
+if _VENV_PYTHON.exists() and not sys.executable.startswith(str(_VENV_PYTHON)[:-1]):
+    # Not running from the project venv — re-exec
+    import os as _os
+    _os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON)] + sys.argv)
+
 from src.memory.db_path import resolve_db_path
 from src.memory.synthesis.session import (
     generate_session_summaries,
