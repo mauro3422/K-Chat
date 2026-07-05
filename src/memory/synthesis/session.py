@@ -145,8 +145,24 @@ def _candidate_id(payload: Mapping[str, Any]) -> str:
 
 def _keywords(messages: list[dict[str, Any]], limit: int = 10) -> list[str]:
     stop = {
+        # Spanish common stopwords
         "para", "pero", "como", "todo", "esta", "este", "esto", "tiene",
-        "sobre", "cuando", "porque", "then", "with", "that", "this", "from",
+        "sobre", "cuando", "porque", "entonces", "donde", "sino", "cada",
+        "tambien", "despues", "antes", "nunca", "siempre", "ahora", "aqui",
+        "alla", "alli", "hacia", "hasta", "media", "medio", "misma", "mismo",
+        "unas", "unos", "otra", "otro", "otras", "otros", "esos", "esas",
+        "estos", "estas", "aquel", "aquella", "seria", "podria", "puede",
+        "debe", "tanto", "vamos", "vaya", "hecho", "dice", "dijo", "hace",
+        "poco", "mucha", "mucho", "todas", "todos", "cual", "cuales",
+        "entre", "contra", "segun", "durante", "mediante", "solo", "sola",
+        "bueno", "buena", "gran", "gran", "nueva", "nuevo", "nuevas", "nuevos",
+        "estoy", "estas", "esta", "estamos", "estan", "eres", "soy",
+        # English common stopwords
+        "then", "with", "that", "this", "from", "what", "which", "where",
+        "when", "than", "been", "have", "they", "them", "these", "those",
+        "would", "could", "should", "about", "there", "their", "your",
+        "some", "such", "also", "very", "just", "only", "more", "most",
+        "much", "many", "each", "well", "here", "will", "into",
     }
     # Code-related tokens to exclude from conversational keywords
     code_tokens = {
@@ -157,7 +173,15 @@ def _keywords(messages: list[dict[str, Any]], limit: int = 10) -> list[str]:
         "print", "len", "str", "int", "dict", "list", "tuple", "set",
         "range", "enumerate", "zip", "map", "filter", "sorted",
         "property", "staticmethod", "classmethod", "super", "object",
-        "value", "values", "items", "keys", "key",
+        "value", "values", "items", "keys", "key", "node", "expected",
+        "assert", "match", "case", "break", "continue", "pass", "del",
+        "exec", "eval", "input", "open", "file", "try", "except", "finally",
+        "else", "elif", "if", "and", "or", "not", "is", "in", "as", "with",
+        "any", "all", "both", "call", "name", "main", "test", "tests",
+        "none", "none", "param", "params", "args", "kwargs", "path", "paths",
+        "data", "text", "show", "make", "done", "need", "look", "know",
+        "like", "want", "get", "put", "set", "use", "using", "used",
+        "maybe", "always", "never", "already", "still", "even", "though",
     }
     counts: dict[str, int] = {}
     for message in messages:

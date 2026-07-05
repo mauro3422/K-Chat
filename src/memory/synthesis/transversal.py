@@ -71,6 +71,15 @@ def _tokenize(text: str) -> list[str]:
         "available", "content_hash", "created_at", "message_count", "notes",
         "session_id", "user_message_count", "assistant_message_count",
         "source", "sources", "keyword", "keywords", "hola", "otra",
+        # Additional Spanish stopwords to reduce noise
+        "estoy", "estas", "estamos", "estan", "eres", "somos", "soy",
+        "sistema", "cosa", "cosas", "dice", "dijo", "hecho", "punto",
+        "parte", "forma", "tipo", "modo", "vez", "veces", "dia", "dias",
+        "aqui", "alli", "alla", "ahora", "nunca", "siempre", "tambien",
+        "entonces", "despues", "antes", "media", "medio", "misma", "mismo",
+        "bueno", "buena", "gran", "nueva", "nuevo", "nuevas", "nuevos",
+        "propio", "propia", "poco", "poca", "mucha", "mucho", "muchas", "muchos",
+        "vamos", "vaya", "sido", "tanto", "tan", "tal",
     }
     tokens: list[str] = []
     for raw in re.findall(r"[A-Za-zÁÉÍÓÚáéíóúÑñ0-9_.-]{4,}", text or ""):
@@ -96,6 +105,15 @@ def _is_actionable_topic(topic: str) -> bool:
         "available", "content_hash", "created_at", "message_count", "notes",
         "session_id", "user_message_count", "assistant_message_count",
         "source", "sources", "keyword", "keywords", "hola", "otra",
+        # Additional Spanish stopwords
+        "estoy", "estas", "estamos", "estan", "eres", "somos", "soy",
+        "sistema", "cosa", "cosas", "dice", "dijo", "hecho", "punto",
+        "parte", "forma", "tipo", "modo", "vez", "veces", "dia", "dias",
+        "aqui", "alli", "alla", "ahora", "nunca", "siempre", "tambien",
+        "entonces", "despues", "antes", "media", "medio", "misma", "mismo",
+        "bueno", "buena", "gran", "nueva", "nuevo", "nuevas", "nuevos",
+        "propio", "propia", "poco", "poca", "mucha", "mucho", "muchas", "muchos",
+        "vamos", "vaya", "sido", "tanto", "tan", "tal",
     }:
         return False
     if token.isdigit():
