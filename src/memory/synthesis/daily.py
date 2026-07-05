@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from src.memory import paths as memory_paths
 from src.memory.content_hash import content_hash
 from src.memory.memory_db_path import resolve_memory_db_path
 from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
@@ -146,7 +147,7 @@ async def _get_session_topics(mem_db: str, session_id: str) -> list[str]:
 
 async def generate_daily_synthesis(
     db_path: str,
-    output_dir: str = "memory/synthesis",
+    output_dir: str = "memory/synthesis",  # kept for compat but unused — use paths module
     target_date: date | None = None,
     root: str | Path | None = None,
 ) -> str:
@@ -157,7 +158,7 @@ async def generate_daily_synthesis(
 
     Args:
         db_path: Path to sessions.db.
-        output_dir: Output directory relative to project root.
+        output_dir: Unused — kept for compat.
         target_date: Date to synthesize. Defaults to today, or yesterday before 04:00.
 
     Returns:
@@ -165,7 +166,6 @@ async def generate_daily_synthesis(
     """
     mem_db = resolve_memory_db_path()
     project_root = Path(root) if root is not None else _project_root()
-    abs_output_dir = os.path.join(project_root, output_dir)
 
     if target_date is None:
         now = datetime.now()
@@ -184,8 +184,11 @@ async def generate_daily_synthesis(
 
     session_stats: list[dict[str, Any]] = []
     total_messages = 0
+    session_count_with_msgs = 0
     for s in sessions:
         stats = await get_session_stats(db_path, s["session_id"])
+        if stats["message_count"] > 0:
+            session_count_with_msgs += 1
         topics = await _get_session_topics(mem_db, s["session_id"])
         total_messages += stats["message_count"]
         session_stats.append({**s, **stats, "topics": topics})
@@ -200,7 +203,7 @@ async def generate_daily_synthesis(
         "",
         "## Summary",
         "",
-        f"- **Sessions**: {len(sessions)}",
+        f"- **Sessions**: {session_count_with_msgs} with messages ({len(sessions)} total)",
         f"- **Messages**: {total_messages}",
         f"- **New embeddings**: {new_embeddings}",
         f"- **New entities**: {len(entities)}",
@@ -213,6 +216,8 @@ async def generate_daily_synthesis(
         lines.append("## Sessions")
         lines.append("")
         for s in session_stats:
+            if s.get("message_count", 0) == 0:
+                continue
             name = s.get("name") or s["session_id"][:12]
             lines.append(f"### {name}")
             lines.append("")
@@ -275,8 +280,7 @@ async def generate_daily_synthesis(
             )
         lines.append("")
 
-    y, m, d = date_str.split("-")
-    report_path = os.path.join(abs_output_dir, y, m, f"{d}.md")
+    report_path = str(memory_paths.daily_path(target=target_date, root=project_root))
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
 
     report_text = "\n".join(lines)

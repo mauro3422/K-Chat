@@ -164,14 +164,14 @@ def backfill_daily_synthesis(
     catalog: MemoryProcessingCatalogRepository,
     dry_run: bool,
 ) -> int:
-    synthesis_root = root / "memory" / "synthesis"
+    from src.memory import paths as memory_paths
+    synthesis_root = root / "memory"
     if not synthesis_root.exists():
         return 0
     count = 0
-    for report_path in sorted(synthesis_root.glob("*/*/*.md")):
-        year = report_path.parent.parent.name
-        month = report_path.parent.name
-        day = report_path.stem
+    for report_path in sorted(synthesis_root.glob("*/*/*/daily.md")):
+        parts = report_path.relative_to(synthesis_root).parts
+        year, month, day = parts[0], parts[1], parts[2]
         date_str = f"{year}-{month}-{day}"
         text = report_path.read_text(encoding="utf-8", errors="replace")
         count += 1

@@ -89,10 +89,11 @@ def find_inbox_group(
 
 
 def _inbox_paths(root: str | Path | None = None) -> list[Path]:
-    inbox_root = _base(root) / "memory" / "inbox"
-    if not inbox_root.exists():
+    """Find inbox artifacts under ``memory/*/*/*/inbox.jsonl``."""
+    base = _base(root) / "memory"
+    if not base.exists():
         return []
-    return sorted(inbox_root.rglob("*.jsonl"))
+    return sorted(base.glob("*/*/*/inbox.jsonl"))
 
 
 def update_inbox_items(

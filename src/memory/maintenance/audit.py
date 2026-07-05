@@ -471,7 +471,8 @@ def _expected_daily_synthesis_hash(root: str, date_str: str) -> str:
     if len(parts) != 3:
         return ""
     y, m, d = parts
-    report_path = Path(root) / "memory" / "synthesis" / y / m / f"{d}.md"
+    from src.memory import paths as memory_paths
+    report_path = memory_paths.daily_path(target=date_str, root=root)
     if not report_path.exists():
         return ""
     return _content_hash(report_path.read_text(encoding="utf-8", errors="replace"), limit=100000)
@@ -585,10 +586,11 @@ def _audit_sessions(sessions_conn: sqlite3.Connection, memory_conn: sqlite3.Conn
 
 
 def _latest_synthesis(root: str) -> dict[str, Any]:
-    base = Path(root) / "memory" / "synthesis"
+    from src.memory import paths as memory_paths
+    base = Path(root) / "memory"
     if not base.exists():
         return {"exists": False, "latest": "", "count": 0}
-    files = sorted(base.rglob("*.md"), key=lambda path: path.stat().st_mtime, reverse=True)
+    files = sorted(base.glob("*/*/*/daily.md"), key=lambda path: path.stat().st_mtime, reverse=True)
     return {
         "exists": True,
         "latest": str(files[0]) if files else "",

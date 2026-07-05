@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from src.memory import paths as memory_paths
 from src.memory.content_hash import content_hash
 from src.memory.curator.recall_review import load_candidates, query_terms, suggest_metadata
 from src.memory.embedding_identity import memory_candidate_embedding_identity
@@ -21,19 +22,18 @@ def _project_root() -> Path:
 
 
 def candidate_root(root: str | Path | None = None) -> Path:
-    """Return the root directory containing candidate artifacts."""
-
+    """Return the project ``memory/`` root — candidate files live under ``*/*/candidates/``."""
     base = Path(root) if root is not None else _project_root()
-    return base / "memory" / "candidates"
+    return base / "memory"
 
 
 def discover_candidate_files(root: str | Path | None = None) -> list[Path]:
-    """Find reviewable candidate JSONL artifacts."""
+    """Find reviewable candidate JSONL artifacts under ``memory/*/*/*/candidates/*.jsonl``."""
 
     base = candidate_root(root)
     if not base.exists():
         return []
-    return sorted(base.rglob("*.jsonl"), reverse=True)
+    return sorted(base.glob("*/*/*/candidates/*.jsonl"), reverse=True)
 
 
 def load_candidate_records(

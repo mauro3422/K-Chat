@@ -151,7 +151,7 @@ async def test_generate_session_summaries_writes_idempotent_artifact(setup_test_
     first = await generate_session_summaries(setup_test_db, root=tmp_path, target_date=date(2026, 7, 2))
     second = await generate_session_summaries(setup_test_db, root=tmp_path, target_date=date(2026, 7, 2))
 
-    path = session_summary_path("s1", root=tmp_path)
+    path = session_summary_path("s1", root=tmp_path, target=date(2026, 7, 2))
     text = path.read_text(encoding="utf-8")
     assert first[0]["changed"] is True
     assert second[0]["changed"] is False
@@ -182,9 +182,14 @@ async def test_generate_session_summaries_writes_channel_namespaced_artifacts(tm
     _create_session_db_with_channel_columns(db_path)
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute(
+        conn.executemany(
             "INSERT INTO messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
-            ("tg-1", "user", "Telegram tambien debe entrar al pipeline de memoria.", "2026-07-02T09:01:00"),
+            [
+                ("web-1", "user", "Web session message.", "2026-07-02T08:01:00"),
+                ("tg-1", "user", "Telegram tambien debe entrar al pipeline de memoria.", "2026-07-02T09:01:00"),
+                ("cli-1", "user", "CLI session message.", "2026-07-02T10:01:00"),
+                ("tg-2", "user", "Telegram legacy session.", "2026-07-02T11:01:00"),
+            ],
         )
         conn.commit()
     finally:
@@ -193,9 +198,11 @@ async def test_generate_session_summaries_writes_channel_namespaced_artifacts(tm
     result = await generate_session_summaries(db_path, root=tmp_path, target_date=date(2026, 7, 2))
 
     by_id = {item["session_id"]: item for item in result}
-    telegram_path = session_summary_path("tg-1", channel="telegram", root=tmp_path)
+    telegram_path = session_summary_path("tg-1", channel="telegram", root=tmp_path, target=date(2026, 7, 2))
     assert by_id["tg-1"]["channel"] == "telegram"
     assert by_id["cli-1"]["channel"] == "cli"
+    assert by_id["web-1"]["channel"] == "web"
+    assert by_id["tg-2"]["channel"] == "telegram"
     assert telegram_path.exists()
     assert "- Channel: telegram" in telegram_path.read_text(encoding="utf-8")
 

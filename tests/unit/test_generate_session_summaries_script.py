@@ -12,7 +12,7 @@ def test_daily_synthesis_and_curation_report_flags(monkeypatch, capsys, tmp_path
 
     async def fake_generate_daily_synthesis(db_path, root=None, target_date=None):
         calls["daily"] = {"db_path": db_path, "root": root, "target_date": target_date}
-        return str(tmp_path / "memory" / "synthesis" / "2026" / "07" / "02.md")
+        return str(tmp_path / "memory" / "2026" / "07" / "02" / "daily.md")
 
     monkeypatch.setattr(script, "resolve_db_path", lambda: "sessions.db")
     monkeypatch.setattr(script, "generate_session_summaries", fake_generate_session_summaries)
@@ -34,12 +34,12 @@ def test_daily_synthesis_and_curation_report_flags(monkeypatch, capsys, tmp_path
     assert script.main() == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["daily_synthesis"].endswith("02.md")
-    assert payload["curation_report"].endswith("02.md")
+    assert payload["daily_synthesis"].endswith("daily.md")
+    assert payload["curation_report"].endswith("curation.md")
     assert calls["daily"]["db_path"] == "sessions.db"
     assert calls["daily"]["root"] == str(tmp_path)
     assert calls["daily"]["target_date"].isoformat() == "2026-07-02"
-    report_path = tmp_path / "memory" / "events" / "curation" / "2026" / "07" / "02.md"
+    report_path = tmp_path / "memory" / "2026" / "07" / "02" / "events" / "curation.md"
     assert report_path.exists()
     assert "Morning Memory Pipeline" in report_path.read_text(encoding="utf-8")
 

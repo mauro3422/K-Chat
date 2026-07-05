@@ -13,6 +13,7 @@ from typing import Any, Iterable, Mapping
 
 import aiosqlite
 
+from src.memory import paths as memory_paths
 from src.memory.content_hash import content_hash
 from src.memory.embedding_identity import session_summary_embedding_identity
 from src.memory.memory_db_path import resolve_memory_db_path
@@ -37,27 +38,22 @@ def _default_target_date(now: datetime | None = None) -> date:
 def session_summary_path(
     session_id: str,
     channel: str = "web",
+    target: date | str | None = None,
     root: str | Path | None = None,
-    output_dir: str = "memory/session_summaries",
 ) -> Path:
-    """Return the Markdown artifact path for a session summary."""
+    """Return the Markdown artifact path for a session summary.
 
-    base = Path(root) if root is not None else _project_root()
-    safe_channel = re.sub(r"[^A-Za-z0-9_.-]+", "_", channel or "web").strip("_") or "web"
-    safe_session = re.sub(r"[^A-Za-z0-9_.-]+", "_", session_id).strip("_") or "session"
-    return base / output_dir / safe_channel / f"{safe_session}.md"
+    Now lives in ``memory/YYYY/MM/DD/session--{channel}--{id}.md``.
+    """
+    return memory_paths.session_summary_path(session_id, channel=channel, target=target, root=root)
 
 
 def session_summary_candidate_path(
-    target_date: date | str,
+    target_date: date | str | None = None,
     root: str | Path | None = None,
 ) -> Path:
     """Return the daily candidate path generated from session summaries."""
-
-    date_str = target_date.isoformat() if isinstance(target_date, date) else str(target_date)
-    year, month, day = date_str.split("-")
-    base = Path(root) if root is not None else _project_root()
-    return base / "memory" / "candidates" / year / month / f"{day}.session_summary.jsonl"
+    return memory_paths.session_summary_candidate_path(target=target_date, root=root)
 
 
 async def _has_column(db: aiosqlite.Connection, table: str, column: str) -> bool:
@@ -152,13 +148,37 @@ def _keywords(messages: list[dict[str, Any]], limit: int = 10) -> list[str]:
         "para", "pero", "como", "todo", "esta", "este", "esto", "tiene",
         "sobre", "cuando", "porque", "then", "with", "that", "this", "from",
     }
+    # Code-related tokens to exclude from conversational keywords
+    code_tokens = {
+        "none", "import", "_deps", "self", "return", "logger", "config",
+        "async", "await", "true", "false", "class", "function", "const",
+        "var", "let", "def", "type", "null", "undefined", "lambda",
+        "raise", "except", "finally", "yield", "global", "nonlocal",
+        "print", "len", "str", "int", "dict", "list", "tuple", "set",
+        "range", "enumerate", "zip", "map", "filter", "sorted",
+        "property", "staticmethod", "classmethod", "super", "object",
+        "value", "values", "items", "keys", "key",
+    }
     counts: dict[str, int] = {}
     for message in messages:
+        # Only extract keywords from user messages (less code noise)
+        if message.get("role") != "user":
+            continue
         for word in re.findall(r"[A-Za-zÁÉÍÓÚáéíóúÑñ0-9_]{4,}", message.get("content") or ""):
             normalized = word.lower()
-            if normalized in stop:
+            if normalized in stop or normalized in code_tokens:
                 continue
             counts[normalized] = counts.get(normalized, 0) + 1
+    # Fallback: if no user messages, extract from assistant but filter code
+    if not counts:
+        for message in messages:
+            if message.get("role") != "assistant":
+                continue
+            for word in re.findall(r"[A-Za-zÁÉÍÓÚáéíóúÑñ0-9_]{4,}", message.get("content") or ""):
+                normalized = word.lower()
+                if normalized in stop or normalized in code_tokens:
+                    continue
+                counts[normalized] = counts.get(normalized, 0) + 1
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [word for word, _ in ranked[:limit]]
 
@@ -230,7 +250,7 @@ def render_session_summary(summary: dict[str, Any]) -> str:
 
 async def generate_session_summaries(
     db_path: str,
-    output_dir: str = "memory/session_summaries",
+    output_dir: str = "memory/session_summaries",  # kept for compat but unused — use paths module
     target_date: date | None = None,
     root: str | Path | None = None,
 ) -> list[dict[str, Any]]:
@@ -244,13 +264,16 @@ async def generate_session_summaries(
     for session in sessions:
         session_id = str(session.get("session_id") or "")
         messages = await get_session_messages_for_summary(db_path, session_id)
+        # Skip sessions with no messages — empty summaries add noise
+        if not messages:
+            continue
         summary = build_session_summary(session, messages)
         digest = str(summary["content_hash"])
         path = session_summary_path(
             session_id,
             channel=str(summary.get("channel") or "web"),
+            target=target,
             root=root,
-            output_dir=output_dir,
         )
         unchanged = path.exists() and catalog.is_processed(
             source="session_summary",
@@ -283,17 +306,20 @@ async def generate_session_summaries(
 def load_session_summary_previews(
     session_ids: Iterable[str],
     root: str | Path | None = None,
-    output_dir: str = "memory/session_summaries",
     line_limit: int = 8,
 ) -> dict[str, dict[str, Any]]:
-    """Load existing summary previews for a set of session IDs."""
+    """Load existing summary previews for a set of session IDs.
 
-    base = (Path(root) if root is not None else _project_root()) / output_dir
+    Scans ``memory/*/*/*/session--*.md`` for matching session summaries.
+    """
+
+    base = Path(root) if root is not None else _project_root()
     previews: dict[str, dict[str, Any]] = {}
-    if not base.exists():
+    candidates_dir = base / "memory"
+    if not candidates_dir.exists():
         return previews
     wanted = set(session_ids)
-    for path in base.rglob("*.md"):
+    for path in sorted(candidates_dir.glob("*/*/*/session--*.md")):
         text = path.read_text(encoding="utf-8")
         metadata = _extract_metadata(text)
         session_id = str(metadata.get("session_id") or path.stem)
@@ -325,19 +351,16 @@ def _extract_metadata(text: str) -> dict[str, Any]:
 
 def discover_session_summary_artifacts(
     root: str | Path | None = None,
-    output_dir: str = "memory/session_summaries",
 ) -> list[dict[str, Any]]:
-    """Discover session summary Markdown artifacts."""
+    """Discover session summary Markdown artifacts under ``memory/*/*/*/session--*.md``."""
 
-    base = (Path(root) if root is not None else _project_root()) / output_dir
-    if not base.exists():
-        return []
+    base = Path(root) if root is not None else _project_root()
     artifacts: list[dict[str, Any]] = []
-    for path in sorted(base.rglob("*.md")):
+    for path in sorted(base.glob("memory/*/*/*/session--*.md")):
         text = path.read_text(encoding="utf-8")
         metadata = _extract_metadata(text)
         session_id = str(metadata.get("session_id") or path.stem)
-        channel = str(metadata.get("channel") or path.parent.name or "web")
+        channel = str(metadata.get("channel") or "web")
         artifacts.append(
             {
                 "session_id": session_id,
@@ -621,7 +644,6 @@ def candidates_from_session_summary_artifact(
 def generate_session_summary_candidates(
     root: str | Path | None = None,
     target_date: date | None = None,
-    output_dir: str = "memory/session_summaries",
     timestamp: str | None = None,
 ) -> dict[str, Any]:
     """Materialize reviewable candidates derived from session summaries."""
@@ -631,7 +653,7 @@ def generate_session_summary_candidates(
     existing = load_candidates(path)
     by_id = {str(candidate.get("candidate_id")): dict(candidate) for candidate in existing}
     created = 0
-    for artifact in discover_session_summary_artifacts(root=root, output_dir=output_dir):
+    for artifact in discover_session_summary_artifacts(root=root):
         for candidate in candidates_from_session_summary_artifact(artifact, timestamp=timestamp):
             cid = str(candidate.get("candidate_id") or "")
             if cid in by_id:
@@ -691,7 +713,6 @@ def _summary_catalog_mark(
 
 async def vectorize_session_summary_artifacts(
     root: str | Path | None = None,
-    output_dir: str = "memory/session_summaries",
     store: Any = None,
     catalog: MemoryWorkCatalogRepository | None = None,
     source_node_id: str = "",
@@ -700,7 +721,7 @@ async def vectorize_session_summary_artifacts(
 
     from src.memory.embeddings.service import generate_embeddings_batch
 
-    artifacts = discover_session_summary_artifacts(root=root, output_dir=output_dir)
+    artifacts = discover_session_summary_artifacts(root=root)
     result = {
         "artifacts": len(artifacts),
         "embedded": 0,

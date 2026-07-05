@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
 
+from src.memory import paths as memory_paths
 from src.memory.content_hash import content_hash
 from src.memory.embedding_identity import memory_inbox_embedding_identity
 from src.memory.memory_db_path import resolve_memory_db_path
@@ -20,12 +21,11 @@ def _project_root() -> Path:
 
 
 def memory_inbox_path(timestamp: str, root: str | Path | None = None) -> Path:
-    """Return the daily JSONL path for memory inbox items."""
+    """Return the daily JSONL path for memory inbox items.
 
-    date = timestamp[:10] if timestamp else datetime.now().date().isoformat()
-    year, month, day = date.split("-")
-    base = Path(root) if root is not None else _project_root()
-    return base / "memory" / "inbox" / year / month / f"{day}.jsonl"
+    New location: ``memory/YYYY/MM/DD/inbox.jsonl``.
+    """
+    return memory_paths.inbox_path(target=timestamp[:10], root=root)
 
 
 def inbox_item_id(item: Mapping[str, Any]) -> str:
@@ -69,15 +69,11 @@ def load_memory_inbox(
     root: str | Path | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    """Load recent inbox items from the artifact tree."""
+    """Load recent inbox items from ``memory/*/*/*/inbox.jsonl``."""
 
     base = Path(root) if root is not None else _project_root()
-    inbox_root = base / "memory" / "inbox"
-    if not inbox_root.exists():
-        return []
-
     items: list[dict[str, Any]] = []
-    for path in sorted(inbox_root.rglob("*.jsonl"), reverse=True):
+    for path in sorted(base.glob("memory/*/*/*/inbox.jsonl"), reverse=True):
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 if not line.strip():

@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
 
+from src.memory import paths as memory_paths
+
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[3]
@@ -15,29 +17,17 @@ def _project_root() -> Path:
 
 def curation_report_path(timestamp: str, root: str | Path | None = None) -> Path:
     """Return the daily Markdown path for a curator run report."""
-
-    date = timestamp[:10] if timestamp else datetime.now().date().isoformat()
-    year, month, day = date.split("-")
-    base = Path(root) if root is not None else _project_root()
-    return base / "memory" / "events" / "curation" / year / month / f"{day}.md"
+    return memory_paths.curation_report_path(target=timestamp[:10], root=root)
 
 
 def curation_decision_path(timestamp: str, root: str | Path | None = None) -> Path:
     """Return the daily JSONL path for curator decisions."""
-
-    date = timestamp[:10] if timestamp else datetime.now().date().isoformat()
-    year, month, day = date.split("-")
-    base = Path(root) if root is not None else _project_root()
-    return base / "memory" / "events" / "curation" / year / month / f"{day}.decisions.jsonl"
+    return memory_paths.curation_decision_path(target=timestamp[:10], root=root)
 
 
 def tracer_candidate_path(timestamp: str, root: str | Path | None = None) -> Path:
     """Return the daily JSONL path for tracer pattern candidates."""
-
-    date = timestamp[:10] if timestamp else datetime.now().date().isoformat()
-    year, month, day = date.split("-")
-    base = Path(root) if root is not None else _project_root()
-    return base / "memory" / "candidates" / year / month / f"{day}.tracer.jsonl"
+    return memory_paths.tracer_candidate_path(target=timestamp[:10], root=root)
 
 
 def write_curation_report(
@@ -78,15 +68,11 @@ def load_curation_decisions(
     root: str | Path | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-    """Load recent curator decision JSONL events."""
+    """Load recent curator decision JSONL events from ``memory/*/*/*/events/decisions.jsonl``."""
 
     base = Path(root) if root is not None else _project_root()
-    curation_root = base / "memory" / "events" / "curation"
-    if not curation_root.exists():
-        return []
-
     decisions: list[dict[str, Any]] = []
-    for path in sorted(curation_root.rglob("*.decisions.jsonl"), reverse=True):
+    for path in sorted(base.glob("memory/*/*/*/events/decisions.jsonl"), reverse=True):
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 if not line.strip():

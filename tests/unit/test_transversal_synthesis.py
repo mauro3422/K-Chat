@@ -108,9 +108,37 @@ def test_generate_transversal_synthesis_detects_repeated_signals(tmp_path, monke
     assert metadata["channels"] == {"telegram": 1, "web": 1}
     assert {source["channel"] for source in metadata["sources"]} == {"telegram", "web"}
     assert "Transversal Synthesis - 2026-07-02" in text
-    assert path.parts[-5:-3] == ("memory", "transversal")
+    assert path.parts[-5:-3] == ("memory", "2026")
     assert "embedding" in text
     assert "Repeated Entities" in text
+
+
+def test_generate_transversal_synthesis_filters_operational_metadata(tmp_path, monkeypatch):
+    monkeypatch.setenv("KAIROS_MEMORY_DB_PATH", str(tmp_path / "memory.db"))
+    _write_summary(
+        tmp_path,
+        "s1",
+        "web",
+        "- Session: `s1`\n- Messages: 4\n- Keywords: linux, search, scroll\n- First user message: googlea sobre linux",
+    )
+    _write_summary(
+        tmp_path,
+        "s2",
+        "web",
+        "- Session: `s2`\n- Messages: 8\n- Keywords: linux, searxng, search\n- First user message: otra busqueda sobre linux",
+    )
+
+    result = generate_transversal_synthesis(root=tmp_path, target_date=date(2026, 7, 2))
+
+    path = transversal_synthesis_path(date(2026, 7, 2), root=tmp_path)
+    text = path.read_text(encoding="utf-8")
+    assert result["repeated_topic_count"] >= 1
+    assert "`linux`" in text
+    assert "`scroll`" not in text
+    assert "`content_hash`" not in text
+    assert "`created_at`" not in text
+    assert "`session_id`" not in text
+    assert "`message_count`" not in text
 
 
 @pytest.mark.anyio
@@ -231,6 +259,32 @@ def test_candidates_from_transversal_synthesis_artifact_extracts_review_items(tm
     assert any(relation["needs_resolution"] for relation in candidate["proposed_relations"] if relation["relation_type"] == "LINKS_TO")
 
 
+def test_candidates_from_transversal_synthesis_artifact_filters_noise_topics(tmp_path):
+    path = transversal_synthesis_path(date(2026, 7, 2), root=tmp_path)
+    text = (
+        '<!-- metadata: {"date": "2026-07-02", "source": "transversal_synthesis"} -->\n'
+        "# Transversal Synthesis - 2026-07-02\n\n"
+        "## Repeated Topics\n\n"
+        "- `content_hash`: 5 mentions across 5 sessions (s1, s2, s3, s4, s5)\n"
+        "- `keywords`: 2 mentions across 2 sessions (s1, s2)\n"
+        "- `hola`: 3 mentions across 2 sessions (s1, s2)\n"
+        "- `memoria`: 3 mentions across 2 sessions (s1, s2)\n"
+        "  - web:s1 Mauro quiere memoria por capas con embeddings.\n"
+        "  - telegram:s2 Hay que conectar memoria con grafo.\n"
+    )
+    artifact = {
+        "date": "2026-07-02",
+        "path": str(path),
+        "text": text,
+        "content_hash": "hash-1",
+        "metadata": {"date": "2026-07-02", "source": "transversal_synthesis"},
+    }
+
+    candidates = candidates_from_transversal_synthesis_artifact(artifact, timestamp="2026-07-02T10:00:00")
+
+    assert [candidate["topic"] for candidate in candidates] == ["memoria"]
+
+
 def test_generate_transversal_synthesis_candidates_writes_idempotent_jsonl(tmp_path):
     path = transversal_synthesis_path(date(2026, 7, 2), root=tmp_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -262,3 +316,41 @@ def test_generate_transversal_synthesis_candidates_writes_idempotent_jsonl(tmp_p
     assert second["created"] == 0
     assert rows[0]["source_artifact"] == str(path)
     assert rows[0]["source"] == "transversal_synthesis"
+
+
+def test_generate_transversal_synthesis_candidates_prunes_stale_artifact_candidates(tmp_path):
+    path = transversal_synthesis_path(date(2026, 7, 2), root=tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        '<!-- metadata: {"date": "2026-07-02", "source": "transversal_synthesis"} -->\n'
+        "# Transversal Synthesis - 2026-07-02\n\n"
+        "## Repeated Topics\n\n"
+        "- `memoria`: 3 mentions across 2 sessions (s1, s2)\n"
+        "  - web:s1 Mauro quiere memoria por capas con embeddings.\n",
+        encoding="utf-8",
+    )
+    generate_transversal_synthesis_candidates(
+        root=tmp_path,
+        target_date=date(2026, 7, 2),
+        timestamp="2026-07-02T10:00:00",
+    )
+    path.write_text(
+        '<!-- metadata: {"date": "2026-07-02", "source": "transversal_synthesis"} -->\n'
+        "# Transversal Synthesis - 2026-07-02\n\n"
+        "## Repeated Topics\n\n"
+        "- `linux`: 3 mentions across 2 sessions (s1, s2)\n"
+        "  - web:s1 prueba de busqueda sobre linux.\n",
+        encoding="utf-8",
+    )
+
+    result = generate_transversal_synthesis_candidates(
+        root=tmp_path,
+        target_date=date(2026, 7, 2),
+        timestamp="2026-07-02T10:01:00",
+    )
+
+    candidate_path = transversal_synthesis_candidate_path(date(2026, 7, 2), root=tmp_path)
+    rows = [json.loads(line) for line in candidate_path.read_text(encoding="utf-8").splitlines()]
+    assert result["created"] == 1
+    assert result["total"] == 1
+    assert [row["topic"] for row in rows] == ["linux"]

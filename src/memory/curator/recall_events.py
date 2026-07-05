@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import hashlib
-import re
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
+
+from src.memory import paths as memory_paths
 
 
 def _project_root() -> Path:
@@ -15,21 +17,19 @@ def _project_root() -> Path:
 
 
 def recall_event_path(timestamp: str, root: str | Path | None = None) -> Path:
-    """Return the daily JSONL path for recall/link events."""
+    """Return the daily JSONL path for recall/link events.
 
-    date = timestamp[:10] if timestamp else datetime.now().date().isoformat()
-    year, month, day = date.split("-")
-    base = Path(root) if root is not None else _project_root()
-    return base / "memory" / "recall" / year / month / f"{day}.jsonl"
+    New location: ``memory/YYYY/MM/DD/recall.jsonl``.
+    """
+    return memory_paths.recall_events_path(target=timestamp[:10], root=root)
 
 
 def recall_candidate_path(timestamp: str, root: str | Path | None = None) -> Path:
-    """Return the daily JSONL path for materialized recall candidates."""
+    """Return the daily JSONL path for materialized recall candidates.
 
-    date = timestamp[:10] if timestamp else datetime.now().date().isoformat()
-    year, month, day = date.split("-")
-    base = Path(root) if root is not None else _project_root()
-    return base / "memory" / "candidates" / year / month / f"{day}.recall_links.jsonl"
+    New location: ``memory/YYYY/MM/DD/candidates/recall_links.jsonl``.
+    """
+    return memory_paths.recall_candidate_path(target=timestamp[:10], root=root)
 
 
 def append_recall_event(

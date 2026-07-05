@@ -72,7 +72,7 @@ async def test_promote_inbox_group_writes_canonical_and_marks_sources(tmp_path):
     assert result["relation_hints"][0]["relation_type"] == "PROMOTED_TO"
     assert result["decision_event"]["relation_hints"] == result["relation_hints"]
 
-    path = tmp_path / "memory" / "inbox" / "2026" / "07" / "03.jsonl"
+    path = tmp_path / "memory" / "2026" / "07" / "03" / "inbox.jsonl"
     records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert {record["status"] for record in records} == {"promoted"}
     assert {record["promoted_key"] for record in records} == {"user:lenguaje"}

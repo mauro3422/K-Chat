@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from src.memory import paths as memory_paths
 from src.memory.content_hash import content_hash
 from src.memory.curator.recall_review import load_candidates, write_candidates
 from src.memory.embedding_identity import transversal_synthesis_embedding_identity
@@ -31,28 +32,22 @@ def _default_target_date(now: datetime | None = None) -> date:
 
 
 def transversal_synthesis_path(
-    target_date: date | str,
+    target_date: date | str | None = None,
     root: str | Path | None = None,
-    output_dir: str = "memory/transversal",
 ) -> Path:
-    """Return the daily transversal synthesis artifact path."""
+    """Return the daily transversal synthesis artifact path.
 
-    date_str = target_date.isoformat() if isinstance(target_date, date) else str(target_date)
-    year, month, day = date_str.split("-")
-    base = Path(root) if root is not None else _project_root()
-    return base / output_dir / year / month / f"{day}.md"
+    Now lives in ``memory/YYYY/MM/DD/transversal.md``.
+    """
+    return memory_paths.transversal_path(target=target_date, root=root)
 
 
 def transversal_synthesis_candidate_path(
-    target_date: date | str,
+    target_date: date | str | None = None,
     root: str | Path | None = None,
 ) -> Path:
     """Return the daily candidate path generated from transversal synthesis."""
-
-    date_str = target_date.isoformat() if isinstance(target_date, date) else str(target_date)
-    year, month, day = date_str.split("-")
-    base = Path(root) if root is not None else _project_root()
-    return base / "memory" / "candidates" / year / month / f"{day}.transversal_synthesis.jsonl"
+    return memory_paths.transversal_candidate_path(target=target_date, root=root)
 
 
 def _extract_metadata(text: str) -> dict[str, Any]:
@@ -73,14 +68,45 @@ def _tokenize(text: str) -> list[str]:
         "message", "messages", "metadata", "session", "snapshot", "summary",
         "user", "para", "pero", "como", "todo", "esta", "este", "esto",
         "sobre", "cuando", "porque", "tiene", "hacer", "desde", "entre",
+        "available", "content_hash", "created_at", "message_count", "notes",
+        "session_id", "user_message_count", "assistant_message_count",
+        "source", "sources", "keyword", "keywords", "hola", "otra",
     }
     tokens: list[str] = []
     for raw in re.findall(r"[A-Za-zÁÉÍÓÚáéíóúÑñ0-9_.-]{4,}", text or ""):
         token = raw.lower().strip("._-")
-        if not token or token in stop or token.isdigit():
+        if (
+            not token
+            or token in stop
+            or token.isdigit()
+            or re.fullmatch(r"[a-f0-9]{12,}", token)
+            or re.fullmatch(r"\d{4}-\d{2}-\d{2}t?\d*", token)
+            or re.fullmatch(r"[a-f0-9-]{20,}", token)
+        ):
             continue
         tokens.append(token)
     return tokens
+
+
+def _is_actionable_topic(topic: str) -> bool:
+    token = topic.lower().strip("` ._-")
+    if len(token) < 4:
+        return False
+    if token in {
+        "available", "content_hash", "created_at", "message_count", "notes",
+        "session_id", "user_message_count", "assistant_message_count",
+        "source", "sources", "keyword", "keywords", "hola", "otra",
+    }:
+        return False
+    if token.isdigit():
+        return False
+    if re.fullmatch(r"[a-f0-9]{12,}", token):
+        return False
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}t?\d*", token):
+        return False
+    if re.fullmatch(r"[a-f0-9-]{20,}", token):
+        return False
+    return True
 
 
 def _summary_lines(text: str) -> list[str]:
@@ -167,21 +193,27 @@ def build_transversal_synthesis(
         text = str(artifact.get("text") or "")
         channels[channel] += 1
         lines = _summary_lines(text)
-        for token in _tokenize(text):
+        semantic_text = "\n".join(lines)
+        # Track which (session_id, line) we've already added as evidence per token
+        seen_token_evidence: dict[str, set[tuple[str, str]]] = defaultdict(set)
+        for token in _tokenize(semantic_text):
             token_counts[token] += 1
             if session_id:
                 token_sessions[token].add(session_id)
             if len(evidence[token]) < 3:
                 source_line = next((line for line in lines if token in line.lower()), "")
                 if source_line:
-                    evidence[token].append(
-                        {
-                            "session_id": session_id,
-                            "channel": channel,
-                            "line": source_line,
-                        }
-                    )
-        for entity in _infer_entities(text):
+                    dedup_key = (session_id, source_line)
+                    if dedup_key not in seen_token_evidence[token]:
+                        seen_token_evidence[token].add(dedup_key)
+                        evidence[token].append(
+                            {
+                                "session_id": session_id,
+                                "channel": channel,
+                                "line": source_line,
+                            }
+                        )
+        for entity in _infer_entities(semantic_text):
             entity_counts[entity] += 1
             if session_id:
                 entity_sessions[entity].add(session_id)
@@ -189,7 +221,7 @@ def build_transversal_synthesis(
     repeated_topics = []
     for token, count in token_counts.most_common():
         sessions = sorted(token_sessions.get(token, set()))
-        if len(sessions) < 2 and count < 3:
+        if len(sessions) < 2:
             continue
         repeated_topics.append(
             {
@@ -313,15 +345,12 @@ def render_transversal_synthesis(payload: Mapping[str, Any]) -> str:
 
 def discover_transversal_synthesis_artifacts(
     root: str | Path | None = None,
-    output_dir: str = "memory/transversal",
 ) -> list[dict[str, Any]]:
-    """Discover transversal synthesis artifacts."""
+    """Discover transversal synthesis artifacts from ``memory/*/*/*/transversal.md``."""
 
-    base = (Path(root) if root is not None else _project_root()) / output_dir
-    if not base.exists():
-        return []
+    base = Path(root) if root is not None else _project_root()
     artifacts: list[dict[str, Any]] = []
-    for path in sorted(base.rglob("*.md")):
+    for path in sorted(base.glob("memory/*/*/*/transversal.md")):
         text = path.read_text(encoding="utf-8")
         metadata = _extract_metadata(text)
         date_key = str(metadata.get("date") or path.stem)
@@ -483,6 +512,7 @@ def candidates_from_transversal_synthesis_artifact(
     topic_lines = [
         line for line in _section_lines(text, "Repeated Topics")
         if line.startswith("- `") and "No repeated" not in line
+        and _is_actionable_topic(_topic_candidate_seed(line))
     ][:limit]
     if not topic_lines:
         return []
@@ -558,7 +588,6 @@ def candidates_from_transversal_synthesis_artifact(
 def generate_transversal_synthesis_candidates(
     root: str | Path | None = None,
     target_date: date | None = None,
-    output_dir: str = "memory/transversal",
     timestamp: str | None = None,
 ) -> dict[str, Any]:
     """Materialize candidates derived from transversal synthesis artifacts."""
@@ -567,16 +596,31 @@ def generate_transversal_synthesis_candidates(
     path = transversal_synthesis_candidate_path(target, root=root)
     existing = load_candidates(path)
     by_id = {str(candidate.get("candidate_id")): dict(candidate) for candidate in existing}
+    stale_ids: set[str] = set()
     created = 0
-    for artifact in discover_transversal_synthesis_artifacts(root=root, output_dir=output_dir):
+    for artifact in discover_transversal_synthesis_artifacts(root=root):
         if str(artifact.get("date") or "") != target.isoformat():
             continue
-        for candidate in candidates_from_transversal_synthesis_artifact(artifact, timestamp=timestamp):
+        fresh = candidates_from_transversal_synthesis_artifact(artifact, timestamp=timestamp)
+        fresh_ids = {str(candidate.get("candidate_id") or "") for candidate in fresh}
+        artifact_path = str(artifact.get("path") or "")
+        for cid, candidate in by_id.items():
+            if (
+                str(candidate.get("source")) == "transversal_synthesis"
+                and str(candidate.get("date") or "") == target.isoformat()
+                and str(candidate.get("source_artifact") or candidate.get("artifact") or "") == artifact_path
+                and cid not in fresh_ids
+            ):
+                stale_ids.add(cid)
+        for candidate in fresh:
             cid = str(candidate.get("candidate_id") or "")
             if cid in by_id:
                 continue
             by_id[cid] = candidate
             created += 1
+
+    for cid in stale_ids:
+        by_id.pop(cid, None)
 
     if by_id:
         write_candidates(path, list(by_id.values()))
@@ -590,17 +634,15 @@ def generate_transversal_synthesis_candidates(
 def generate_transversal_synthesis(
     root: str | Path | None = None,
     target_date: date | None = None,
-    session_summary_dir: str = "memory/session_summaries",
-    output_dir: str = "memory/transversal",
 ) -> dict[str, Any]:
     """Generate an idempotent daily synthesis across session summaries."""
 
     target = target_date or _default_target_date()
-    artifacts = discover_session_summary_artifacts(root=root, output_dir=session_summary_dir)
+    artifacts = discover_session_summary_artifacts(root=root)
     payload = build_transversal_synthesis(artifacts, target)
     rendered = render_transversal_synthesis(payload)
     digest = content_hash(rendered, limit=200000)
-    path = transversal_synthesis_path(target, root=root, output_dir=output_dir)
+    path = transversal_synthesis_path(target, root=root)
     catalog = MemoryProcessingCatalogRepository(resolve_memory_db_path())
     unchanged = path.exists() and catalog.is_processed(
         source="transversal_synthesis",
@@ -676,7 +718,6 @@ def _transversal_catalog_mark(
 
 async def vectorize_transversal_synthesis_artifacts(
     root: str | Path | None = None,
-    output_dir: str = "memory/transversal",
     store: Any = None,
     catalog: MemoryWorkCatalogRepository | None = None,
     source_node_id: str = "",
@@ -685,7 +726,7 @@ async def vectorize_transversal_synthesis_artifacts(
 
     from src.memory.embeddings.service import generate_embeddings_batch
 
-    artifacts = discover_transversal_synthesis_artifacts(root=root, output_dir=output_dir)
+    artifacts = discover_transversal_synthesis_artifacts(root=root)
     result = {
         "artifacts": len(artifacts),
         "embedded": 0,

@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping
 
+from src.memory import paths as memory_paths
 from src.memory.curator.candidate_workbench import list_candidate_cards
 from src.memory.curator.curation_queue import build_curation_queue
 from src.memory.curator.curation_events import load_curation_decisions
@@ -24,14 +25,14 @@ def _base(root: str | Path | None = None) -> Path:
 
 
 def morning_plan_path(
-    target_date: date | str,
+    target_date: date | str | None = None,
     root: str | Path | None = None,
 ) -> Path:
-    """Return the daily morning plan Markdown path."""
+    """Return the daily morning plan artifact path.
 
-    date_str = target_date.isoformat() if isinstance(target_date, date) else str(target_date)
-    year, month, day = date_str.split("-")
-    return _base(root) / "memory" / "plans" / "morning" / year / month / f"{day}.md"
+    New location: ``memory/YYYY/MM/DD/morning-plan.md``.
+    """
+    return memory_paths.morning_plan_path(target=target_date, root=root)
 
 
 def _default_target_date(now: datetime | None = None) -> date:
@@ -41,11 +42,13 @@ def _default_target_date(now: datetime | None = None) -> date:
     return current.date()
 
 
-def _load_latest_markdown(root: str | Path | None, parts: tuple[str, ...]) -> tuple[Path | None, str]:
-    base = _base(root).joinpath(*parts)
+def _load_latest_markdown(root: str | Path | None, filename: str) -> tuple[Path | None, str]:
+    """Find the most recent Markdown artifact in ``memory/*/*/*/{filename}``."""
+
+    base = _base(root) / "memory"
     if not base.exists():
         return None, ""
-    files = sorted(base.rglob("*.md"), reverse=True)
+    files = sorted(base.glob(f"*/*/*/{filename}"), reverse=True)
     if not files:
         return None, ""
     path = files[0]
@@ -912,9 +915,9 @@ def build_morning_plan(
         status="ready_for_promotion",
         limit=candidate_limit,
     )
-    synthesis_path, synthesis_text = _load_latest_markdown(root, ("memory", "synthesis"))
-    transversal_path, transversal_text = _load_latest_markdown(root, ("memory", "transversal"))
-    curation_path, curation_text = _load_latest_markdown(root, ("memory", "events", "curation"))
+    synthesis_path, synthesis_text = _load_latest_markdown(root, "daily.md")
+    transversal_path, transversal_text = _load_latest_markdown(root, "transversal.md")
+    curation_path, curation_text = _load_latest_markdown(root, "events/curation.md")
     curation_metadata = _extract_metadata_comment(curation_text)
     transversal_metadata = _extract_metadata_comment(transversal_text)
     curation_decisions = _filter_decisions_for_date(load_curation_decisions(root=root, limit=50), target)

@@ -31,6 +31,15 @@ from src.memory.curator.candidate_workbench import vectorize_memory_candidates
 from src.memory.curator.memory_inbox import vectorize_memory_inbox_items
 
 
+def _configure_utf8_stdio() -> None:
+    """Keep JSON/CLI output portable on Windows consoles."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def _pipeline_curation_report(
     *,
     root: str,
@@ -93,6 +102,8 @@ def _pipeline_curation_report(
 
 
 def main() -> int:
+    _configure_utf8_stdio()
+
     parser = argparse.ArgumentParser(description="Generate per-session memory summaries.")
     parser.add_argument("--db", default="", help="Path to sessions.db. Defaults to configured Kairos DB.")
     parser.add_argument("--root", default=str(ROOT), help="Project root for artifacts.")
