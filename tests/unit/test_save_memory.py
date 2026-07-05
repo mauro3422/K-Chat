@@ -103,7 +103,7 @@ async def test_save_memory_defaults_to_inbox_without_touching_memory_md(temp_mem
     )
 
     after = open(temp_memory_file, "r", encoding="utf-8").read()
-    inbox_files = list((tmp_path / "memory" / "inbox").rglob("*.jsonl"))
+    inbox_files = list((tmp_path / "memory").rglob("**/inbox.jsonl"))
     payload = json.loads(inbox_files[0].read_text(encoding="utf-8").splitlines()[0])
 
     assert "[OK] queued memory inbox item" in res
