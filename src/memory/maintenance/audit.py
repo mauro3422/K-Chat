@@ -6,9 +6,7 @@ It can be run while Kairos is up because it only opens SQLite read connections.
 
 from __future__ import annotations
 
-import argparse
 import hashlib
-import json
 import re
 import sqlite3
 import sys
@@ -44,7 +42,7 @@ def _connect_readonly(path: str) -> sqlite3.Connection:
     return conn
 
 
-def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+def table_exists(conn: sqlite3.Connection, table: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
         (table,),
@@ -53,7 +51,7 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
 
 
 def _count(conn: sqlite3.Connection, table: str) -> int:
-    if not _table_exists(conn, table):
+    if not table_exists(conn, table):
         return 0
     return int(conn.execute(f"SELECT COUNT(1) FROM {table}").fetchone()[0])
 
@@ -65,11 +63,11 @@ def _normalize_for_dedup(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
-def _content_hash(text: str, *, limit: int = 4000) -> str:
+def content_hash_for_audit(text: str, *, limit: int = 4000) -> str:
     return hashlib.md5(_normalize_for_dedup(text[:limit]).encode("utf-8")).hexdigest()
 
 
-def _group_into_exchanges(messages: list[sqlite3.Row]) -> list[dict[str, Any]]:
+def group_into_exchanges(messages: list[sqlite3.Row]) -> list[dict[str, Any]]:
     exchanges: list[dict[str, Any]] = []
     current_user: dict[str, Any] | None = None
 
@@ -102,7 +100,7 @@ def _group_into_exchanges(messages: list[sqlite3.Row]) -> list[dict[str, Any]]:
 
 
 def _duplicate_groups(conn: sqlite3.Connection, column: str) -> int:
-    if not _table_exists(conn, "vec_meta"):
+    if not table_exists(conn, "vec_meta"):
         return 0
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(vec_meta)").fetchall()}
     if column not in cols:
@@ -123,7 +121,7 @@ def _duplicate_groups(conn: sqlite3.Connection, column: str) -> int:
 
 
 def _source_counts(conn: sqlite3.Connection) -> dict[str, int]:
-    if not _table_exists(conn, "vec_meta"):
+    if not table_exists(conn, "vec_meta"):
         return {}
     return {
         str(row["source"]): int(row["count"])
@@ -132,9 +130,9 @@ def _source_counts(conn: sqlite3.Connection) -> dict[str, int]:
 
 
 def _catalog_summary(conn: sqlite3.Connection) -> dict[str, Any]:
-    if not _table_exists(conn, "memory_work_catalog"):
+    if not table_exists(conn, "memory_work_catalog"):
         uncataloged_rows = []
-        if _table_exists(conn, "vec_meta"):
+        if table_exists(conn, "vec_meta"):
             uncataloged_rows = conn.execute(
                 """
                 SELECT rowid, source, source_key, exchange_idx,
@@ -185,7 +183,7 @@ def _catalog_summary(conn: sqlite3.Connection) -> dict[str, Any]:
         """
     ).fetchone()[0]
     uncataloged_rows = []
-    if _table_exists(conn, "vec_meta"):
+    if table_exists(conn, "vec_meta"):
         uncataloged_rows = conn.execute(
             """
             SELECT v.rowid, v.source, v.source_key, v.exchange_idx,
@@ -229,7 +227,7 @@ def _catalog_summary(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def _curated_memory_quality(conn: sqlite3.Connection) -> dict[str, Any]:
-    if not _table_exists(conn, "memory_index"):
+    if not table_exists(conn, "memory_index"):
         return {
             "exists": False,
             "total": 0,
@@ -349,7 +347,7 @@ def _processing_catalog_summary(
     *,
     root: str,
 ) -> dict[str, Any]:
-    if not _table_exists(memory_conn, "memory_processing_catalog"):
+    if not table_exists(memory_conn, "memory_processing_catalog"):
         return {
             "exists": False,
             "total": 0,
@@ -435,7 +433,7 @@ def _expected_curated_session_hash(
     memory_conn: sqlite3.Connection,
     session_id: str,
 ) -> str:
-    if not _table_exists(sessions_conn, "sessions") or not _table_exists(memory_conn, "vec_meta"):
+    if not table_exists(sessions_conn, "sessions") or not table_exists(memory_conn, "vec_meta"):
         return ""
     session = sessions_conn.execute(
         "SELECT name FROM sessions WHERE session_id=?",
@@ -463,7 +461,7 @@ def _expected_curated_session_hash(
         + "\n---\n".join(text[:400] for text in text_values)
         + "\n\nExtract new info or NO_NEW_INFO"
     )
-    return _content_hash(prompt)
+    return content_hash_for_audit(prompt)
 
 
 def _expected_daily_synthesis_hash(root: str, date_str: str) -> str:
@@ -475,11 +473,11 @@ def _expected_daily_synthesis_hash(root: str, date_str: str) -> str:
     report_path = memory_paths.daily_path(target=date_str, root=root)
     if not report_path.exists():
         return ""
-    return _content_hash(report_path.read_text(encoding="utf-8", errors="replace"), limit=100000)
+    return content_hash_for_audit(report_path.read_text(encoding="utf-8", errors="replace"), limit=100000)
 
 
 def _audit_sessions(sessions_conn: sqlite3.Connection, memory_conn: sqlite3.Connection) -> tuple[list[SessionAudit], list[dict[str, Any]]]:
-    if not _table_exists(sessions_conn, "sessions") or not _table_exists(sessions_conn, "messages"):
+    if not table_exists(sessions_conn, "sessions") or not table_exists(sessions_conn, "messages"):
         return [], []
 
     sessions = sessions_conn.execute(
@@ -488,17 +486,17 @@ def _audit_sessions(sessions_conn: sqlite3.Connection, memory_conn: sqlite3.Conn
     session_ids = {str(row["session_id"]) for row in sessions}
     audits: list[SessionAudit] = []
 
-    has_vec_meta = _table_exists(memory_conn, "vec_meta")
-    has_catalog = _table_exists(memory_conn, "memory_work_catalog")
+    has_vec_meta = table_exists(memory_conn, "vec_meta")
+    has_catalog = table_exists(memory_conn, "memory_work_catalog")
     for session in sessions:
         session_id = str(session["session_id"])
         messages = sessions_conn.execute(
             "SELECT role, content, created_at FROM messages WHERE session_id=? ORDER BY id ASC",
             (session_id,),
         ).fetchall()
-        exchanges = _group_into_exchanges(messages)
+        exchanges = group_into_exchanges(messages)
         current_hashes = {
-            exchange["idx"]: _content_hash(str(exchange["text"]))
+            exchange["idx"]: content_hash_for_audit(str(exchange["text"]))
             for exchange in exchanges
             if len(str(exchange["text"])) >= 30
         }
@@ -605,7 +603,7 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
         missing_sessions = [audit for audit in session_audits if audit.missing_hashes]
 
         checkpoints: list[dict[str, str]] = []
-        if _table_exists(memory_conn, "memory_index"):
+        if table_exists(memory_conn, "memory_index"):
             checkpoints = [
                 {"key": str(row["key"]), "updated_at": str(row["updated_at"])}
                 for row in memory_conn.execute(
@@ -619,7 +617,7 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
                 ).fetchall()
             ]
 
-        legacy_vector_tables = _table_exists(sessions_conn, "vec_meta")
+        legacy_vector_tables = table_exists(sessions_conn, "vec_meta")
         legacy_vector_count = _count(sessions_conn, "vec_meta") if legacy_vector_tables else 0
         processing_catalog = _processing_catalog_summary(sessions_conn, memory_conn, root=root)
         curated_quality = _curated_memory_quality(memory_conn)
@@ -677,126 +675,4 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
         }
 
 
-def print_text_report(report: dict[str, Any]) -> None:
-    counts = report["counts"]
-    summary = report["summary"]
-    print("Kairos memory audit")
-    print(f"sessions={counts['sessions']} messages={counts['messages']} memory_entries={counts['memory_index']}")
-    print(f"vectors={counts['memory_vec_meta']} sources={json.dumps(report['vector_sources'], sort_keys=True)}")
-    catalog = report["catalog"]
-    if catalog["exists"]:
-        print(
-            "catalog: "
-            f"units={catalog['total']} statuses={json.dumps(catalog['by_status'], sort_keys=True)} "
-            f"pending={catalog['pending']} missing_vec_links={catalog['missing_vec_links']} "
-            f"uncataloged_vectors={catalog['uncataloged_vectors']}"
-        )
-    processing = report["processing_catalog"]
-    if processing["exists"]:
-        print(
-            "processing: "
-            f"units={processing['total']} stages={json.dumps(processing['by_stage_status'], sort_keys=True)} "
-            f"pending={processing['pending']} failed={processing['failed']} stale={processing['stale']}"
-        )
-    quality = report["curated_memory_quality"]
-    if quality["exists"]:
-        print(
-            "curated_quality: "
-            f"empty={quality['empty']} too_short={quality['too_short']} "
-            f"missing_timestamp={quality['missing_timestamp']} "
-            f"low_signal={quality['low_signal']} vague={quality['vague']} "
-            f"probe={quality['probe']} avg_score={quality['avg_quality_score']} "
-            f"duplicate_value_groups={quality['duplicate_value_groups']}"
-        )
-    print(
-        "issues: "
-        f"missing_sessions={summary['sessions_with_missing_vectors']} "
-        f"stale_sessions={summary['sessions_with_stale_vectors']} "
-        f"orphan_sources={summary['orphan_vector_sources']} "
-        f"dup_hash_groups={report['duplicates']['hash_groups']} "
-        f"dup_content_hash_groups={report['duplicates']['content_hash_groups']} "
-        f"processing_failed={summary['processing_failed']} "
-        f"processing_stale={summary['processing_stale']} "
-        f"curated_empty={summary['curated_empty']}"
-    )
-    if report["legacy"]["sessions_db_has_vec_meta"]:
-        print(f"legacy: sessions.db has vec_meta with {report['legacy']['sessions_db_vec_meta_count']} rows")
-
-    synthesis = report["synthesis"]
-    print(f"synthesis: exists={synthesis['exists']} count={synthesis['count']} latest={synthesis['latest'] or '-'}")
-
-    printed = False
-    for session in report["sessions"]:
-        if not session["missing_hashes"] and not session["stale_vectors"]:
-            continue
-        if not printed:
-            print("")
-            print("Session issues:")
-            printed = True
-        label = session["name"] or session["session_id"][:12]
-        print(
-            f"- {label}: exchanges={session['exchange_count']} vectors={session['vector_count']} "
-            f"missing={len(session['missing_hashes'])} stale={len(session['stale_vectors'])}"
-        )
-        if session["missing_hashes"]:
-            print(f"  missing: {', '.join(session['missing_hashes'][:8])}")
-        if session["stale_vectors"]:
-            stale = ", ".join(f"{item['exchange_idx']}:{item['hash']}" for item in session["stale_vectors"][:8])
-            print(f"  stale: {stale}")
-
-    if report["orphan_vectors"]:
-        print("")
-        print("Orphan vectors:")
-        for item in report["orphan_vectors"][:12]:
-            print(f"- {item['source_key']}: count={item['count']} max_exchange_idx={item['max_exchange_idx']}")
-
-    if processing.get("stale_rows"):
-        print("")
-        print("Processing catalog stale rows:")
-        for item in processing["stale_rows"][:12]:
-            print(
-                f"- {item['stage']} {item['source']}:{item['source_key']} "
-                f"hash={item['hash']} expected={item['expected_hash']} status={item['status']}"
-            )
-
-    if quality.get("samples"):
-        print("")
-        print("Curated memory quality samples:")
-        for item in quality["samples"][:12]:
-            if item["kind"] == "duplicate_value":
-                print(f"- duplicate_value: {', '.join(item['keys'])}")
-            else:
-                print(f"- {item['kind']}: {item['key']}")
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Read-only audit of Kairos memory embeddings and synthesis state.")
-    parser.add_argument("--sessions-db", default="")
-    parser.add_argument("--memory-db", default="")
-    parser.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    sessions_db = args.sessions_db
-    memory_db = args.memory_db
-    if not sessions_db:
-        from src.memory.db_path import resolve_db_path
-        sessions_db = resolve_db_path()
-    if not memory_db:
-        from src.memory.memory_db_path import resolve_memory_db_path
-        memory_db = resolve_memory_db_path()
-
-    report = run_audit(sessions_db=sessions_db, memory_db=memory_db, root=args.root)
-    if args.json:
-        print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
-    else:
-        print_text_report(report)
-    return 0 if report["ok"] else 2
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+# CLI moved to audit_cli.py

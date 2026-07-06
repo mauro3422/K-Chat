@@ -230,95 +230,106 @@ class LatentSemanticAnalysis:
 
         self.turn_labels = [f"{r}:{i}" for i, (r, _) in enumerate(turns)]
 
-        # --- 3. Truncated SVD via power iteration ---
-        # X ≈ U · Σ · V^T
-        # X = [T × V] (turns × terms)
-        # We want: U = [T × k], V = [V × k], Σ = [k]
+        # --- 3. Non-negative Matrix Factorization (NMF) via Multiplicative Updates ---
+        # X ≈ W · H
+        # X = [T × V] (turns × terms), W = [T × k] (topic vectors), H = [k × V] (term loadings)
         k = min(self.n_topics, T, V)
         if k < 1:
             return self
 
-        # Initial random V (terms × topics)
+        # Initial random non-negative matrices
         import random as _random
         rng = _random.Random(42)
-        V_hat = [[rng.gauss(0, 1) for _ in range(k)] for _ in range(V)]
+        W = [[rng.uniform(0.1, 1.0) for _ in range(k)] for _ in range(T)]
+        H = [[rng.uniform(0.1, 1.0) for _ in range(V)] for _ in range(k)]
 
-        # Power iteration: X^T · X · V = V · Σ²
+        # Multiplicative update loops
         for iteration in range(self.n_iter):
-            # Y = X · V_hat  [T × k]
-            Y = [[0.0] * k for _ in range(T)]
+            # --- Update H ---
+            # Formula: H = H * (W^T X) / (W^T W H)
+            # 1. Compute W^T X  [k x V]
+            WtX = [[0.0] * V for _ in range(k)]
             for t_idx, t_vec in enumerate(tfidf_turns):
                 for term_idx, val in t_vec.items():
-                    for topic in range(k):
-                        Y[t_idx][topic] += val * V_hat[term_idx][topic]
+                    for a in range(k):
+                        WtX[a][term_idx] += W[t_idx][a] * val
 
-            # Z = X^T · Y  [V × k]
-            Z = [[0.0] * k for _ in range(V)]
+            # 2. Compute W^T W  [k x k]
+            WtW = [[0.0] * k for _ in range(k)]
+            for t in range(T):
+                for a in range(k):
+                    for b in range(k):
+                        WtW[a][b] += W[t][a] * W[t][b]
+
+            # 3. Compute W^T W H  [k x V]
+            WtWH = [[0.0] * V for _ in range(k)]
+            for a in range(k):
+                for term_idx in range(V):
+                    for b in range(k):
+                        WtWH[a][term_idx] += WtW[a][b] * H[b][term_idx]
+
+            # 4. Update H
+            for a in range(k):
+                for term_idx in range(V):
+                    den = WtWH[a][term_idx] + 1e-9
+                    H[a][term_idx] *= WtX[a][term_idx] / den
+
+            # --- Update W ---
+            # Formula: W = W * (X H^T) / (W H H^T)
+            # 1. Compute X H^T  [T x k]
+            XHt = [[0.0] * k for _ in range(T)]
             for t_idx, t_vec in enumerate(tfidf_turns):
                 for term_idx, val in t_vec.items():
-                    for topic in range(k):
-                        Z[term_idx][topic] += val * Y[t_idx][topic]
+                    for a in range(k):
+                        XHt[t_idx][a] += val * H[a][term_idx]
 
-            # QR-like normalisation via Gram-Schmidt on Z columns
-            for topic in range(k):
-                # Normalise
-                norm = math.sqrt(sum(Z[row][topic] ** 2 for row in range(V)))
-                if norm > 1e-12:
-                    for row in range(V):
-                        Z[row][topic] /= norm
-                # Orthogonalise against previous topics
-                for prev in range(topic):
-                    dot = sum(Z[row][topic] * Z[row][prev] for row in range(V))
-                    for row in range(V):
-                        Z[row][topic] -= dot * Z[row][prev]
-                # Re-normalise after orthogonalisation
-                norm = math.sqrt(sum(Z[row][topic] ** 2 for row in range(V)))
-                if norm > 1e-12:
-                    for row in range(V):
-                        Z[row][topic] /= norm
+            # 2. Compute H H^T  [k x k]
+            HHt = [[0.0] * k for _ in range(k)]
+            for a in range(k):
+                for b in range(k):
+                    HHt[a][b] = sum(H[a][term_idx] * H[b][term_idx] for term_idx in range(V))
 
-            V_hat = Z
+            # 3. Compute W H H^T  [T x k]
+            WHHt = [[0.0] * k for _ in range(T)]
+            for t in range(T):
+                for b in range(k):
+                    for a in range(k):
+                        WHHt[t][b] += W[t][a] * HHt[a][b]
 
-        # V_hat = right singular vectors [V × k]
-        # Compute singular values: σ_i = ||X · V_hat[:, i]||
-        sv: list[float] = []
+            # 4. Update W
+            for t in range(T):
+                for a in range(k):
+                    den = WHHt[t][a] + 1e-9
+                    W[t][a] *= XHt[t][a] / den
+
+        # Compute topic importances for logging (acts like singular values)
+        importances = []
         for topic in range(k):
-            # Y = X · V_hat[:, topic]
-            y_norm_sq = 0.0
-            for t_idx, t_vec in enumerate(tfidf_turns):
-                dot = sum(t_vec.get(term_idx, 0.0) * V_hat[term_idx][topic]
-                          for term_idx in range(V))
-                y_norm_sq += dot * dot
-            sv.append(math.sqrt(y_norm_sq))
+            imp = sum(W[t][topic] for t in range(T))
+            importances.append(round(imp, 4))
+        self.singular_values = sorted(importances, reverse=True)
 
-        self.singular_values = [round(s, 4) for s in sv]
-
-        # Compute U = X · V · Σ^{-1}
+        # Normalise W rows to unit length (topic distribution per turn)
         U: list[list[float]] = [[0.0] * k for _ in range(T)]
-        for t_idx, t_vec in enumerate(tfidf_turns):
-            for topic in range(k):
-                if sv[topic] > 1e-12:
-                    dot = sum(t_vec.get(term_idx, 0.0) * V_hat[term_idx][topic]
-                              for term_idx in range(V))
-                    U[t_idx][topic] = round(dot / sv[topic], 4)
-
-        # Normalise U rows to unit length (topic distribution per turn)
         for t_idx in range(T):
-            norm = math.sqrt(sum(U[t_idx][topic] ** 2 for topic in range(k)))
+            norm = math.sqrt(sum(W[t_idx][topic] ** 2 for topic in range(k)))
             if norm > 1e-12:
                 for topic in range(k):
-                    U[t_idx][topic] /= norm
+                    U[t_idx][topic] = round(W[t_idx][topic] / norm, 4)
+            else:
+                for topic in range(k):
+                    U[t_idx][topic] = round(W[t_idx][topic], 4)
 
         self.topic_vectors = U
 
-        # Term loadings = V_hat (each row is a term's loading per topic)
+        # Term loadings = H^T (each term gets loading per topic)
         self.term_loadings = {}
         for term, idx in vocab_idx.items():
             if idx < V:
-                self.term_loadings[term] = [round(V_hat[idx][t], 4) for t in range(k)]
+                self.term_loadings[term] = [round(H[topic][idx], 4) for topic in range(k)]
 
         logger.info(
-            "LSA: %d turns × %d terms → %d topics (σ=%s)",
+            "NMF-LSA: %d turns × %d terms → %d topics (importances=%s)",
             T, V, k, self.singular_values[:4],
         )
         return self

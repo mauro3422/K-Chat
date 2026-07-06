@@ -55,7 +55,7 @@ STOP = {
     "parte", "partes", "tipo", "tipos", "forma", "formas",
     "lado", "lados", "vez", "veces", "modo", "manera",
     # English common stopwords
-    "then", "with", "that", "this", "from", "what", "which", "where",
+    "the", "then", "with", "that", "this", "from", "what", "which", "where",
     "when", "than", "been", "have", "they", "them", "these", "those",
     "would", "could", "should", "about", "there", "their", "your",
     "some", "such", "also", "very", "just", "only", "more", "most",

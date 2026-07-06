@@ -186,9 +186,13 @@ async def test_generate_session_summaries_writes_channel_namespaced_artifacts(tm
             "INSERT INTO messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
             [
                 ("web-1", "user", "Web session message.", "2026-07-02T08:01:00"),
+                ("web-1", "assistant", "Sure, what do you need?", "2026-07-02T08:01:05"),
                 ("tg-1", "user", "Telegram tambien debe entrar al pipeline de memoria.", "2026-07-02T09:01:00"),
+                ("tg-1", "assistant", "Noted, Telegram channel test.", "2026-07-02T09:01:05"),
                 ("cli-1", "user", "CLI session message.", "2026-07-02T10:01:00"),
+                ("cli-1", "assistant", "Running CLI.", "2026-07-02T10:01:05"),
                 ("tg-2", "user", "Telegram legacy session.", "2026-07-02T11:01:00"),
+                ("tg-2", "assistant", "Legacy connection established.", "2026-07-02T11:01:05"),
             ],
         )
         conn.commit()

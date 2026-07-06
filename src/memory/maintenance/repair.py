@@ -7,9 +7,6 @@ memory_work_catalog rows; it never deletes vectors or edits sessions.
 
 from __future__ import annotations
 
-import argparse
-import asyncio
-import json
 import sqlite3
 import sys
 from collections.abc import Iterator
@@ -22,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.memory.maintenance.audit import _content_hash, _group_into_exchanges, _table_exists
+from src.memory.maintenance.audit import content_hash_for_audit, group_into_exchanges, table_exists
 from src.memory.embedding_identity import memory_entry_embedding_identity, session_exchange_embedding_identity
 from src.memory.noise_filter import is_noise
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
@@ -114,7 +111,7 @@ def _connect(path: str, *, readonly: bool) -> Iterator[sqlite3.Connection]:
 
 
 def _vec_rows_by_session_idx(conn: sqlite3.Connection, session_id: str, idx: int) -> list[sqlite3.Row]:
-    if not _table_exists(conn, "vec_meta"):
+    if not table_exists(conn, "vec_meta"):
         return []
     return conn.execute(
         """
@@ -128,7 +125,7 @@ def _vec_rows_by_session_idx(conn: sqlite3.Connection, session_id: str, idx: int
 
 
 def _find_vec_by_hash(conn: sqlite3.Connection, content_hash: str) -> sqlite3.Row | None:
-    if not _table_exists(conn, "vec_meta"):
+    if not table_exists(conn, "vec_meta"):
         return None
     return conn.execute(
         """
@@ -143,7 +140,7 @@ def _find_vec_by_hash(conn: sqlite3.Connection, content_hash: str) -> sqlite3.Ro
 
 
 def _vec_row_exists(conn: sqlite3.Connection, rowid: int) -> bool:
-    if not _table_exists(conn, "vec_meta"):
+    if not table_exists(conn, "vec_meta"):
         return False
     row = conn.execute("SELECT 1 FROM vec_meta WHERE rowid = ?", (rowid,)).fetchone()
     return row is not None
@@ -162,13 +159,13 @@ def _catalog_identity_kwargs(source: str) -> dict[str, str]:
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    if not _table_exists(conn, table):
+    if not table_exists(conn, table):
         return set()
     return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
 def _catalog_row_for(conn: sqlite3.Connection, *, source: str, source_key: str, item_idx: int) -> sqlite3.Row | None:
-    if not _table_exists(conn, "memory_work_catalog"):
+    if not table_exists(conn, "memory_work_catalog"):
         return None
     identity = _catalog_identity_kwargs(source)
     identity_columns = ("pipeline", "pipeline_version", "model_id", "model_version")
@@ -206,7 +203,7 @@ def _content_hash_from_vec(row: sqlite3.Row) -> str:
 
 
 def _plan_memory_vector_catalog_repairs(memory_conn: sqlite3.Connection, report: RepairReport) -> None:
-    if not _table_exists(memory_conn, "vec_meta"):
+    if not table_exists(memory_conn, "vec_meta"):
         return
 
     rows = memory_conn.execute(
@@ -255,10 +252,10 @@ def _plan_memory_vector_catalog_repairs(memory_conn: sqlite3.Connection, report:
 
 
 def _plan_orphan_memory_catalog_repairs(memory_conn: sqlite3.Connection, report: RepairReport) -> None:
-    if not _table_exists(memory_conn, "memory_work_catalog") or not _table_exists(memory_conn, "memory_index"):
+    if not table_exists(memory_conn, "memory_work_catalog") or not table_exists(memory_conn, "memory_index"):
         return
 
-    has_vec_meta = _table_exists(memory_conn, "vec_meta")
+    has_vec_meta = table_exists(memory_conn, "vec_meta")
     join_vec = "LEFT JOIN vec_meta v ON v.rowid = c.vec_rowid" if has_vec_meta else ""
     vec_missing_clause = "AND (c.vec_rowid IS NULL OR v.rowid IS NULL)" if has_vec_meta else ""
     rows = memory_conn.execute(
@@ -292,7 +289,7 @@ def _plan_orphan_session_catalog_repairs(
     memory_conn: sqlite3.Connection,
     report: RepairReport,
 ) -> None:
-    if not _table_exists(memory_conn, "memory_work_catalog") or not _table_exists(sessions_conn, "sessions"):
+    if not table_exists(memory_conn, "memory_work_catalog") or not table_exists(sessions_conn, "sessions"):
         return
 
     rows = memory_conn.execute(
@@ -329,7 +326,7 @@ def _plan_orphan_session_catalog_repairs(
 def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
     report = RepairReport()
     with _connect(sessions_db, readonly=True) as sessions_conn, _connect(memory_db, readonly=True) as memory_conn:
-        if not _table_exists(sessions_conn, "sessions") or not _table_exists(sessions_conn, "messages"):
+        if not table_exists(sessions_conn, "sessions") or not table_exists(sessions_conn, "messages"):
             return report
         sessions = sessions_conn.execute(
             "SELECT session_id, name FROM sessions ORDER BY created_at ASC"
@@ -341,11 +338,11 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
                 "SELECT role, content, created_at FROM messages WHERE session_id=? ORDER BY id ASC",
                 (session_id,),
             ).fetchall()
-            exchanges = _group_into_exchanges(messages)
+            exchanges = group_into_exchanges(messages)
             for exchange in exchanges:
                 idx = int(exchange["idx"])
                 text = str(exchange["text"])
-                digest = _content_hash(text)
+                digest = content_hash_for_audit(text)
 
                 same_idx_rows = _vec_rows_by_session_idx(memory_conn, session_id, idx)
                 for row in same_idx_rows:
@@ -489,7 +486,7 @@ def apply_catalog_repairs(*, memory_db: str, report: RepairReport) -> int:
 
 
 def _delete_if_table_exists(conn: sqlite3.Connection, table: str, column: str, rowid: int) -> None:
-    if _table_exists(conn, table):
+    if table_exists(conn, table):
         conn.execute(f"DELETE FROM {table} WHERE {column} = ?", (rowid,))
 
 
@@ -543,108 +540,4 @@ async def vectorize_missing(report: RepairReport) -> dict[str, int]:
     return results
 
 
-def print_text_report(report: RepairReport, *, applied: bool) -> None:
-    counts = report.counts
-    print("Kairos memory repair")
-    print(
-        "planned: "
-        f"catalog_embedded={counts.get('catalog_embedded', 0)} "
-        f"catalog_memory_embedded={counts.get('catalog_memory_embedded', 0)} "
-        f"catalog_deduped={counts.get('catalog_deduped', 0)} "
-        f"catalog_noise={counts.get('catalog_noise', 0)} "
-        f"orphan_catalog_row={counts.get('orphan_catalog_row', 0)} "
-        f"missing_vector={counts.get('missing_vector', 0)} "
-        f"stale_vector={counts.get('stale_vector', 0)} "
-        f"broken_catalog_link={counts.get('broken_catalog_link', 0)}"
-    )
-    if applied:
-        print(f"applied_catalog_rows={report.applied_catalog_rows}")
-    if report.vectorized_sessions:
-        print(f"vectorized_sessions={json.dumps(report.vectorized_sessions, sort_keys=True)}")
-    if report.pruned_stale_vectors:
-        print(f"pruned_stale_vectors={report.pruned_stale_vectors}")
-
-    interesting = [
-        a for a in report.actions
-        if a.action in {"missing_vector", "stale_vector", "broken_catalog_link", "orphan_catalog_row"}
-    ]
-    if interesting:
-        print("")
-        print("Remaining work:")
-        for action in interesting[:16]:
-            rowid = f" rowid={action.vec_rowid}" if action.vec_rowid is not None else ""
-            print(
-                f"- {action.action}: {action.source_key}#{action.item_idx} "
-                f"hash={action.content_hash[:12]}{rowid} {action.reason}"
-            )
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Plan or apply safe Kairos memory catalog repairs.")
-    parser.add_argument("--sessions-db", default="")
-    parser.add_argument("--memory-db", default="")
-    parser.add_argument("--apply", action="store_true", help="Write inferred catalog rows. Does not delete anything.")
-    parser.add_argument(
-        "--vectorize-missing",
-        action="store_true",
-        help="After --apply, explicitly generate vectors for sessions with missing vectors.",
-    )
-    parser.add_argument(
-        "--prune-stale",
-        action="store_true",
-        help="After --apply, delete stale vector rowids detected by this repair plan.",
-    )
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
-    parser.add_argument("--strict", action="store_true", help="Exit nonzero if stale or missing vectors remain.")
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    if (args.vectorize_missing or args.prune_stale) and not args.apply:
-        parser.error("--vectorize-missing and --prune-stale require --apply")
-
-    sessions_db = args.sessions_db
-    memory_db = args.memory_db
-    if not sessions_db:
-        from src.memory.db_path import resolve_db_path
-        sessions_db = resolve_db_path()
-    if not memory_db:
-        from src.memory.memory_db_path import resolve_memory_db_path
-        memory_db = resolve_memory_db_path()
-
-    report = plan_repairs(sessions_db=sessions_db, memory_db=memory_db)
-    if args.apply:
-        applied_catalog_rows = apply_catalog_repairs(memory_db=memory_db, report=report)
-        if applied_catalog_rows:
-            report = plan_repairs(sessions_db=sessions_db, memory_db=memory_db)
-        vectorized_sessions: dict[str, int] = {}
-        pruned_stale_vectors = 0
-        if args.vectorize_missing:
-            vectorized_sessions = asyncio.run(vectorize_missing(report))
-            report = plan_repairs(sessions_db=sessions_db, memory_db=memory_db)
-        if args.prune_stale:
-            pruned_stale_vectors = prune_stale_vectors(memory_db=memory_db, report=report)
-            report = plan_repairs(sessions_db=sessions_db, memory_db=memory_db)
-        report.applied_catalog_rows = applied_catalog_rows
-        report.vectorized_sessions = vectorized_sessions
-        report.pruned_stale_vectors = pruned_stale_vectors
-
-    if args.json:
-        print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2, sort_keys=True))
-    else:
-        print_text_report(report, applied=args.apply)
-
-    if args.strict and (
-        report.counts.get("missing_vector", 0)
-        or report.counts.get("stale_vector", 0)
-        or report.counts.get("broken_catalog_link", 0)
-        or report.counts.get("orphan_catalog_row", 0)
-    ):
-        return 1
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+# CLI moved to repair_cli.py
