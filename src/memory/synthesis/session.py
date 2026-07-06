@@ -284,6 +284,9 @@ def build_session_summary(
     session: dict[str, Any],
     messages: list[dict[str, Any]],
     scorer: "CombinedScorer | None" = None,
+    word_idf: dict[str, float] | None = None,
+    max_idf: float = 4.0,
+    stem_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build a deterministic summary payload for one session.
 
@@ -291,6 +294,7 @@ def build_session_summary(
     - TextRank (intra-session word graph) — per-term scores
     - LSA coherence (cross-role topic alignment via SVD)
     - Cross-PMI (user↔assistant term pair strength)
+    - IDF-weighted PMI (when word_idf + stem_map provided)
 
     Parameters
     ----------
@@ -299,9 +303,13 @@ def build_session_summary(
     messages : list[dict]
         Message rows for the session.
     scorer : CombinedScorer | None
-        Optional mathematical scorer. When provided, keywords are ranked
-        using TF-IDF/BM25/graph centrality/PMI instead of raw frequency.
-        Also enables LSA and cross-PMI computations.
+        Optional mathematical scorer.
+    word_idf : dict | None
+        Global IDF weights per stem. When provided, PMI uses IDF weighting.
+    max_idf : float
+        Maximum IDF value in the corpus (for normalization).
+    stem_map : dict | None
+        Raw token → stem mapping. When provided, PMI uses stemming.
     """
 
     user_messages = [m for m in messages if m.get("role") == "user"]
@@ -327,7 +335,12 @@ def build_session_summary(
 
     pmi_entities_set = set()
     if _organic and ANALYSIS_AVAILABLE:
-        pmi_relations, _ = calculate_pmi_for_session([str(m.get("content", "")) for m in _organic])
+        pmi_relations, _ = calculate_pmi_for_session(
+            [str(m.get("content", "")) for m in _organic],
+            word_idf=word_idf,
+            max_idf=max_idf,
+            stem_map=stem_map,
+        )
         from src.memory.analysis.pmi_relations import persist_pmi_relations
         from src.memory.memory_db_path import resolve_memory_db_path
         persist_pmi_relations(resolve_memory_db_path(), pmi_relations)
@@ -520,7 +533,12 @@ async def generate_session_summaries(
     target_date: date | None = None,
     root: str | Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Generate idempotent extractive summaries for sessions on a date."""
+    """Generate idempotent extractive summaries for sessions on a date.
+
+    Computes global IDF + stemming from all session messages,
+    then passes them to each build_session_summary call for
+    IDF-weighted PMI (filters stopwords, preserves core concepts).
+    """
 
     target = target_date or _default_target_date()
     date_str = target.isoformat()
@@ -530,10 +548,19 @@ async def generate_session_summaries(
     # Build mathematical scorer (TF-IDF/BM25/graph/PMI) from existing artifacts
     scorer = _build_scorer(root=root)
 
-    results: list[dict[str, Any]] = []
+    # ── Compute global IDF + stemming from ALL session messages ──
+    from collections import defaultdict
+    import math as _math
+    from src.memory.analysis.pmi_relations import stem_spanish
+    from src.memory.analysis.corpus import STOP
+    from src.memory.analysis.pmi_relations import SPANISH_STOPWORDS
+
+    # First pass: collect all messages and compute stem DF
+    all_sessions_data: list[tuple[dict, list[dict]]] = []
+    global_stem_df: dict[str, int] = defaultdict(int)
+    
     for session in sessions:
         session_id = str(session.get("session_id") or "")
-        # Skip test sessions — they're ephemeral and add noise
         if (
             session_id.startswith("test-")
             or session_id.startswith("test_")
@@ -541,10 +568,47 @@ async def generate_session_summaries(
         ):
             continue
         messages = await get_session_messages_for_summary(db_path, session_id)
-        # Skip sessions with < 2 messages — short/empty sessions add noise
         if len(messages) < 2:
             continue
-        summary = build_session_summary(session, messages, scorer=scorer)
+        all_sessions_data.append((session, messages))
+        
+        # Compute stem DF for this session
+        session_stems: set[str] = set()
+        for msg in messages:
+            content = str(msg.get("content", ""))
+            for word in content.replace(","," ").replace("."," ").replace("?"," ").replace(":"," ").replace('"'," ").replace("'"," ").split():
+                t = word.strip().lower()
+                if t not in STOP and t not in SPANISH_STOPWORDS and len(t) > 2 and t.isalpha():
+                    session_stems.add(stem_spanish(t))
+        for s in session_stems:
+            global_stem_df[s] += 1
+    
+    # Compute IDF and stem_map
+    total_active = len(all_sessions_data)
+    word_idf: dict[str, float] = {}
+    if total_active > 0:
+        word_idf = {w: _math.log((total_active + 1) / (d + 1)) + 1.0 
+                     for w, d in global_stem_df.items()}
+    max_idf = _math.log(total_active + 1) + 1.0 if total_active > 0 else 4.0
+    
+    # Build stem_map for all raw tokens seen
+    stem_map: dict[str, str] = {}
+    for _, messages in all_sessions_data:
+        for msg in messages:
+            content = str(msg.get("content", ""))
+            for word in content.replace(","," ").replace("."," ").replace("?"," ").replace(":"," ").replace('"'," ").replace("'"," ").split():
+                t = word.strip().lower()
+                if t not in STOP and t not in SPANISH_STOPWORDS and len(t) > 2 and t.isalpha():
+                    stem_map[t] = stem_spanish(t)
+
+    # ── Process each session with IDF ──
+    results: list[dict[str, Any]] = []
+    for session, messages in all_sessions_data:
+        session_id = str(session.get("session_id") or "")
+        summary = build_session_summary(
+            session, messages, scorer=scorer,
+            word_idf=word_idf, max_idf=max_idf, stem_map=stem_map,
+        )
         digest = str(summary["content_hash"])
         path = session_summary_path(
             session_id,

@@ -138,12 +138,51 @@ class HybridRetriever:
 
         exclude_key = session_id or None  # None = no exclusion
 
+        # ── Expansión de Consultas de Doble Capa (HITS Query Expansion) ──
+        expanded_query = query
+        try:
+            from src.memory.analysis.graph_analysis import EntityGraph
+            from src.memory.memory_db_path import resolve_memory_db_path
+            from src.memory.analysis.corpus import STOP
+
+            graph = EntityGraph(resolve_memory_db_path())
+            graph.refresh()
+
+            query_tokens = [
+                token.strip().lower() for token in query.replace(",", " ").replace(".", " ").split()
+                if token.strip().lower() not in STOP and len(token.strip()) > 2
+            ]
+
+            detected_communities = set()
+            for token in query_tokens:
+                comm = graph.entity_community(token)
+                if comm != -1:
+                    detected_communities.add(comm)
+
+            authorities_to_add = []
+            for comm in detected_communities:
+                comm_nodes = [
+                    (node, graph.authority_score(node))
+                    for node in graph._degree_centrality.keys()
+                    if graph.entity_community(node) == comm
+                ]
+                comm_nodes.sort(key=lambda x: x[1], reverse=True)
+                for node, auth_score in comm_nodes[:2]:
+                    if auth_score > 0.01 and node not in query_tokens:
+                        authorities_to_add.append(node)
+
+            if authorities_to_add:
+                expanded_query = f"{query} {' '.join(authorities_to_add)}"
+                logger.info("HITS Query Expansion: %r expanded to %r", query, expanded_query)
+        except Exception as e:
+            logger.warning("HITS Query Expansion failed (non-fatal): %s", e)
+
         # Run all 3 searches in parallel via shared thread pool
         vec_task = run_in_thread(
-            self._vector_search, query, prefetch_k, source_filter, exclude_key
+            self._vector_search, expanded_query, prefetch_k, source_filter, exclude_key
         )
         kw_task = run_in_thread(
-            keyword_search, query, self._db_path, prefetch_k, source_filter, exclude_key
+            keyword_search, expanded_query, self._db_path, prefetch_k, source_filter, exclude_key
         )
         ent_task = run_in_thread(
             entity_search, query, self._db_path, prefetch_k, source_filter, exclude_key
@@ -239,6 +278,32 @@ class HybridRetriever:
                 logger.warning("Reranker failed (non-fatal), using original results: %s", e)
                 self._reranker_degraded = True
                 # Fall through with original results
+
+        # ── Re-ranking por Centralidad de Grafo (PageRank / Authority Boost) ──
+        if results:
+            try:
+                from src.memory.analysis.graph_analysis import EntityGraph
+                from src.memory.memory_db_path import resolve_memory_db_path
+                graph = EntityGraph(resolve_memory_db_path())
+                graph.refresh()
+
+                for r in results:
+                    text_lower = r.text.lower()
+                    mentioned_entities = [
+                        ent for ent in graph._degree_centrality.keys()
+                        if ent in text_lower
+                    ]
+                    if mentioned_entities:
+                        max_pr = max(graph.pagerank(ent) for ent in mentioned_entities)
+                        max_auth = max(graph.authority_score(ent) for ent in mentioned_entities)
+                        boost = (0.15 * max_pr) + (0.10 * max_auth)
+                        r.fusion_score += boost
+
+                results.sort(key=lambda x: x.fusion_score, reverse=True)
+                for r_rank, r in enumerate(results, 1):
+                    r.rank = r_rank
+            except Exception as e:
+                logger.warning("Graph centrality re-ranking failed (non-fatal): %s", e)
 
         self._apply_source_layer_policy(results, source_filter=source_filter)
 

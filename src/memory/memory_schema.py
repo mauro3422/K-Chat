@@ -686,6 +686,39 @@ def _migration_020_memory_curated_relations(conn: sqlite3.Connection, engine) ->
     logger.info("memory_curated_relations table created")
 
 
+def _migration_021_vec_concepts(conn: sqlite3.Connection, engine) -> None:
+    """Create vec_concepts virtual table and concept_canonical mapping.
+    
+    vec_concepts stores the fastembed vector for canonical concepts.
+    concept_canonical maps any observed keyword to its canonical concept base.
+    """
+    try:
+        conn.enable_load_extension(True)
+        import sqlite_vec
+        sqlite_vec.load(conn)
+    except Exception as e:
+        logger.warning("sqlite-vec extension not available, vec_concepts table may fail: %s", e)
+
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS vec_concepts USING vec0(
+            embedding float[384] distance_metric=cosine
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS concept_canonical (
+            word TEXT PRIMARY KEY,
+            canonical_word TEXT NOT NULL,
+            vec_rowid INTEGER NOT NULL
+        )
+    """)
+    # Unique index to prevent duplicate canonicalization
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_concept_canonical_canonical 
+        ON concept_canonical (canonical_word)
+    """)
+    logger.info("vec_concepts and concept_canonical tables created")
+
+
 _MEMORY_MIGRATIONS = (
     _migration_001_global_memory_index,
     _migration_002_vec_store,
@@ -707,6 +740,7 @@ _MEMORY_MIGRATIONS = (
     _migration_018_memory_work_catalog_identity,
     _migration_019_memory_work_catalog_identity_pk,
     _migration_020_memory_curated_relations,
+    _migration_021_vec_concepts,
 )
 
 MEMORY_SCHEMA_VERSION = len(_MEMORY_MIGRATIONS)

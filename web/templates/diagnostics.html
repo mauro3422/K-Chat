@@ -7,91 +7,369 @@
   <link rel="icon" type="image/png" href="/static/logo.png">
   <link rel="stylesheet" href="/static/style.css?v=13">
   <style>
-    body { background: var(--bg-primary); color: var(--text-primary); font-family: system-ui, sans-serif; margin: 0; }
-    .diag-shell { max-width: 1200px; margin: 0 auto; padding: 24px; display: grid; gap: 16px; }
-    .diag-hero, .diag-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: var(--glow-soft, none); }
-    .diag-hero { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
-    .diag-title h1 { margin: 0 0 8px; font-size: 24px; }
-    .diag-title p { margin: 0; color: var(--text-muted); }
-    .diag-link { color: var(--accent-green, #4caf50); text-decoration: none; font-size: 13px; }
-    .diag-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .diag-card h2 { margin: 0 0 12px; font-size: 16px; }
-    .diag-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-    .diag-pill { font-size: 11px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-muted); }
-    .diag-list { margin: 0; padding-left: 18px; color: var(--text-muted); }
-    .diag-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .diag-table th, .diag-table td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
-    .diag-muted { color: var(--text-muted); font-size: 12px; }
-    .diag-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
-    .diag-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    .diag-btn { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; text-decoration: none; font-size: 12px; }
-    .diag-btn:hover { border-color: var(--border-accent); }
-    .diag-btn-primary { color: var(--accent-green, #4caf50); }
-    .diag-btn-warn { color: var(--accent-yellow, #f5c542); }
-    .diag-btn-danger { color: var(--accent-red, #ff5c5c); }
-    .diag-status { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
-    .diag-remote { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72); padding: 24px; z-index: 1000; }
-    .diag-remote.open { display: flex; align-items: center; justify-content: center; }
-    .diag-remote-card { width: min(1100px, 100%); max-height: 90vh; overflow: auto; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: var(--glow-soft, none); }
-    .diag-remote-header { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom: 12px; }
-    .diag-remote-header h3 { margin: 0; font-size: 18px; }
-    .diag-remote-close { background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); cursor: pointer; padding: 6px 10px; }
-    .diag-remote-body { display: grid; gap: 12px; }
-    .diag-remote-body .diag-card { background: var(--bg-secondary); }
-    @media (max-width: 900px) { .diag-grid { grid-template-columns: 1fr; } .diag-hero { flex-direction: column; } }
+    :root {
+      --bg-primary: #0a0b0e;
+      --bg-secondary: #121318;
+      --bg-tertiary: #1a1c23;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: #00ff99;
+      --text-primary: #f3f4f6;
+      --text-muted: #9ca3af;
+      --glow: 0 0 20px rgba(0, 255, 153, 0.15);
+    }
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+    /* Header compacto premium */
+    .diag-header {
+      background: rgba(18, 19, 24, 0.8);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .diag-header-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .diag-header-title h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+    }
+    .diag-header-title p {
+      margin: 0;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .diag-link {
+      color: var(--border-accent);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+    .diag-link:hover {
+      opacity: 0.8;
+    }
+    
+    /* Layout principal */
+    .diag-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      gap: 20px;
+    }
+    
+    /* Grid de dos columnas para Hero (Grafo + Resumen) */
+    .diag-layout-hero {
+      display: grid;
+      grid-template-columns: 2.2fr 1fr;
+      gap: 20px;
+    }
+    
+    .diag-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      position: relative;
+    }
+    
+    .diag-card h2 {
+      margin: 0 0 16px;
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .diag-card h2 span {
+      text-transform: none;
+      font-size: 11px;
+      font-weight: normal;
+      color: var(--text-muted);
+    }
+    
+    /* Pills y listados compactos */
+    .diag-pills {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .diag-pill-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .diag-pill-label {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .diag-pill-value {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-family: monospace;
+    }
+    .diag-pill-value.active {
+      color: var(--border-accent);
+      text-shadow: 0 0 8px rgba(0, 255, 153, 0.4);
+    }
+    
+    /* Acciones */
+    .diag-actions-bar {
+      display: flex;
+      gap: 8px;
+    }
+    .diag-btn {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .diag-btn:hover {
+      border-color: var(--border-accent);
+      box-shadow: 0 0 10px rgba(0, 255, 153, 0.1);
+    }
+    .diag-btn-primary { color: var(--border-accent); }
+    .diag-btn-warn { color: #f5c542; }
+    .diag-btn-danger { color: #ff5c5c; }
+    
+    /* Grilla de detalles secundaria */
+    .diag-grid-secondary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    
+    .diag-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    .diag-table th, .diag-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 8px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    .diag-table th {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .diag-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .diag-list li {
+      margin-bottom: 6px;
+    }
+    .diag-muted {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    
+    /* Tooltip Glassmorphic */
+    #graph-tooltip {
+      position: absolute;
+      display: none;
+      background: rgba(12, 13, 18, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 255, 153, 0.4);
+      border-radius: 8px;
+      padding: 10px;
+      color: var(--text-primary);
+      font-size: 11px;
+      pointer-events: none;
+      z-index: 10;
+      box-shadow: 0 8px 32px 0 rgba(0, 255, 153, 0.15);
+      font-family: monospace;
+    }
+    
+    /* Modal remotos */
+    .diag-remote {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.72);
+      padding: 24px;
+      z-index: 1000;
+    }
+    .diag-remote.open {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .diag-remote-card {
+      width: min(1100px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: var(--glow);
+    }
+    .diag-remote-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .diag-remote-header h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .diag-remote-close {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      cursor: pointer;
+      padding: 6px 10px;
+    }
+    .diag-remote-body {
+      display: grid;
+      gap: 12px;
+    }
+    .diag-remote-body .diag-card {
+      background: var(--bg-secondary);
+    }
+    
+    @media (max-width: 1024px) {
+      .diag-layout-hero {
+        grid-template-columns: 1fr;
+      }
+      .diag-grid-secondary {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="diag-shell" id="diag-shell">
-    <section class="diag-hero">
-      <div class="diag-title">
-        <h1>Diagnóstico unificado</h1>
-        <p>Una vista con salud total, estado LAN, memoria y failover del nodo activo.</p>
-      </div>
-      <div>
-        <a class="diag-link" href="/">← Volver al chat</a>
-      </div>
-    </section>
 
-    {% set health = snapshot.health or {} %}
-    {% set node = snapshot.node or {} %}
-    {% set bridge = snapshot.bridge or {} %}
-    {% set cluster = snapshot.cluster or {} %}
-    {% set peer_memory = snapshot.peer_memory or {} %}
-    {% set peer_memory_summary = peer_memory.summary or {} %}
-    {% set memory = snapshot.memory or {} %}
-    {% set memory_data = memory.memory or {} %}
-    {% set compare_summary = memory.compare_summary or {} %}
-    {% set failover = health.failover or {} %}
+  {% set health = snapshot.health or {} %}
+  {% set node = snapshot.node or {} %}
+  {% set bridge = snapshot.bridge or {} %}
+  {% set cluster = snapshot.cluster or {} %}
+  {% set peer_memory = snapshot.peer_memory or {} %}
+  {% set peer_memory_summary = peer_memory.summary or {} %}
+  {% set memory = snapshot.memory or {} %}
+  {% set memory_data = memory.memory or {} %}
+  {% set compare_summary = memory.compare_summary or {} %}
+  {% set failover = health.failover or {} %}
 
-    <section class="diag-card">
-      <h2>Resumen general</h2>
-      <div class="diag-pills">
-        <span class="diag-pill">Estado: {{ health.status or 'unknown' }}</span>
-        <span class="diag-pill">Nodo: {{ node.node_id or 'n/a' }}</span>
-        <span class="diag-pill">Rol: {{ node.role or 'secondary' }}</span>
-        <span class="diag-pill">Peers: {{ cluster.reachable_peers or 0 }}/{{ cluster.peer_count or 0 }}</span>
-        <span class="diag-pill">Cola memoria: {{ memory.queue_size or 0 }}</span>
-        <span class="diag-pill">Failover: {{ failover.last_action or 'idle' }}</span>
-        {% if key_pattern %}
-        <span class="diag-pill">Filtro: {{ key_pattern }}</span>
-        {% endif %}
-      </div>
-      <div class="diag-muted">Base URL: {{ bridge.base_url or 'n/a' }}</div>
-      <div class="diag-actions">
-        <button class="diag-btn diag-btn-primary" data-action="refresh">Refrescar</button>
-        <button class="diag-btn diag-btn-warn" data-action="sync">Sincronizar memoria</button>
-        <button class="diag-btn diag-btn-warn" data-action="repair">Reparar memoria</button>
-        <button class="diag-btn diag-btn-danger" data-action="flush">Vaciar cola</button>
-      </div>
-      <div class="diag-status" id="diag-status">Listo.</div>
-    </section>
+  <!-- Header compacto -->
+  <header class="diag-header">
+    <div class="diag-header-title">
+      <h1>Cerebro & Diagnóstico</h1>
+      <p id="system-time">LAN: {{ bridge.base_url or 'n/a' }}</p>
+    </div>
+    <div class="diag-actions-bar">
+      <button class="diag-btn diag-btn-primary" data-action="refresh-silent">Actualizar</button>
+      <button class="diag-btn diag-btn-warn" data-action="sync">Sincronizar</button>
+      <button class="diag-btn diag-btn-warn" data-action="repair">Reparar</button>
+      <button class="diag-btn diag-btn-danger" data-action="flush">Vaciar Cola</button>
+      <a class="diag-btn" href="/">Chat</a>
+    </div>
+  </header>
 
-    <section class="diag-grid">
+  <div class="diag-container">
+    <!-- Grid superior: Grafo + Resumen lateral -->
+    <div class="diag-layout-hero">
+      <!-- Contenedor del Grafo interactivo -->
+      <section class="diag-card" style="border: 1px solid rgba(0, 255, 153, 0.35); box-shadow: 0 0 25px rgba(0, 255, 153, 0.08); background: rgba(12, 13, 18, 0.6); backdrop-filter: blur(12px); display: flex; flex-direction: column;">
+        <h2 style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+          <span>🧠 Red de Memoria Activa <span style="font-size: 11px; font-weight: normal; color: var(--text-muted); text-transform: none; display: block; margin-top: 4px;">Nodos arrastrables, hover para destacar conexiones</span></span>
+          <div class="diag-actions-bar" id="layer-selector" style="margin-top: 0;">
+            <button class="diag-btn diag-btn-primary active" data-layer="unified">Unificada</button>
+            <button class="diag-btn" data-layer="curated">Curada</button>
+            <button class="diag-btn" data-layer="pmi">Memoria Viva (PMI)</button>
+          </div>
+        </h2>
+        <div id="graph-container" style="flex-grow: 1; min-height: 450px; background: radial-gradient(circle, #0e1118 0%, #07090d 100%); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; position: relative; overflow: hidden; box-shadow: inset 0 0 40px rgba(0,0,0,0.85);">
+          <div id="graph-tooltip"></div>
+        </div>
+      </section>
+
+      <!-- Panel de Resumen compacto -->
+      <section class="diag-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+        <div>
+          <h2>Resumen de Nodo</h2>
+          <div class="diag-pills">
+            <div class="diag-pill-row">
+              <span class="diag-pill-label">Estado</span>
+              <span class="diag-pill-value active" id="val-status">{{ health.status or 'unknown' }}</span>
+            </div>
+            <div class="diag-pill-row">
+              <span class="diag-pill-label">ID de Nodo</span>
+              <span class="diag-pill-value" id="val-node">{{ node.node_id or 'n/a' }}</span>
+            </div>
+            <div class="diag-pill-row">
+              <span class="diag-pill-label">Rol</span>
+              <span class="diag-pill-value" id="val-role">{{ node.role or 'secondary' }}</span>
+            </div>
+            <div class="diag-pill-row">
+              <span class="diag-pill-label">Peers LAN</span>
+              <span class="diag-pill-value" id="val-peers">{{ cluster.reachable_peers or 0 }}/{{ cluster.peer_count or 0 }}</span>
+            </div>
+            <div class="diag-pill-row">
+              <span class="diag-pill-label">Cola Memoria</span>
+              <span class="diag-pill-value" id="val-queue">{{ memory.queue_size or 0 }}</span>
+            </div>
+            <div class="diag-pill-row">
+              <span class="diag-pill-label">Failover</span>
+              <span class="diag-pill-value" id="val-failover">{{ failover.last_action or 'idle' }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div>
+          <div class="diag-muted" style="border-top: 1px solid var(--border); padding-top: 12px;" id="diag-status">Listo.</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Grid inferior: Detalles técnicos -->
+    <div class="diag-grid-secondary">
       <article class="diag-card">
-        <h2>Checks</h2>
+        <h2>Checks de Salud</h2>
         <table class="diag-table">
-          <tbody>
+          <tbody id="table-checks">
           {% for key, value in (health.checks or {}).items() %}
             <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
           {% else %}
@@ -103,10 +381,10 @@
 
       <article class="diag-card">
         <h2>Cluster LAN</h2>
-        <div class="diag-muted">Peers alcanzables: {{ cluster.reachable_peers or 0 }} · Inalcanzables: {{ cluster.unreachable_peers or 0 }}</div>
+        <div class="diag-muted">Peers alcanzables: <span id="val-reachable-peers">{{ cluster.reachable_peers or 0 }}</span> · Inalcanzables: <span id="val-unreachable-peers">{{ cluster.unreachable_peers or 0 }}</span></div>
         <table class="diag-table">
           <thead><tr><th>Node</th><th>Rol</th><th>Healthy</th><th>Memoria</th></tr></thead>
-          <tbody>
+          <tbody id="table-peers">
           {% for peer in cluster.states or [] %}
             <tr>
               <td>{{ peer.node_id or peer.source_url or 'peer' }}</td>
@@ -122,15 +400,10 @@
       </article>
 
       <article class="diag-card">
-        <h2>Memoria</h2>
-        <div class="diag-pills">
-          <span class="diag-pill">Fresca: {{ 'sí' if memory_data.is_fresh else 'no' }}</span>
-          <span class="diag-pill">Revision: {{ memory_data.revision or 0 }}</span>
-          <span class="diag-pill">Sync: {{ memory_data.sync or 0 }}</span>
-        </div>
+        <h2>Sincronía de Memoria</h2>
         <div class="diag-muted">Ruta cola: {{ memory.queue_path or 'n/a' }}</div>
-        <div class="diag-muted">Severity: {{ compare_summary.severity or 'clean' }}</div>
-        <ul class="diag-list">
+        <div class="diag-muted" style="margin-top: 4px;">Severity: <span id="val-severity">{{ compare_summary.severity or 'clean' }}</span></div>
+        <ul class="diag-list" id="list-actions" style="margin-top: 8px;">
           {% for action in compare_summary.actions or [] %}
             <li>{{ action }}</li>
           {% else %}
@@ -138,110 +411,31 @@
           {% endfor %}
         </ul>
       </article>
+    </div>
 
-      <article class="diag-card">
-        <h2>Failover</h2>
-        <table class="diag-table">
-          <tbody>
-            <tr><th>Misses</th><td>{{ failover.miss_count or 0 }} / {{ failover.required_misses or 0 }}</td></tr>
-            <tr><th>Última acción</th><td>{{ failover.last_action or 'idle' }}</td></tr>
-            <tr><th>Razón</th><td>{{ failover.last_reason or 'n/a' }}</td></tr>
-            <tr><th>Promover</th><td>{{ 'sí' if failover.should_promote else 'no' }}</td></tr>
-          </tbody>
-        </table>
-      </article>
-
-      <article class="diag-card">
-        <h2>Memoria por peer</h2>
-        <div class="diag-pills">
-          <span class="diag-pill">Snapshots: {{ peer_memory_summary.peer_count or 0 }}</span>
-          <span class="diag-pill">Alineados: {{ peer_memory_summary.aligned_peers or 0 }}</span>
-          <span class="diag-pill">Desfasados: {{ peer_memory_summary.stale_peers or 0 }}</span>
+    <!-- Pestaña oculta para visualización remota de peers -->
+    <div class="diag-remote" id="diag-remote">
+      <div class="diag-remote-card">
+        <div class="diag-remote-header">
+          <h3 id="diag-remote-title">Snapshot remoto</h3>
+          <button class="diag-remote-close" id="diag-remote-close" type="button">Cerrar</button>
         </div>
-        <div class="diag-muted">Errores: {{ (peer_memory.errors or [])|length }}</div>
-        <table class="diag-table">
-          <thead><tr><th>Peer</th><th>Cola</th><th>Fresca</th><th>Severity</th><th>Acciones</th></tr></thead>
-          <tbody>
-          {% for peer in peer_memory.peers or [] %}
-            {% set diag = peer.compare_summary or {} %}
-            {% set peer_memory_state = peer.memory or {} %}
-            {% set is_aligned = peer_memory_state.is_fresh and ((peer_memory_state.revision or 0) >= (memory_data.revision or 0)) and (peer.queue_size or 0) == 0 %}
-            <tr>
-              <td>{{ peer.peer_url or 'peer' }}</td>
-              <td>{{ peer.queue_size or 0 }}</td>
-              <td>{{ 'sí' if is_aligned else 'no' }}</td>
-              <td>{{ diag.severity or 'clean' }}</td>
-              <td>
-                <button class="diag-link" type="button" data-peer-url="{{ peer.peer_url|e }}" data-peer-kind="diagnostics">diagnóstico</button>
-                ·
-                <button class="diag-link" type="button" data-peer-url="{{ peer.peer_url|e }}" data-peer-kind="state">estado</button>
-                ·
-                <button class="diag-link" type="button" data-peer-url="{{ peer.peer_url|e }}" data-peer-kind="memory">memoria</button>
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="5" class="diag-muted">Sin snapshots remotos</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
-        {% if peer_memory_summary.stale_details %}
-        <table class="diag-table" style="margin-top:12px">
-          <thead><tr><th>Peer desfasado</th><th>Delta rev</th><th>Cola</th><th>Fresh</th><th>Razón</th><th>Acción</th></tr></thead>
-          <tbody>
-          {% for stale in peer_memory_summary.stale_details %}
-            <tr>
-              <td>{{ stale.peer_url or 'peer' }}</td>
-              <td>{{ stale.revision_delta or 0 }}</td>
-              <td>{{ stale.queue_size or 0 }}</td>
-              <td>{{ 'sí' if stale.is_fresh else 'no' }}</td>
-              <td>{{ stale.stale_reason or 'unknown' }}</td>
-              <td><button class="diag-link" type="button" data-peer-url="{{ stale.peer_url|e }}" data-peer-kind="diagnostics">abrir</button></td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-        {% endif %}
-
-        {% if peer_memory_summary.peer_diffs %}
-        <table class="diag-table" style="margin-top:12px">
-          <thead><tr><th>Peer</th><th>Local rev</th><th>Peer rev</th><th>Delta</th><th>Compare</th><th>Acciones</th></tr></thead>
-          <tbody>
-          {% for diff in peer_memory_summary.peer_diffs %}
-            <tr>
-              <td>{{ diff.peer_url or 'peer' }}</td>
-              <td>{{ diff.local_revision or 0 }}</td>
-              <td>{{ diff.peer_revision or 0 }}</td>
-              <td>{{ diff.revision_delta or 0 }}</td>
-              <td>{{ diff.compare_severity or 'clean' }}</td>
-              <td>{{ (diff.compare_actions or [])|join(' · ') or 'sin acciones' }}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-        {% endif %}
-      </article>
-    </section>
-  </div>
-  <div class="diag-remote" id="diag-remote">
-    <div class="diag-remote-card">
-      <div class="diag-remote-header">
-        <h3 id="diag-remote-title">Snapshot remoto</h3>
-        <button class="diag-remote-close" id="diag-remote-close" type="button">Cerrar</button>
-      </div>
-      <div class="diag-remote-body" id="diag-remote-body">
-        <div class="diag-muted">Selecciona un peer para ver su snapshot.</div>
+        <div class="diag-remote-body" id="diag-remote-body">
+          <div class="diag-muted">Selecciona un peer para ver su snapshot.</div>
+        </div>
       </div>
     </div>
   </div>
+
+  <script src="/static/d3.min.js"></script>
   <script>
     (function() {
-      const shell = document.getElementById('diag-shell');
       const statusEl = document.getElementById('diag-status');
       const remote = document.getElementById('diag-remote');
       const remoteTitle = document.getElementById('diag-remote-title');
       const remoteBody = document.getElementById('diag-remote-body');
       const remoteClose = document.getElementById('diag-remote-close');
-      if (!shell || !statusEl || !remote || !remoteTitle || !remoteBody || !remoteClose) return;
+      if (!statusEl || !remote || !remoteTitle || !remoteBody || !remoteClose) return;
       const initialKeyPattern = {{ (key_pattern or '')|tojson }};
       const urlParams = new URLSearchParams(window.location.search);
       const keyPattern = urlParams.has('key_pattern') ? urlParams.get('key_pattern') || '' : initialKeyPattern;
@@ -263,75 +457,285 @@
           .replace(/>/g, '&gt;');
       }
 
-      function openRemote(title, data) {
-        remoteTitle.textContent = title;
-        const node = data.node || {};
-        const bridge = data.bridge || {};
-        const memory = data.memory || {};
-        const peerMemory = data.peer_memory || {};
-        const cluster = data.cluster || {};
-        const peerMemorySummary = peerMemory.summary || {};
-        const health = data.health || {};
-        const compareSummary = memory.compare_summary || {};
-        const memoryData = memory.memory || {};
-        const failover = health.failover || {};
+      // --- SILENT REFRESH (Polling AJAX sin recargar página completa) ---
+      async function refreshSilent() {
+        try {
+          const resp = await fetch(withKeyPattern('/api/diagnostics'), { cache: 'no-store' });
+          const data = await resp.json();
+          if (!data) {
+            setStatus('Error en actualización silenciosa.');
+            return;
+          }
 
-        remoteBody.innerHTML = `
-          <section class="diag-card">
-            <h2>Resumen remoto</h2>
-            <div class="diag-pills">
-              <span class="diag-pill">Nodo: ${escapeHtml(node.node_id || 'n/a')}</span>
-              <span class="diag-pill">Rol: ${escapeHtml(node.role || 'secondary')}</span>
-              <span class="diag-pill">Peers: ${cluster.reachable_peers || 0}/${cluster.peer_count || 0}</span>
-              <span class="diag-pill">Memoria: ${memory.queue_size || 0}</span>
-              <span class="diag-pill">Failover: ${escapeHtml(failover.last_action || 'idle')}</span>
-            </div>
-            <div class="diag-muted">Base URL: ${escapeHtml(bridge.base_url || 'n/a')}</div>
-          </section>
-          <section class="diag-grid">
-            <article class="diag-card">
-              <h2>Memoria</h2>
-              <div class="diag-pills">
-                <span class="diag-pill">Fresca: ${memoryData.is_fresh ? 'sí' : 'no'}</span>
-                <span class="diag-pill">Revision: ${memoryData.revision || 0}</span>
-                <span class="diag-pill">Sync: ${memoryData.sync || 0}</span>
-              </div>
-              <div class="diag-muted">Severity: ${escapeHtml(compareSummary.severity || 'clean')}</div>
-            </article>
-            <article class="diag-card">
-              <h2>Memoria por peer</h2>
-              <div class="diag-pills">
-                <span class="diag-pill">Snapshots: ${peerMemorySummary.peer_count || 0}</span>
-                <span class="diag-pill">Alineados: ${peerMemorySummary.aligned_peers || 0}</span>
-                <span class="diag-pill">Desfasados: ${peerMemorySummary.stale_peers || 0}</span>
-              </div>
-            </article>
-          </section>
-        `;
-        remote.classList.add('open');
+          // El endpoint /api/diagnostics devuelve el snapshot directamente en la raíz
+          const snap = data || {};
+          const health = snap.health || {};
+          const node = snap.node || {};
+          const cluster = snap.cluster || {};
+          const memory = snap.memory || {};
+          const compareSummary = memory.compare_summary || {};
+          const failover = health.failover || {};
+
+          // Actualizar valores en el DOM
+          document.getElementById('val-status').textContent = health.status || 'unknown';
+          document.getElementById('val-node').textContent = node.node_id || 'n/a';
+          document.getElementById('val-role').textContent = node.role || 'secondary';
+          document.getElementById('val-peers').textContent = `${cluster.reachable_peers || 0}/${cluster.peer_count || 0}`;
+          document.getElementById('val-queue').textContent = memory.queue_size || 0;
+          document.getElementById('val-failover').textContent = failover.last_action || 'idle';
+          
+          document.getElementById('val-reachable-peers').textContent = cluster.reachable_peers || 0;
+          document.getElementById('val-unreachable-peers').textContent = cluster.unreachable_peers || 0;
+          document.getElementById('val-severity').textContent = compareSummary.severity || 'clean';
+
+          // Actualizar lista de acciones de memoria
+          const listActions = document.getElementById('list-actions');
+          listActions.innerHTML = '';
+          const actions = compareSummary.actions || [];
+          if (actions.length > 0) {
+            actions.forEach(act => {
+              const li = document.createElement('li');
+              li.textContent = act;
+              listActions.appendChild(li);
+            });
+          } else {
+            listActions.innerHTML = '<li class="diag-muted">Sin acciones pendientes</li>';
+          }
+
+          // Actualizar tabla de checks
+          const tableChecks = document.getElementById('table-checks');
+          tableChecks.innerHTML = '';
+          const checks = health.checks || {};
+          Object.keys(checks).forEach(key => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<th>${escapeHtml(key)}</th><td>${escapeHtml(checks[key])}</td>`;
+            tableChecks.appendChild(tr);
+          });
+
+          // Actualizar tabla de peers LAN
+          const tablePeers = document.getElementById('table-peers');
+          tablePeers.innerHTML = '';
+          const states = cluster.states || [];
+          if (states.length > 0) {
+            states.forEach(peer => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td>${escapeHtml(peer.node_id || peer.source_url || 'peer')}</td>
+                <td>${escapeHtml(peer.role || 'secondary')}</td>
+                <td>${peer.healthy ? 'sí' : 'no'}</td>
+                <td>${peer.memory_is_fresh ? 'fresca' : 'pendiente'}</td>
+              `;
+              tablePeers.appendChild(tr);
+            });
+          } else {
+            tablePeers.innerHTML = '<tr><td colspan="4" class="diag-muted">Sin peers visibles</td></tr>';
+          }
+
+          setStatus('Datos actualizados en caliente.');
+        } catch (err) {
+          setStatus(`Error en polling: ${err.message}`);
+        }
       }
 
-      remoteClose.addEventListener('click', () => remote.classList.remove('open'));
-      remote.addEventListener('click', (event) => {
-        if (event.target === remote) {
-          remote.classList.remove('open');
-        }
-      });
+      // --- Lógica del Grafo D3 ---
+      async function renderCerebroGraph(layer = 'unified') {
+        const container = document.getElementById('graph-container');
+        const tooltip = document.getElementById('graph-tooltip');
+        if (!container) return;
 
-      async function refresh() {
-        setStatus('Actualizando...');
-        const resp = await fetch(withKeyPattern('/api/diagnostics'), { cache: 'no-store' });
-        const data = await resp.json();
-        if (!data || !data.ok) {
-          setStatus('No se pudo leer el diagnóstico.');
-          return;
-        }
-        if (window.location.search.includes('key_pattern=') || !keyPattern) {
-          window.location.reload();
-        } else {
-          window.location.assign(withKeyPattern('/diagnostics'));
+        // Estilos del Tooltip
+        tooltip.style.background = 'rgba(12, 13, 18, 0.85)';
+        tooltip.style.backdropFilter = 'blur(12px)';
+        tooltip.style.webkitBackdropFilter = 'blur(12px)';
+        tooltip.style.border = '1px solid rgba(0, 255, 153, 0.4)';
+        tooltip.style.boxShadow = '0 8px 32px 0 rgba(0, 255, 153, 0.15)';
+
+        let width = container.clientWidth;
+        let height = container.clientHeight;
+
+        try {
+          const resp = await fetch(`/api/memory/graph?layer=${layer}`);
+          const data = await resp.json();
+          if (!data || !data.ok || !data.nodes || data.nodes.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding-top:200px;">Sin entidades en el grafo de esta capa de memoria.</div>';
+            return;
+          }
+
+          container.innerHTML = '';
+          container.appendChild(tooltip); // re-append tooltip
+
+          const svg = d3.select('#graph-container')
+            .append('svg')
+            .attr('width', '100%')
+            .attr('height', '100%')
+            .attr('viewBox', `0 0 ${width} ${height}`)
+            .style('display', 'block');
+
+          // Contenedor principal del zoom para englobar nodos y enlaces
+          const gContainer = svg.append('g');
+
+          // Configurar zoom
+          const zoomBehavior = d3.zoom()
+            .scaleExtent([0.15, 5])
+            .on('zoom', (event) => {
+              gContainer.attr('transform', event.transform);
+            });
+
+          svg.call(zoomBehavior);
+
+          const colors = [
+            '#00ff99', // Cyan-Green
+            '#00ffff', // Cyan
+            '#ff00ff', // Pink/Magenta
+            '#ffff00', // Yellow
+            '#ff3300', // Neon Red
+            '#3399ff', // Soft Blue
+          ];
+          const colorScale = (c) => colors[c % colors.length] || '#888888';
+
+          const simulation = d3.forceSimulation(data.nodes)
+            .force('link', d3.forceLink(data.edges).id(d => d.id).distance(110))
+            .force('charge', d3.forceManyBody().strength(-200))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('x', d3.forceX(width / 2).strength(0.08))
+            .force('y', d3.forceY(height / 2).strength(0.08))
+            .force('collision', d3.forceCollide().radius(d => Math.max(18, d.pagerank * 150 + 10)));
+
+          const link = gContainer.append('g')
+            .selectAll('line')
+            .data(data.edges)
+            .enter().append('line')
+            .attr('stroke', 'rgba(255, 255, 255, 0.12)')
+            .attr('stroke-width', 1.5)
+            .style('transition', 'stroke 0.2s, stroke-width 0.2s');
+
+          const node = gContainer.append('g')
+            .selectAll('g')
+            .data(data.nodes)
+            .enter().append('g')
+            .style('cursor', 'pointer')
+            .call(d3.drag()
+              .on('start', dragstarted)
+              .on('drag', dragged)
+              .on('end', dragended));
+
+          node.append('circle')
+            .attr('class', 'neuron-glow')
+            .attr('r', d => Math.max(6, d.pagerank * 80 + 4))
+            .attr('fill', d => colorScale(d.community))
+            .attr('opacity', 0.75)
+            .style('filter', 'drop-shadow(0px 0px 5px rgba(0,255,153,0.5))')
+            .style('transition', 'r 0.2s, opacity 0.2s');
+
+          node.append('circle')
+            .attr('r', 2.5)
+            .attr('fill', '#ffffff');
+
+          node.append('text')
+            .text(d => d.label)
+            .attr('dx', 12)
+            .attr('dy', 4)
+            .style('fill', 'var(--text-primary, #ffffff)')
+            .style('font-family', 'monospace')
+            .style('font-size', '10px')
+            .style('font-weight', '500')
+            .style('text-shadow', '0 1px 4px rgba(0,0,0,0.8)')
+            .style('pointer-events', 'none');
+
+          node.on('mouseover', function(event, d) {
+            d3.select(this).select('.neuron-glow')
+              .attr('opacity', 1)
+              .attr('r', Math.max(9, d.pagerank * 90 + 8))
+              .style('filter', `drop-shadow(0px 0px 8px ${colorScale(d.community)})`);
+
+            link
+              .attr('stroke', l => (l.source.id === d.id || l.target.id === d.id) ? colorScale(d.community) : 'rgba(255, 255, 255, 0.05)')
+              .attr('stroke-width', l => (l.source.id === d.id || l.target.id === d.id) ? 2.5 : 1.0);
+
+            const neighbors = new Set();
+            neighbors.add(d.id);
+            data.edges.forEach(l => {
+              if (l.source.id === d.id) neighbors.add(l.target.id);
+              if (l.target.id === d.id) neighbors.add(l.source.id);
+            });
+
+            node.attr('opacity', n => neighbors.has(n.id) ? 1.0 : 0.25);
+
+            tooltip.style.display = 'block';
+            tooltip.innerHTML = `
+              <div style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; margin-bottom: 6px;">
+                <strong style="color: ${colorScale(d.community)}; font-size: 12px;">${escapeHtml(d.label)}</strong>
+              </div>
+              <span style="color:#888;">Comunidad:</span> ${d.community === -1 ? 'General' : 'Área ' + d.community}<br/>
+              <span style="color:#888;">PageRank:</span> ${d.pagerank.toFixed(5)}<br/>
+              <span style="color:#888;">Authority:</span> ${d.authority.toFixed(5)}<br/>
+              <span style="color:#888;">Hub Score:</span> ${d.hub.toFixed(5)}
+            `;
+          })
+          .on('mousemove', function(event) {
+            const bounds = container.getBoundingClientRect();
+            const x = event.clientX - bounds.left + 15;
+            const y = event.clientY - bounds.top + 15;
+            tooltip.style.left = `${x}px`;
+            tooltip.style.top = `${y}px`;
+          })
+          .on('mouseleave', function(event, d) {
+            d3.select(this).select('.neuron-glow')
+              .attr('opacity', 0.75)
+              .attr('r', Math.max(6, d.pagerank * 80 + 4))
+              .style('filter', 'drop-shadow(0px 0px 5px rgba(0,255,153,0.5))');
+
+            link
+              .attr('stroke', 'rgba(255, 255, 255, 0.12)')
+              .attr('stroke-width', 1.5);
+
+            node.attr('opacity', 1.0);
+            tooltip.style.display = 'none';
+          });
+
+          simulation.on('tick', () => {
+            link
+              .attr('x1', d => d.source.x)
+              .attr('y1', d => d.source.y)
+              .attr('x2', d => d.target.x)
+              .attr('y2', d => d.target.y);
+
+            node
+              .attr('transform', d => `translate(${d.x}, ${d.y})`);
+          });
+
+          window.addEventListener('resize', () => {
+            const newWidth = container.clientWidth;
+            const newHeight = container.clientHeight;
+            svg.attr('viewBox', `0 0 ${newWidth} ${newHeight}`);
+            simulation.force('center', d3.forceCenter(newWidth / 2, newHeight / 2));
+            simulation.alpha(0.3).restart();
+          });
+
+          function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+          }
+
+          function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+          }
+
+          function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+          }
+
+        } catch (err) {
+          container.innerHTML = `<div style="color:var(--accent-red); text-align:center; padding-top:200px;">Error al cargar el cerebro: ${escapeHtml(err.message)}</div>`;
         }
       }
+
+      // Inicialización del Grafo
+      renderCerebroGraph();
 
       async function postJson(url, payload) {
         const resp = await fetch(url, {
@@ -346,56 +750,33 @@
         return data;
       }
 
-      async function loadPeerSnapshot(peerUrl, kind) {
-        const url = withKeyPattern(`/api/diagnostics/peer?peer_url=${encodeURIComponent(peerUrl)}&kind=${encodeURIComponent(kind)}`);
-        const resp = await fetch(url, { cache: 'no-store' });
-        const data = await resp.json();
-        if (!resp.ok || data.ok === false) {
-          throw new Error(data.error || data.detail || `HTTP ${resp.status}`);
-        }
-        return data;
-      }
-
-      shell.addEventListener('click', async (event) => {
-        const btn = event.target.closest('[data-action], [data-peer-url]');
+      // Escuchar clicks de acciones en el header/resumen
+      document.body.addEventListener('click', async (event) => {
+        const btn = event.target.closest('[data-action]');
         if (!btn) return;
-
-        const peerUrl = btn.getAttribute('data-peer-url');
-        const peerKind = btn.getAttribute('data-peer-kind') || 'diagnostics';
-        if (peerUrl) {
-          try {
-            setStatus(`Abriendo snapshot remoto: ${peerUrl}`);
-            const data = await loadPeerSnapshot(peerUrl, peerKind);
-            openRemote(`${peerKind === 'memory' ? 'Memoria' : peerKind === 'state' ? 'Estado' : 'Diagnóstico'} · ${peerUrl}`, data.snapshot || data.state || data);
-            setStatus(`Snapshot remoto listo: ${peerUrl}`);
-          } catch (err) {
-            setStatus(`Error: ${err && err.message ? err.message : err}`);
-          }
-          return;
-        }
 
         const action = btn.getAttribute('data-action');
         try {
-          if (action === 'refresh') {
-            await refresh();
+          if (action === 'refresh-silent') {
+            await refreshSilent();
             return;
           }
           if (action === 'sync') {
             setStatus('Sincronizando memoria...');
             await postJson('/api/memory/sync', { dry_run: false, confirm: true, key_pattern: keyPattern, fmt: 'text' });
-            await refresh();
+            await refreshSilent();
             return;
           }
           if (action === 'repair') {
             setStatus('Reparando memoria...');
             await postJson('/api/memory/repair', { dry_run: false, confirm: true, key_pattern: keyPattern, fmt: 'text' });
-            await refresh();
+            await refreshSilent();
             return;
           }
           if (action === 'flush') {
             setStatus('Vaciando cola...');
             await postJson('/api/node/memory/flush', {});
-            await refresh();
+            await refreshSilent();
             return;
           }
         } catch (err) {
@@ -403,9 +784,28 @@
         }
       });
 
+      // --- Inicialización y Listener de Capas ---
+      let activeLayer = 'unified';
+      renderCerebroGraph(activeLayer);
+
+      const selector = document.getElementById('layer-selector');
+      if (selector) {
+        selector.addEventListener('click', (event) => {
+          const btn = event.target.closest('[data-layer]');
+          if (!btn) return;
+          
+          selector.querySelectorAll('[data-layer]').forEach(b => b.classList.remove('diag-btn-primary', 'active'));
+          btn.classList.add('diag-btn-primary', 'active');
+          
+          activeLayer = btn.getAttribute('data-layer');
+          renderCerebroGraph(activeLayer);
+        });
+      }
+
+      // Polling de datos en caliente (sin recarga completa de página)
       setInterval(() => {
-        void refresh().catch((err) => setStatus(`Error: ${err && err.message ? err.message : err}`));
-      }, 10000);
+        void refreshSilent().catch((err) => console.error("Silent refresh error: ", err));
+      }, 5000); // 5 segundos para mantener datos frescos
     })();
   </script>
 </body>
