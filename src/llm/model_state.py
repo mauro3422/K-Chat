@@ -14,7 +14,7 @@ from typing import Any
 from src.config_loader import DEFAULT_MODEL, PRIORITY_MODELS
 import time
 
-MODEL_FAIL_TTL = 300  # seconds before a failed model is retried
+MODEL_FAIL_TTL = 60  # seconds before a failed model is retried
 
 
 class ModelState:

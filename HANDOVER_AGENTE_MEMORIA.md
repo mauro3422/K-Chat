@@ -1,7 +1,7 @@
 # Handover: Pipeline de Memoria por Capas
 
 **Creado:** 2026-07-04 22:00  
-**Actualizado:** 2026-07-05 00:49 — Mauro + Debug Agent (opencode)  
+**Actualizado:** 2026-07-09 20:30 — Test completo del LLM curator + fixes críticos  
 **Propósito:** Que otro agente IA pueda continuar el laburo sin perder contexto.
 
 ---
@@ -82,6 +82,45 @@ python scripts/generate_session_summaries.py \
   --candidates --transversal --transversal-candidates \
   --daily-synthesis --curation-report --json
 ```
+
+---
+
+## 2.5. LLM Curator — Test de calidad (2026-07-09)
+
+Se corrió el LLM curator (`deepseek-v4-flash`) sobre 20 sesiones. Resultado completo en `docs/curator-quality-test-2026-07-09.md`.
+
+### Resumen
+- **14/20 sesiones** produjeron extracciones (~50 entradas total)
+- **Bugs detectados con alta precisión**: `get_tool_history async sin await`, `extract_text return prematuro`, `db_query column validation`, `delete memory value vacío`, etc.
+- **Decisiones y visión capturadas**: inyección automática hasta umbral, memoria "viva" mid-reasoning, pesos sinápticos, LAN multi-device
+- **Fechas correctas**: fix de `CURRENT DATE` en system prompt eliminó alucinaciones de año
+
+### Bugs arreglados en el pipeline
+| Bug | Fix | Archivo |
+|-----|-----|---------|
+| LLM sin tokens (razonamiento consume todo) | `max_tokens` 1024→16384 | `curate.py:71` |
+| Failover cascada (1 solo modelo) | + `deepseek-v4-flash-free` | `config_loader.py:23` |
+| 5 min bloqueo por timeout | `MODEL_FAIL_TTL` 300→60s | `model_state.py:17` |
+| Crash si único modelo falla | try-except → FALLBACK_MODEL | `client.py:47,171` |
+| Entry point nocturno roto | `_save_memory_local` → `_save_memory_inbox_local` | `.kairos/curator.py:17` |
+| LLM alucinaba años | `CURRENT DATE` en system prompt | `curate.py:25,43` |
+| Corría con python del sistema | Usar `./venv/bin/python` | `.kairos/curator.py` |
+
+### Cómo repetir
+```bash
+cd /home/maurol/dev/K-Chat && source venv/bin/activate
+sqlite3 memory/kairos_curated_memory.db \
+  "DELETE FROM memory_processing_catalog WHERE stage='curated';"
+python -m src.memory.curator.curate
+```
+
+### Calidad
+- ⭐⭐⭐⭐⭐ Bugs: raíz exacta, código referenciado
+- ⭐⭐⭐⭐ Decisiones: contexto y razón claros
+- ⚠️ Redundancia: mismo bug en 3+ sesiones (falta dedup semántico)
+- ⚠️ ~15% timeouts API (OpenCode Go micro-cortes)
+
+---
 
 ### Componentes modulares
 ```
@@ -181,17 +220,21 @@ Ambos se inyectan en el system prompt al inicio. El del proyecto **extiende** al
 
 ## 6. Próximo ciclo
 
-Mauro va a iterar sobre los bugs detectados. Prioridades:
-1. Filtrar sesiones test
-2. Mejorar keywords filter
-3. Probar `--embed` contra vector store real
-4. Dejar pipeline corriendo estable
+Mauro va a iterar sobre los bugs detectados por el LLM curator. Prioridades:
+1. ~~Filtrar sesiones test~~ → pendiente
+2. ~~Mejorar keywords filter~~ → pendiente
+3. ✅ **LLM curator probado** — 50 extracciones de 14/20 sesiones, bugs detectados con precisión
+4. ✅ **Fixes críticos aplicados** — max_tokens, PRIORITY_MODELS, MODEL_FAIL_TTL, entry point nocturno, CURRENT DATE
+5. **Deduplicación semántica** post-extracción — el mismo bug sale de 3+ sesiones
+6. **Filtro de entradas triviales** — user:name y similares no aportan valor
+7. **Instalar `fastembed` en venv** si no está — necesario para vectorización nocturna
 
 Cualquier duda sobre el diseño:
 1. Leer `src/memory/paths.py` — estructura de rutas centralizada
 2. Leer `docs/MEMORY_LAYERED_ROADMAP.md` — plan completo
-3. Leer `docs/ideas/curator-hybrid-retrieval.md` — ideas de retrieval híbrido
-4. Correr pipeline en una fecha chica para ver outputs fresh
+3. Leer `docs/curator-quality-test-2026-07-09.md` — resultados del test LLM curator
+4. Leer `docs/ideas/curator-hybrid-retrieval.md` — ideas de retrieval híbrido
+5. Correr `python -m src.memory.curator.curate --dry` para ver el pipeline sin LLM
 
 ---
 

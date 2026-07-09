@@ -20,7 +20,10 @@ DEFAULT_MODEL: str = "deepseek-v4-flash"
 # Priority list for failover — only include models known to exist.
 # When DEFAULT_MODEL fails, _switch_model tries each candidate in order.
 # Remove big-pickle (ghost model that caused permanent 401 fallback loop).
-PRIORITY_MODELS: list[str] = ["deepseek-v4-flash"]
+PRIORITY_MODELS: list[str] = [
+    "deepseek-v4-flash",       # Go API (primary)
+    "deepseek-v4-flash-free",  # Zen API (fallback)
+]
 
 
 @dataclass

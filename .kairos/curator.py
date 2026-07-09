@@ -14,12 +14,12 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 async def main():
-    from src.memory.curator.curate import _save_memory_local, curate_all
+    from src.memory.curator.curate import _save_memory_inbox_local, curate_all
     from src.memory.operations.sync import _sync
     from src.memory.repos import get_repos
     
     print("🌙 K-Chat Memory Curator starting...")
-    result = await curate_all(dry=False, save_memory_fn=_save_memory_local)
+    result = await curate_all(dry=False, save_memory_fn=_save_memory_inbox_local)
     sync_result = await _sync(dry_run=False, confirm=True, repos=get_repos())
     
     gardener = result.get("gardener", [])

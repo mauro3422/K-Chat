@@ -21,8 +21,10 @@ from src.memory.operations._helpers import _get_memory_md_path
 
 logger = logging.getLogger(__name__)
 
-CURATOR_PROMPT = """You are a memory curator. From the conversation exchanges below,
-extract NEW information worth saving. Only extract things NOT already known.
+CURATOR_PROMPT = """You are a memory curator. The current date and time are provided
+in the context above (CURRENT DATE). Use this for all VALUE timestamps.
+From the conversation exchanges below, extract NEW information worth saving.
+Only extract things NOT already known in the EXISTING MEMORIES.
 
 Format each item as:
 KEY: <category:description>
@@ -33,18 +35,23 @@ If nothing new, respond: NO_NEW_INFO"""
 
 
 def _get_memory_context() -> str:
-    """Read MEMORY.md and return first 3000 chars as context for LLM dedup."""
+    """Read MEMORY.md and return first 3000 chars as context for LLM dedup.
+    
+    Includes current date for temporal context so the LLM doesn't hallucinate years.
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    date_header = f"CURRENT DATE: {now}\n\n"
     memory_md_path = _get_memory_md_path()
     try:
         with open(memory_md_path) as f:
-            content = f.read()
-        return content[:3000]
+            ctx_content = f.read()
+        return date_header + ctx_content[:3000]
     except FileNotFoundError:
         logger.warning("MEMORY.md not found at %s", memory_md_path)
-        return ""
+        return date_header
     except Exception:
         logger.exception("Failed to read MEMORY.md")
-        return ""
+        return date_header
 
 
 # ── Dependency injection helpers ────────────────────────────────────
@@ -61,15 +68,16 @@ async def _default_llm_call(system: str, user: str) -> str:
             {"role": "user", "content": user},
         ],
         temperature=0.3,
-        max_tokens=1024,
+        max_tokens=16384,
         stream=False,
     )
     if r is None:
         return ""
     if hasattr(r, "content") and r.content:
         return r.content
-    if hasattr(r, "reasoning") and r.reasoning:
-        return r.reasoning
+    if hasattr(r, "content") and not r.content and hasattr(r, "reasoning") and r.reasoning:
+        # Reasoning model consumed all tokens on chain-of-thought — treat as empty
+        return ""
     if isinstance(r, dict):
         return r.get("choices", [{}])[0].get("message", {}).get("content", "")
     return str(r)

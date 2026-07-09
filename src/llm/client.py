@@ -43,7 +43,10 @@ def _resolve_model(messages: list[dict[str, Any]], model: str | None, build_prom
             default_model_fn = get_default_model
         model = default_model_fn()
     if models.is_model_failed(model):
-        model = models._switch_model(model)
+        try:
+            model = models._switch_model(model)
+        except RuntimeError:
+            model = models.FALLBACK_MODEL
         _update_system_prompt(messages, model, build_prompt_fn)
     return model
 
@@ -164,7 +167,10 @@ async def chat(messages: list[dict[str, Any]], model: str | None = None, build_p
             default_model_fn = get_default_model
         model = default_model_fn()
     if models.is_model_failed(model):
-        model = models._switch_model(model)
+        try:
+            model = models._switch_model(model)
+        except RuntimeError:
+            model = models.FALLBACK_MODEL
         _update_system_prompt(messages, model, build_prompt_fn)
 
     from src.llm.protocol import UnifiedResponse
