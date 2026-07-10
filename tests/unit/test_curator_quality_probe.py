@@ -27,6 +27,9 @@ def test_summarize_results_reports_quality_signals() -> None:
                 "parsed_entries": [{"key": "bug:a"}, {"key": "user:b"}],
                 "kept_entries": [{"key": "bug:a"}],
                 "filter_stats": {"trivial": 1, "duplicates": 0},
+                "retry_count": 1,
+                "fallback_used": True,
+                "effective_model": "fallback",
             },
             {
                 "ok": False,
@@ -45,6 +48,9 @@ def test_summarize_results_reports_quality_signals() -> None:
     assert summary["kept_entries"] == 1
     assert summary["trivial_removed"] == 1
     assert summary["latency_mean_ms"] == 100
+    assert summary["fallback_calls"] == 1
+    assert summary["retry_count"] == 1
+    assert summary["effective_models"] == ["", "fallback"]
 
 
 def test_compare_runs_requires_same_bundle_and_compares_keys() -> None:

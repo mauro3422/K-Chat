@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import logging
 import sqlite3
 import statistics
 import sys
@@ -157,6 +158,21 @@ async def _run_call(system_prompt: str, user_prompt: str, model: str, temperatur
     from src.memory.curator.curate import parse_resp
     from src.memory.curator.entry_filter import filter_curator_entries
 
+    class _ModelTrace(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.messages: list[str] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.messages.append(record.getMessage())
+
+    trace = _ModelTrace()
+    traced_loggers = [logging.getLogger("src.llm.client"), logging.getLogger("src.llm.failover")]
+    previous_levels = [logger.level for logger in traced_loggers]
+    for logger in traced_loggers:
+        logger.addHandler(trace)
+        logger.setLevel(logging.INFO)
+
     started = time.monotonic()
     try:
         response = await chat(
@@ -173,6 +189,13 @@ async def _run_call(system_prompt: str, user_prompt: str, model: str, temperatur
         no_new_info = "NO_NEW_INFO" in content
         parsed = [] if no_new_info else parse_resp(content)
         filtered, stats = filter_curator_entries(parsed)
+        effective_model = model
+        retry_count = 0
+        for message in trace.messages:
+            if message.startswith("Error with model "):
+                retry_count += 1
+            if message.startswith("Switching model to: "):
+                effective_model = message.split(": ", 1)[1].strip()
         return {
             "ok": True,
             "elapsed_ms": round((time.monotonic() - started) * 1000),
@@ -180,20 +203,37 @@ async def _run_call(system_prompt: str, user_prompt: str, model: str, temperatur
             "malformed": bool(content.strip()) and not no_new_info and not parsed,
             "response_digest": hashlib.sha256(content.encode("utf-8")).hexdigest()[:16],
             "response_text": content,
+            "requested_model": model,
+            "effective_model": effective_model,
+            "retry_count": retry_count,
+            "fallback_used": effective_model != model,
             "parsed_entries": parsed,
             "kept_entries": filtered,
             "filter_stats": stats,
         }
     except Exception as exc:
+        effective_model = model
+        retry_count = sum(message.startswith("Error with model ") for message in trace.messages)
+        for message in trace.messages:
+            if message.startswith("Switching model to: "):
+                effective_model = message.split(": ", 1)[1].strip()
         return {
             "ok": False,
             "elapsed_ms": round((time.monotonic() - started) * 1000),
             "error_type": type(exc).__name__,
             "error": str(exc)[:300],
+            "requested_model": model,
+            "effective_model": effective_model,
+            "retry_count": retry_count,
+            "fallback_used": effective_model != model,
             "parsed_entries": [],
             "kept_entries": [],
             "filter_stats": {"input": 0, "kept": 0, "trivial": 0, "duplicates": 0},
         }
+    finally:
+        for logger, level in zip(traced_loggers, previous_levels):
+            logger.removeHandler(trace)
+            logger.setLevel(level)
 
 
 def summarize_results(calls: list[dict[str, Any]]) -> dict[str, Any]:
@@ -202,6 +242,9 @@ def summarize_results(calls: list[dict[str, Any]]) -> dict[str, Any]:
         "calls": len(calls),
         "successful": sum(bool(call.get("ok")) for call in calls),
         "failed": sum(not bool(call.get("ok")) for call in calls),
+        "fallback_calls": sum(bool(call.get("fallback_used")) for call in calls),
+        "retry_count": sum(int(call.get("retry_count", 0)) for call in calls),
+        "effective_models": sorted({str(call.get("effective_model") or "") for call in calls}),
         "no_new_info": sum(bool(call.get("no_new_info")) for call in calls),
         "malformed": sum(bool(call.get("malformed")) for call in calls),
         "parsed_entries": sum(len(call.get("parsed_entries", [])) for call in calls),
