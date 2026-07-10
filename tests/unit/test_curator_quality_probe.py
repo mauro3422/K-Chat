@@ -77,3 +77,23 @@ def test_compare_runs_requires_same_bundle_and_compares_keys() -> None:
 
     assert comparison["matched_calls"] == 1
     assert comparison["key_jaccard_mean"] == 0.3333
+    assert comparison["key_token_similarity_mean"] == 0.5
+
+
+def test_compare_runs_normalizes_key_separators() -> None:
+    module = load_module()
+    left = {
+        "bundle_id": "same",
+        "node": "pc",
+        "calls": [{"case_id": "one", "repeat": 0, "kept_entries": [{"key": "proyecto:db_schemas"}]}],
+    }
+    right = {
+        "bundle_id": "same",
+        "node": "laptop",
+        "calls": [{"case_id": "one", "repeat": 0, "kept_entries": [{"key": "proyecto:db-schemas"}]}],
+    }
+
+    comparison = module.compare_runs(left, right)
+
+    assert comparison["key_jaccard_mean"] == 0.0
+    assert comparison["key_token_similarity_mean"] == 1.0

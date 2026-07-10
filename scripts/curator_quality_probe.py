@@ -11,6 +11,7 @@ import sqlite3
 import statistics
 import sys
 import time
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -115,6 +116,7 @@ async def _run_call(system_prompt: str, user_prompt: str, model: str) -> dict[st
             "no_new_info": no_new_info,
             "malformed": bool(content.strip()) and not no_new_info and not parsed,
             "response_digest": hashlib.sha256(content.encode("utf-8")).hexdigest()[:16],
+            "response_text": content,
             "parsed_entries": parsed,
             "kept_entries": filtered,
             "filter_stats": stats,
@@ -175,6 +177,31 @@ def _key_set(call: dict[str, Any]) -> set[str]:
     }
 
 
+def _key_tokens(entry: dict[str, Any]) -> set[str]:
+    key = str(entry.get("key") or "").strip().lower()
+    normalized = unicodedata.normalize("NFKD", key).encode("ascii", "ignore").decode("ascii")
+    return {token for token in "".join(char if char.isalnum() else " " for char in normalized).split() if token}
+
+
+def _entry_key_similarity(left: dict[str, Any], right: dict[str, Any]) -> float:
+    left_tokens = _key_tokens(left)
+    right_tokens = _key_tokens(right)
+    union = left_tokens | right_tokens
+    return len(left_tokens & right_tokens) / len(union) if union else 1.0
+
+
+def _call_key_similarity(left: dict[str, Any], right: dict[str, Any]) -> float:
+    left_entries = list(left.get("kept_entries", []))
+    right_entries = list(right.get("kept_entries", []))
+    if not left_entries and not right_entries:
+        return 1.0
+    if not left_entries or not right_entries:
+        return 0.0
+    left_scores = [max(_entry_key_similarity(entry, other) for other in right_entries) for entry in left_entries]
+    right_scores = [max(_entry_key_similarity(entry, other) for entry in left_entries) for other in right_entries]
+    return statistics.mean([*left_scores, *right_scores])
+
+
 def compare_runs(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     if left.get("bundle_id") != right.get("bundle_id"):
         raise ValueError("runs use different bundles")
@@ -182,6 +209,7 @@ def compare_runs(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
         (call.get("case_id"), call.get("repeat")): call for call in right.get("calls", [])
     }
     similarities: list[float] = []
+    token_similarities: list[float] = []
     matched = 0
     for call in left.get("calls", []):
         other = right_calls.get((call.get("case_id"), call.get("repeat")))
@@ -192,12 +220,14 @@ def compare_runs(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
         right_keys = _key_set(other)
         union = left_keys | right_keys
         similarities.append(len(left_keys & right_keys) / len(union) if union else 1.0)
+        token_similarities.append(_call_key_similarity(call, other))
     return {
         "bundle_id": left.get("bundle_id", ""),
         "left_node": left.get("node", ""),
         "right_node": right.get("node", ""),
         "matched_calls": matched,
         "key_jaccard_mean": round(statistics.mean(similarities), 4) if similarities else 0.0,
+        "key_token_similarity_mean": round(statistics.mean(token_similarities), 4) if token_similarities else 0.0,
         "left_summary": left.get("summary", {}),
         "right_summary": right.get("summary", {}),
     }
