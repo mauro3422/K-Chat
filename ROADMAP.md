@@ -148,7 +148,7 @@ src/
     semantic.py                      # SemanticSimilarity (vec0 cached + fallback fixed)
     scoring.py                       # CombinedScorer + adaptive confidence + thresholds
   memory/synthesis/session.py        # build_session_summary + blended + candidates + thresholds
-  memory/curator/                    # (pendiente: agent.py, benchmark.py)
+  memory/curator/                    # agent.py + benchmark.py implementados
 
 scripts/
   generate_session_summaries.py      # Pipeline entry point (venv auto-detect)

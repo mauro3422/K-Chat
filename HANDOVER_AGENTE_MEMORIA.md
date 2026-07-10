@@ -245,7 +245,7 @@ Mauro va a iterar sobre los bugs detectados por el LLM curator. Prioridades:
 4. ✅ **Fixes críticos aplicados** — max_tokens, PRIORITY_MODELS, MODEL_FAIL_TTL, entry point nocturno, CURRENT DATE
 5. ✅ **Deduplicación semántica** post-extracción — dentro de corrida e inbox pendiente
 6. ✅ **Filtro de entradas triviales** — user:name y similares no aportan valor
-7. **Instalar `fastembed` en venv** si no está — necesario para vectorización nocturna
+7. ✅ **`fastembed` verificado en ambos entornos** — laptop con `fastembed 0.8.0`
 8. **Correr benchmark A/B real** con decisiones humanas y persistir pesos aprobados
 
 Cualquier duda sobre el diseño:
