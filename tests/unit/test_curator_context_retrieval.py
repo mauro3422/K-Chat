@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
@@ -46,3 +47,21 @@ async def test_lexical_fallback_returns_empty_without_overlap(tmp_path) -> None:
     context = await retriever.retrieve("diagnosticar sqlite vector index")
 
     assert context == ""
+
+
+def test_hybrid_selection_requires_keyword_or_entity_evidence(tmp_path) -> None:
+    retriever = HybridCuratorContextRetriever(
+        str(tmp_path / "memory.db"),
+        tmp_path / "MEMORY.md",
+        top_k=2,
+    )
+    supported = retriever._select_supported_results(
+        [
+            SimpleNamespace(source_key="vector-only", vector_score=0.9, keyword_score=0.0, entity_score=0.0, fusion_score=0.9),
+            SimpleNamespace(source_key="weak-keyword", vector_score=0.0, keyword_score=0.13, entity_score=0.0, fusion_score=0.1),
+            SimpleNamespace(source_key="strong-keyword", vector_score=0.0, keyword_score=0.8, entity_score=0.0, fusion_score=0.05),
+            SimpleNamespace(source_key="entity", vector_score=0.0, keyword_score=0.0, entity_score=0.4, fusion_score=0.04),
+        ]
+    )
+
+    assert [result.source_key for result in supported] == ["strong-keyword", "weak-keyword"]

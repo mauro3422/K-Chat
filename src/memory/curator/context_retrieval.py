@@ -7,7 +7,7 @@ import re
 import sqlite3
 import unicodedata
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class CuratorContextRetrieverProtocol(Protocol):
@@ -22,39 +22,48 @@ class HybridCuratorContextRetriever:
         db_path: str,
         memory_path: str | Path,
         *,
-        top_k: int = 6,
-        max_chars: int = 5000,
+        top_k: int = 3,
+        max_chars: int = 3000,
+        keyword_threshold: float = 0.12,
     ) -> None:
         self._db_path = str(db_path)
         self._memory_path = str(memory_path)
         self._top_k = max(1, top_k)
         self._max_chars = max(500, max_chars)
+        self._keyword_threshold = max(0.0, keyword_threshold)
 
     async def retrieve(self, query: str, *, session_id: str = "") -> str:
         if self._has_canonical_vectors():
             try:
                 from src.memory.retrieval.hybrid_retriever import HybridRetriever
-                from src.memory.retrieval.token_budget import TokenBudgetConfig
-
-                retriever = HybridRetriever(
-                    self._db_path,
-                    token_budget=TokenBudgetConfig(
-                        max_tokens=max(500, self._max_chars // 4),
-                        per_result_tokens=200,
-                        max_results=self._top_k,
-                        truncate_to_chars=600,
-                    ),
+                from src.memory.retrieval.token_budget import (
+                    TokenBudgetConfig,
+                    format_memories_for_prompt,
+                    select_by_budget,
                 )
+
+                budget = TokenBudgetConfig(
+                    max_tokens=max(500, self._max_chars // 4),
+                    per_result_tokens=200,
+                    max_results=self._top_k,
+                    truncate_to_chars=500,
+                )
+                retriever = HybridRetriever(self._db_path, token_budget=budget)
                 try:
                     results = await retriever.search(
                         query[:2000],
-                        top_k=self._top_k,
+                        top_k=max(6, self._top_k * 2),
                         source_filter="memory",
-                        apply_budget=True,
+                        apply_budget=False,
                         session_id=session_id,
                     )
-                    if results:
-                        return retriever.format_for_prompt(results, query=query[:500])[: self._max_chars]
+                    supported = self._select_supported_results(results)
+                    if supported:
+                        selected = select_by_budget(
+                            [result.to_dict() for result in supported],
+                            budget,
+                        )
+                        return format_memories_for_prompt(selected, query=query[:500])[: self._max_chars]
                 finally:
                     retriever.close()
             except Exception:
@@ -63,6 +72,23 @@ class HybridCuratorContextRetriever:
                     exc_info=True,
                 )
         return self._lexical_fallback(query)
+
+    def _select_supported_results(self, results: list[Any]) -> list[Any]:
+        supported = [
+            result
+            for result in results
+            if float(getattr(result, "keyword_score", 0.0)) >= self._keyword_threshold
+            or float(getattr(result, "entity_score", 0.0)) >= self._keyword_threshold
+        ]
+        supported.sort(
+            key=lambda result: (
+                float(getattr(result, "keyword_score", 0.0)),
+                float(getattr(result, "entity_score", 0.0)),
+                float(getattr(result, "fusion_score", 0.0)),
+            ),
+            reverse=True,
+        )
+        return supported[: self._top_k]
 
     def _has_canonical_vectors(self) -> bool:
         try:
