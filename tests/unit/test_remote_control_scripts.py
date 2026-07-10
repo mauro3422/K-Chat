@@ -433,8 +433,12 @@ def test_memory_script_bootstrap_reports_missing_repo_env(monkeypatch, tmp_path)
     message = str(exc.value)
     assert "Kairos Python environment not found." in message
     assert "Expected a repo venv or the current Python with required packages." in message
-    assert "py -3 -m venv .venv" in message
-    assert ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt" in message
+    if module.os.name == "nt":
+        assert "py -3 -m venv .venv" in message
+        assert ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt" in message
+    else:
+        assert "python3 -m venv .venv" in message
+        assert ".venv/bin/python -m pip install -r requirements.txt" in message
 
 
 def test_remote_python_bootstrap_does_not_fallback_to_global_python() -> None:
