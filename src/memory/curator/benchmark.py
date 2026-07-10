@@ -99,7 +99,10 @@ def run_ab_benchmark(
         decision_rows,
         confidence_threshold=confidence_threshold,
     )
+    ready = int(baseline["evaluated"]) > 0 and int(treatment["evaluated"]) > 0
     return {
+        "ready": ready,
+        "blocked_reason": "" if ready else "no_matching_human_decisions",
         "baseline": baseline,
         "treatment": treatment,
         "delta": {

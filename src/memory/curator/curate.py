@@ -7,11 +7,11 @@ When run as standalone CLI, defaults are created via public APIs only.
 """
 
 import asyncio
+import argparse
 import json
 import logging
 import os
 import sqlite3
-import sys
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 
@@ -687,10 +687,26 @@ async def curate_all(
 
 # ── Standalone CLI entry point ──────────────────────────────────────
 
-async def main():
+def _build_cli_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run the Kairos memory curation pipeline.",
+    )
+    parser.add_argument("--dry", action="store_true", help="Preview without mutating memory artifacts or databases.")
+    parser.add_argument("--skip-gardener", action="store_true", help="Skip pruning and maintenance actions.")
+    parser.add_argument("--skip-tracer", action="store_true", help="Skip cross-session pattern tracing.")
+    parser.add_argument("--root", help="Project root used for generated artifacts.")
+    return parser
+
+
+async def main(argv: list[str] | None = None):
+    args = _build_cli_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    dry = "--dry" in sys.argv
-    r = await curate_all(dry=dry)
+    r = await curate_all(
+        dry=args.dry,
+        run_gardener=not args.skip_gardener,
+        run_tracer=not args.skip_tracer,
+        artifact_root=args.root,
+    )
 
     print("\n=== Gardener ===")
     for gr in r.get("gardener", []):

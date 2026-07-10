@@ -48,14 +48,20 @@ def load_candidate_records(
     root: str | Path | None = None,
     paths: Iterable[str | Path] | None = None,
 ) -> list[dict[str, Any]]:
-    """Load candidate JSONL records and attach their artifact path."""
+    """Load unique candidate records, preferring the newest artifact."""
 
     candidate_paths = [Path(path) for path in paths] if paths is not None else discover_candidate_files(root)
     records: list[dict[str, Any]] = []
+    seen_candidate_ids: set[str] = set()
     for path in candidate_paths:
         for candidate in load_candidates(path):
             payload = dict(candidate)
             payload.setdefault("candidate_id", "")
+            candidate_id = str(payload["candidate_id"]).strip()
+            if candidate_id and candidate_id in seen_candidate_ids:
+                continue
+            if candidate_id:
+                seen_candidate_ids.add(candidate_id)
             payload["_candidate_path"] = str(path)
             records.append(payload)
     return records

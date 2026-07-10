@@ -98,7 +98,7 @@ def test_memory_repair_plans_and_applies_catalog_embedded(tmp_path):
     assert report.counts == {}
 
 
-def test_memory_repair_plans_dedup_from_other_session(tmp_path):
+def test_memory_repair_does_not_dedup_from_orphan_session(tmp_path):
     sessions_db = tmp_path / "sessions.db"
     memory_db = tmp_path / "memory.db"
     _init_sessions_db(sessions_db, session_id="s2")
@@ -116,8 +116,8 @@ def test_memory_repair_plans_dedup_from_other_session(tmp_path):
     conn.close()
 
     report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
-    assert report.counts == {"catalog_deduped": 1}
-    assert report.actions[0].vec_rowid == 7
+    assert report.counts == {"missing_vector": 1, "stale_vector": 1}
+    assert next(action for action in report.actions if action.action == "stale_vector").vec_rowid == 7
 
 
 def test_memory_repair_reports_stale_and_missing(tmp_path):
@@ -372,3 +372,46 @@ def test_memory_repair_deletes_orphan_session_catalog_row(tmp_path):
         item_idx=0,
         **session_exchange_embedding_identity().as_catalog_kwargs(),
     ) is None
+
+
+def test_memory_repair_plans_and_prunes_orphan_session_vector(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    conn = sqlite3.connect(memory_db)
+    conn.execute("CREATE TABLE vec_entries (rowid INTEGER PRIMARY KEY)")
+    conn.execute(
+        """
+        INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+        VALUES (22, 'session', 'deleted-session', 0, 'orphan', 'ghost-hash', 'ghost-hash', '2026-06-27T09:00:00')
+        """
+    )
+    conn.execute("INSERT INTO vec_entries (rowid) VALUES (22)")
+    conn.commit()
+    conn.close()
+    catalog = MemoryWorkCatalogRepository(str(memory_db))
+    catalog.mark(
+        source="session",
+        source_key="deleted-session",
+        item_idx=0,
+        content_hash="ghost-hash",
+        status="embedded",
+        vec_rowid=22,
+        reason="test_fixture",
+        **session_exchange_embedding_identity().as_catalog_kwargs(),
+    )
+
+    report = plan_repairs(sessions_db=str(sessions_db), memory_db=str(memory_db))
+
+    orphan_vectors = [action for action in report.actions if action.action == "stale_vector"]
+    assert [action.vec_rowid for action in orphan_vectors] == [22]
+    assert report.counts["orphan_catalog_row"] == 1
+    assert apply_catalog_repairs(memory_db=str(memory_db), report=report) == 1
+    assert prune_stale_vectors(memory_db=str(memory_db), report=report) == 1
+    conn = sqlite3.connect(memory_db)
+    try:
+        assert conn.execute("SELECT 1 FROM vec_meta WHERE rowid=22").fetchone() is None
+        assert conn.execute("SELECT 1 FROM vec_entries WHERE rowid=22").fetchone() is None
+    finally:
+        conn.close()

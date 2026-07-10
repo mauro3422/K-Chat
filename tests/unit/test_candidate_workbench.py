@@ -164,6 +164,28 @@ def test_discover_and_load_candidate_records(tmp_path):
     assert records[0]["_candidate_path"] == str(path)
 
 
+def test_load_candidate_records_deduplicates_historical_copies(tmp_path):
+    older = _candidate_path(tmp_path)
+    newer = tmp_path / "memory" / "2026" / "07" / "03" / "candidates" / "recall_links.jsonl"
+    write_candidates(
+        older,
+        [
+            {"candidate_id": "same", "status": "pending", "query": "old"},
+            {"candidate_id": "older-only", "status": "pending", "query": "unique"},
+        ],
+    )
+    write_candidates(
+        newer,
+        [{"candidate_id": "same", "status": "ready_for_promotion", "query": "new"}],
+    )
+
+    records = load_candidate_records(tmp_path)
+
+    assert [record["candidate_id"] for record in records] == ["same", "older-only"]
+    assert records[0]["query"] == "new"
+    assert records[0]["_candidate_path"] == str(newer)
+
+
 def test_candidate_embedding_text_includes_relations_and_provenance(tmp_path):
     path = _candidate_path(tmp_path)
     write_candidates(

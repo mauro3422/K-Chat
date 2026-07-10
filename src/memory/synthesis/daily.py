@@ -284,7 +284,13 @@ async def generate_daily_synthesis(
     report_text = "\n".join(lines)
     digest = content_hash(report_text, limit=100000)
     catalog = MemoryProcessingCatalogRepository(mem_db)
-    if os.path.exists(report_path) and catalog.is_processed(
+    existing_digest = ""
+    if os.path.exists(report_path):
+        existing_digest = content_hash(
+            Path(report_path).read_text(encoding="utf-8", errors="replace"),
+            limit=100000,
+        )
+    if existing_digest == digest and catalog.is_processed(
         source="daily_synthesis",
         source_key=date_str,
         item_idx=-1,

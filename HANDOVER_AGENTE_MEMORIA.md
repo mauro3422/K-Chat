@@ -8,6 +8,21 @@
 
 ## 1. Estado Actual Resumido
 
+### Continuación 2026-07-10 (Windows + laptop)
+
+- ✅ `curate --help` ya usa `argparse` y no ejecuta mantenimiento por accidente.
+- ✅ Las pruebas de síntesis escriben sólo dentro de `tmp_path`; se regeneraron
+  los reportes reales contaminados y el preflight local quedó sin inconsistencias.
+- ✅ Caché ONNX de Windows reparado; fastembed genera vectores 384D no nulos y
+  el benchmark híbrido devolvió señales vectoriales reales entre 30 % y 68 %.
+- ✅ La cola deduplica copias históricas por `candidate_id`: pasó de 4 acciones
+  repetidas a 1 candidato único en el plan del 2026-07-10.
+- ✅ El repair plan detecta vectores de sesiones eliminadas y evita usarlos como
+  fuente de deduplicación.
+- ⚠️ Benchmark A/B real bloqueado explícitamente con
+  `no_matching_human_decisions`: no hay decisiones humanas persistidas en
+  Windows ni en la laptop.
+
 ### Continuación 2026-07-09 (Windows)
 
 - ✅ Filtro de sesiones de prueba endurecido: solo prefijos explícitos
@@ -214,8 +229,8 @@ Hay 1 archivo en `memory/inbox/2026/07/04.jsonl` (estructura vieja) que la pipel
 5. ✅ **Deduplicar y filtrar salidas del curator** antes de escribir el inbox
 
 ### Prioridad media
-6. **Probar `--embed`** para ver si el vector store responde con datos reales
-7. **Generar plan matinal** con `daily_memory_report.py --preview --json`
+6. ✅ **`--embed` validado** con fastembed 384D y búsquedas híbridas reales
+7. ✅ **Plan matinal generado** con preflight local sano y health remoto
 8. **Revivir candidatos pendientes** (93 en total) con `review_recall_candidate action=promote_ready`
 9. **Integrar más con `docs/ideas/curator-hybrid-retrieval.md`** — preguntas sintéticas, facetas, pesos vivos
 

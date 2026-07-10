@@ -3,14 +3,27 @@ from __future__ import annotations
 import sqlite3
 import os
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.memory.curator import curate
+from src.memory.content_hash import content_hash
 from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 from src.memory.synthesis.daily import generate_daily_synthesis
+
+
+@pytest.mark.anyio
+async def test_curator_cli_help_does_not_run_pipeline(capsys):
+    with patch("src.memory.curator.curate.curate_all", new=AsyncMock()) as curate_all:
+        with pytest.raises(SystemExit) as exc:
+            await curate.main(["--help"])
+
+    assert exc.value.code == 0
+    assert "--dry" in capsys.readouterr().out
+    curate_all.assert_not_awaited()
 
 
 @pytest.mark.anyio
@@ -311,6 +324,13 @@ async def test_daily_synthesis_registers_generated_report_in_processing_catalog(
         report_path = await generate_daily_synthesis(
             db_path=str(sessions_db),
             target_date=datetime.now().date(),
+            root=tmp_path,
+        )
+        Path(report_path).write_text("polluted by an isolated test", encoding="utf-8")
+        report_path = await generate_daily_synthesis(
+            db_path=str(sessions_db),
+            target_date=datetime.now().date(),
+            root=tmp_path,
         )
 
     catalog = MemoryProcessingCatalogRepository(str(memory_db))
@@ -319,3 +339,8 @@ async def test_daily_synthesis_registers_generated_report_in_processing_catalog(
     assert row is not None
     assert row["status"] == "processed"
     assert row["processor"] == "generate_daily_synthesis"
+    assert "polluted" not in Path(report_path).read_text(encoding="utf-8")
+    assert row["content_hash"] == content_hash(
+        Path(report_path).read_text(encoding="utf-8"),
+        limit=100000,
+    )

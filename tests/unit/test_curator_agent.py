@@ -96,6 +96,22 @@ def test_ab_benchmark_reports_metric_delta(tmp_path):
 
     result = run_ab_benchmark(baseline, treatment, decisions)
 
+    assert result["ready"] is True
+    assert result["blocked_reason"] == ""
     assert result["baseline"]["f1"] == 0.0
     assert result["treatment"]["f1"] == 1.0
     assert result["delta"]["f1"] == 1.0
+
+
+def test_ab_benchmark_reports_missing_human_labels(tmp_path):
+    baseline = tmp_path / "baseline.jsonl"
+    treatment = tmp_path / "treatment.jsonl"
+    _write_jsonl(baseline, [{"candidate_id": "c1", "confidence": 0.6}])
+    _write_jsonl(treatment, [{"candidate_id": "c1", "confidence": 0.9}])
+
+    result = run_ab_benchmark(baseline, treatment, [])
+
+    assert result["ready"] is False
+    assert result["blocked_reason"] == "no_matching_human_decisions"
+    assert result["baseline"]["evaluated"] == 0
+    assert result["treatment"]["evaluated"] == 0

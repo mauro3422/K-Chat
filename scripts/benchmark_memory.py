@@ -133,7 +133,7 @@ async def main():
         ("entity_relations", "relaciones entidad"),
         ("entity_mentions", "menciones entidad"),
         ("topic_clusters", "clusters"),
-        ("exchange_clusters", "mappings exchange→cluster"),
+        ("exchange_clusters", "mappings exchange-to-cluster"),
     ]
     print(f"\n[5/5] DB Stats")
     for table, desc in tables:

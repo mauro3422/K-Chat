@@ -124,19 +124,29 @@ def _vec_rows_by_session_idx(conn: sqlite3.Connection, session_id: str, idx: int
     ).fetchall()
 
 
-def _find_vec_by_hash(conn: sqlite3.Connection, content_hash: str) -> sqlite3.Row | None:
+def _find_vec_by_hash(
+    conn: sqlite3.Connection,
+    content_hash: str,
+    *,
+    valid_session_ids: set[str] | None = None,
+) -> sqlite3.Row | None:
     if not table_exists(conn, "vec_meta"):
         return None
-    return conn.execute(
+    rows = conn.execute(
         """
         SELECT rowid, source, source_key, exchange_idx
         FROM vec_meta
         WHERE content_hash=? OR hash=?
         ORDER BY source='session' DESC, rowid DESC
-        LIMIT 1
         """,
         (content_hash, content_hash),
-    ).fetchone()
+    ).fetchall()
+    for row in rows:
+        if str(row["source"]) != "session":
+            return row
+        if valid_session_ids is None or str(row["source_key"]) in valid_session_ids:
+            return row
+    return None
 
 
 def _vec_row_exists(conn: sqlite3.Connection, rowid: int) -> bool:
@@ -296,11 +306,8 @@ def _plan_orphan_session_catalog_repairs(
         """
         SELECT c.source, c.source_key, c.item_idx, c.content_hash, c.status, c.vec_rowid
         FROM memory_work_catalog c
-        LEFT JOIN vec_meta v ON v.rowid = c.vec_rowid
         WHERE c.source = 'session'
           AND c.status IN ('embedded', 'deduped')
-          AND c.vec_rowid IS NOT NULL
-          AND v.rowid IS NULL
         ORDER BY c.source_key, c.item_idx
         """
     ).fetchall()
@@ -319,7 +326,42 @@ def _plan_orphan_session_catalog_repairs(
             content_hash=str(row["content_hash"] or ""),
             status=str(row["status"] or ""),
             vec_rowid=int(row["vec_rowid"]) if row["vec_rowid"] is not None else None,
-            reason="session_and_vec_missing",
+            reason="session_missing",
+        ))
+
+
+def _plan_orphan_session_vectors(
+    sessions_conn: sqlite3.Connection,
+    memory_conn: sqlite3.Connection,
+    report: RepairReport,
+) -> None:
+    """Plan removal of session vectors whose owning session no longer exists."""
+    if not table_exists(sessions_conn, "sessions") or not table_exists(memory_conn, "vec_meta"):
+        return
+    session_ids = {
+        str(row["session_id"])
+        for row in sessions_conn.execute("SELECT session_id FROM sessions").fetchall()
+    }
+    rows = memory_conn.execute(
+        """
+        SELECT rowid, source_key, exchange_idx, hash, content_hash
+        FROM vec_meta
+        WHERE source='session'
+        ORDER BY rowid ASC
+        """
+    ).fetchall()
+    for row in rows:
+        source_key = str(row["source_key"] or "")
+        if source_key in session_ids:
+            continue
+        report.actions.append(RepairAction(
+            action="stale_vector",
+            source="session",
+            source_key=source_key,
+            item_idx=int(row["exchange_idx"] or 0),
+            content_hash=_content_hash_from_vec(row),
+            vec_rowid=int(row["rowid"]),
+            reason="session_missing",
         ))
 
 
@@ -331,6 +373,7 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
         sessions = sessions_conn.execute(
             "SELECT session_id, name FROM sessions ORDER BY created_at ASC"
         ).fetchall()
+        valid_session_ids = {str(session["session_id"]) for session in sessions}
 
         for session in sessions:
             session_id = str(session["session_id"])
@@ -423,7 +466,11 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
                     ))
                     continue
 
-                existing = _find_vec_by_hash(memory_conn, digest)
+                existing = _find_vec_by_hash(
+                    memory_conn,
+                    digest,
+                    valid_session_ids=valid_session_ids,
+                )
                 if existing is not None:
                     report.actions.append(RepairAction(
                         action="catalog_deduped",
@@ -446,6 +493,7 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
                     ))
         _plan_memory_vector_catalog_repairs(memory_conn, report)
         _plan_orphan_memory_catalog_repairs(memory_conn, report)
+        _plan_orphan_session_vectors(sessions_conn, memory_conn, report)
         _plan_orphan_session_catalog_repairs(sessions_conn, memory_conn, report)
     report.actions = _dedupe_actions(report.actions)
     return report
