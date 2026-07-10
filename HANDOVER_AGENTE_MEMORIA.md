@@ -22,6 +22,25 @@
 - ⚠️ Benchmark A/B real bloqueado explícitamente con
   `no_matching_human_decisions`: no hay decisiones humanas persistidas en
   Windows ni en la laptop.
+- ✅ El curador de sesiones ya no inyecta los primeros 3.000 caracteres fijos de
+  `MEMORY.md`: recupera memoria canónica relevante por sesión mediante búsqueda
+  híbrida y usa fallback léxico cuando no hay vectores adecuados.
+- ✅ El retrieval del curador exige evidencia léxica o de entidad, limita el
+  contexto a tres resultados / 3.000 caracteres y eliminó falsos positivos
+  vectoriales observados durante la prueba cruzada.
+- ✅ Las extracciones aceptadas se mantienen como contexto provisional durante
+  la misma tanda, por lo que las sesiones siguientes conocen lo ya detectado
+  antes de escribir en el inbox.
+- ✅ El contrato LLM quedó estricto, con temperatura `0.0`, máximo cuatro hechos,
+  claves kebab-case y categorías cerradas. El filtro rechaza categorías ajenas y
+  variantes triviales de nombre de usuario.
+- ✅ Prueba controlada PC/laptop: el contexto relevante evitó reextraer
+  `bugs.md` en 4/4 ejecuciones; el contexto enfocado bajó de 9.449 a 4.968
+  caracteres. Los microcortes aparecieron en ambos nodos, confirmando que son
+  variación del proveedor/fallback y no una falla exclusiva de la laptop.
+- 🔜 Antes de etiquetar: ampliar la sonda contextual a 10–20 sesiones, registrar
+  modelo efectivo/reintentos por llamada y confirmar que la reducción de
+  duplicados se mantiene con mayor muestra.
 
 ### Continuación 2026-07-09 (Windows)
 
