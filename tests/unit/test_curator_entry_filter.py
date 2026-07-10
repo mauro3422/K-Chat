@@ -81,9 +81,10 @@ def test_unknown_category_is_rejected() -> None:
 
 
 def test_generated_user_name_variant_is_trivial() -> None:
-    entries, stats = filter_curator_entries(
-        [{"key": "user:user-name-mauro", "value": "2026-07-10 12:06 | Mauro"}]
-    )
+    entries, stats = filter_curator_entries([
+        {"key": "user:user-name-mauro", "value": "2026-07-10 12:06 | Mauro"},
+        {"key": "user:name-mauro", "value": "2026-07-10 12:06 | Mauro"},
+    ])
 
     assert entries == []
-    assert stats["trivial"] == 1
+    assert stats["trivial"] == 2

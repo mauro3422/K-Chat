@@ -126,6 +126,16 @@ def test_strict_prompt_variant_adds_canonical_contract() -> None:
     assert "exactly NO_NEW_INFO" in prompt
 
 
+def test_strict_prompt_variant_does_not_duplicate_existing_contract() -> None:
+    module = load_module()
+    prompt = module.system_prompt_variant(
+        "base\n\nSTRICT OUTPUT CONTRACT:\n- existing",
+        "strict",
+    )
+
+    assert prompt.count("STRICT OUTPUT CONTRACT:") == 1
+
+
 def test_contextual_run_injects_provisional_entries(monkeypatch) -> None:
     module = load_module()
     system_prompts: list[str] = []

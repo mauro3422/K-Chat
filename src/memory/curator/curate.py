@@ -30,7 +30,20 @@ from src.memory.operations._helpers import _get_memory_md_path
 
 logger = logging.getLogger(__name__)
 
-CURATOR_PROMPT = """You are a memory curator. The current date and time are provided
+def get_strict_output_contract() -> str:
+    return """STRICT OUTPUT CONTRACT:
+- Return at most 4 items and only facts explicitly supported by the exchanges.
+- Never infer status, causality, completion, dates, or intent.
+- Prefer decisions, confirmed bugs, durable user preferences, and active projects.
+- Use one canonical lowercase kebab-case key per fact, without spaces or underscores.
+- Emit exactly two lines per item: KEY: <category:slug> then VALUE: <timestamp | fact>.
+- Categories are limited to: user:, bug:, decision:, proyecto:, patron:, checkpoint:.
+- Do not add bullets, headings, commentary, Markdown fences, or explanations.
+- If no explicit durable fact exists, return exactly NO_NEW_INFO."""
+
+
+def get_curator_prompt() -> str:
+    return """You are a memory curator. The current date and time are provided
 in the context above (CURRENT DATE). Use this for all VALUE timestamps.
 From the conversation exchanges below, extract NEW information worth saving.
 Only extract things NOT already known in the EXISTING MEMORIES.
@@ -40,7 +53,9 @@ KEY: <category:description>
 VALUE: <YYYY-MM-DD HH:MM | text>
 
 Categories: user:, bug:, decision:, proyecto:, patron:, checkpoint:
-If nothing new, respond: NO_NEW_INFO"""
+If nothing new, respond: NO_NEW_INFO
+
+""" + get_strict_output_contract()
 
 
 def _get_memory_context() -> str:
@@ -85,7 +100,7 @@ def _build_session_system_prompt(
     provisional = _format_provisional_context(provisional_entries)
     if provisional:
         blocks.append(provisional)
-    blocks.append(CURATOR_PROMPT)
+    blocks.append(get_curator_prompt())
     return "\n\n".join(blocks)
 
 
@@ -111,7 +126,7 @@ async def _default_llm_call(system: str, user: str) -> str:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        temperature=0.3,
+        temperature=0.0,
         max_tokens=16384,
         stream=False,
     )
@@ -336,7 +351,8 @@ async def curate_clusters(
         )
 
         context = _get_memory_context()
-        system_prompt = f"EXISTING MEMORIES:\n{context}\n\n{CURATOR_PROMPT}" if context else CURATOR_PROMPT
+        curator_prompt = get_curator_prompt()
+        system_prompt = f"EXISTING MEMORIES:\n{context}\n\n{curator_prompt}" if context else curator_prompt
         try:
             resp = await llm_call_fn(system_prompt, prompt)
             parsed = [] if "NO_NEW_INFO" in resp else parse_resp(resp)

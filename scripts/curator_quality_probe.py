@@ -28,7 +28,7 @@ def _json_digest(payload: Any) -> str:
 
 def export_bundle(*, limit: int, days: int) -> dict[str, Any]:
     """Freeze prompts from one corpus so every node receives identical input."""
-    from src.memory.curator.curate import CURATOR_PROMPT, _get_memory_context
+    from src.memory.curator.curate import get_curator_prompt, _get_memory_context
     from src.memory.db_path import resolve_db_path
     from src.memory.memory_db_path import resolve_memory_db_path
 
@@ -70,12 +70,13 @@ def export_bundle(*, limit: int, days: int) -> dict[str, Any]:
                 break
 
     context = _get_memory_context()
+    curator_prompt = get_curator_prompt()
     bundle = {
         "schema_version": 1,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "current_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "curator_prompt": CURATOR_PROMPT,
-        "system_prompt": f"EXISTING MEMORIES:\n{context}\n\n{CURATOR_PROMPT}",
+        "curator_prompt": curator_prompt,
+        "system_prompt": f"EXISTING MEMORIES:\n{context}\n\n{curator_prompt}",
         "cases": cases,
     }
     bundle["bundle_id"] = _json_digest(bundle)[:16]
@@ -96,17 +97,12 @@ def system_prompt_variant(system_prompt: str, variant: str) -> str:
         return system_prompt
     if variant != "strict":
         raise ValueError(f"unknown prompt variant: {variant}")
-    return (
-        system_prompt
-        + "\n\nSTRICT OUTPUT CONTRACT:\n"
-        + "- Return at most 4 items and only facts explicitly supported by the exchanges.\n"
-        + "- Never infer status, causality, completion, dates, or intent.\n"
-        + "- Prefer decisions, confirmed bugs, durable user preferences, and active projects.\n"
-        + "- Use one canonical lowercase kebab-case key per fact, without spaces or underscores.\n"
-        + "- Emit exactly two lines per item: KEY: <category:slug> then VALUE: <timestamp | fact>.\n"
-        + "- Do not add bullets, headings, commentary, Markdown fences, or explanations.\n"
-        + "- If no explicit durable fact exists, return exactly NO_NEW_INFO."
-    )
+    from src.memory.curator.curate import get_strict_output_contract
+
+    contract = get_strict_output_contract()
+    if "STRICT OUTPUT CONTRACT:" in system_prompt:
+        return system_prompt
+    return f"{system_prompt}\n\n{contract}"
 
 
 def _contextual_system_prompt(

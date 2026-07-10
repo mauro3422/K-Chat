@@ -45,7 +45,12 @@ def is_trivial_curator_entry(entry: Mapping[str, str]) -> bool:
         "user:nombre-completo",
     }:
         return True
-    return bool(re.fullmatch(r"user:(?:user-name|nombre-usuario)-[a-z0-9-]+", key))
+    return bool(
+        re.fullmatch(
+            r"user:(?:(?:user-)?name|nombre(?:-usuario)?)-[a-z0-9-]+",
+            key,
+        )
+    )
 
 
 def has_allowed_curator_category(entry: Mapping[str, str]) -> bool:
