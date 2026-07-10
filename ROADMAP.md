@@ -34,6 +34,16 @@ memory/YYYY/MM/DD/
 
 ## 🔜 Next: Curator Agent + A/B Benchmark
 
+### Estado 2026-07-09
+
+- ✅ `src/memory/curator/agent.py`: revisión por sesión, feedback persistido,
+  ajuste conservador de pesos mediante scorer inyectado y callback de re-run.
+- ✅ `src/memory/curator/benchmark.py`: benchmark baseline/treatment contra
+  decisiones humanas con precision, recall, F1 y delta.
+- ✅ Cobertura unitaria del agente y del benchmark.
+- 🔜 Falta ejecutar una corrida A/B con candidatos reales etiquetados y aprobar
+  manualmente los pesos resultantes.
+
 ### Curador LLM Agent
 **Objetivo**: Leer candidates, dar feedback (promoted=true/false), ajustar `DEFAULT_WEIGHTS` via `scorer.set_weight()`, re-ejecutar pipeline, medir mejora.
 

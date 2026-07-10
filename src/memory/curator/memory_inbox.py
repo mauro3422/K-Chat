@@ -38,28 +38,16 @@ def inbox_item_id(item: Mapping[str, Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def _has_duplicate_inbox_item(
-    existing: list[dict[str, Any]],
-    key: str,
-    value: str,
-) -> bool:
-    """Check if a pending entry with the same key+value already exists."""
-    for entry in existing:
-        if entry.get("status") == "pending" and entry.get("key") == key and entry.get("value") == value:
-            return True
-    return False
-
-
 def append_memory_inbox_item(
     item: Mapping[str, Any],
     root: str | Path | None = None,
     timestamp: str | None = None,
 ) -> dict[str, Any]:
-    """Append a pending memory inbox item (deduped) and return the payload.
+    """Append a pending memory inbox item and return the payload.
 
-    If an existing pending entry with the same ``key`` and ``value`` is found
-    in the same date file, the append is skipped and the existing payload is
-    returned instead.
+    Repeated observations stay as distinct sources so the review layer can
+    coalesce them and preserve their reinforcement count. Curator-generated
+    semantic duplicates are filtered before reaching this persistence layer.
     """
 
     ts = timestamp or datetime.now().isoformat(timespec="seconds")
@@ -76,12 +64,6 @@ def append_memory_inbox_item(
     payload["inbox_id"] = str(payload.get("inbox_id") or inbox_item_id(payload))
     path = memory_inbox_path(ts, root=root)
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Dedup: skip if same key+value already pending in this date file
-    existing_items = _load_inbox_file(path)
-    if _has_duplicate_inbox_item(existing_items, payload.get("key", ""), payload.get("value", "")):
-        payload["artifact"] = str(path)
-        return payload
 
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")

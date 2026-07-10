@@ -12,11 +12,26 @@ from src.memory.synthesis.session import (
     generate_session_summaries,
     generate_session_summary_candidates,
     get_sessions_for_summary_date,
+    _is_test_session_id,
     load_session_summary_previews,
     session_summary_candidate_path,
     session_summary_path,
     vectorize_session_summary_artifacts,
 )
+
+
+@pytest.mark.parametrize(
+    ("session_id", "expected"),
+    [
+        ("test-123", True),
+        ("test_session", True),
+        ("smoke-test-session", True),
+        ("contest-planning", False),
+        ("latest-memory-review", False),
+    ],
+)
+def test_is_test_session_id_uses_explicit_prefixes(session_id, expected):
+    assert _is_test_session_id(session_id) is expected
 
 
 class _SummaryStore:
@@ -158,6 +173,43 @@ async def test_generate_session_summaries_writes_idempotent_artifact(setup_test_
     assert "Session Summary - Memory planning" in text
     assert "inbox" in text
     assert "content_hash" in text
+
+
+@pytest.mark.anyio
+async def test_generate_session_summaries_skips_test_and_single_message_sessions(
+    setup_test_db,
+    tmp_path,
+    monkeypatch,
+):
+    _insert_session(setup_test_db, "test-123")
+    _insert_session(setup_test_db, "contest-planning")
+    conn = sqlite3.connect(setup_test_db)
+    try:
+        conn.execute(
+            "INSERT INTO sessions (session_id, name, created_at) VALUES (?, ?, ?)",
+            ("short-session", "Short", "2026-07-02T09:00:00"),
+        )
+        conn.execute(
+            "INSERT INTO messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+            ("short-session", "user", "Solo un mensaje.", "2026-07-02T09:01:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("KAIROS_MEMORY_DB_PATH", str(tmp_path / "memory.db"))
+    results = await generate_session_summaries(
+        setup_test_db,
+        root=tmp_path,
+        target_date=date(2026, 7, 2),
+    )
+
+    assert [item["session_id"] for item in results] == ["contest-planning"]
+    assert session_summary_path(
+        "contest-planning",
+        root=tmp_path,
+        target=date(2026, 7, 2),
+    ).exists()
 
 
 @pytest.mark.anyio

@@ -16,6 +16,11 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 
 from src.memory.content_hash import content_hash
+from src.memory.curator.entry_filter import (
+    curator_entries_are_duplicates,
+    filter_curator_entries,
+    is_trivial_curator_entry,
+)
 from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 from src.memory.operations._helpers import _get_memory_md_path
 
@@ -92,17 +97,28 @@ async def _noop_save_memory(key: str, value: str) -> str:
 async def _save_memory_inbox_local(key: str, value: str) -> str:
     """Standalone curator save helper that writes to memory inbox, not canon."""
 
-    from src.memory.curator.memory_inbox import append_memory_inbox_item
+    from src.memory.curator.memory_inbox import append_memory_inbox_item, load_memory_inbox
+
+    incoming = {"key": key.strip(), "value": value.strip()}
+    if is_trivial_curator_entry(incoming):
+        return f"[SKIP] trivial curator entry '{incoming['key']}'."
+
+    pending = (
+        {"key": str(item.get("key") or ""), "value": str(item.get("value") or "")}
+        for item in load_memory_inbox(limit=500)
+        if item.get("status") == "pending"
+    )
+    if any(curator_entries_are_duplicates(incoming, existing) for existing in pending):
+        return f"[SKIP] duplicate curator entry '{incoming['key']}'."
 
     payload = append_memory_inbox_item(
         {
-            "key": key.strip(),
-            "value": value.strip(),
+            **incoming,
             "channel": "curator",
             "urgency": "normal",
         }
     )
-    return f"[OK] queued memory inbox item '{payload['inbox_id']}' for key '{key.strip()}'."
+    return f"[OK] queued memory inbox item '{payload['inbox_id']}' for key '{incoming['key']}'."
 
 
 def _get_memory_db_path() -> str:
@@ -168,6 +184,25 @@ def parse_resp(text: str) -> list[dict[str, str]]:
             entries.append({"key": key, "value": line[6:].strip()})
             key = None
     return entries
+
+
+def _finalize_curator_entries(
+    entries: list[dict[str, str]],
+    *,
+    scope: str,
+) -> list[dict[str, str]]:
+    filtered, stats = filter_curator_entries(entries)
+    removed = stats["trivial"] + stats["duplicates"]
+    if removed:
+        logger.info(
+            "Curator %s filter kept %s/%s entries (%s trivial, %s duplicates)",
+            scope,
+            stats["kept"],
+            stats["input"],
+            stats["trivial"],
+            stats["duplicates"],
+        )
+    return filtered
 
 
 async def curate_clusters(
@@ -293,7 +328,7 @@ async def curate_clusters(
                 metadata={"texts": len(texts), "label": str(label)},
             )
 
-    return entries
+    return _finalize_curator_entries(entries, scope="clusters")
 
 
 async def curate_sessions(
@@ -406,7 +441,7 @@ async def curate_sessions(
                     metadata={"texts": len(texts)},
                 )
 
-    return entries
+    return _finalize_curator_entries(entries, scope="sessions")
 
 
 def _retire_old_sessions(max_age_days: int, dry: bool = False) -> int:
@@ -576,6 +611,7 @@ async def curate_all(
     entries: list[dict[str, str]] = []
     entries.extend(await curate_clusters(dry=dry, llm_call_fn=llm_call_fn))
     entries.extend(await curate_sessions(days=1, dry=dry, llm_call_fn=llm_call_fn))
+    entries = _finalize_curator_entries(entries, scope="combined")
 
     if entries:
         report_lines.append(f"- curator: {len(entries)} new entries extracted")

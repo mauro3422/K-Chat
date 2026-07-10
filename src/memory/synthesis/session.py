@@ -151,6 +151,13 @@ async def get_session_messages_for_summary(
         return [dict(row) for row in await cursor.fetchall()]
 
 
+def _is_test_session_id(session_id: str) -> bool:
+    """Return whether a session id uses an explicit test-only prefix."""
+
+    normalized = session_id.strip().lower()
+    return normalized.startswith(("test-", "test_", "smoke-test-"))
+
+
 def _message_digest(messages: Iterable[dict[str, Any]]) -> str:
     chunks = [
         f"{item.get('role', '')}\n{item.get('created_at', '')}\n{item.get('content', '')}"
@@ -561,11 +568,7 @@ async def generate_session_summaries(
 
     for session in sessions:
         session_id = str(session.get("session_id") or "")
-        if (
-            session_id.startswith("test-")
-            or session_id.startswith("test_")
-            or "test" in session_id.lower()
-        ):
+        if _is_test_session_id(session_id):
             continue
         messages = await get_session_messages_for_summary(db_path, session_id)
         if len(messages) < 2:

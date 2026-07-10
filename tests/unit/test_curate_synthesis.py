@@ -46,6 +46,82 @@ async def test_curate_all_passes_sessions_db_to_daily_synthesis(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_curate_all_filters_trivial_and_cross_source_duplicates(tmp_path):
+    save_memory = AsyncMock(return_value="[OK] saved")
+    cluster_entries = [
+        {"key": "user:name", "value": "2026-07-09 20:30 | Mauro"},
+        {
+            "key": "bug:async-history-call",
+            "value": "2026-07-09 20:30 | get_tool_history llama async sin await y pierde la coroutine",
+        },
+    ]
+    session_entries = [
+        {
+            "key": "bug:history-coroutine-not-awaited",
+            "value": "2026-07-09 20:31 | get_tool_history llama async sin await; la coroutine se pierde",
+        }
+    ]
+
+    with (
+        patch("src.memory.curator.curate._get_sessions_db_path", return_value="sessions.db"),
+        patch("src.memory.curator.curate._get_memory_db_path", return_value="memory.db"),
+        patch("src.memory.vectorize_sessions.vectorize_all_sessions", new=AsyncMock(return_value={})),
+        patch("src.memory.repos.get_repos", return_value=SimpleNamespace()),
+        patch("src.memory.curator.curate.curate_clusters", new=AsyncMock(return_value=cluster_entries)),
+        patch("src.memory.curator.curate.curate_sessions", new=AsyncMock(return_value=session_entries)),
+        patch("src.memory.synthesis.daily.generate_daily_synthesis", new=AsyncMock(return_value=None)),
+        patch("src.memory.curator.curate._get_processing_catalog", return_value=None),
+    ):
+        result = await curate.curate_all(
+            dry=False,
+            save_memory_fn=save_memory,
+            llm_call_fn=AsyncMock(return_value="NO_NEW_INFO"),
+            run_gardener=False,
+            run_tracer=False,
+            artifact_root=tmp_path,
+        )
+
+    assert len(result["entries"]) == 1
+    assert result["entries"][0]["key"].startswith("bug:")
+    save_memory.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_local_inbox_save_skips_semantic_duplicate():
+    existing = [
+        {
+            "status": "pending",
+            "key": "bug:async-history-call",
+            "value": "2026-07-09 20:30 | get_tool_history llama async sin await y pierde la coroutine",
+        }
+    ]
+
+    with (
+        patch("src.memory.curator.memory_inbox.load_memory_inbox", return_value=existing),
+        patch("src.memory.curator.memory_inbox.append_memory_inbox_item") as append,
+    ):
+        result = await curate._save_memory_inbox_local(
+            "bug:history-coroutine-not-awaited",
+            "2026-07-09 20:31 | get_tool_history llama async sin await; la coroutine se pierde",
+        )
+
+    assert result.startswith("[SKIP] duplicate")
+    append.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_local_inbox_save_skips_trivial_name():
+    with patch("src.memory.curator.memory_inbox.append_memory_inbox_item") as append:
+        result = await curate._save_memory_inbox_local(
+            "user:name",
+            "2026-07-09 20:30 | Mauro",
+        )
+
+    assert result.startswith("[SKIP] trivial")
+    append.assert_not_called()
+
+
+@pytest.mark.anyio
 async def test_curate_sessions_skips_unchanged_cataloged_session(tmp_path):
     sessions_db = tmp_path / "sessions.db"
     memory_db = tmp_path / "memory.db"

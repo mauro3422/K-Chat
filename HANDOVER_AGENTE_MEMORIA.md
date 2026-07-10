@@ -8,6 +8,24 @@
 
 ## 1. Estado Actual Resumido
 
+### Continuación 2026-07-09 (Windows)
+
+- ✅ Filtro de sesiones de prueba endurecido: solo prefijos explícitos
+  (`test-`, `test_`, `smoke-test-`), sin descartar IDs legítimos como
+  `contest-*`; también se omiten sesiones con menos de 2 mensajes.
+- ✅ Deduplicación post-extracción del curator por clave y similitud textual,
+  tanto dentro de una corrida como contra entradas pendientes del inbox.
+- ✅ Filtro de entradas triviales de identidad (`user:name` y equivalentes).
+- ✅ Inbox legacy migrado: no quedan archivos bajo `memory/inbox/`; el dato
+  vigente está en `memory/2026/07/04/inbox.jsonl`.
+- ✅ `CuratorAgent` y benchmark A/B creados en
+  `src/memory/curator/{agent,benchmark}.py`, reutilizando decisiones y scorer
+  inyectados; calcula precision, recall y F1.
+- ✅ 48 pruebas focales pasan para síntesis, curator, filtros y benchmark.
+
+Pendiente inmediato: ejecutar el benchmark con decisiones humanas reales,
+probar embeddings/fastembed en el venv de producción y correr el plan matinal.
+
 ### Pipeline funcional y probado
 El pipeline de memoria por capas corre **sin LLM** (extractivo puro) y produce artifacts en la **nueva estructura unificada**:
 
@@ -189,11 +207,11 @@ Hay 1 archivo en `memory/inbox/2026/07/04.jsonl` (estructura vieja) que la pipel
 ## 4. Lo que está verde / pendiente
 
 ### Prioridad alta
-1. **Filtrar sesiones test** (`test-*`) en `session.py` antes de generar summary
-2. **Mejorar keywords** — expandir `code_tokens` para filtrar `attempt`, `retry`, `error`, `connection`, `exists`, etc.
+1. ✅ **Filtrar sesiones test** (`test-*`) en `session.py` antes de generar summary
+2. ✅ **Mejorar keywords** — extracción prioriza mensajes del usuario y usa STOP consolidado
 3. **Mejorar summaries extractivos** a LLM-based (usar deepseek v4 flash) cuando haya rate limit
-4. **Migrar inbox legacy** de `memory/inbox/YYYY/MM/DD.jsonl` a `memory/YYYY/MM/DD/inbox.jsonl`
-5. **Hacer commit** del estado actual (sin cambios modified, solo untracked)
+4. ✅ **Migrar inbox legacy** de `memory/inbox/YYYY/MM/DD.jsonl` a `memory/YYYY/MM/DD/inbox.jsonl`
+5. ✅ **Deduplicar y filtrar salidas del curator** antes de escribir el inbox
 
 ### Prioridad media
 6. **Probar `--embed`** para ver si el vector store responde con datos reales
@@ -221,13 +239,14 @@ Ambos se inyectan en el system prompt al inicio. El del proyecto **extiende** al
 ## 6. Próximo ciclo
 
 Mauro va a iterar sobre los bugs detectados por el LLM curator. Prioridades:
-1. ~~Filtrar sesiones test~~ → pendiente
-2. ~~Mejorar keywords filter~~ → pendiente
+1. ✅ Filtrar sesiones test sin falsos positivos por substring
+2. ✅ Mejorar keywords filter
 3. ✅ **LLM curator probado** — 50 extracciones de 14/20 sesiones, bugs detectados con precisión
 4. ✅ **Fixes críticos aplicados** — max_tokens, PRIORITY_MODELS, MODEL_FAIL_TTL, entry point nocturno, CURRENT DATE
-5. **Deduplicación semántica** post-extracción — el mismo bug sale de 3+ sesiones
-6. **Filtro de entradas triviales** — user:name y similares no aportan valor
+5. ✅ **Deduplicación semántica** post-extracción — dentro de corrida e inbox pendiente
+6. ✅ **Filtro de entradas triviales** — user:name y similares no aportan valor
 7. **Instalar `fastembed` en venv** si no está — necesario para vectorización nocturna
+8. **Correr benchmark A/B real** con decisiones humanas y persistir pesos aprobados
 
 Cualquier duda sobre el diseño:
 1. Leer `src/memory/paths.py` — estructura de rutas centralizada
