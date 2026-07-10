@@ -97,3 +97,18 @@ def test_compare_runs_normalizes_key_separators() -> None:
 
     assert comparison["key_jaccard_mean"] == 0.0
     assert comparison["key_token_similarity_mean"] == 1.0
+
+
+def test_repeat_consistency_compares_repeated_cases() -> None:
+    module = load_module()
+    calls = [
+        {"case_id": "one", "repeat": 0, "kept_entries": [{"key": "proyecto:db_schemas"}]},
+        {"case_id": "one", "repeat": 1, "kept_entries": [{"key": "proyecto:db-schemas"}]},
+        {"case_id": "two", "repeat": 0, "kept_entries": [{"key": "bug:a"}]},
+        {"case_id": "two", "repeat": 1, "kept_entries": []},
+    ]
+
+    consistency = module.repeat_consistency(calls)
+
+    assert consistency["repeat_pairs"] == 2
+    assert consistency["key_token_similarity_mean"] == 0.5

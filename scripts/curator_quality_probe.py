@@ -89,7 +89,7 @@ def _response_content(response: Any) -> str:
     return str(response or "")
 
 
-async def _run_call(system_prompt: str, user_prompt: str, model: str) -> dict[str, Any]:
+async def _run_call(system_prompt: str, user_prompt: str, model: str, temperature: float) -> dict[str, Any]:
     from src.llm.client import chat
     from src.memory.curator.curate import parse_resp
     from src.memory.curator.entry_filter import filter_curator_entries
@@ -102,7 +102,7 @@ async def _run_call(system_prompt: str, user_prompt: str, model: str) -> dict[st
                 {"role": "user", "content": user_prompt},
             ],
             model=model,
-            temperature=0.3,
+            temperature=temperature,
             max_tokens=16384,
             stream=False,
         )
@@ -151,11 +151,23 @@ def summarize_results(calls: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-async def run_bundle(bundle: dict[str, Any], *, model: str, repeats: int, node: str) -> dict[str, Any]:
+async def run_bundle(
+    bundle: dict[str, Any],
+    *,
+    model: str,
+    repeats: int,
+    node: str,
+    temperature: float = 0.3,
+) -> dict[str, Any]:
     calls: list[dict[str, Any]] = []
     for case in bundle.get("cases", []):
         for repeat in range(repeats):
-            result = await _run_call(str(bundle["system_prompt"]), str(case["prompt"]), model)
+            result = await _run_call(
+                str(bundle["system_prompt"]),
+                str(case["prompt"]),
+                model,
+                temperature,
+            )
             result.update({"case_id": case["case_id"], "repeat": repeat})
             calls.append(result)
     return {
@@ -163,6 +175,7 @@ async def run_bundle(bundle: dict[str, Any], *, model: str, repeats: int, node: 
         "bundle_id": bundle.get("bundle_id", ""),
         "node": node,
         "model": model,
+        "temperature": temperature,
         "repeats": repeats,
         "summary": summarize_results(calls),
         "calls": calls,
@@ -202,6 +215,22 @@ def _call_key_similarity(left: dict[str, Any], right: dict[str, Any]) -> float:
     return statistics.mean([*left_scores, *right_scores])
 
 
+def repeat_consistency(calls: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for call in calls:
+        grouped.setdefault(str(call.get("case_id") or ""), []).append(call)
+    similarities: list[float] = []
+    for case_calls in grouped.values():
+        ordered = sorted(case_calls, key=lambda item: int(item.get("repeat") or 0))
+        for index, call in enumerate(ordered):
+            for other in ordered[index + 1 :]:
+                similarities.append(_call_key_similarity(call, other))
+    return {
+        "repeat_pairs": len(similarities),
+        "key_token_similarity_mean": round(statistics.mean(similarities), 4) if similarities else 0.0,
+    }
+
+
 def compare_runs(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     if left.get("bundle_id") != right.get("bundle_id"):
         raise ValueError("runs use different bundles")
@@ -228,6 +257,8 @@ def compare_runs(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
         "matched_calls": matched,
         "key_jaccard_mean": round(statistics.mean(similarities), 4) if similarities else 0.0,
         "key_token_similarity_mean": round(statistics.mean(token_similarities), 4) if token_similarities else 0.0,
+        "left_repeat_consistency": repeat_consistency(list(left.get("calls", []))),
+        "right_repeat_consistency": repeat_consistency(list(right.get("calls", []))),
         "left_summary": left.get("summary", {}),
         "right_summary": right.get("summary", {}),
     }
@@ -262,6 +293,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--node", required=True)
     run.add_argument("--model", default="deepseek-v4-flash")
     run.add_argument("--repeats", type=int, default=1)
+    run.add_argument("--temperature", type=float, default=0.3)
 
     compare = subparsers.add_parser("compare", help="Compare two runs of the same bundle.")
     compare.add_argument("left")
@@ -284,6 +316,7 @@ def main() -> int:
                 model=args.model,
                 repeats=max(1, args.repeats),
                 node=args.node,
+                temperature=args.temperature,
             )
         )
         _write_json(args.output, payload)
