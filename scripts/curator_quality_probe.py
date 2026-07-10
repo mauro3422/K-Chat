@@ -163,6 +163,9 @@ def summarize_results(calls: list[dict[str, Any]]) -> dict[str, Any]:
         "kept_entries": sum(len(call.get("kept_entries", [])) for call in calls),
         "trivial_removed": sum(int(call.get("filter_stats", {}).get("trivial", 0)) for call in calls),
         "duplicates_removed": sum(int(call.get("filter_stats", {}).get("duplicates", 0)) for call in calls),
+        "invalid_categories_removed": sum(
+            int(call.get("filter_stats", {}).get("invalid_category", 0)) for call in calls
+        ),
         "latency_mean_ms": round(statistics.mean(latencies)) if latencies else 0,
         "latency_median_ms": round(statistics.median(latencies)) if latencies else 0,
         "latency_max_ms": round(max(latencies)) if latencies else 0,

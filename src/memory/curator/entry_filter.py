@@ -38,12 +38,26 @@ def is_trivial_curator_entry(entry: Mapping[str, str]) -> bool:
     """Reject low-value identity facts that add no useful retrieval signal."""
 
     key = _normalize_key(str(entry.get("key") or ""))
-    return key in {
+    if key in {
         "user:name",
         "user:nombre",
         "user:full-name",
         "user:nombre-completo",
-    }
+    }:
+        return True
+    return bool(re.fullmatch(r"user:(?:user-name|nombre-usuario)-[a-z0-9-]+", key))
+
+
+def has_allowed_curator_category(entry: Mapping[str, str]) -> bool:
+    """Accept only categories described by the curator output contract."""
+
+    key = _normalize_key(str(entry.get("key") or ""))
+    category, separator, description = key.partition(":")
+    return bool(
+        separator
+        and description
+        and category in {"user", "bug", "decision", "proyecto", "patron", "checkpoint"}
+    )
 
 
 def curator_entry_similarity(left: Mapping[str, str], right: Mapping[str, str]) -> float:
@@ -95,7 +109,7 @@ def filter_curator_entries(
     """
 
     kept: list[dict[str, str]] = []
-    stats = {"input": 0, "kept": 0, "trivial": 0, "duplicates": 0}
+    stats = {"input": 0, "kept": 0, "trivial": 0, "invalid_category": 0, "duplicates": 0}
 
     for raw_entry in entries:
         stats["input"] += 1
@@ -105,6 +119,9 @@ def filter_curator_entries(
         }
         if not entry["key"] or not entry["value"] or is_trivial_curator_entry(entry):
             stats["trivial"] += 1
+            continue
+        if not has_allowed_curator_category(entry):
+            stats["invalid_category"] += 1
             continue
 
         duplicate_index: int | None = None
