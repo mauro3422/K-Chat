@@ -4,6 +4,7 @@
 # Examples:
 #   scripts/test.sh --testmon
 #   scripts/test.sh tests/unit/test_repositories.py -v --tb=short
+#   scripts/test.sh --cov=src --cov-report=term-missing --cov-report=html:test-results/coverage
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
