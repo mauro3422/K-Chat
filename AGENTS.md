@@ -56,7 +56,7 @@ These rules apply to ALL code modifications. Violations are regressions.
 
 --- 🧪 TEST EFFICIENCY (CRITICAL) ---
 
-- **NUNCA correr `pytest tests/` completo.** Usar `pytest --testmon` SIEMPRE para runs incrementales. Testmon ya está instalado y configurado, solo corre tests afectados por cambios desde la última vez.
+- **NUNCA correr `pytest tests/` completo.** Usar `pytest --testmon` SIEMPRE para runs incrementales. Testmon y xdist ya están instalados y configurados; pytest ejecuta en paralelo por defecto y testmon solo selecciona tests afectados.
 - **Para correr un archivo específico rápido**: `pytest tests/unit/test_foo.py -v --tb=short`
 - **Para resetear testmon** (si los resultados son inconsistentes): borrar `.testmondata*` y correr `pytest --testmon` una vez (construye el mapa de dependencias).
 - **No esperar a que terminen tests lentos.** Si testmon ya tiene el mapa de dependencias, corre en segundos. Si no hay cambios, corre 0 tests.

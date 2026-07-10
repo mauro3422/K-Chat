@@ -87,7 +87,7 @@ async def test_write_daily_memory_report(tmp_path):
 
     assert "[OK]" in result
     assert "memory" in result
-    assert (tmp_path / "memory" / "plans" / "morning" / "2026" / "07" / "02.md").exists()
+    assert (tmp_path / "memory" / "2026" / "07" / "02" / "morning-plan.md").exists()
 
 
 @pytest.mark.anyio
@@ -96,8 +96,8 @@ async def test_write_daily_memory_report_json(tmp_path):
     payload = json.loads(result)
 
     assert payload["ok"] is True
-    assert payload["path"].endswith("memory/plans/morning/2026/07/02.md") or payload["path"].endswith(
-        "memory\\plans\\morning\\2026\\07\\02.md"
+    assert payload["path"].endswith("memory/2026/07/02/morning-plan.md") or payload["path"].endswith(
+        "memory\\2026\\07\\02\\morning-plan.md"
     )
     assert payload["plan"]["date"] == "2026-07-02"
 

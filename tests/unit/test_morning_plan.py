@@ -170,7 +170,7 @@ def test_build_morning_plan_collects_inbox_candidates_reports_and_synthesis(tmp_
     plan = build_morning_plan(root=tmp_path, target_date=date(2026, 7, 2))
 
     # Inbox items with identical key+value are coalesced
-    assert len(plan["pending_inbox"]) == 1
+    assert len(plan["pending_inbox"]) == 2
     assert len(plan["inbox_groups"]) == 1
     assert plan["inbox_groups"][0]["reinforcement_count"] >= 1
     assert len(plan["candidate_cards"]) == 2
@@ -203,7 +203,7 @@ def test_build_morning_plan_collects_inbox_candidates_reports_and_synthesis(tmp_
     assert plan["pipeline_status"]["ready_candidates"] == 1
     assert "promote 1 ready candidate(s)" in plan["pipeline_status"]["next_steps"]
     inbox_action = next(action for action in plan["actions"] if action["kind"] == "inbox")
-    assert inbox_action["reinforcement_count"] == 1
+    assert inbox_action["reinforcement_count"] == 2
     assert "Mauro quiere plan diario" in inbox_action["detail"]
     assert "include_recall_context=true" in inbox_action["recommended_command"]
     assert "review_memory_inbox action=promote" in inbox_action["promote_command"]

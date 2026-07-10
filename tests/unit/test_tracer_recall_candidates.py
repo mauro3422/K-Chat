@@ -70,7 +70,7 @@ async def test_trace_materializes_recall_candidates_when_not_dry(monkeypatch, tm
     )
 
     assert result["total"] == 1
-    files = list((tmp_path / "memory" / "candidates").rglob("*.jsonl"))
+    files = list((tmp_path / "memory").glob("*/*/*/candidates/recall_links.jsonl"))
     assert len(files) == 1
     assert "abc123" in files[0].read_text(encoding="utf-8")
 
@@ -104,7 +104,7 @@ async def test_trace_materializes_high_signal_patterns_without_saving_memory(mon
         save_memory_fn=save_memory,
     )
 
-    files = list((tmp_path / "memory" / "candidates").rglob("*.tracer.jsonl"))
+    files = list((tmp_path / "memory").glob("*/*/*/candidates/tracer.jsonl"))
 
     assert result["candidate_path"]
     assert files

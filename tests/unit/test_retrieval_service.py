@@ -147,7 +147,7 @@ class TestRetrieve:
             source_filter=None,
             session_id="sess-1",
         )
-        artifacts = list((tmp_path / "memory" / "recall").rglob("*.jsonl"))
+        artifacts = list((tmp_path / "memory").glob("*/*/*/recall.jsonl"))
         assert len(artifacts) == 1
         assert "explicit_recall" in artifacts[0].read_text(encoding="utf-8")
 

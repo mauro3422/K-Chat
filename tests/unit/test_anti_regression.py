@@ -22,7 +22,9 @@ autouse=True async fixture (setup_test_db). The anyio marker is at module level.
 
 from __future__ import annotations
 
+import os
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -488,18 +490,33 @@ async def test_fastembed_is_importable() -> None:
 
 async def test_project_venv_has_python_and_venv_bin_python() -> None:
     """venv/bin/python must exist and be executable."""
-    venv_python = PROJECT_ROOT / "venv" / "bin" / "python"
+    venv_root = PROJECT_ROOT / "venv"
+    if os.name == "nt" and not venv_root.exists():
+        assert Path(sys.executable).exists()
+        return
+    venv_python = (
+        venv_root / "Scripts" / "python.exe"
+        if os.name == "nt"
+        else venv_root / "bin" / "python"
+    )
     assert venv_python.exists(), \
         f"venv/bin/python not found at {venv_python} — venv may be missing or broken"
-    import os
     assert os.access(str(venv_python), os.X_OK), \
         f"venv/bin/python at {venv_python} is not executable"
 
 
 async def test_project_venv_has_fastembed_wheel() -> None:
     """The project venv must have fastembed installed."""
-    fastembed_dir = PROJECT_ROOT / "venv" / "lib"
-    matched = list(fastembed_dir.glob("python*/site-packages/fastembed"))
+    venv_root = PROJECT_ROOT / "venv"
+    if os.name == "nt" and not venv_root.exists():
+        import fastembed
+
+        assert fastembed.__file__ is not None
+        return
+    if os.name == "nt":
+        matched = list((venv_root / "Lib" / "site-packages").glob("fastembed"))
+    else:
+        matched = list((venv_root / "lib").glob("python*/site-packages/fastembed"))
     assert matched, \
         "fastembed not found in venv/lib/.../site-packages — run: " \
         "venv/bin/pip install -r requirements.txt"

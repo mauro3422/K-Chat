@@ -1,4 +1,5 @@
 import pytest
+from datetime import date
 
 from src.memory.curator.recall_review import write_candidates
 from src.memory.curator.curation_events import append_curation_decision
@@ -7,7 +8,11 @@ from src.tools.curator_workbench import DEFINITION, run
 
 
 def _candidate_path(tmp_path):
-    return tmp_path / "memory" / "candidates" / "2026" / "07" / "02.recall_links.jsonl"
+    return tmp_path / "memory" / "2026" / "07" / "02" / "candidates" / "recall_links.jsonl"
+
+
+def _today_at(clock: str) -> str:
+    return f"{date.today().isoformat()}T{clock}"
 
 
 class FakeEntityRepo:
@@ -171,7 +176,7 @@ async def test_queue_shows_prioritized_curation_commands(tmp_path):
     append_memory_inbox_item(
         {"key": "user:pref", "value": "Mauro quiere plan diario."},
         root=tmp_path,
-        timestamp="2026-07-04T08:00:00",
+        timestamp=_today_at("08:00:00"),
     )
 
     result = await run(root=str(tmp_path), action="queue")
@@ -188,7 +193,7 @@ async def test_runbook_groups_safe_and_mutating_commands(tmp_path):
     append_memory_inbox_item(
         {"key": "user:pref", "value": "Mauro quiere plan diario."},
         root=tmp_path,
-        timestamp="2026-07-04T08:00:00",
+        timestamp=_today_at("08:00:00"),
     )
 
     result = await run(root=str(tmp_path), action="runbook")
@@ -208,7 +213,7 @@ async def test_runbook_can_focus_one_queue_item(tmp_path):
     item = append_memory_inbox_item(
         {"key": "user:pref", "value": "Mauro quiere plan diario."},
         root=tmp_path,
-        timestamp="2026-07-04T08:00:00",
+        timestamp=_today_at("08:00:00"),
     )
 
     result = await run(root=str(tmp_path), action="runbook", item_id=item["inbox_id"])
@@ -227,7 +232,7 @@ async def test_runbook_can_focus_top_queue_item(tmp_path):
     item = append_memory_inbox_item(
         {"key": "user:pref", "value": "Mauro quiere plan diario."},
         root=tmp_path,
-        timestamp="2026-07-04T08:00:00",
+        timestamp=_today_at("08:00:00"),
     )
 
     result = await run(root=str(tmp_path), action="runbook", item_id="top")
@@ -250,7 +255,7 @@ async def test_recall_packet_combines_recall_and_queue(tmp_path):
     append_memory_inbox_item(
         {"key": "user:pref", "value": "Mauro quiere memoria con grafo."},
         root=tmp_path,
-        timestamp="2026-07-04T08:00:00",
+        timestamp=_today_at("08:00:00"),
     )
 
     result = await run(
@@ -284,17 +289,17 @@ async def test_weight_policy_actions_preview_write_and_approve(tmp_path):
     append_curation_decision(
         {"kind": "memory_candidate", "source": "remember", "action": "promote", "relation_type": "REFINES"},
         root=tmp_path,
-        timestamp="2026-07-04T10:00:00",
+        timestamp=_today_at("10:00:00"),
     )
     append_curation_decision(
         {"kind": "memory_candidate", "source": "remember", "action": "promote_ready", "relation_type": "REFINES"},
         root=tmp_path,
-        timestamp="2026-07-04T10:01:00",
+        timestamp=_today_at("10:01:00"),
     )
     append_curation_decision(
         {"kind": "memory_candidate", "source": "remember", "action": "complete_metadata", "missing_fields": []},
         root=tmp_path,
-        timestamp="2026-07-04T10:02:00",
+        timestamp=_today_at("10:02:00"),
     )
 
     preview = await run(root=str(tmp_path), action="preview_weight_policy")

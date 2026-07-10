@@ -150,6 +150,6 @@ class TestRememberRun:
             _root=tmp_path,
         )
 
-        artifact = tmp_path / "memory" / "recall"
+        artifact = tmp_path / "memory"
         assert "## Recall event" in result
-        assert list(artifact.rglob("*.jsonl"))
+        assert list(artifact.glob("*/*/*/recall.jsonl"))

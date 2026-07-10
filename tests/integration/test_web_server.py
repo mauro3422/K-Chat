@@ -42,14 +42,12 @@ async def test_session_page(mock_tpl, _mock_models):
     assert isinstance(resp, HTMLResponse)
 
 
-@patch("web.routers.pages.get_repos")
+@patch("web.routers.pages._federated_session_entries", new_callable=AsyncMock)
 @patch("web.routers.pages.templates.TemplateResponse")
 @pytest.mark.anyio
-async def test_sidebar(mock_tpl, mock_get_repos):
+async def test_sidebar(mock_tpl, mock_session_entries):
     mock_tpl.return_value = HTMLResponse("<div></div>")
-    mock_repos = AsyncMock()
-    mock_repos.sessions.get_all.return_value = []
-    mock_get_repos.return_value = mock_repos
+    mock_session_entries.return_value = []
     from web.routers.pages import sidebar
     resp = await sidebar(_request("/sidebar", current="test-session-abc"))
     assert isinstance(resp, HTMLResponse)

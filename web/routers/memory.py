@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from src.api.memory import memory_graph_snapshot
 from src.gateway_log import log_event
 from web.routers._memory_snapshot import (
     build_memory_snapshot,
@@ -128,78 +129,4 @@ async def repair(payload: MemoryMaintenancePayload, request: Request) -> JSONRes
 
 @router.get("/graph")
 async def get_graph(request: Request, layer: str = "unified") -> JSONResponse:
-    from src.memory.analysis.graph_analysis import EntityGraph
-    from src.memory.memory_db_path import resolve_memory_db_path
-    import sqlite3
-    import logging
-
-    local_logger = logging.getLogger(__name__)
-    db_path = resolve_memory_db_path()
-    graph = EntityGraph(db_path)
-    graph.refresh()
-
-    pmi_names = {
-        name.lower()
-        for ent_id, name in graph._names.items()
-        if ent_id.startswith("pmi_")
-    }
-
-    exclude_pmi = (layer == "curated")
-    only_pmi = (layer == "pmi")
-
-    nodes = []
-    for name in graph._degree_centrality.keys():
-        name_lower = name.lower()
-        is_pmi = name_lower in pmi_names
-
-        if exclude_pmi and is_pmi:
-            continue
-        if only_pmi and not is_pmi:
-            continue
-
-        nodes.append({
-            "id": name,
-            "label": name.capitalize(),
-            "pagerank": round(graph.pagerank(name), 6),
-            "degree": round(graph.degree_centrality(name), 6),
-            "hub": round(graph.hub_score(name), 6),
-            "authority": round(graph.authority_score(name), 6),
-            "community": graph.entity_community(name),
-            "is_pmi": is_pmi
-        })
-
-    # Limitar el grafo a los 100 nodos más importantes por PageRank para rendimiento de D3
-    nodes.sort(key=lambda x: x["pagerank"], reverse=True)
-    nodes = nodes[:100]
-
-    allowed_nodes = {n["id"].lower() for n in nodes}
-    edges = []
-    try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        for row in conn.execute(
-            "SELECT source_id, target_id, weight FROM entity_relations"
-        ):
-            src = str(row["source_id"])
-            tgt = str(row["target_id"])
-            wt = float(row["weight"] or 1.0)
-            src_name = graph._names.get(src)
-            tgt_name = graph._names.get(tgt)
-            if src_name and tgt_name:
-                src_lower = src_name.lower()
-                tgt_lower = tgt_name.lower()
-                if src_lower in allowed_nodes and tgt_lower in allowed_nodes:
-                    edges.append({
-                        "source": src_lower,
-                        "target": tgt_lower,
-                        "weight": wt
-                    })
-        conn.close()
-    except Exception as exc:
-        local_logger.warning("Failed to load edges for API: %s", exc)
-
-    return JSONResponse({
-        "ok": True,
-        "nodes": nodes,
-        "edges": edges
-    })
+    return JSONResponse(memory_graph_snapshot(layer=layer))
