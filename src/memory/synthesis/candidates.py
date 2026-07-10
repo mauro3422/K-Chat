@@ -87,7 +87,7 @@ def _candidate_entity_hints(lines: list[str], artifact: Mapping[str, Any]) -> li
                 "evidence": "session metadata",
             }
         )
-        
+
     pmi_entities = artifact.get("metadata", {}).get("pmi_entities", [])
     for pmi_ent in pmi_entities:
         if not any(item["name"] == pmi_ent for item in entities):

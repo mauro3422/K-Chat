@@ -69,16 +69,16 @@ def label_propagation(
     seed: int = 42,
 ) -> dict[str, int]:
     """Greedy label propagation for community detection (no networkx needed).
-    
+
     Each node adopts the majority label of its neighbors.
     Converges in < 10 iterations for typical graphs.
     """
     nodes = list(adj.keys())
     random.seed(seed)
-    
+
     # Initialize: each node is its own community
     labels = {node: i for i, node in enumerate(nodes)}
-    
+
     for _ in range(max_iter):
         changed = False
         random.shuffle(nodes)
@@ -86,21 +86,21 @@ def label_propagation(
             neighbors = adj.get(node, set())
             if not neighbors:
                 continue
-            
+
             # Count neighbor labels
             label_counts: dict[int, int] = defaultdict(int)
             for neighbor in neighbors:
                 label_counts[labels[neighbor]] += 1
-            
+
             # Adopt most common label
             most_common = max(label_counts, key=label_counts.get)
             if labels[node] != most_common:
                 labels[node] = most_common
                 changed = True
-        
+
         if not changed:
             break
-    
+
     return labels
 
 
@@ -109,7 +109,7 @@ def compute_participation_coefficient(
     communities: dict[str, int],
 ) -> dict[str, float]:
     """Participation coefficient: how much a node bridges communities.
-    
+
     PC ≈ 0 → node stays within its community (signal)
     PC ≈ 1 → node connects many communities equally (noise hub)
     """
@@ -119,15 +119,15 @@ def compute_participation_coefficient(
         if k == 0:
             pc[node] = 0.0
             continue
-        
+
         # Count degree per community
         comm_degrees: dict[int, int] = defaultdict(int)
         for neighbor in neighbors:
             comm = communities.get(neighbor, -1)
             comm_degrees[comm] += 1
-        
+
         pc[node] = 1.0 - sum((d / k) ** 2 for d in comm_degrees.values())
-    
+
     return pc
 
 
@@ -143,23 +143,23 @@ def prune_noise_hubs(
     degree_threshold: int = 40,
 ) -> list[tuple[str, str, float]]:
     """Remove relations involving noise hubs.
-    
+
     A noise hub has:
     - Low clustering (scattered neighbors)
     - High participation coefficient (bridges communities)
     - High degree (connects many nodes)
     """
     noise_nodes: set[str] = set()
-    
+
     for node in degree:
         deg = degree[node]
         cc = clustering.get(node, 0.0)
         pc_val = participation.get(node, 0.0)
-        
+
         # Type A: low clustering + high degree (classic noise hub)
         if deg >= degree_threshold and cc < cc_threshold:
             noise_nodes.add(node)
-        
+
         # Type B: high participation + high degree (community bridge)
         if deg >= degree_threshold and pc_val > pc_threshold:
             noise_nodes.add(node)
@@ -171,7 +171,7 @@ def prune_noise_hubs(
         for node in sorted_noise[:12]:
             print(f"   ✂️  {node:25s} deg={degree[node]:4d}  CC={clustering.get(node,0):.4f}  PC={participation.get(node,0):.3f}")
 
-    return [(a, b, w) for a, b, w in relations 
+    return [(a, b, w) for a, b, w in relations
             if a not in noise_nodes and b not in noise_nodes]
 
 
@@ -340,7 +340,7 @@ def run():
         total_relations.extend(rels)
         for pair in pairs:
             edge_sessions[pair].add(sid)
-        
+
         if idx % 5 == 0 or idx == total_sessions:
             print(f"   [{idx:2d}/{total_sessions}] {sid[:12]}... → "
                   f"{len(rels):4d} rels, {len(pairs):4d} pairs "
@@ -403,7 +403,7 @@ def run():
         t_pc = time.time()
         participation = compute_participation_coefficient(adj, communities)
         print(f"   Done in {time.time() - t_pc:.1f}s")
-        
+
         # PC stats
         pc_values = list(participation.values())
         print(f"   PC range: [{min(pc_values):.3f}, {max(pc_values):.3f}]")
@@ -452,8 +452,8 @@ def run():
     """).fetchall()
 
     weight_dist = conn.execute("""
-        SELECT 
-            CASE 
+        SELECT
+            CASE
                 WHEN weight >= 1.5 THEN '1.5-2.0 (strong)'
                 WHEN weight >= 1.0 THEN '1.0-1.5 (medium)'
                 WHEN weight >= 0.6 THEN '0.6-1.0 (weak)'
@@ -466,26 +466,26 @@ def run():
     """).fetchall()
 
     typos_in_db = conn.execute("""
-        SELECT COUNT(*) FROM entities 
-        WHERE name IN ('veras', 'tenes', 'deberia', 'dan', 'aveces', 'muchas', 
+        SELECT COUNT(*) FROM entities
+        WHERE name IN ('veras', 'tenes', 'deberia', 'dan', 'aveces', 'muchas',
                        'funcionan', 'vrias', 'algun', 'ocurrio', 'qiue', 'auqe')
     """).fetchone()[0]
 
     generic_noise = conn.execute("""
-        SELECT COUNT(*) FROM entities 
+        SELECT COUNT(*) FROM entities
         WHERE name IN ('mas', 'tenemos', 'mejor', 'realmente', 'pasa', 'tienen',
                        'actual', 'dentro', 'veamos', 'tenes', 'ellos', 'creo',
                        'corre', 'tiempo', 'uso', 'cosa')
     """).fetchone()[0]
 
     core_concepts = conn.execute("""
-        SELECT name, (SELECT COUNT(*) FROM entity_relations 
+        SELECT name, (SELECT COUNT(*) FROM entity_relations
                       WHERE source_id = e.id OR target_id = e.id) as deg
         FROM entities e
-        WHERE name IN ('llm', 'openclaw', 'arquitectur', 'modelo', 'grafo', 
-                       'widget', 'embed', 'curator', 'curador', 'agent', 
+        WHERE name IN ('llm', 'openclaw', 'arquitectur', 'modelo', 'grafo',
+                       'widget', 'embed', 'curator', 'curador', 'agent',
                        'hermes', 'sandbox', 'entity', 'api', 'svg',
-                       'ifram', 'reddit', 'discord', 'skill', 'nativ', 
+                       'ifram', 'reddit', 'discord', 'skill', 'nativ',
                        'gecko', 'nanobot', 'trigg', 'secur', 'protocol',
                        'cluster', 'vector', 'patron', 'herramient', 'prototip')
         ORDER BY deg DESC
@@ -529,7 +529,7 @@ def run():
     print(f"\n🏆 Top signal entities:")
     for i, (name, deg, avg_w) in enumerate(signal_rows[:25], 1):
         flag = ""
-        if name in ('mas', 'tenemos', 'mejor', 'pasa', 'tienen', 'realmente', 
+        if name in ('mas', 'tenemos', 'mejor', 'pasa', 'tienen', 'realmente',
                      'actual', 'tenes', 'veamos', 'creo', 'corre', 'tiempo', 'uso', 'cosa'):
             flag = " ⚠️"
         print(f"   {i:2d}. {name:25s}  deg={deg:4d}  avg_w={avg_w}{flag}")
@@ -544,18 +544,24 @@ def run():
     print(f"{'=' * 60}")
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
     import argparse
+    import os
+
     parser = argparse.ArgumentParser(description="Populate PMI knowledge graph from chat history")
     parser.add_argument("--db", default=None, help="Path to kairos_memory.db (default: auto-detect)")
     parser.add_argument("--curated-db", default=None, help="Path to curated memory DB (default: auto-detect)")
     parser.add_argument("--quiet", action="store_true", help="Suppress benchmark output")
-    args = parser.parse_args()
-    
+    args = parser.parse_args(argv)
+
     if args.db:
-        import os
         os.environ["KAIROS_SESSIONS_DB_PATH"] = args.db
     if args.curated_db:
         os.environ["KAIROS_MEMORY_DB_PATH"] = args.curated_db
-    
+
     run()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

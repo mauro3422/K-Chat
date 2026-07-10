@@ -108,16 +108,16 @@ class EntityGraph:
         """Calculate weighted community votes for a list of entity names using graph neighbors."""
         self._ensure_loaded()
         votes: dict[int, float] = {}
-        
+
         for raw_name in names:
             name = raw_name.lower()
             if name not in self._communities:
                 continue
-                
+
             # Base vote for the node's own community
             own_comm = self._communities[name]
             votes[own_comm] = votes.get(own_comm, 0.0) + 1.0
-            
+
             # Spread fractional votes to neighbors if networkx graph is available
             if hasattr(self, "_nx_graph") and self._nx_graph is not None:
                 if name in self._nx_graph:
@@ -128,7 +128,7 @@ class EntityGraph:
                             weight = float(edge_data.get("weight", 1.0))
                             # Add a fraction of the weight as a vote
                             votes[neighbor_comm] = votes.get(neighbor_comm, 0.0) + (weight * 0.5)
-                            
+
         return votes
 
     # ------------------------------------------------------------------

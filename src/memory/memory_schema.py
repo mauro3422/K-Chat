@@ -688,7 +688,7 @@ def _migration_020_memory_curated_relations(conn: sqlite3.Connection, engine) ->
 
 def _migration_021_vec_concepts(conn: sqlite3.Connection, engine) -> None:
     """Create vec_concepts virtual table and concept_canonical mapping.
-    
+
     vec_concepts stores the fastembed vector for canonical concepts.
     concept_canonical maps any observed keyword to its canonical concept base.
     """
@@ -713,7 +713,7 @@ def _migration_021_vec_concepts(conn: sqlite3.Connection, engine) -> None:
     """)
     # Unique index to prevent duplicate canonicalization
     conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_concept_canonical_canonical 
+        CREATE INDEX IF NOT EXISTS idx_concept_canonical_canonical
         ON concept_canonical (canonical_word)
     """)
     logger.info("vec_concepts and concept_canonical tables created")

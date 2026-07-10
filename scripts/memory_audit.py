@@ -11,7 +11,12 @@ if str(ROOT) not in sys.path:
 
 from scripts._python_bootstrap import ensure_repo_python
 from src.memory.maintenance.audit import *  # noqa: F401,F403
-from src.memory.maintenance.audit import _content_hash, _group_into_exchanges, _table_exists, main
+from src.memory.maintenance.audit import (
+    content_hash_for_audit as _content_hash,
+    group_into_exchanges as _group_into_exchanges,
+    table_exists as _table_exists,
+)
+from src.memory.maintenance.audit_cli import main
 
 
 if __name__ == "__main__":

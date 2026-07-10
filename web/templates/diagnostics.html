@@ -65,7 +65,7 @@
     .diag-link:hover {
       opacity: 0.8;
     }
-    
+
     /* Layout principal */
     .diag-container {
       max-width: 1400px;
@@ -74,14 +74,14 @@
       display: grid;
       gap: 20px;
     }
-    
+
     /* Grid de dos columnas para Hero (Grafo + Resumen) */
     .diag-layout-hero {
       display: grid;
       grid-template-columns: 2.2fr 1fr;
       gap: 20px;
     }
-    
+
     .diag-card {
       background: var(--bg-secondary);
       border: 1px solid var(--border);
@@ -89,7 +89,7 @@
       padding: 20px;
       position: relative;
     }
-    
+
     .diag-card h2 {
       margin: 0 0 16px;
       font-size: 14px;
@@ -101,14 +101,14 @@
       justify-content: space-between;
       align-items: center;
     }
-    
+
     .diag-card h2 span {
       text-transform: none;
       font-size: 11px;
       font-weight: normal;
       color: var(--text-muted);
     }
-    
+
     /* Pills y listados compactos */
     .diag-pills {
       display: flex;
@@ -139,7 +139,7 @@
       color: var(--border-accent);
       text-shadow: 0 0 8px rgba(0, 255, 153, 0.4);
     }
-    
+
     /* Acciones */
     .diag-actions-bar {
       display: flex;
@@ -163,14 +163,14 @@
     .diag-btn-primary { color: var(--border-accent); }
     .diag-btn-warn { color: #f5c542; }
     .diag-btn-danger { color: #ff5c5c; }
-    
+
     /* Grilla de detalles secundaria */
     .diag-grid-secondary {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 20px;
     }
-    
+
     .diag-table {
       width: 100%;
       border-collapse: collapse;
@@ -200,7 +200,7 @@
       color: var(--text-muted);
       font-size: 11px;
     }
-    
+
     /* Tooltip Glassmorphic */
     #graph-tooltip {
       position: absolute;
@@ -218,7 +218,7 @@
       box-shadow: 0 8px 32px 0 rgba(0, 255, 153, 0.15);
       font-family: monospace;
     }
-    
+
     /* Modal remotos */
     .diag-remote {
       display: none;
@@ -269,7 +269,7 @@
     .diag-remote-body .diag-card {
       background: var(--bg-secondary);
     }
-    
+
     @media (max-width: 1024px) {
       .diag-layout-hero {
         grid-template-columns: 1fr;
@@ -300,6 +300,9 @@
       <p id="system-time">LAN: {{ bridge.base_url or 'n/a' }}</p>
     </div>
     <div class="diag-actions-bar">
+      {% if key_pattern %}
+      <span class="diag-muted">Filtro: {{ key_pattern }}</span>
+      {% endif %}
       <button class="diag-btn diag-btn-primary" data-action="refresh-silent">Actualizar</button>
       <button class="diag-btn diag-btn-warn" data-action="sync">Sincronizar</button>
       <button class="diag-btn diag-btn-warn" data-action="repair">Reparar</button>
@@ -357,7 +360,7 @@
             </div>
           </div>
         </div>
-        
+
         <div>
           <div class="diag-muted" style="border-top: 1px solid var(--border); padding-top: 12px;" id="diag-status">Listo.</div>
         </div>
@@ -383,7 +386,7 @@
         <h2>Cluster LAN</h2>
         <div class="diag-muted">Peers alcanzables: <span id="val-reachable-peers">{{ cluster.reachable_peers or 0 }}</span> · Inalcanzables: <span id="val-unreachable-peers">{{ cluster.unreachable_peers or 0 }}</span></div>
         <table class="diag-table">
-          <thead><tr><th>Node</th><th>Rol</th><th>Healthy</th><th>Memoria</th></tr></thead>
+          <thead><tr><th>Node</th><th>Rol</th><th>Healthy</th><th>Memoria</th><th>Acciones</th></tr></thead>
           <tbody id="table-peers">
           {% for peer in cluster.states or [] %}
             <tr>
@@ -391,9 +394,14 @@
               <td>{{ peer.role or 'secondary' }}</td>
               <td>{{ 'sí' if peer.healthy else 'no' }}</td>
               <td>{{ 'fresca' if peer.memory_is_fresh else 'pendiente' }}</td>
+              <td>
+                <button class="diag-link" type="button" data-peer-url="{{ peer.peer_url|e }}" data-peer-kind="diagnostics">diagnóstico</button>
+                ·
+                <button class="diag-link" type="button" data-peer-url="{{ peer.peer_url|e }}" data-peer-kind="memory">memoria</button>
+              </td>
             </tr>
           {% else %}
-            <tr><td colspan="4" class="diag-muted">Sin peers visibles</td></tr>
+            <tr><td colspan="5" class="diag-muted">Sin peers visibles</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -454,7 +462,33 @@
         return String(value)
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function openRemote(title, data) {
+        remoteTitle.textContent = title;
+        remoteBody.innerHTML = '';
+        const output = document.createElement('pre');
+        output.textContent = JSON.stringify(data, null, 2);
+        remoteBody.appendChild(output);
+        remote.classList.add('open');
+      }
+
+      remoteClose.addEventListener('click', () => remote.classList.remove('open'));
+      remote.addEventListener('click', (event) => {
+        if (event.target === remote) remote.classList.remove('open');
+      });
+
+      async function loadPeerSnapshot(peerUrl, kind) {
+        const url = withKeyPattern(`/api/diagnostics/peer?peer_url=${encodeURIComponent(peerUrl)}&kind=${encodeURIComponent(kind)}`);
+        const resp = await fetch(url, { cache: 'no-store' });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data.ok === false) {
+          throw new Error(data.error || data.detail || `HTTP ${resp.status}`);
+        }
+        return data;
       }
 
       // --- SILENT REFRESH (Polling AJAX sin recargar página completa) ---
@@ -483,7 +517,7 @@
           document.getElementById('val-peers').textContent = `${cluster.reachable_peers || 0}/${cluster.peer_count || 0}`;
           document.getElementById('val-queue').textContent = memory.queue_size || 0;
           document.getElementById('val-failover').textContent = failover.last_action || 'idle';
-          
+
           document.getElementById('val-reachable-peers').textContent = cluster.reachable_peers || 0;
           document.getElementById('val-unreachable-peers').textContent = cluster.unreachable_peers || 0;
           document.getElementById('val-severity').textContent = compareSummary.severity || 'clean';
@@ -519,16 +553,22 @@
           if (states.length > 0) {
             states.forEach(peer => {
               const tr = document.createElement('tr');
+              const peerUrl = escapeHtml(peer.peer_url || '');
               tr.innerHTML = `
                 <td>${escapeHtml(peer.node_id || peer.source_url || 'peer')}</td>
                 <td>${escapeHtml(peer.role || 'secondary')}</td>
                 <td>${peer.healthy ? 'sí' : 'no'}</td>
                 <td>${peer.memory_is_fresh ? 'fresca' : 'pendiente'}</td>
+                <td>
+                  <button class="diag-link" type="button" data-peer-url="${peerUrl}" data-peer-kind="diagnostics">diagnóstico</button>
+                  ·
+                  <button class="diag-link" type="button" data-peer-url="${peerUrl}" data-peer-kind="memory">memoria</button>
+                </td>
               `;
               tablePeers.appendChild(tr);
             });
           } else {
-            tablePeers.innerHTML = '<tr><td colspan="4" class="diag-muted">Sin peers visibles</td></tr>';
+            tablePeers.innerHTML = '<tr><td colspan="5" class="diag-muted">Sin peers visibles</td></tr>';
           }
 
           setStatus('Datos actualizados en caliente.');
@@ -752,8 +792,22 @@
 
       // Escuchar clicks de acciones en el header/resumen
       document.body.addEventListener('click', async (event) => {
-        const btn = event.target.closest('[data-action]');
+        const btn = event.target.closest('[data-action], [data-peer-url]');
         if (!btn) return;
+
+        const peerUrl = btn.getAttribute('data-peer-url');
+        const peerKind = btn.getAttribute('data-peer-kind') || 'diagnostics';
+        if (peerUrl) {
+          try {
+            setStatus(`Abriendo snapshot remoto: ${peerUrl}`);
+            const data = await loadPeerSnapshot(peerUrl, peerKind);
+            openRemote(`${peerKind === 'memory' ? 'Memoria' : 'Diagnóstico'} · ${peerUrl}`, data.snapshot || data.state || data);
+            setStatus(`Snapshot remoto listo: ${peerUrl}`);
+          } catch (err) {
+            setStatus(`Error: ${err && err.message ? err.message : err}`);
+          }
+          return;
+        }
 
         const action = btn.getAttribute('data-action');
         try {
@@ -793,10 +847,10 @@
         selector.addEventListener('click', (event) => {
           const btn = event.target.closest('[data-layer]');
           if (!btn) return;
-          
+
           selector.querySelectorAll('[data-layer]').forEach(b => b.classList.remove('diag-btn-primary', 'active'));
           btn.classList.add('diag-btn-primary', 'active');
-          
+
           activeLayer = btn.getAttribute('data-layer');
           renderCerebroGraph(activeLayer);
         });

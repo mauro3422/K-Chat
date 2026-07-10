@@ -450,7 +450,7 @@ def render_session_summary(summary: dict[str, Any]) -> str:
             for kw in keywords:
                 comm = graph.entity_community(kw)
                 by_comm.setdefault(comm, []).append(kw)
-            
+
             lines.append("- Keywords (Louvain Communities):")
             for comm_idx in sorted(by_comm.keys()):
                 label = "General" if comm_idx == -1 else f"Categoría {comm_idx}"
@@ -558,7 +558,7 @@ async def generate_session_summaries(
     # First pass: collect all messages and compute stem DF
     all_sessions_data: list[tuple[dict, list[dict]]] = []
     global_stem_df: dict[str, int] = defaultdict(int)
-    
+
     for session in sessions:
         session_id = str(session.get("session_id") or "")
         if (
@@ -571,7 +571,7 @@ async def generate_session_summaries(
         if len(messages) < 2:
             continue
         all_sessions_data.append((session, messages))
-        
+
         # Compute stem DF for this session
         session_stems: set[str] = set()
         for msg in messages:
@@ -582,15 +582,15 @@ async def generate_session_summaries(
                     session_stems.add(stem_spanish(t))
         for s in session_stems:
             global_stem_df[s] += 1
-    
+
     # Compute IDF and stem_map
     total_active = len(all_sessions_data)
     word_idf: dict[str, float] = {}
     if total_active > 0:
-        word_idf = {w: _math.log((total_active + 1) / (d + 1)) + 1.0 
+        word_idf = {w: _math.log((total_active + 1) / (d + 1)) + 1.0
                      for w, d in global_stem_df.items()}
     max_idf = _math.log(total_active + 1) + 1.0 if total_active > 0 else 4.0
-    
+
     # Build stem_map for all raw tokens seen
     stem_map: dict[str, str] = {}
     for _, messages in all_sessions_data:

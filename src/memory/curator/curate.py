@@ -36,7 +36,7 @@ If nothing new, respond: NO_NEW_INFO"""
 
 def _get_memory_context() -> str:
     """Read MEMORY.md and return first 3000 chars as context for LLM dedup.
-    
+
     Includes current date for temporal context so the LLM doesn't hallucinate years.
     """
     now = datetime.now().strftime("%Y-%m-%d %H:%M")

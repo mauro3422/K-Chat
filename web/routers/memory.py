@@ -132,18 +132,18 @@ async def get_graph(request: Request, layer: str = "unified") -> JSONResponse:
     from src.memory.memory_db_path import resolve_memory_db_path
     import sqlite3
     import logging
- 
+
     local_logger = logging.getLogger(__name__)
     db_path = resolve_memory_db_path()
     graph = EntityGraph(db_path)
     graph.refresh()
- 
+
     pmi_names = {
         name.lower()
         for ent_id, name in graph._names.items()
         if ent_id.startswith("pmi_")
     }
-    
+
     exclude_pmi = (layer == "curated")
     only_pmi = (layer == "pmi")
 
@@ -151,7 +151,7 @@ async def get_graph(request: Request, layer: str = "unified") -> JSONResponse:
     for name in graph._degree_centrality.keys():
         name_lower = name.lower()
         is_pmi = name_lower in pmi_names
-        
+
         if exclude_pmi and is_pmi:
             continue
         if only_pmi and not is_pmi:
@@ -171,7 +171,7 @@ async def get_graph(request: Request, layer: str = "unified") -> JSONResponse:
     # Limitar el grafo a los 100 nodos más importantes por PageRank para rendimiento de D3
     nodes.sort(key=lambda x: x["pagerank"], reverse=True)
     nodes = nodes[:100]
- 
+
     allowed_nodes = {n["id"].lower() for n in nodes}
     edges = []
     try:
@@ -197,7 +197,7 @@ async def get_graph(request: Request, layer: str = "unified") -> JSONResponse:
         conn.close()
     except Exception as exc:
         local_logger.warning("Failed to load edges for API: %s", exc)
- 
+
     return JSONResponse({
         "ok": True,
         "nodes": nodes,

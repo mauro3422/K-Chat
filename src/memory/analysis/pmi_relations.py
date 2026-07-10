@@ -22,41 +22,41 @@ SPANISH_STOPWORDS = {
 
 def stem_spanish(word: str) -> str:
     """Lightweight Spanish stemmer — rule-based suffix stripping.
-    
+
     Groups morphological variants without embeddings or KNN.
     Handles: plurals (-s/-es), gerunds (-ando/-iendo), participles (-ado/-ido),
     common verb endings, and adverbs (-mente).
-    
+
     Designed to be fast (no DB, no vectors) and conservative (won't over-stem).
     """
     w = word.lower()
-    
+
     # Don't stem very short words
     if len(w) <= 3:
         return w
-    
+
     # Adverbs: rápidamente → rápido
     if w.endswith('mente') and len(w) > 6:
         w = w[:-5]
-    
+
     # Gerunds: hablando → hablar, corriendo → correr
     if w.endswith('iendo') and len(w) > 6:
         w = w[:-5] + 'er'  # most -iendo verbs are -er/-ir
     elif w.endswith('ando') and len(w) > 6:
         w = w[:-4] + 'ar'
-    
+
     # Participles: hablado → hablar, comido → comer
     if w.endswith('ado') and len(w) > 5:
         w = w[:-3] + 'ar'
     elif w.endswith('ido') and len(w) > 5:
         w = w[:-3] + 'ir'
-    
+
     # Plurals: herramientas → herramienta, cosas → cosa
     if w.endswith('es') and len(w) > 4:
         w = w[:-2]
     elif w.endswith('s') and len(w) > 3:
         w = w[:-1]
-    
+
     # Feminine/masculine normalization: arquitectónico → arquitectónic
     if w.endswith('ico') and len(w) > 5:
         w = w[:-3] + 'ic'
@@ -70,7 +70,7 @@ def stem_spanish(word: str) -> str:
         w = w[:-3] + 'os'
     elif w.endswith('osa') and len(w) > 5:
         w = w[:-3] + 'os'
-    
+
     # Diminutives: poquito → poco
     if w.endswith('ito') and len(w) > 5:
         w = w[:-3]
@@ -78,7 +78,7 @@ def stem_spanish(word: str) -> str:
         w = w[:-3]
     elif w.endswith('illo') and len(w) > 6:
         w = w[:-4]
-    
+
     return w
 
 
@@ -111,24 +111,24 @@ def calculate_pmi_for_session(
     canonical_map: dict[str, str] | None = None,
 ) -> tuple[list[tuple[str, str, float]], set[tuple[str, str]]]:
     """Calculate PMI for terms in a session using IDF weighting + stemming.
-    
+
     Returns:
         (filtered_relations, candidate_pairs)
         - filtered_relations: list of (stem_a, stem_b, weight) that pass PMI threshold
         - candidate_pairs: set of all (stem_a, stem_b) pairs found (for edge-IDF computation)
-    
+
     Weight formula:
         weight = raw_pmi_weight × min(idf_a, idf_b) / max_idf
-    
+
     IDF naturally penalizes words that appear in many sessions (stopwords)
     while preserving domain-specific concepts that may also be frequent.
-    
+
     The stemming groups morphological variants (plural, gerund, etc.)
     so IDF is computed on stems, not raw forms.
     """
     # Use stem_map if provided, otherwise fall back to canonical_map for compat
     effective_map = stem_map or canonical_map
-    
+
     session_windows: list[set[str]] = []
     word_counts: dict[str, int] = {}
     cooc_counts: dict[tuple[str, str], int] = {}
@@ -152,7 +152,7 @@ def calculate_pmi_for_session(
                 else:
                     stem = stem_spanish(t)
                 tokens.append(stem)
-        
+
         if tokens:
             for i in range(max(1, len(tokens) - window_size + 1)):
                 window = set(tokens[i : i + window_size])
@@ -197,12 +197,12 @@ def calculate_pmi_for_session(
 
         if pmi >= pmi_threshold:
             raw_weight = max(0.5, min(2.0, pmi / 2.0))
-            
+
             # IDF multiplier: use the LOWER of the two IDF values
             # (the more common word determines the noise penalty)
             idf_mult = min(idf_mult_cache.get(a, 1.0), idf_mult_cache.get(b, 1.0))
             weight = raw_weight * idf_mult
-            
+
             proposed_relations.append((a, b, weight))
 
     # Debug log
@@ -240,7 +240,7 @@ def persist_pmi_relations(db_path: str, relations: list[tuple[str, str, float]])
                 id_a = f"pmi_{a}"
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO entities (id, name, entity_type, first_seen, last_seen) 
+                    INSERT OR IGNORE INTO entities (id, name, entity_type, first_seen, last_seen)
                     VALUES (?, ?, ?, ?, ?)
                     """,
                     (id_a, a, "concept", now_str, now_str)
@@ -254,7 +254,7 @@ def persist_pmi_relations(db_path: str, relations: list[tuple[str, str, float]])
                 id_b = f"pmi_{b}"
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO entities (id, name, entity_type, first_seen, last_seen) 
+                    INSERT OR IGNORE INTO entities (id, name, entity_type, first_seen, last_seen)
                     VALUES (?, ?, ?, ?, ?)
                     """,
                     (id_b, b, "concept", now_str, now_str)
@@ -266,10 +266,10 @@ def persist_pmi_relations(db_path: str, relations: list[tuple[str, str, float]])
             src_id, tgt_id = sorted([id_a, id_b])
             relation_type = "co_occurrence"
             now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            
+
             cursor.execute(
                 """
-                SELECT weight FROM entity_relations 
+                SELECT weight FROM entity_relations
                 WHERE source_id = ? AND target_id = ? AND relation_type = ?
                 """,
                 (src_id, tgt_id, relation_type),
@@ -280,7 +280,7 @@ def persist_pmi_relations(db_path: str, relations: list[tuple[str, str, float]])
                 new_weight = (row_rel[0] * 0.7) + (weight * 0.3)
                 cursor.execute(
                     """
-                    UPDATE entity_relations SET weight = ?, last_seen = ? 
+                    UPDATE entity_relations SET weight = ?, last_seen = ?
                     WHERE source_id = ? AND target_id = ? AND relation_type = ?
                     """,
                     (new_weight, now_str, src_id, tgt_id, relation_type),
@@ -289,7 +289,7 @@ def persist_pmi_relations(db_path: str, relations: list[tuple[str, str, float]])
                 # Insert new relation
                 cursor.execute(
                     """
-                    INSERT INTO entity_relations (source_id, target_id, relation_type, weight, first_seen, last_seen) 
+                    INSERT INTO entity_relations (source_id, target_id, relation_type, weight, first_seen, last_seen)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (src_id, tgt_id, relation_type, weight, now_str, now_str),

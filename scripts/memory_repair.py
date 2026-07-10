@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
 
 from scripts._python_bootstrap import ensure_repo_python
 from src.memory.maintenance.repair import *  # noqa: F401,F403
-from src.memory.maintenance.repair import main
+from src.memory.maintenance.repair_cli import main
 
 
 if __name__ == "__main__":
