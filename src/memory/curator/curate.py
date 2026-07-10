@@ -21,6 +21,10 @@ from src.memory.curator.entry_filter import (
     filter_curator_entries,
     is_trivial_curator_entry,
 )
+from src.memory.curator.context_retrieval import (
+    CuratorContextRetrieverProtocol,
+    HybridCuratorContextRetriever,
+)
 from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 from src.memory.operations._helpers import _get_memory_md_path
 
@@ -57,6 +61,41 @@ def _get_memory_context() -> str:
     except Exception:
         logger.exception("Failed to read MEMORY.md")
         return date_header
+
+
+def _format_provisional_context(entries: list[dict[str, str]], *, max_chars: int = 2500) -> str:
+    if not entries:
+        return ""
+    lines = ["PROVISIONAL EXTRACTIONS FROM THIS BATCH (not yet committed):"]
+    for entry in entries:
+        candidate = f"- {entry['key']}: {entry['value']}"
+        if len("\n".join([*lines, candidate])) > max_chars:
+            break
+        lines.append(candidate)
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _build_session_system_prompt(
+    relevant_context: str,
+    provisional_entries: list[dict[str, str]],
+) -> str:
+    blocks = [f"CURRENT DATE: {datetime.now().strftime('%Y-%m-%d %H:%M')}"]
+    if relevant_context:
+        blocks.append(f"EXISTING MEMORIES:\n{relevant_context}")
+    provisional = _format_provisional_context(provisional_entries)
+    if provisional:
+        blocks.append(provisional)
+    blocks.append(CURATOR_PROMPT)
+    return "\n\n".join(blocks)
+
+
+def _without_current_date_header(context: str) -> str:
+    lines = context.splitlines()
+    if lines and lines[0].startswith("CURRENT DATE:"):
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines.pop(0)
+    return "\n".join(lines).strip()
 
 
 # ── Dependency injection helpers ────────────────────────────────────
@@ -335,6 +374,7 @@ async def curate_sessions(
     days: int = 1,
     dry: bool = False,
     llm_call_fn: Optional[Callable[[str, str], str]] = None,
+    context_retriever: CuratorContextRetrieverProtocol | None = None,
 ) -> list[dict[str, str]]:
     """Read recent vectorized sessions and ask LLM to extract new info.
 
@@ -349,6 +389,11 @@ async def curate_sessions(
     sessions_db = _get_sessions_db_path()
     mem_db = _get_memory_db_path()
     catalog = None if dry else _get_processing_catalog()
+    if context_retriever is None:
+        context_retriever = HybridCuratorContextRetriever(
+            mem_db,
+            _get_memory_md_path(),
+        )
 
     conn = sqlite3.connect(sessions_db)
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
@@ -360,6 +405,7 @@ async def curate_sessions(
     conn.close()
 
     entries = []
+    provisional_entries: list[dict[str, str]] = []
     for sid, name in sessions:
         conn = sqlite3.connect(mem_db)
         texts = conn.execute(
@@ -382,7 +428,17 @@ async def curate_sessions(
             + prompt_body
             + "\n\nExtract new info or NO_NEW_INFO"
         )
-        digest = content_hash(prompt)
+        try:
+            relevant_context = await context_retriever.retrieve(
+                prompt_body,
+                session_id=sid,
+            )
+        except Exception:
+            logger.exception("Relevant memory retrieval failed for session %s", sid)
+            relevant_context = ""
+        if not relevant_context:
+            relevant_context = _without_current_date_header(_get_memory_context())
+        digest = content_hash(f"{prompt}\n\n{relevant_context}")
         if catalog and catalog.is_processed(
             source="session",
             source_key=sid,
@@ -408,11 +464,17 @@ async def curate_sessions(
             metadata={"texts": len(texts)},
         )
 
-        context = _get_memory_context()
-        system_prompt = f"EXISTING MEMORIES:\n{context}\n\n{CURATOR_PROMPT}" if context else CURATOR_PROMPT
+        system_prompt = _build_session_system_prompt(
+            relevant_context,
+            provisional_entries,
+        )
         try:
             resp = await llm_call_fn(system_prompt, prompt)
             parsed = [] if "NO_NEW_INFO" in resp else parse_resp(resp)
+            provisional_entries = _finalize_curator_entries(
+                [*provisional_entries, *parsed],
+                scope="session_batch",
+            )
             if catalog:
                 catalog.mark(
                     source="session",
@@ -538,6 +600,7 @@ async def curate_all(
     run_gardener: bool = True,
     run_tracer: bool = True,
     artifact_root: str | os.PathLike[str] | None = None,
+    context_retriever: CuratorContextRetrieverProtocol | None = None,
 ) -> dict[str, Any]:
     """Run full curation pipeline: Retention → Gardener → Tracer → Curator.
 
@@ -610,7 +673,14 @@ async def curate_all(
     # Step 3: Existing curator
     entries: list[dict[str, str]] = []
     entries.extend(await curate_clusters(dry=dry, llm_call_fn=llm_call_fn))
-    entries.extend(await curate_sessions(days=1, dry=dry, llm_call_fn=llm_call_fn))
+    entries.extend(
+        await curate_sessions(
+            days=1,
+            dry=dry,
+            llm_call_fn=llm_call_fn,
+            context_retriever=context_retriever,
+        )
+    )
     entries = _finalize_curator_entries(entries, scope="combined")
 
     if entries:

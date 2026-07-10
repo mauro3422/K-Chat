@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 from pathlib import Path
 
@@ -123,3 +124,48 @@ def test_strict_prompt_variant_adds_canonical_contract() -> None:
     assert "at most 4 items" in prompt
     assert "lowercase kebab-case" in prompt
     assert "exactly NO_NEW_INFO" in prompt
+
+
+def test_contextual_run_injects_provisional_entries(monkeypatch) -> None:
+    module = load_module()
+    system_prompts: list[str] = []
+
+    async def fake_call(system: str, _user: str, _model: str, _temperature: float):
+        system_prompts.append(system)
+        entries = []
+        if len(system_prompts) == 1:
+            entries = [{"key": "decision:first", "value": "2026-07-10 12:00 | First fact."}]
+        return {
+            "ok": True,
+            "elapsed_ms": 1,
+            "parsed_entries": entries,
+            "kept_entries": entries,
+            "filter_stats": {"trivial": 0, "invalid_category": 0, "duplicates": 0},
+        }
+
+    monkeypatch.setattr(module, "_run_call", fake_call)
+    bundle = {
+        "bundle_id": "bundle",
+        "current_date": "2026-07-10 12:00",
+        "curator_prompt": "CURATE",
+        "system_prompt": "BASE",
+        "cases": [
+            {"case_id": "one", "prompt": "one", "relevant_context": "known one"},
+            {"case_id": "two", "prompt": "two", "relevant_context": "known two"},
+        ],
+    }
+
+    asyncio.run(
+        module.run_bundle(
+            bundle,
+            model="model",
+            repeats=1,
+            node="node",
+            prompt_variant="contextual",
+        )
+    )
+
+    assert "known one" in system_prompts[0]
+    assert "decision:first" not in system_prompts[0]
+    assert "known two" in system_prompts[1]
+    assert "decision:first" in system_prompts[1]

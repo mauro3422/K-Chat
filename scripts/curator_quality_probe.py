@@ -73,6 +73,8 @@ def export_bundle(*, limit: int, days: int) -> dict[str, Any]:
     bundle = {
         "schema_version": 1,
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "current_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "curator_prompt": CURATOR_PROMPT,
         "system_prompt": f"EXISTING MEMORIES:\n{context}\n\n{CURATOR_PROMPT}",
         "cases": cases,
     }
@@ -105,6 +107,53 @@ def system_prompt_variant(system_prompt: str, variant: str) -> str:
         + "- Do not add bullets, headings, commentary, Markdown fences, or explanations.\n"
         + "- If no explicit durable fact exists, return exactly NO_NEW_INFO."
     )
+
+
+def _contextual_system_prompt(
+    bundle: dict[str, Any],
+    case: dict[str, Any],
+    provisional_entries: list[dict[str, Any]],
+    *,
+    strict: bool,
+) -> str:
+    blocks = [f"CURRENT DATE: {bundle.get('current_date') or datetime.now().strftime('%Y-%m-%d %H:%M')}"]
+    relevant_context = str(case.get("relevant_context") or "").strip()
+    if relevant_context:
+        blocks.append(f"EXISTING MEMORIES:\n{relevant_context}")
+    if provisional_entries:
+        lines = ["PROVISIONAL EXTRACTIONS FROM THIS BATCH (not yet committed):"]
+        lines.extend(
+            f"- {entry.get('key', '')}: {entry.get('value', '')}"
+            for entry in provisional_entries
+        )
+        blocks.append("\n".join(lines)[:2500])
+    blocks.append(str(bundle.get("curator_prompt") or "You are a memory curator."))
+    prompt = "\n\n".join(blocks)
+    return system_prompt_variant(prompt, "strict") if strict else prompt
+
+
+async def enrich_bundle_context(
+    bundle: dict[str, Any],
+    retriever: Any | None = None,
+) -> dict[str, Any]:
+    if retriever is None:
+        from src.memory.curator.context_retrieval import HybridCuratorContextRetriever
+        from src.memory.memory_db_path import resolve_memory_db_path
+        from src.memory.operations._helpers import _get_memory_md_path
+
+        retriever = HybridCuratorContextRetriever(
+            resolve_memory_db_path(),
+            _get_memory_md_path(),
+        )
+    enriched = {**bundle, "cases": [dict(case) for case in bundle.get("cases", [])]}
+    for case in enriched["cases"]:
+        case["relevant_context"] = await retriever.retrieve(
+            str(case.get("prompt") or ""),
+            session_id=str(case.get("session_id") or ""),
+        )
+    enriched.pop("bundle_id", None)
+    enriched["bundle_id"] = _json_digest(enriched)[:16]
+    return enriched
 
 
 async def _run_call(system_prompt: str, user_prompt: str, model: str, temperature: float) -> dict[str, Any]:
@@ -182,17 +231,35 @@ async def run_bundle(
     prompt_variant: str = "baseline",
 ) -> dict[str, Any]:
     calls: list[dict[str, Any]] = []
-    system_prompt = system_prompt_variant(str(bundle["system_prompt"]), prompt_variant)
-    for case in bundle.get("cases", []):
-        for repeat in range(repeats):
+    contextual = prompt_variant in {"contextual", "contextual-strict"}
+    system_prompt = ""
+    if not contextual:
+        system_prompt = system_prompt_variant(str(bundle["system_prompt"]), prompt_variant)
+    for repeat in range(repeats):
+        provisional_entries: list[dict[str, Any]] = []
+        for case in bundle.get("cases", []):
+            call_system_prompt = system_prompt
+            if contextual:
+                call_system_prompt = _contextual_system_prompt(
+                    bundle,
+                    case,
+                    provisional_entries,
+                    strict=prompt_variant == "contextual-strict",
+                )
             result = await _run_call(
-                system_prompt,
+                call_system_prompt,
                 str(case["prompt"]),
                 model,
                 temperature,
             )
             result.update({"case_id": case["case_id"], "repeat": repeat})
             calls.append(result)
+            if contextual and result.get("kept_entries"):
+                from src.memory.curator.entry_filter import filter_curator_entries
+
+                provisional_entries, _ = filter_curator_entries(
+                    [*provisional_entries, *result["kept_entries"]]
+                )
     return {
         "schema_version": 1,
         "bundle_id": bundle.get("bundle_id", ""),
@@ -311,6 +378,10 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--limit", type=int, default=3)
     export.add_argument("--days", type=int, default=90)
 
+    enrich = subparsers.add_parser("enrich", help="Attach relevant canonical context to each frozen case.")
+    enrich.add_argument("--bundle", required=True)
+    enrich.add_argument("--output", required=True)
+
     run = subparsers.add_parser("run", help="Run a frozen bundle through one model.")
     run.add_argument("--bundle", required=True)
     run.add_argument("--output", required=True)
@@ -318,7 +389,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--model", default="deepseek-v4-flash")
     run.add_argument("--repeats", type=int, default=1)
     run.add_argument("--temperature", type=float, default=0.3)
-    run.add_argument("--prompt-variant", choices=("baseline", "strict"), default="baseline")
+    run.add_argument(
+        "--prompt-variant",
+        choices=("baseline", "strict", "contextual", "contextual-strict"),
+        default="baseline",
+    )
 
     compare = subparsers.add_parser("compare", help="Compare two runs of the same bundle.")
     compare.add_argument("left")
@@ -334,6 +409,21 @@ def main() -> int:
         _write_json(args.output, payload)
         print(json.dumps({"bundle_id": payload["bundle_id"], "cases": len(payload["cases"])}))
         return 0 if payload["cases"] else 2
+    if args.command == "enrich":
+        payload = asyncio.run(enrich_bundle_context(_read_json(args.bundle)))
+        _write_json(args.output, payload)
+        print(
+            json.dumps(
+                {
+                    "bundle_id": payload["bundle_id"],
+                    "cases": len(payload["cases"]),
+                    "context_chars": sum(
+                        len(str(case.get("relevant_context") or "")) for case in payload["cases"]
+                    ),
+                }
+            )
+        )
+        return 0
     if args.command == "run":
         payload = asyncio.run(
             run_bundle(

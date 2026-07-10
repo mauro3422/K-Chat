@@ -186,6 +186,72 @@ async def test_curate_sessions_skips_unchanged_cataloged_session(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_curate_sessions_injects_relevant_and_provisional_context(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    with sqlite3.connect(sessions_db) as conn:
+        conn.execute("CREATE TABLE sessions (session_id TEXT PRIMARY KEY, name TEXT, created_at TEXT)")
+        conn.executemany(
+            "INSERT INTO sessions (session_id, name, created_at) VALUES (?, ?, ?)",
+            [
+                ("s1", "First", "2026-07-10T12:00:00"),
+                ("s2", "Second", "2026-07-10T13:00:00"),
+            ],
+        )
+    with sqlite3.connect(memory_db) as conn:
+        conn.execute(
+            "CREATE TABLE vec_meta (rowid INTEGER PRIMARY KEY, source TEXT, source_key TEXT, exchange_idx INTEGER, text TEXT)"
+        )
+        conn.executemany(
+            "INSERT INTO vec_meta (source, source_key, exchange_idx, text) VALUES ('session', ?, 1, ?)",
+            [
+                ("s1", "Mauro reported a durable db query problem that needs investigation."),
+                ("s2", "Mauro decided to add retry diagnostics to the system prompt."),
+            ],
+        )
+
+    class FakeContextRetriever:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+
+        async def retrieve(self, query: str, *, session_id: str = "") -> str:
+            self.calls.append((query, session_id))
+            return f"known-context-for-{session_id}"
+
+    retriever = FakeContextRetriever()
+    system_prompts: list[str] = []
+
+    async def llm_call(system: str, _user: str) -> str:
+        system_prompts.append(system)
+        if len(system_prompts) == 1:
+            return "KEY: decision:add-retry-diagnostics\nVALUE: 2026-07-10 13:00 | Add retry diagnostics."
+        return "NO_NEW_INFO"
+
+    with (
+        patch("src.memory.curator.curate._get_sessions_db_path", return_value=str(sessions_db)),
+        patch("src.memory.curator.curate._get_memory_db_path", return_value=str(memory_db)),
+    ):
+        entries = await curate.curate_sessions(
+            days=1,
+            dry=False,
+            llm_call_fn=llm_call,
+            context_retriever=retriever,
+        )
+
+    assert [session_id for _, session_id in retriever.calls] == ["s2", "s1"]
+    assert "known-context-for-s2" in system_prompts[0]
+    assert system_prompts[0].count("CURRENT DATE:") == 1
+    assert "PROVISIONAL EXTRACTIONS FROM THIS BATCH" not in system_prompts[0]
+    assert "decision:add-retry-diagnostics" in system_prompts[1]
+    assert entries == [
+        {
+            "key": "decision:add-retry-diagnostics",
+            "value": "2026-07-10 13:00 | Add retry diagnostics.",
+        }
+    ]
+
+
+@pytest.mark.anyio
 async def test_curate_clusters_skips_unchanged_cataloged_cluster(tmp_path):
     memory_db = tmp_path / "memory.db"
     conn = sqlite3.connect(memory_db)
