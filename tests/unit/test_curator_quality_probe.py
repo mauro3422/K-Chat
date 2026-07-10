@@ -112,3 +112,14 @@ def test_repeat_consistency_compares_repeated_cases() -> None:
 
     assert consistency["repeat_pairs"] == 2
     assert consistency["key_token_similarity_mean"] == 0.5
+
+
+def test_strict_prompt_variant_adds_canonical_contract() -> None:
+    module = load_module()
+
+    prompt = module.system_prompt_variant("base", "strict")
+
+    assert prompt.startswith("base")
+    assert "at most 4 items" in prompt
+    assert "lowercase kebab-case" in prompt
+    assert "exactly NO_NEW_INFO" in prompt

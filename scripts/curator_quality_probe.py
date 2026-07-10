@@ -89,6 +89,24 @@ def _response_content(response: Any) -> str:
     return str(response or "")
 
 
+def system_prompt_variant(system_prompt: str, variant: str) -> str:
+    if variant == "baseline":
+        return system_prompt
+    if variant != "strict":
+        raise ValueError(f"unknown prompt variant: {variant}")
+    return (
+        system_prompt
+        + "\n\nSTRICT OUTPUT CONTRACT:\n"
+        + "- Return at most 4 items and only facts explicitly supported by the exchanges.\n"
+        + "- Never infer status, causality, completion, dates, or intent.\n"
+        + "- Prefer decisions, confirmed bugs, durable user preferences, and active projects.\n"
+        + "- Use one canonical lowercase kebab-case key per fact, without spaces or underscores.\n"
+        + "- Emit exactly two lines per item: KEY: <category:slug> then VALUE: <timestamp | fact>.\n"
+        + "- Do not add bullets, headings, commentary, Markdown fences, or explanations.\n"
+        + "- If no explicit durable fact exists, return exactly NO_NEW_INFO."
+    )
+
+
 async def _run_call(system_prompt: str, user_prompt: str, model: str, temperature: float) -> dict[str, Any]:
     from src.llm.client import chat
     from src.memory.curator.curate import parse_resp
@@ -158,12 +176,14 @@ async def run_bundle(
     repeats: int,
     node: str,
     temperature: float = 0.3,
+    prompt_variant: str = "baseline",
 ) -> dict[str, Any]:
     calls: list[dict[str, Any]] = []
+    system_prompt = system_prompt_variant(str(bundle["system_prompt"]), prompt_variant)
     for case in bundle.get("cases", []):
         for repeat in range(repeats):
             result = await _run_call(
-                str(bundle["system_prompt"]),
+                system_prompt,
                 str(case["prompt"]),
                 model,
                 temperature,
@@ -176,6 +196,7 @@ async def run_bundle(
         "node": node,
         "model": model,
         "temperature": temperature,
+        "prompt_variant": prompt_variant,
         "repeats": repeats,
         "summary": summarize_results(calls),
         "calls": calls,
@@ -294,6 +315,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--model", default="deepseek-v4-flash")
     run.add_argument("--repeats", type=int, default=1)
     run.add_argument("--temperature", type=float, default=0.3)
+    run.add_argument("--prompt-variant", choices=("baseline", "strict"), default="baseline")
 
     compare = subparsers.add_parser("compare", help="Compare two runs of the same bundle.")
     compare.add_argument("left")
@@ -317,6 +339,7 @@ def main() -> int:
                 repeats=max(1, args.repeats),
                 node=args.node,
                 temperature=args.temperature,
+                prompt_variant=args.prompt_variant,
             )
         )
         _write_json(args.output, payload)
