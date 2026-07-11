@@ -11,4 +11,3 @@ def max_tool_turns(config=None):
 
 
 # Backward compat — module-level constant
-MAX_TOOL_TURNS = max_tool_turns()

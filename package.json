@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:critical": "tsc --noEmit 2>&1 | grep -E '(ModelSelector|RetryHandler|NDJSONStream|StreamOrchestrator|SSEClient|ChatForm|app\\.ts)' && echo '❌ CRITICAL TYPE ERRORS FOUND' && exit 1 || echo '✅ No critical type errors'",
     "preview": "vite preview",
-    "lint": "eslint web/static/**/*.js",
+    "lint": "eslint web/static --ext .js --no-error-on-unmatched-pattern",
     "lint:fix": "eslint web/static/**/*.js --fix",
     "test:js": "vitest run",
     "test:ts": "vitest run --config vitest.ts.config.js",

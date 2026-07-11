@@ -164,16 +164,3 @@ def get_templates(config=None):
             - **ASR Transcription Handling**: Los mensajes que empiezan con 🎤 son transcripciones de voz ASR. Interpretalos con pinzas — no asumas que el texto es literal, especialmente con código, paréntesis, signos y palabras técnicas.
         """),
     }
-
-
-TEMPLATES = get_templates()
-
-
-def reset_templates_cache(config=None) -> None:
-    """Refresh the exported template cache.
-
-    This keeps callers that still import TEMPLATES working while
-    lifecycle code rebuilds the cached mapping after config resets.
-    """
-    global TEMPLATES
-    TEMPLATES = get_templates(config=config)

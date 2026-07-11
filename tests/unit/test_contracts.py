@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import json
 from unittest.mock import MagicMock, patch
 
-from src.constants import MAX_TOOL_TURNS, TOOL_OUTPUT_CHUNK_SIZE, max_tool_turns
+from src.constants import TOOL_OUTPUT_CHUNK_SIZE, max_tool_turns
 from src.core.tool_loop import _ToolLoopContext
 from web.services.chat_stream import build_stream_generator
 
@@ -17,8 +17,7 @@ def _bg_tasks():
 @pytest.mark.anyio
 async def test_tool_loop_default_turns_match_shared_constant():
     ctx = _ToolLoopContext(history=[], model="m")
-    assert ctx.max_turns == MAX_TOOL_TURNS
-    assert MAX_TOOL_TURNS == max_tool_turns()
+    assert ctx.max_turns == max_tool_turns()
 
 
 

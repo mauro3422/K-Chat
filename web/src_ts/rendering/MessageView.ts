@@ -41,10 +41,11 @@ export class MessageView implements IMessageView {
   /** Append a fully-formed message (from history) */
   appendMessage(msg: MessageData): HTMLElement | null {
     if (!this.containerEl) return null;
+    const container = this.containerEl;
     this.logger.info('append', `role=${msg.role} hasReasoning=${!!msg.reasoning} tools=${(msg.matched_tools||[]).length} phases=${(msg.phases||[]).length}`);
 
     // Remove empty state if present
-    const emptyState = this.containerEl.querySelector('.' + C.EMPTY_STATE);
+    const emptyState = container.querySelector('.' + C.EMPTY_STATE);
     if (emptyState) emptyState.remove();
 
     const msgEl = document.createElement('div');
@@ -54,11 +55,11 @@ export class MessageView implements IMessageView {
 
     this._renderMessageContent(msgEl, msg);
 
-    this.containerEl.appendChild(msgEl);
+    container.appendChild(msgEl);
 
     // Always scroll to show the user's own message
     if (msg.role === 'user') {
-      requestAnimationFrame(() => { this.containerEl.scrollTop = this.containerEl.scrollHeight; });
+      requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
     }
 
     return msgEl;
@@ -67,9 +68,10 @@ export class MessageView implements IMessageView {
   /** Create an empty streaming bubble — ContentHandler will fill it */
   beginStreaming(role: 'user' | 'assistant'): HTMLElement | null {
     if (!this.containerEl) return null;
+    const container = this.containerEl;
     this.logger.info('begin_streaming', `role=${role}`);
 
-    const emptyState = this.containerEl.querySelector('.' + C.EMPTY_STATE);
+    const emptyState = container.querySelector('.' + C.EMPTY_STATE);
     if (emptyState) emptyState.remove();
 
     const msgEl = document.createElement('div');
@@ -88,9 +90,9 @@ export class MessageView implements IMessageView {
       msgEl.appendChild(body);
     }
 
-    this.containerEl.appendChild(msgEl);
+    container.appendChild(msgEl);
     // Scroll to show response starts (unconditional)
-    requestAnimationFrame(() => { this.containerEl.scrollTop = this.containerEl.scrollHeight; });
+    requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
     msgEl.dataset.msgId = 'live';
 
     return msgEl;

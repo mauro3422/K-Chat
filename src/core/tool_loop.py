@@ -1,7 +1,7 @@
 ﻿import logging
 import json
 from collections.abc import AsyncGenerator, Callable, Awaitable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
@@ -50,7 +50,7 @@ class _ToolLoopContext:
     run_parallel_tools_fn: Callable[..., Any] | None = None
     tool_map: dict[str, Any] | None = None
     repos: 'Repositories | None' = None
-    max_turns: int = max_tool_turns()
+    max_turns: int = field(default_factory=max_tool_turns)
     llm_chat_fn: Callable[..., Any] | None = None
     llm_chat_stream_fn: Callable[..., Any] | None = None
     tool_defs: list[dict[str, Any]] | None = None
@@ -264,7 +264,7 @@ async def run_tool_loop_streaming(
     tool_detail: list[dict[str, Any]],
     run_parallel_tools_fn: Any,
     tool_map: dict[str, Any],
-    max_turns: int = max_tool_turns(),
+    max_turns: int | None = None,
     repos: 'Repositories | None' = None,
     llm_chat_fn: Callable[..., Any] | None = None,
     llm_chat_stream_fn: Callable[..., Any] | None = None,
@@ -275,7 +275,8 @@ async def run_tool_loop_streaming(
     ctx = _build_ctx(
         history, model, session_id, tagged, debug, phases_output,
         used_tools, tool_detail, run_parallel_tools_fn, tool_map,
-        max_turns, repos, llm_chat_fn, llm_chat_stream_fn, tool_defs,
+        max_turns if max_turns is not None else max_tool_turns(),
+        repos, llm_chat_fn, llm_chat_stream_fn, tool_defs,
         skill_registry=skill_registry,
     )
     async for event in _run_tool_loop(ctx):
@@ -293,7 +294,7 @@ async def run_tool_loop_sync(
     tool_detail: list[dict[str, Any]],
     run_parallel_tools_fn: Any,
     tool_map: dict[str, Any],
-    max_turns: int = max_tool_turns(),
+    max_turns: int | None = None,
     repos: 'Repositories | None' = None,
     llm_chat_fn: Callable[..., Any] | None = None,
     llm_chat_stream_fn: Callable[..., Any] | None = None,
@@ -312,7 +313,8 @@ async def run_tool_loop_sync(
     ctx = _build_ctx(
         history, model, session_id, tagged, debug, phases_output,
         used_tools, tool_detail, run_parallel_tools_fn, tool_map,
-        max_turns + 1, repos, llm_chat_fn, llm_chat_stream_fn, tool_defs,
+        (max_turns if max_turns is not None else max_tool_turns()) + 1,
+        repos, llm_chat_fn, llm_chat_stream_fn, tool_defs,
         skill_registry=skill_registry,
     )
 

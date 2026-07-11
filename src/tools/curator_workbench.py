@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 
@@ -140,6 +141,12 @@ DEFINITION: dict[str, Any] = {
                     "description": "Graph depth, max 5.",
                     "default": 1,
                 },
+                "known_entities": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional known entities used to enrich recall graph context.",
+                    "default": [],
+                },
             },
         },
     },
@@ -180,6 +187,18 @@ def _root(kwargs: dict[str, Any]) -> str | None:
 def _path(kwargs: dict[str, Any]) -> str | None:
     path = str(kwargs.get("path") or "").strip()
     return path or None
+
+
+def _build_current_curator_plan(root: str | None) -> dict[str, Any]:
+    """Build the interactive curator queue for today's persisted artifacts.
+
+    The scheduled morning report intentionally targets yesterday before 04:00,
+    but interactive curator actions must see items written during the current
+    calendar day.
+    """
+    from src.memory.synthesis.morning_plan import build_morning_plan
+
+    return build_morning_plan(root=root, target_date=date.today())
 
 
 def _format_card(card: dict[str, Any]) -> str:
@@ -431,7 +450,6 @@ async def run(**kwargs) -> str:
             if not query:
                 return "[ERROR] query is required."
             from src.tools.recall_memories import run as recall_run
-            from src.memory.synthesis.morning_plan import build_morning_plan
             from src.memory.retrieval.graph_context import semantic_relation_hints
 
             source = str(kwargs.get("source") or "")
@@ -457,7 +475,7 @@ async def run(**kwargs) -> str:
                     [result for result in recall_results if result.fusion_score >= min_score],
                     max_hints=min(limit, 5),
                 )
-            plan = build_morning_plan(root=_root(kwargs))
+            plan = _build_current_curator_plan(_root(kwargs))
             actions = list(plan.get("actions") or [])[: min(limit, 5)]
             lines = [
                 f"## Recall packet `{query}`",
@@ -501,7 +519,6 @@ async def run(**kwargs) -> str:
             "audit_weight_policy",
             "audit_weight_policy_suite",
         }:
-            from src.memory.synthesis.morning_plan import build_morning_plan
             from src.memory.retrieval.source_policy import (
                 approve_weight_policy_draft,
                 build_weight_policy_draft,
@@ -625,7 +642,7 @@ async def run(**kwargs) -> str:
                 ]
                 return "\n".join(lines)
 
-            plan = build_morning_plan(root=_root(kwargs))
+            plan = _build_current_curator_plan(_root(kwargs))
             recommendations = list(plan.get("weight_recommendations") or [])
             actionable = [item for item in recommendations if float(item.get("delta") or 0.0) != 0.0]
             draft = (
@@ -667,9 +684,7 @@ async def run(**kwargs) -> str:
             return "\n".join(lines)
 
         if action == "queue":
-            from src.memory.synthesis.morning_plan import build_morning_plan
-
-            plan = build_morning_plan(root=_root(kwargs))
+            plan = _build_current_curator_plan(_root(kwargs))
             actions = list(plan.get("actions") or [])[:limit]
             if not actions:
                 return "No curator queue items found."
@@ -682,10 +697,8 @@ async def run(**kwargs) -> str:
             return "\n".join(lines)
 
         if action == "runbook":
-            from src.memory.synthesis.morning_plan import build_morning_plan
-
             return _render_curator_runbook(
-                build_morning_plan(root=_root(kwargs)),
+                _build_current_curator_plan(_root(kwargs)),
                 limit,
                 item_id=str(kwargs.get("item_id") or "").strip(),
             )

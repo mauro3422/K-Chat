@@ -39,12 +39,6 @@ def reset_runtime_state() -> None:
         logger.warning("Failed to reset context cache", exc_info=True)
 
     try:
-        from src.context.templates import reset_templates_cache
-        reset_templates_cache()
-    except Exception:
-        logger.warning("Failed to reset templates cache", exc_info=True)
-
-    try:
         from src.config_loader import reset_dotenv_state
         reset_dotenv_state()
     except Exception:

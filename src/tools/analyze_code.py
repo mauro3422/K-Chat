@@ -485,10 +485,12 @@ def _build_analysis_output(
 
     if find_dups or cross_ref:
         from src.tools._cross_analyzer import context_report as _ctx
-        src_root = os.path.dirname(os.path.dirname(path))
-        if os.path.isdir(src_root):
-            ctx = _ctx(target_path=path, root=src_root,
-                       find_duplicates_flag=find_dups, cross_reference_flag=cross_ref)
+        if os.path.isdir(os.path.dirname(os.path.dirname(path))):
+            ctx = _ctx(
+                path=path,
+                find_duplicates=find_dups,
+                cross_reference_flag=cross_ref,
+            )
             if ctx.strip():
                 output.append(ctx)
 

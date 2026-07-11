@@ -256,14 +256,14 @@ def filter_duplicates(
 def context_report(
     path: str = "",
     find_duplicates: bool = False,
-    cross_reference: bool = False,
+    cross_reference_flag: bool = False,
 ) -> str:
     """Genera un reporte de contexto legible para el asistente.
 
     Args:
         path: Ruta del archivo a analizar (para cross_reference).
         find_duplicates: Si True, busca duplicados estructurales.
-        cross_reference: Si True, busca referencias cruzadas desde path.
+        cross_reference_flag: Si True, busca referencias cruzadas desde path.
 
     Returns:
         Texto formateado para mostrar al usuario.
@@ -287,7 +287,7 @@ def context_report(
         else:
             lines.append("📋 NO se encontraron duplicados estructurales significativos.")
 
-    if cross_reference and path:
+    if cross_reference_flag and path:
         refs = cross_reference(path)
         if refs:
             if find_duplicates:

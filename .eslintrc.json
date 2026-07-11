@@ -34,6 +34,8 @@
     "no-extra-semi": "warn"
   },
   "ignorePatterns": [
+    "web/static/dist/**",
+    "web/static/htmx.min.js",
     "web/static/marked.min.js",
     "web/static/purify.min.js",
     "web/static/test-widgets.html"
