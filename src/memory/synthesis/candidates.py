@@ -88,17 +88,10 @@ def _candidate_entity_hints(lines: list[str], artifact: Mapping[str, Any]) -> li
             }
         )
 
-    pmi_entities = artifact.get("metadata", {}).get("pmi_entities", [])
-    for pmi_ent in pmi_entities:
-        if not any(item["name"] == pmi_ent for item in entities):
-            entities.append(
-                {
-                    "name": pmi_ent,
-                    "entity_type": "concept",
-                    "confidence": 0.8,
-                    "evidence": "pmi_extraction",
-                }
-            )
+    # PMI is a corpus-level coherence signal, not an entity extractor.  Its
+    # vocabulary also contains UI labels, code identifiers and test fixtures;
+    # promoting every PMI token into a graph node creates noisy connections.
+    # Keep the metadata for diagnostics, but only emit the curated hints above.
 
     return entities
 
