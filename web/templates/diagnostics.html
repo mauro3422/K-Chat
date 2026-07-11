@@ -197,6 +197,28 @@
     .curator-card-value { margin: 8px 0; font-size: 12px; line-height: 1.45; }
     .curator-card-actions { display: flex; gap: 6px; }
     .curator-card-actions .diag-btn { padding: 4px 8px; }
+    .curator-guide {
+      background: rgba(0, 255, 153, 0.05);
+      border: 1px solid rgba(0, 255, 153, 0.18);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .curator-guide strong { color: var(--text-primary); }
+    .curator-guide ol { margin: 8px 0 0 18px; padding: 0; }
+    .curator-guide li { margin: 3px 0; }
+    .curator-phase {
+      display: inline-block;
+      color: var(--border-accent);
+      border: 1px solid rgba(0, 255, 153, 0.28);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 10px;
+      margin-left: 6px;
+    }
     @media (max-width: 800px) { .curator-stats { grid-template-columns: repeat(2, 1fr); } }
 
     /* Grilla de detalles secundaria */
@@ -459,6 +481,7 @@
     <section class="diag-card" id="curator-dashboard">
       <h2>
         Curador y candidatos
+        <span class="curator-phase">revisión humana</span>
         <div class="curator-toolbar">
           <select id="curator-status-filter" class="diag-btn" aria-label="Filtrar candidatos">
             <option value="">Todos</option>
@@ -471,6 +494,16 @@
           <button class="diag-btn diag-btn-primary" type="button" data-curator-run>Ejecutar pruebas</button>
         </div>
       </h2>
+      <div class="curator-guide">
+        <strong>¿Qué estás haciendo acá?</strong>
+        Este panel controla la calidad de la memoria, no es el chat.
+        <ol>
+          <li><strong>Ejecutar pruebas</strong> compara las dos PCs y no modifica memorias.</li>
+          <li>Leé cada candidato: decidí si aporta un recuerdo real y duradero.</li>
+          <li><strong>Promover</strong> lo guarda como decisión positiva; <strong>Rechazar</strong> lo marca como ruido; <strong>Aplazar</strong> lo deja para después.</li>
+        </ol>
+        <div style="margin-top: 7px;">La similitud PC/Laptop mide acuerdo entre salidas; no es una precisión aprobada por humanos.</div>
+      </div>
       <div class="curator-stats">
         <div class="curator-stat"><strong id="curator-count">—</strong><span>Candidatos</span></div>
         <div class="curator-stat"><strong id="curator-promote">—</strong><span>Promover</span></div>
@@ -869,16 +902,18 @@
         const left = quality.left_summary || {};
         const right = quality.right_summary || {};
         document.getElementById('curator-quality-detail').textContent = quality.bundle_id
-          ? `Última comparación: ${left.successful || 0}/${left.calls || 0} PC · ${right.successful || 0}/${right.calls || 0} laptop · fallbacks ${left.fallback_calls || 0}/${right.fallback_calls || 0}`
+          ? `Última comparación: ${left.successful || 0}/${left.calls || 0} PC · ${right.successful || 0}/${right.calls || 0} laptop · fallbacks ${left.fallback_calls || 0}/${right.fallback_calls || 0} · latencia media ${left.latency_mean_ms || 0}/${right.latency_mean_ms || 0} ms`
           : 'Sin comparación PC/laptop cargada.';
         const container = document.getElementById('curator-cards');
         container.innerHTML = cards.length ? cards.map(candidate => {
           const id = escapeHtml(candidate.candidate_id || '');
           const actionButtons = ['promote', 'reject', 'defer'].map(action => `<button class="diag-btn" data-candidate-id="${id}" data-candidate-action="${action}">${action === 'promote' ? 'Promover' : action === 'reject' ? 'Rechazar' : 'Aplazar'}</button>`).join('');
+          const readable = String(candidate.value || candidate.query || 'Sin detalle')
+            .replace(/\*\*/g, '').replace(/^\s*[-#]\s*/gm, '').replace(/\s+/g, ' ').trim();
           return `<article class="curator-card">
-            <div class="curator-card-head"><span class="curator-card-key">${escapeHtml(candidate.candidate_id || candidate.type || 'candidato')}</span><span class="curator-card-meta">${escapeHtml(candidate.status || 'pending')} · score ${Number(candidate.score || 0).toFixed(3)}</span></div>
-            <div class="curator-card-meta">${escapeHtml(candidate.source || '')} · recomendación: ${escapeHtml(candidate.recommendation || '—')}</div>
-            <div class="curator-card-value">${escapeHtml(candidate.value || candidate.query || 'Sin detalle')}</div>
+            <div class="curator-card-head"><span class="curator-card-key">${escapeHtml(candidate.type || 'candidato')}</span><span class="curator-card-meta">${escapeHtml(candidate.status || 'pending')} · score ${Number(candidate.score || 0).toFixed(3)}</span></div>
+            <div class="curator-card-meta">ID ${escapeHtml(candidate.candidate_id || '—')} · ${escapeHtml(candidate.source || '')} · recomendación: ${escapeHtml(candidate.recommendation || '—')}</div>
+            <div class="curator-card-value"><strong>Detalle:</strong> ${escapeHtml(readable)}</div>
             <div class="curator-card-actions">${actionButtons}</div>
           </article>`;
         }).join('') : '<div class="diag-muted">No hay candidatos para este filtro.</div>';
@@ -905,6 +940,8 @@
         const candidateAction = btn.getAttribute('data-candidate-action');
         if (candidateId && candidateAction) {
           try {
+            const labels = { promote: 'promover', reject: 'rechazar', defer: 'aplazar' };
+            if (!window.confirm(`¿Querés ${labels[candidateAction] || candidateAction} este candidato?`)) return;
             await postJson(`/api/diagnostics/curator/${encodeURIComponent(candidateId)}/decision?action=${encodeURIComponent(candidateAction)}`, {});
             setStatus(`Candidato ${candidateAction}.`);
             await loadCuratorDashboard();
