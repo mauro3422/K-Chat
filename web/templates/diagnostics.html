@@ -164,6 +164,41 @@
     .diag-btn-warn { color: #f5c542; }
     .diag-btn-danger { color: #ff5c5c; }
 
+    .curator-toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .curator-stats {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .curator-stat {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .curator-stat strong { display: block; font-size: 18px; color: var(--border-accent); }
+    .curator-stat span { color: var(--text-muted); font-size: 10px; }
+    .curator-cards { display: grid; gap: 8px; }
+    .curator-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      padding: 12px;
+    }
+    .curator-card-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .curator-card-key { color: var(--border-accent); font-family: monospace; font-size: 12px; }
+    .curator-card-meta { color: var(--text-muted); font-size: 10px; }
+    .curator-card-value { margin: 8px 0; font-size: 12px; line-height: 1.45; }
+    .curator-card-actions { display: flex; gap: 6px; }
+    .curator-card-actions .diag-btn { padding: 4px 8px; }
+    @media (max-width: 800px) { .curator-stats { grid-template-columns: repeat(2, 1fr); } }
+
     /* Grilla de detalles secundaria */
     .diag-grid-secondary {
       display: grid;
@@ -420,6 +455,32 @@
         </ul>
       </article>
     </div>
+
+    <section class="diag-card" id="curator-dashboard">
+      <h2>
+        Curador y candidatos
+        <div class="curator-toolbar">
+          <select id="curator-status-filter" class="diag-btn" aria-label="Filtrar candidatos">
+            <option value="">Todos</option>
+            <option value="pending">Pendientes</option>
+            <option value="ready_for_promotion">Listos</option>
+            <option value="promoted">Promovidos</option>
+            <option value="rejected">Rechazados</option>
+          </select>
+          <button class="diag-btn" type="button" data-curator-refresh>Actualizar</button>
+          <button class="diag-btn diag-btn-primary" type="button" data-curator-run>Ejecutar pruebas</button>
+        </div>
+      </h2>
+      <div class="curator-stats">
+        <div class="curator-stat"><strong id="curator-count">—</strong><span>Candidatos</span></div>
+        <div class="curator-stat"><strong id="curator-promote">—</strong><span>Promover</span></div>
+        <div class="curator-stat"><strong id="curator-review">—</strong><span>Revisar</span></div>
+        <div class="curator-stat"><strong id="curator-quality">—</strong><span>Similitud PC/Laptop</span></div>
+        <div class="curator-stat"><strong id="curator-test-status">—</strong><span>Última prueba</span></div>
+      </div>
+      <div class="diag-muted" id="curator-quality-detail">Sin corrida cargada.</div>
+      <div class="curator-cards" id="curator-cards" style="margin-top: 12px;"></div>
+    </section>
 
     <!-- Pestaña oculta para visualización remota de peers -->
     <div class="diag-remote" id="diag-remote">
@@ -790,10 +851,75 @@
         return data;
       }
 
+      async function loadCuratorDashboard() {
+        const status = document.getElementById('curator-status-filter')?.value || '';
+        const url = `/api/diagnostics/curator?limit=60&status=${encodeURIComponent(status)}`;
+        const resp = await fetch(url, { cache: 'no-store' });
+        const data = await resp.json();
+        if (!resp.ok || data.ok === false) throw new Error(data.detail || data.error || `HTTP ${resp.status}`);
+        document.getElementById('curator-count').textContent = data.candidate_count ?? 0;
+        const cards = data.candidates || [];
+        document.getElementById('curator-promote').textContent = cards.filter(c => c.recommendation === 'promote').length;
+        document.getElementById('curator-review').textContent = cards.filter(c => ['enrich', 'review_contradiction', 'complete_metadata'].includes(c.recommendation)).length;
+        const quality = data.quality || {};
+        const tokenSimilarity = quality.key_token_similarity_mean;
+        document.getElementById('curator-quality').textContent = tokenSimilarity == null ? '—' : `${Math.round(Number(tokenSimilarity) * 100)}%`;
+        const job = data.test_job || {};
+        document.getElementById('curator-test-status').textContent = job.status || 'idle';
+        const left = quality.left_summary || {};
+        const right = quality.right_summary || {};
+        document.getElementById('curator-quality-detail').textContent = quality.bundle_id
+          ? `Última comparación: ${left.successful || 0}/${left.calls || 0} PC · ${right.successful || 0}/${right.calls || 0} laptop · fallbacks ${left.fallback_calls || 0}/${right.fallback_calls || 0}`
+          : 'Sin comparación PC/laptop cargada.';
+        const container = document.getElementById('curator-cards');
+        container.innerHTML = cards.length ? cards.map(candidate => {
+          const id = escapeHtml(candidate.candidate_id || '');
+          const actionButtons = ['promote', 'reject', 'defer'].map(action => `<button class="diag-btn" data-candidate-id="${id}" data-candidate-action="${action}">${action === 'promote' ? 'Promover' : action === 'reject' ? 'Rechazar' : 'Aplazar'}</button>`).join('');
+          return `<article class="curator-card">
+            <div class="curator-card-head"><span class="curator-card-key">${escapeHtml(candidate.candidate_id || candidate.type || 'candidato')}</span><span class="curator-card-meta">${escapeHtml(candidate.status || 'pending')} · score ${Number(candidate.score || 0).toFixed(3)}</span></div>
+            <div class="curator-card-meta">${escapeHtml(candidate.source || '')} · recomendación: ${escapeHtml(candidate.recommendation || '—')}</div>
+            <div class="curator-card-value">${escapeHtml(candidate.value || candidate.query || 'Sin detalle')}</div>
+            <div class="curator-card-actions">${actionButtons}</div>
+          </article>`;
+        }).join('') : '<div class="diag-muted">No hay candidatos para este filtro.</div>';
+      }
+
+      async function runCuratorTests() {
+        await postJson('/api/diagnostics/curator/run', {});
+        setStatus('Pruebas del curador iniciadas...');
+        const poll = async () => {
+          await loadCuratorDashboard();
+          const status = document.getElementById('curator-test-status').textContent;
+          if (status === 'running') window.setTimeout(poll, 1500);
+          else setStatus(`Pruebas finalizadas: ${status}`);
+        };
+        await poll();
+      }
+
       // Escuchar clicks de acciones en el header/resumen
       document.body.addEventListener('click', async (event) => {
-        const btn = event.target.closest('[data-action], [data-peer-url]');
+        const btn = event.target.closest('[data-action], [data-peer-url], [data-candidate-id], [data-curator-refresh], [data-curator-run]');
         if (!btn) return;
+
+        const candidateId = btn.getAttribute('data-candidate-id');
+        const candidateAction = btn.getAttribute('data-candidate-action');
+        if (candidateId && candidateAction) {
+          try {
+            await postJson(`/api/diagnostics/curator/${encodeURIComponent(candidateId)}/decision?action=${encodeURIComponent(candidateAction)}`, {});
+            setStatus(`Candidato ${candidateAction}.`);
+            await loadCuratorDashboard();
+          } catch (err) { setStatus(`Error: ${err.message}`); }
+          return;
+        }
+
+        if (btn.hasAttribute('data-curator-refresh')) {
+          try { await loadCuratorDashboard(); setStatus('Candidatos actualizados.'); } catch (err) { setStatus(`Error: ${err.message}`); }
+          return;
+        }
+        if (btn.hasAttribute('data-curator-run')) {
+          try { await runCuratorTests(); } catch (err) { setStatus(`Error: ${err.message}`); }
+          return;
+        }
 
         const peerUrl = btn.getAttribute('data-peer-url');
         const peerKind = btn.getAttribute('data-peer-kind') || 'diagnostics';
@@ -837,6 +963,11 @@
           setStatus(`Error: ${err && err.message ? err.message : err}`);
         }
       });
+
+      document.getElementById('curator-status-filter')?.addEventListener('change', () => {
+        loadCuratorDashboard().catch(err => setStatus(`Error: ${err.message}`));
+      });
+      loadCuratorDashboard().catch(err => setStatus(`Curador: ${err.message}`));
 
       // --- Inicialización y Listener de Capas ---
       let activeLayer = 'unified';
