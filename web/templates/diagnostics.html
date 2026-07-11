@@ -537,7 +537,6 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
   <script>
     (function() {
       const statusEl = document.getElementById('diag-status');
@@ -912,7 +911,7 @@
           edgeGroup.appendChild(line);
         });
         svg.appendChild(edgeGroup);
-        nodes.forEach(node => {
+        byId.forEach(node => {
           const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           circle.setAttribute('cx', node.x); circle.setAttribute('cy', node.y);
