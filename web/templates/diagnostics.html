@@ -279,8 +279,14 @@
       font-family: monospace;
     }
     .graph-native-node circle { transition: r .18s ease, opacity .18s ease, stroke-width .18s ease; }
+    @keyframes graph-node-idle {
+      0%, 100% { opacity: .72; }
+      50% { opacity: 1; }
+    }
+    .graph-native-node circle { animation: graph-node-idle 3.8s ease-in-out infinite; }
     .graph-native-node.is-isolated circle { stroke: #f59e0b; stroke-width: 2; }
     .graph-native-edge { transition: opacity .18s ease, stroke-width .18s ease; }
+    @media (prefers-reduced-motion: reduce) { .graph-native-node circle { animation: none; } }
 
     /* Modal remotos */
     .diag-remote {
@@ -917,7 +923,8 @@
         const applyTransform = () => viewport.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
         const edgeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         const nodeEdgeMap = new Map();
-        (data.edges || []).slice(0, 300).forEach(edge => {
+        const edgeCap = (window.graphNodeLimit || 60) <= 60 ? 180 : 500;
+        (data.edges || []).slice(0, edgeCap).forEach(edge => {
           const source = byId.get(String(edge.source).toLowerCase());
           const target = byId.get(String(edge.target).toLowerCase());
           if (!source || !target) return;
@@ -939,7 +946,7 @@
           line.setAttribute('x1', line.__graphSource.x); line.setAttribute('y1', line.__graphSource.y);
           line.setAttribute('x2', line.__graphTarget.x); line.setAttribute('y2', line.__graphTarget.y);
         });
-        byId.forEach(node => {
+        byId.forEach((node, index) => {
           const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           group.setAttribute('class', `graph-native-node${(degree.get(String(node.id).toLowerCase()) || 0) === 0 ? ' is-isolated' : ''}`);
           const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -948,6 +955,7 @@
           circle.setAttribute('r', baseRadius);
           circle.setAttribute('fill', node.is_pmi ? '#f59e0b' : '#00ff99');
           circle.setAttribute('opacity', '.85');
+          circle.style.animationDelay = `${-((index % 19) * 0.2).toFixed(1)}s`;
           const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
           label.setAttribute('x', node.x + 8); label.setAttribute('y', node.y + 4);
           label.setAttribute('fill', '#b7c3d4'); label.setAttribute('font-size', '10');
