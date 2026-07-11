@@ -535,7 +535,7 @@
     </div>
   </div>
 
-  <script src="/static/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
   <script>
     (function() {
       const statusEl = document.getElementById('diag-status');
@@ -680,8 +680,18 @@
       // --- Lógica del Grafo D3 ---
       async function renderCerebroGraph(layer = 'unified') {
         const container = document.getElementById('graph-container');
-        const tooltip = document.getElementById('graph-tooltip');
         if (!container) return;
+
+        let tooltip = document.getElementById('graph-tooltip');
+        if (!tooltip) {
+          tooltip = document.createElement('div');
+          tooltip.id = 'graph-tooltip';
+          container.appendChild(tooltip);
+        }
+        if (!window.d3) {
+          container.innerHTML = '<div class="diag-muted" style="padding: 24px;">El visualizador del grafo no está disponible; el resto del diagnóstico sigue funcionando.</div>';
+          return;
+        }
 
         // Estilos del Tooltip
         tooltip.style.background = 'rgba(12, 13, 18, 0.85)';
