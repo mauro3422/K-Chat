@@ -381,6 +381,7 @@ def generate_session_summary_candidates(
     existing = load_candidates(path)
     by_id = {str(candidate.get("candidate_id")): dict(candidate) for candidate in existing}
     created = 0
+    refreshed = 0
 
     # Build scorer if not provided
     if scorer is None:
@@ -394,6 +395,15 @@ def generate_session_summary_candidates(
         ):
             cid = str(candidate.get("candidate_id") or "")
             if cid in by_id:
+                previous = by_id[cid]
+                merged = dict(candidate)
+                # Rebuild derived fields (entities, relations, confidence)
+                # while preserving any human decision already recorded.
+                for key in ("status", "promotion_decision", "decision", "created_at"):
+                    if key in previous:
+                        merged[key] = previous[key]
+                by_id[cid] = merged
+                refreshed += 1
                 continue
             new_candidates.append(candidate)
 
@@ -417,5 +427,6 @@ def generate_session_summary_candidates(
     return {
         "path": str(path),
         "created": created,
+        "refreshed": refreshed,
         "total": len(by_id),
     }

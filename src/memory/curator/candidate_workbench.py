@@ -52,16 +52,21 @@ def load_candidate_records(
 
     candidate_paths = [Path(path) for path in paths] if paths is not None else discover_candidate_files(root)
     records: list[dict[str, Any]] = []
-    seen_candidate_ids: set[str] = set()
+    seen_records: set[str] = set()
     for path in candidate_paths:
         for candidate in load_candidates(path):
             payload = dict(candidate)
             payload.setdefault("candidate_id", "")
             candidate_id = str(payload["candidate_id"]).strip()
-            if candidate_id and candidate_id in seen_candidate_ids:
+            session_id = str(payload.get("session_id") or "").strip()
+            artifact = str(payload.get("artifact") or payload.get("source_artifact") or "").strip()
+            if session_id and artifact:
+                dedupe_key = f"source:{payload.get('source', '')}|session:{session_id}|artifact:{artifact}"
+            else:
+                dedupe_key = f"candidate:{candidate_id}" if candidate_id else f"path:{path}:{len(records)}"
+            if dedupe_key in seen_records:
                 continue
-            if candidate_id:
-                seen_candidate_ids.add(candidate_id)
+            seen_records.add(dedupe_key)
             payload["_candidate_path"] = str(path)
             records.append(payload)
     return records
