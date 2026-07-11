@@ -195,6 +195,9 @@
     .curator-card-key { color: var(--border-accent); font-family: monospace; font-size: 12px; }
     .curator-card-meta { color: var(--text-muted); font-size: 10px; }
     .curator-card-value { margin: 8px 0; font-size: 12px; line-height: 1.45; }
+    .curator-fulltext { margin: 8px 0; border-top: 1px solid var(--border); padding-top: 8px; }
+    .curator-fulltext summary { color: var(--border-accent); cursor: pointer; font-size: 11px; }
+    .curator-fulltext pre { white-space: pre-wrap; max-height: 420px; overflow: auto; color: var(--text-muted); font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; margin: 8px 0 0; }
     .curator-card-actions { display: flex; gap: 6px; }
     .curator-card-actions .diag-btn { padding: 4px 8px; }
     .curator-guide {
@@ -503,6 +506,7 @@
           <li><strong>Promover</strong> lo guarda como decisión positiva; <strong>Rechazar</strong> lo marca como ruido; <strong>Aplazar</strong> lo deja para después.</li>
         </ol>
         <div style="margin-top: 7px;">La similitud PC/Laptop mide acuerdo entre salidas; no es una precisión aprobada por humanos.</div>
+        <div style="margin-top: 5px;">Cada tarjeta muestra un resumen; abrí <strong>Ver texto completo</strong> para leer el Markdown original de la sesión.</div>
       </div>
       <div class="curator-stats">
         <div class="curator-stat"><strong id="curator-count">—</strong><span>Candidatos</span></div>
@@ -910,10 +914,12 @@
           const actionButtons = ['promote', 'reject', 'defer'].map(action => `<button class="diag-btn" data-candidate-id="${id}" data-candidate-action="${action}">${action === 'promote' ? 'Promover' : action === 'reject' ? 'Rechazar' : 'Aplazar'}</button>`).join('');
           const readable = String(candidate.value || candidate.query || 'Sin detalle')
             .replace(/\*\*/g, '').replace(/^\s*[-#]\s*/gm, '').replace(/\s+/g, ' ').trim();
+          const fullText = candidate.artifact_text ? `<details class="curator-fulltext"><summary>Ver texto completo (Markdown)</summary><pre>${escapeHtml(candidate.artifact_text)}</pre></details>` : '';
           return `<article class="curator-card">
             <div class="curator-card-head"><span class="curator-card-key">${escapeHtml(candidate.type || 'candidato')}</span><span class="curator-card-meta">${escapeHtml(candidate.status || 'pending')} · score ${Number(candidate.score || 0).toFixed(3)}</span></div>
             <div class="curator-card-meta">ID ${escapeHtml(candidate.candidate_id || '—')} · ${escapeHtml(candidate.source || '')} · recomendación: ${escapeHtml(candidate.recommendation || '—')}</div>
             <div class="curator-card-value"><strong>Detalle:</strong> ${escapeHtml(readable)}</div>
+            ${fullText}
             <div class="curator-card-actions">${actionButtons}</div>
           </article>`;
         }).join('') : '<div class="diag-muted">No hay candidatos para este filtro.</div>';

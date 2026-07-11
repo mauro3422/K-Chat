@@ -52,6 +52,12 @@ def _candidate_cards(limit: int, status: str) -> list[dict[str, Any]]:
             or ""
         )
         card["created_at"] = str(record.get("created_at") or record.get("timestamp") or "")
+        artifact_path = Path(str(record.get("artifact") or ""))
+        try:
+            artifact_path.resolve().relative_to(_project_root().resolve())
+            card["artifact_text"] = artifact_path.read_text(encoding="utf-8", errors="replace")[:50000]
+        except (OSError, ValueError):
+            card["artifact_text"] = ""
         cards.append(card)
     cards.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
     return cards[:limit]
