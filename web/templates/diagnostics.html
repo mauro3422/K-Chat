@@ -278,6 +278,19 @@
       box-shadow: 0 8px 32px 0 rgba(0, 255, 153, 0.15);
       font-family: monospace;
     }
+    @keyframes graph-node-pulse {
+      0%, 100% { opacity: .72; }
+      50% { opacity: 1; }
+    }
+    @keyframes graph-edge-flow {
+      to { stroke-dashoffset: -32; }
+    }
+    .graph-native-node circle { animation: graph-node-pulse 3.6s ease-in-out infinite; }
+    .graph-native-node.is-isolated circle { stroke: #f59e0b; stroke-width: 2; animation-duration: 2.2s; }
+    .graph-native-edge { stroke-dasharray: 4 12; animation: graph-edge-flow 8s linear infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .graph-native-node circle, .graph-native-edge { animation: none; }
+    }
 
     /* Modal remotos */
     .diag-remote {
@@ -892,6 +905,13 @@
         const width = Math.max(container.clientWidth, 640);
         const height = Math.max(container.clientHeight, 450);
         const nodes = (data.nodes || []).slice(0, 180);
+        const degree = new Map();
+        (data.edges || []).forEach(edge => {
+          [edge.source, edge.target].forEach(id => {
+            const key = String(id).toLowerCase();
+            degree.set(key, (degree.get(key) || 0) + 1);
+          });
+        });
         const byId = new Map(nodes.map((node, index) => [String(node.id).toLowerCase(), {
           ...node,
           x: width / 2 + Math.cos(index * 2.39996) * Math.min(width, height) * 0.34,
@@ -914,6 +934,7 @@
           line.setAttribute('x1', source.x); line.setAttribute('y1', source.y);
           line.setAttribute('x2', target.x); line.setAttribute('y2', target.y);
           line.setAttribute('stroke', 'rgba(0,255,153,.28)'); line.setAttribute('stroke-width', '1');
+          line.setAttribute('class', 'graph-native-edge');
           line.__graphSource = source; line.__graphTarget = target;
           edgeGroup.appendChild(line);
         });
@@ -924,6 +945,7 @@
         });
         byId.forEach(node => {
           const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          group.setAttribute('class', `graph-native-node${(degree.get(String(node.id).toLowerCase()) || 0) === 0 ? ' is-isolated' : ''}`);
           const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           circle.setAttribute('cx', node.x); circle.setAttribute('cy', node.y);
           circle.setAttribute('r', Math.max(5, Number(node.pagerank || 0) * 80 + 5));
