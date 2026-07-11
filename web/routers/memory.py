@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -129,4 +130,12 @@ async def repair(payload: MemoryMaintenancePayload, request: Request) -> JSONRes
 
 @router.get("/graph")
 async def get_graph(request: Request, layer: str = "unified") -> JSONResponse:
-    return JSONResponse(memory_graph_snapshot(layer=layer))
+    cache = getattr(request.app.state, "memory_graph_cache", {})
+    now = time.monotonic()
+    cached = cache.get(layer)
+    if cached and now - cached["created_at"] < 30:
+        return JSONResponse(cached["payload"], headers={"X-Graph-Cache": "hit"})
+    payload = memory_graph_snapshot(layer=layer)
+    cache[layer] = {"created_at": now, "payload": payload}
+    request.app.state.memory_graph_cache = cache
+    return JSONResponse(payload, headers={"X-Graph-Cache": "miss"})
