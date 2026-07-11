@@ -19,6 +19,7 @@ from src.memory.memory_db_path import resolve_memory_db_path
 def memory_graph_snapshot(
     layer: str = "unified",
     *,
+    node_limit: int = 100,
     db_path: str | None = None,
     graph_factory: Callable[[str], Any] = EntityGraph,
     connection_factory: Callable[[str], sqlite3.Connection] = sqlite3.connect,
@@ -56,7 +57,7 @@ def memory_graph_snapshot(
         )
 
     nodes.sort(key=lambda item: item["pagerank"], reverse=True)
-    nodes = nodes[:100]
+    nodes = nodes[:max(10, min(int(node_limit), 300))]
     allowed_nodes = {str(node["id"]).lower() for node in nodes}
     edges = []
     try:

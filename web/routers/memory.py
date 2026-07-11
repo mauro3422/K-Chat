@@ -129,13 +129,15 @@ async def repair(payload: MemoryMaintenancePayload, request: Request) -> JSONRes
 
 
 @router.get("/graph")
-async def get_graph(request: Request, layer: str = "unified") -> JSONResponse:
+async def get_graph(request: Request, layer: str = "unified", limit: int = 100) -> JSONResponse:
     cache = getattr(request.app.state, "memory_graph_cache", {})
     now = time.monotonic()
-    cached = cache.get(layer)
+    safe_limit = max(10, min(limit, 300))
+    cache_key = f"{layer}:{safe_limit}"
+    cached = cache.get(cache_key)
     if cached and now - cached["created_at"] < 30:
         return JSONResponse(cached["payload"], headers={"X-Graph-Cache": "hit"})
-    payload = memory_graph_snapshot(layer=layer)
-    cache[layer] = {"created_at": now, "payload": payload}
+    payload = memory_graph_snapshot(layer=layer, node_limit=safe_limit)
+    cache[cache_key] = {"created_at": now, "payload": payload}
     request.app.state.memory_graph_cache = cache
     return JSONResponse(payload, headers={"X-Graph-Cache": "miss"})
