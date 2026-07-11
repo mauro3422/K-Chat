@@ -173,6 +173,17 @@ def _clip(text: str, limit: int = 260) -> str:
     return clean[: limit - 1].rstrip() + "..."
 
 
+def _normalize_message(text: str) -> str:
+    """Normalize message whitespace without dropping any content.
+
+    Session summaries are evidence artifacts.  They must not silently replace
+    the tail of a message with an ellipsis; clipping belongs only to compact
+    search/candidate previews.
+    """
+
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
 def _keywords(messages: list[dict[str, Any]], limit: int = 10) -> list[str]:
     try:
         from src.memory.analysis.corpus import STOP
@@ -321,9 +332,9 @@ def build_session_summary(
 
     user_messages = [m for m in messages if m.get("role") == "user"]
     assistant_messages = [m for m in messages if m.get("role") == "assistant"]
-    first_user = _clip(user_messages[0].get("content", "")) if user_messages else ""
-    last_user = _clip(user_messages[-1].get("content", "")) if user_messages else ""
-    last_assistant = _clip(assistant_messages[-1].get("content", "")) if assistant_messages else ""
+    first_user = _normalize_message(user_messages[0].get("content", "")) if user_messages else ""
+    last_user = _normalize_message(user_messages[-1].get("content", "")) if user_messages else ""
+    last_assistant = _normalize_message(assistant_messages[-1].get("content", "")) if assistant_messages else ""
 
     # Use scored keywords when scorer is available
     if scorer is not None and ANALYSIS_AVAILABLE:
@@ -626,7 +637,12 @@ async def generate_session_summaries(
             stage="generated",
             content_hash=digest,
         )
-        if not unchanged:
+        # The source digest intentionally tracks messages, not renderer logic.
+        # Refresh an already-catalogued artifact when the current summary text
+        # is absent (for example after removing a lossy preview clip).
+        artifact_text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        artifact_needs_refresh = bool(summary.get("last_assistant")) and summary["last_assistant"] not in artifact_text
+        if not unchanged or artifact_needs_refresh:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(render_session_summary(summary), encoding="utf-8")
             catalog.mark(
