@@ -899,6 +899,10 @@
         svg.setAttribute('width', '100%');
         svg.setAttribute('height', '100%');
         svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.style.cursor = 'grab';
+        const viewport = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        let panX = 0; let panY = 0; let zoom = 1;
+        const applyTransform = () => viewport.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
         const edgeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         (data.edges || []).slice(0, 300).forEach(edge => {
           const source = byId.get(String(edge.source).toLowerCase());
@@ -908,9 +912,14 @@
           line.setAttribute('x1', source.x); line.setAttribute('y1', source.y);
           line.setAttribute('x2', target.x); line.setAttribute('y2', target.y);
           line.setAttribute('stroke', 'rgba(0,255,153,.28)'); line.setAttribute('stroke-width', '1');
+          line.__graphSource = source; line.__graphTarget = target;
           edgeGroup.appendChild(line);
         });
-        svg.appendChild(edgeGroup);
+        viewport.appendChild(edgeGroup);
+        const updateEdges = () => edgeGroup.querySelectorAll('line').forEach(line => {
+          line.setAttribute('x1', line.__graphSource.x); line.setAttribute('y1', line.__graphSource.y);
+          line.setAttribute('x2', line.__graphTarget.x); line.setAttribute('y2', line.__graphTarget.y);
+        });
         byId.forEach(node => {
           const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -922,8 +931,25 @@
           label.setAttribute('x', node.x + 8); label.setAttribute('y', node.y + 4);
           label.setAttribute('fill', '#b7c3d4'); label.setAttribute('font-size', '10');
           label.textContent = String(node.label || node.id).slice(0, 28);
-          group.appendChild(circle); group.appendChild(label); svg.appendChild(group);
+          group.appendChild(circle); group.appendChild(label); viewport.appendChild(group);
+          group.addEventListener('pointerdown', event => {
+            event.stopPropagation(); group.setPointerCapture(event.pointerId);
+            const move = moveEvent => {
+              node.x += moveEvent.movementX / zoom; node.y += moveEvent.movementY / zoom;
+              circle.setAttribute('cx', node.x); circle.setAttribute('cy', node.y);
+              label.setAttribute('x', node.x + 8); label.setAttribute('y', node.y + 4); updateEdges();
+            };
+            const up = () => { group.removeEventListener('pointermove', move); group.removeEventListener('pointerup', up); };
+            group.addEventListener('pointermove', move); group.addEventListener('pointerup', up, {once: true});
+          });
         });
+        svg.appendChild(viewport); applyTransform();
+        let panStart = null;
+        svg.addEventListener('pointerdown', event => { if (event.target === svg) { panStart = {x: event.clientX, y: event.clientY}; svg.style.cursor = 'grabbing'; } });
+        svg.addEventListener('pointermove', event => { if (!panStart) return; panX += event.clientX - panStart.x; panY += event.clientY - panStart.y; panStart = {x: event.clientX, y: event.clientY}; applyTransform(); });
+        svg.addEventListener('pointerup', () => { panStart = null; svg.style.cursor = 'grab'; });
+        svg.addEventListener('pointerleave', () => { panStart = null; svg.style.cursor = 'grab'; });
+        svg.addEventListener('wheel', event => { event.preventDefault(); zoom = Math.max(.35, Math.min(4, zoom * (event.deltaY < 0 ? 1.12 : .89))); applyTransform(); }, {passive: false});
         container.appendChild(svg);
         const note = document.createElement('div');
         note.className = 'diag-muted';
