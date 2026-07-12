@@ -62,6 +62,15 @@ def transversal_synthesis_embedding_identity() -> EmbeddingPipelineIdentity:
     )
 
 
+def conceptual_synthesis_embedding_identity() -> EmbeddingPipelineIdentity:
+    return EmbeddingPipelineIdentity(
+        pipeline="conceptual_synthesis_embedding",
+        pipeline_version="1",
+        model_id="fastembed-default",
+        model_version="default",
+    )
+
+
 def memory_candidate_embedding_identity() -> EmbeddingPipelineIdentity:
     return EmbeddingPipelineIdentity(
         pipeline="memory_candidate_embedding",

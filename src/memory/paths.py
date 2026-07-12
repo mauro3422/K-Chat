@@ -9,6 +9,7 @@ New unified structure::
                 ├── session--{channel}--{id}.md
                 ├── transversal.md
                 ├── daily.md
+                ├── conceptual.md
                 ├── inbox.jsonl
                 ├── recall.jsonl
                 ├── morning-plan.md
@@ -96,6 +97,22 @@ def daily_path(target: Union[date, str, None] = None,
                root: str | Path | None = None) -> Path:
     """``daily.md`` inside the date directory."""
     return date_dir(target, root) / "daily.md"
+
+
+def conceptual_path(target: Union[date, str, None] = None,
+                    root: str | Path | None = None) -> Path:
+    """``conceptual.md``: LLM synthesis kept separate from metrics/reporting."""
+    return date_dir(target, root) / "conceptual.md"
+
+
+def conceptual_json_path(target: Union[date, str, None] = None,
+                         root: str | Path | None = None) -> Path:
+    return date_dir(target, root) / "conceptual.json"
+
+
+def conceptual_status_path(target: Union[date, str, None] = None,
+                           root: str | Path | None = None) -> Path:
+    return date_dir(target, root) / "conceptual.status.json"
 
 
 def inbox_path(target: Union[date, str, None] = None,
