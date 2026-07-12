@@ -278,6 +278,15 @@ async def generate_daily_synthesis(
             )
         lines.append("")
 
+    if session_count_with_msgs == 0:
+        lines.extend([
+            "## Activity Status",
+            "",
+            "- No conversational activity was recorded for this date.",
+            "- Operational counters above are retained for diagnostics only.",
+            "",
+        ])
+
     report_path = str(memory_paths.daily_path(target=target_date, root=project_root))
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
 
