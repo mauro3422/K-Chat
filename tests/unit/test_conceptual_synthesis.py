@@ -42,6 +42,27 @@ async def test_conceptual_synthesis_skips_llm_when_day_has_no_activity(tmp_path)
 
 
 @pytest.mark.anyio
+async def test_conceptual_synthesis_defaults_target_date_when_none(tmp_path, monkeypatch):
+    day = tmp_path / "memory" / "2026" / "07" / "08"
+    day.mkdir(parents=True)
+    (day / "daily.md").write_text("**Messages**: 1", encoding="utf-8")
+    (day / "transversal.md").write_text("Sessions: 1", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "src.memory.synthesis.conceptual.memory_paths._default_target_date",
+        lambda: date(2026, 7, 8),
+    )
+
+    async def llm(_system, _user):
+        return '{"overview":"Síntesis conceptual por defecto.","themes":[],"decisions":[],"confirmed_facts":[],"open_questions":[],"next_steps":[],"memory_candidates":[]}'
+
+    result = await generate_conceptual_synthesis(None, root=tmp_path, llm_call_fn=llm)
+
+    assert result == str(day / "conceptual.md")
+    assert "Síntesis conceptual por defecto." in (day / "conceptual.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.anyio
 async def test_conceptual_failure_preserves_previous_and_writes_status(tmp_path):
     day = tmp_path / "memory" / "2026" / "07" / "04"
     day.mkdir(parents=True)

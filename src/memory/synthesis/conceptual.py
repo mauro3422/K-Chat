@@ -181,13 +181,14 @@ def render_conceptual_synthesis(payload: dict[str, Any], target: date) -> str:
 
 
 async def generate_conceptual_synthesis(
-    target_date: date,
+    target_date: date | None = None,
     root: str | Path | None = None,
     llm_call_fn: LLMCall | None = None,
 ) -> str:
     project_root = Path(root) if root is not None else memory_paths._project_root()
-    daily = memory_paths.daily_path(target_date, project_root)
-    transversal = memory_paths.transversal_path(target_date, project_root)
+    target = target_date or memory_paths._default_target_date()
+    daily = memory_paths.daily_path(target, project_root)
+    transversal = memory_paths.transversal_path(target, project_root)
     inputs = []
     for path in (daily, transversal):
         if path.exists():
@@ -209,23 +210,23 @@ async def generate_conceptual_synthesis(
             except Exception as exc:
                 last_error = exc
         else:
-            status_path = memory_paths.conceptual_status_path(target_date, project_root)
+            status_path = memory_paths.conceptual_status_path(target, project_root)
             status_path.write_text(json.dumps({
-                "date": target_date.isoformat(), "status": "generation_failed",
+                "date": target.isoformat(), "status": "generation_failed",
                 "updated_at": datetime.now().isoformat(timespec="seconds"),
                 "error": type(last_error).__name__ if last_error else "unknown",
                 "attempts": attempts,
-                "preserved_previous": memory_paths.conceptual_path(target_date, project_root).exists(),
+                "preserved_previous": memory_paths.conceptual_path(target, project_root).exists(),
             }, ensure_ascii=False, indent=2), encoding="utf-8")
             raise ValueError("LLM returned no valid conceptual JSON after 2 attempts") from last_error
-    path = memory_paths.conceptual_path(target_date, project_root)
+    path = memory_paths.conceptual_path(target, project_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_conceptual_synthesis(payload, target_date), encoding="utf-8")
-    memory_paths.conceptual_json_path(target_date, project_root).write_text(
+    path.write_text(render_conceptual_synthesis(payload, target), encoding="utf-8")
+    memory_paths.conceptual_json_path(target, project_root).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
     )
-    memory_paths.conceptual_status_path(target_date, project_root).write_text(
-        json.dumps({"date": target_date.isoformat(), "status": "current", "updated_at": datetime.now().isoformat(timespec="seconds"), "error": "", "attempts": attempts, "preserved_previous": False}, ensure_ascii=False, indent=2),
+    memory_paths.conceptual_status_path(target, project_root).write_text(
+        json.dumps({"date": target.isoformat(), "status": "current", "updated_at": datetime.now().isoformat(timespec="seconds"), "error": "", "attempts": attempts, "preserved_previous": False}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return str(path)
