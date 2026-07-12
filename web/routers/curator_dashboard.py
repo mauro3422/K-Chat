@@ -12,8 +12,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from src.memory.curator.curation_events import append_curation_decision, load_curation_decisions
-from src.memory.curator.candidate_workbench import candidate_card, load_candidate_records
+from src.api.curator import (
+    append_curator_decision,
+    build_curator_candidate_card,
+    load_curator_candidates,
+    load_curator_decisions,
+)
 from web.routers.debug import _trusted_lan_or_local
 
 
@@ -38,12 +42,12 @@ def _latest_quality_comparison() -> dict[str, Any]:
 
 
 def _candidate_cards(limit: int, status: str) -> list[dict[str, Any]]:
-    records = load_candidate_records(root=_project_root())
+    records = load_curator_candidates(root=_project_root())
     cards: list[dict[str, Any]] = []
     for record in records:
         if status and str(record.get("status") or "pending") != status:
             continue
-        card = candidate_card(record)
+        card = build_curator_candidate_card(record)
         card["value"] = str(
             record.get("value")
             or record.get("result_excerpt")
@@ -100,7 +104,7 @@ async def _run_local_test_job(request: Request) -> None:
 @router.get("", dependencies=[Depends(_trusted_lan_or_local)])
 async def curator_dashboard(request: Request, limit: int = 40, status: str = "") -> JSONResponse:
     cards = _candidate_cards(max(1, min(limit, 200)), status.strip())
-    decisions = load_curation_decisions(root=_project_root(), limit=500)
+    decisions = load_curator_decisions(root=_project_root(), limit=500)
     decision_counts = Counter(str(item.get("action") or "unknown") for item in decisions)
     status_counts = Counter(str(card.get("status") or "pending") for card in cards)
     return JSONResponse(
@@ -130,11 +134,11 @@ async def run_local_tests(request: Request) -> JSONResponse:
 async def decide_candidate(candidate_id: str, action: str) -> JSONResponse:
     if action not in {"promote", "reject", "defer"}:
         raise HTTPException(status_code=400, detail="action must be promote, reject, or defer")
-    records = load_candidate_records(root=_project_root())
+    records = load_curator_candidates(root=_project_root())
     candidate = next((item for item in records if str(item.get("candidate_id")) == candidate_id), None)
     if candidate is None:
         raise HTTPException(status_code=404, detail="candidate not found")
-    event = append_curation_decision(
+    event = append_curator_decision(
         {
             "kind": "memory_candidate",
             "source": candidate.get("source", ""),
