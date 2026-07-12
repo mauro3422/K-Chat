@@ -142,3 +142,36 @@ def test_conceptual_pipeline_flags_and_queue(monkeypatch, capsys, tmp_path):
     assert payload["conceptual_synthesis"].endswith("conceptual.md")
     assert payload["conceptual_embedding"]["embedded"] == 1
     assert payload["curator_review_queue"].endswith("curator-review-queue.jsonl")
+
+
+def test_conceptual_pipeline_without_date_uses_default_target(monkeypatch, capsys, tmp_path):
+    seen = {}
+
+    async def fake_generate_session_summaries(db_path, root=None, target_date=None):
+        seen["summaries"] = {"db_path": db_path, "root": root, "target_date": target_date}
+        return []
+
+    async def fake_generate_conceptual_synthesis(target_date, root=None):
+        seen["conceptual"] = {"target_date": target_date, "root": root}
+        return str(tmp_path / "memory" / "2026" / "07" / "12" / "conceptual.md")
+
+    monkeypatch.setattr(script, "resolve_db_path", lambda: "sessions.db")
+    monkeypatch.setattr(script, "generate_session_summaries", fake_generate_session_summaries)
+    monkeypatch.setattr(script, "generate_conceptual_synthesis", fake_generate_conceptual_synthesis)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "generate_session_summaries.py",
+            "--root",
+            str(tmp_path),
+            "--conceptual-synthesis",
+            "--json",
+        ],
+    )
+
+    assert script.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert seen["conceptual"]["target_date"] is None
+    assert seen["conceptual"]["root"] == str(tmp_path)
+    assert payload["conceptual_synthesis"].endswith("conceptual.md")
