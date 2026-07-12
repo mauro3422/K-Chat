@@ -550,6 +550,7 @@ async def generate_session_summaries(
     db_path: str,
     target_date: date | None = None,
     root: str | Path | None = None,
+    scorer: "CombinedScorer | None" = None,
 ) -> list[dict[str, Any]]:
     """Generate idempotent extractive summaries for sessions on a date.
 
@@ -564,7 +565,7 @@ async def generate_session_summaries(
     catalog = MemoryProcessingCatalogRepository(resolve_memory_db_path())
 
     # Build mathematical scorer (TF-IDF/BM25/graph/PMI) from existing artifacts
-    scorer = _build_scorer(root=root)
+    scorer = scorer or _build_scorer(root=root)
 
     # ── Compute global IDF + stemming from ALL session messages ──
     from collections import defaultdict

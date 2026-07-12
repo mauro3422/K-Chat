@@ -106,3 +106,39 @@ def test_embed_inbox_flag(monkeypatch, capsys, tmp_path):
 
     assert payload["inbox_embedding"]["embedded"] == 1
     assert calls["inbox_embedding"]["root"] == str(tmp_path)
+
+
+def test_conceptual_pipeline_flags_and_queue(monkeypatch, capsys, tmp_path):
+    async def fake_generate_session_summaries(db_path, root=None, target_date=None):
+        return []
+
+    async def fake_generate_conceptual_synthesis(target_date, root=None):
+        return str(tmp_path / "memory" / "2026" / "07" / "02" / "conceptual.md")
+
+    async def fake_vectorize_conceptual(root):
+        return {"artifacts": 1, "embedded": 1, "deduped": 0, "unchanged": 0, "failed": 0}
+
+    monkeypatch.setattr(script, "resolve_db_path", lambda: "sessions.db")
+    monkeypatch.setattr(script, "generate_session_summaries", fake_generate_session_summaries)
+    monkeypatch.setattr(script, "generate_conceptual_synthesis", fake_generate_conceptual_synthesis)
+    monkeypatch.setattr(script, "vectorize_conceptual_synthesis_artifacts", fake_vectorize_conceptual)
+    monkeypatch.setattr(script, "build_queue", lambda root: tmp_path / "memory" / "curator-review-queue.jsonl")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "generate_session_summaries.py",
+            "--root", str(tmp_path),
+            "--date", "2026-07-02",
+            "--conceptual-synthesis",
+            "--embed-conceptual",
+            "--curator-review-queue",
+            "--json",
+        ],
+    )
+
+    assert script.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["conceptual_synthesis"].endswith("conceptual.md")
+    assert payload["conceptual_embedding"]["embedded"] == 1
+    assert payload["curator_review_queue"].endswith("curator-review-queue.jsonl")

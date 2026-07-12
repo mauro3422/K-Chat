@@ -414,7 +414,11 @@ def generate_session_summary_candidates(
         for c in new_candidates:
             conf = float(c.get("confidence", 0))
             if conf >= thresh["auto_promote_threshold"]:
-                c["promotion_decision"] = "auto_promote"
+                # Statistical confidence is prioritization, not ground truth.
+                # Automatic promotion stays disabled until a human-labelled
+                # benchmark explicitly calibrates and approves the policy.
+                c["promotion_decision"] = "review"
+                c["promotion_gate"] = "human_benchmark_required"
             elif conf >= thresh["review_threshold"]:
                 c["promotion_decision"] = "review"
             else:

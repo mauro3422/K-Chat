@@ -231,7 +231,7 @@ async def generate_daily_synthesis(
                 lines.append(f"- **Topics**: {', '.join(s['topics'])}")
             summary = session_summary_previews.get(str(s["session_id"])) or {}
             if summary.get("path"):
-                lines.append(f"- **Summary artifact**: `{summary['path']}`")
+                lines.append(f"- **Summary artifact**: `{Path(str(summary['path'])).name}`")
             lines.append("")
 
     if session_summary_previews:
@@ -241,7 +241,7 @@ async def generate_daily_synthesis(
             lines.append(f"### `{session_id}`")
             lines.append("")
             if summary.get("path"):
-                lines.append(f"- Artifact: `{summary['path']}`")
+                lines.append(f"- Artifact: `{Path(str(summary['path'])).name}`")
             for line in summary.get("preview") or []:
                 lines.append(f"- {line}")
             lines.append("")

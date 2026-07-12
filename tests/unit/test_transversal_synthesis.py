@@ -141,6 +141,18 @@ def test_generate_transversal_synthesis_filters_operational_metadata(tmp_path, m
     assert "`message_count`" not in text
 
 
+def test_transversal_does_not_promote_scoring_metadata_as_topics(tmp_path, monkeypatch):
+    monkeypatch.setenv("KAIROS_MEMORY_DB_PATH", str(tmp_path / "memory.db"))
+    body = "- Blended coherence: **0.690** (LSA rel=1.00, PMI rel=1.00)\n- Keywords: curador, memoria"
+    _write_summary(tmp_path, "s1", "web", body)
+    _write_summary(tmp_path, "s2", "web", body)
+    generate_transversal_synthesis(root=tmp_path, target_date=date(2026, 7, 2))
+    text = transversal_synthesis_path(date(2026, 7, 2), root=tmp_path).read_text(encoding="utf-8")
+    assert "`blended`" not in text
+    assert "`coherence`" not in text
+    assert "`1.00`" not in text
+
+
 @pytest.mark.anyio
 async def test_vectorize_transversal_synthesis_artifacts_embeds_and_marks_catalog(tmp_path, monkeypatch):
     path = transversal_synthesis_path(date(2026, 7, 2), root=tmp_path)

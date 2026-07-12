@@ -41,7 +41,11 @@ def discover_candidate_files(root: str | Path | None = None) -> list[Path]:
     base = candidate_root(root)
     if not base.exists():
         return []
-    return sorted(base.glob("*/*/*/candidates/*.jsonl"), reverse=True)
+    paths = list(base.glob("*/*/*/candidates/*.jsonl"))
+    review_queue = base / "curator-review-queue.jsonl"
+    if review_queue.exists():
+        paths.append(review_queue)
+    return sorted(paths, reverse=True)
 
 
 def load_candidate_records(

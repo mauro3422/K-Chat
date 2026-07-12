@@ -299,7 +299,30 @@ async def _save_memory_inbox(
 ) -> str:
     """Append a memory inbox item and optionally embed it for curation."""
 
-    from src.memory.curator.memory_inbox import append_memory_inbox_item
+    from src.memory.curator.memory_inbox import append_memory_inbox_item, load_memory_inbox
+
+    def normalized(text: str) -> str:
+        return " ".join(text.lower().split())
+
+    # A retry of the same tool call must not manufacture reinforcement. Real
+    # repeated observations carry a distinct session/message provenance and
+    # remain separate for the review layer.
+    for existing in load_memory_inbox(root=root, limit=0):
+        same_fact = (
+            existing.get("status", "pending") == "pending"
+            and normalized(str(existing.get("key") or "")) == normalized(key)
+            and normalized(str(existing.get("value") or "")) == normalized(value)
+        )
+        # A channel alone is not enough to identify a retry: two unrelated
+        # messages can both come from the web or Telegram adapter.
+        has_provenance = bool(session_id or message_ref)
+        same_provenance = has_provenance and (
+            str(existing.get("session_id") or "") == session_id
+            and str(existing.get("channel") or "") == channel
+            and str(existing.get("message_ref") or "") == message_ref
+        )
+        if same_fact and same_provenance:
+            return f"[OK] memory inbox item already pending as '{existing.get('inbox_id', '')}'."
 
     payload = append_memory_inbox_item(
         {

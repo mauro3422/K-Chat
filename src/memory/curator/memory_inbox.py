@@ -92,7 +92,12 @@ def load_memory_inbox(
     root: str | Path | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    """Load recent inbox items from ``memory/*/*/*/inbox.jsonl``."""
+    """Load inbox items from ``memory/*/*/*/inbox.jsonl``.
+
+    ``limit=0`` means no limit. This is useful for exact-idempotency checks
+    where an older pending item must not be missed just because newer dates
+    contain more than the default page size.
+    """
 
     base = Path(root) if root is not None else _project_root()
     items: list[dict[str, Any]] = []
@@ -108,7 +113,7 @@ def load_memory_inbox(
                 if isinstance(payload, dict):
                     payload["_artifact"] = str(path)
                     items.append(payload)
-                    if len(items) >= limit:
+                    if limit > 0 and len(items) >= limit:
                         return items
     return items
 

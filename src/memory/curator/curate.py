@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Optional
 
 from src.memory.content_hash import content_hash
@@ -29,6 +29,15 @@ from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCata
 from src.memory.operations._helpers import _get_memory_md_path
 
 logger = logging.getLogger(__name__)
+
+
+def _synthesis_target_date(now: datetime | None = None) -> date:
+    """Return the shared daily target, using one clock reading per run."""
+
+    reference = now or datetime.now()
+    if reference.hour < 4:
+        return (reference - timedelta(days=1)).date()
+    return reference.date()
 
 def get_strict_output_contract() -> str:
     return """STRICT OUTPUT CONTRACT:
@@ -637,6 +646,7 @@ async def curate_all(
     Returns:
         dict with all results.
     """
+    llm_call_was_injected = llm_call_fn is not None
     if save_memory_fn is None:
         save_memory_fn = _save_memory_inbox_local
     if llm_call_fn is None:
@@ -750,14 +760,31 @@ async def curate_all(
 
     # Step 5: Daily synthesis report
     synthesis_path = None
+    conceptual_path = None
     if not dry:
+        target = _synthesis_target_date()
         try:
             from src.memory.synthesis.daily import generate_daily_synthesis
             sessions_db = _get_sessions_db_path()
-            synthesis_path = await generate_daily_synthesis(db_path=sessions_db)
+            synthesis_path = await generate_daily_synthesis(
+                db_path=sessions_db,
+                root=artifact_root,
+                target_date=target,
+            )
             logger.info("Daily synthesis -> %s", synthesis_path)
         except Exception:
             logger.exception("Failed to generate daily synthesis")
+
+        try:
+            from src.memory.synthesis.conceptual import generate_conceptual_synthesis
+            conceptual_path = await generate_conceptual_synthesis(
+                target,
+                root=artifact_root,
+                llm_call_fn=llm_call_fn if llm_call_was_injected else None,
+            )
+            logger.info("Conceptual synthesis -> %s", conceptual_path)
+        except Exception:
+            logger.exception("Failed to generate conceptual synthesis")
 
     return {
         "gardener": gardener_results,
@@ -767,6 +794,7 @@ async def curate_all(
         "report": report_lines,
         "report_path": str(report_path) if report_path else None,
         "synthesis_path": synthesis_path,
+        "conceptual_path": conceptual_path,
         "dry": dry,
     }
 

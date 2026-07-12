@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from src.coordination.memory_write_queue import get_memory_write_queue
 from src.coordination.node_state import NodeCoordinator, configure_node_coordinator, reset_node_coordinator
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
-from src.tools.save_memory import run as save_memory_run
+from src.tools.save_memory import _save_memory_inbox, run as save_memory_run
 
 @pytest.fixture
 def temp_memory_file():
@@ -285,3 +285,45 @@ async def test_save_memory_registers_memory_embedding_in_work_catalog(temp_memor
     assert row["status"] == "embedded"
     assert row["vec_rowid"] == 10
     store.conn.close()
+
+
+@pytest.mark.anyio
+async def test_save_memory_inbox_retry_is_idempotent_with_provenance(tmp_path):
+    first = await _save_memory_inbox(
+        "decision:review-policy",
+        "Mauro wants human review before promotion.",
+        root=str(tmp_path),
+        session_id="session-1",
+        channel="web",
+        message_ref="message-1",
+    )
+    second = await _save_memory_inbox(
+        "decision:review-policy",
+        "Mauro wants human review before promotion.",
+        root=str(tmp_path),
+        session_id="session-1",
+        channel="web",
+        message_ref="message-1",
+    )
+
+    assert "queued memory inbox item" in first
+    assert "already pending" in second
+
+
+@pytest.mark.anyio
+async def test_save_memory_inbox_without_provenance_keeps_observations_separate(tmp_path):
+    first = await _save_memory_inbox(
+        "decision:review-policy",
+        "Mauro wants human review before promotion.",
+        root=str(tmp_path),
+        channel="web",
+    )
+    second = await _save_memory_inbox(
+        "decision:review-policy",
+        "Mauro wants human review before promotion.",
+        root=str(tmp_path),
+        channel="web",
+    )
+
+    assert "queued memory inbox item" in first
+    assert "queued memory inbox item" in second

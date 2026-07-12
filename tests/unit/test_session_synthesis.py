@@ -454,3 +454,5 @@ def test_generate_session_summary_candidates_writes_idempotent_jsonl(tmp_path):
     assert rows[0]["source_id"].startswith("candidate:")
     assert rows[0]["target_id"] == "session:s1"
     assert rows[0]["proposed_relations"]
+    assert rows[0]["promotion_decision"] in {"hold", "review"}
+    assert rows[0]["promotion_decision"] != "auto_promote"

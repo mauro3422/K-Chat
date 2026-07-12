@@ -11,7 +11,8 @@
 - **Cross-turn PMI** — user↔assistant term pair strength
 - **Blended Coherence** — algebraic blend: `(LSA_rel·LSA + PMI_rel·PMI) / (LSA_rel+PMI_rel)`
 - **Adaptive Candidate Confidence** — `base + Σ(weight_i · reliability_i · signal_i)`
-- **Statistical Thresholds** — `mean ± σ` → `hold/review/auto_promote` decisions
+- **Statistical Thresholds** — `mean ± σ` → `hold/review`; autopromoción bloqueada
+  hasta benchmark humano calibrado y aprobado.
 
 ### Infrastructure Fixes
 - **sqlite-vec loading** — cached connection + `sqlite_vec.loadable_path()` discovery (works in Docker/venv/system Python)
@@ -33,6 +34,21 @@ memory/YYYY/MM/DD/
 ---
 
 ## 🔜 Next: Curator Agent + A/B Benchmark
+
+> Seguridad vigente (2026-07-11): los thresholds sólo priorizan revisión. No
+> existe autopromoción hasta etiquetar decisiones humanas, ejecutar el benchmark
+> y aprobar explícitamente una política calibrada.
+
+### Síntesis conceptual
+
+- `daily.md`: reporte operativo y métricas del pipeline.
+- `transversal.md`: señales repetidas depuradas entre sesiones.
+- `conceptual.md`: síntesis LLM orientada a significado, evidencia y acción.
+- Ejecución manual: `scripts/generate_session_summaries.py --date YYYY-MM-DD
+  --daily-synthesis --transversal --conceptual-synthesis --embed-conceptual
+  --curator-review-queue`.
+- La cola queda en `memory/curator-review-queue.jsonl` y el workbench/dashboard
+  la descubre como fuente revisable.
 
 ### Estado 2026-07-09
 

@@ -30,6 +30,8 @@ from src.memory.synthesis.session import (
     vectorize_session_summary_artifacts,
 )
 from src.memory.synthesis.daily import generate_daily_synthesis
+from src.memory.synthesis.conceptual import generate_conceptual_synthesis
+from src.memory.synthesis.conceptual_vectorize import vectorize_conceptual_synthesis_artifacts
 from src.memory.synthesis.transversal import (
     generate_transversal_synthesis_candidates,
     generate_transversal_synthesis,
@@ -38,6 +40,7 @@ from src.memory.synthesis.transversal import (
 from src.memory.curator.curation_events import write_curation_report
 from src.memory.curator.candidate_workbench import vectorize_memory_candidates
 from src.memory.curator.memory_inbox import vectorize_memory_inbox_items
+from scripts.build_curator_review_queue import build_queue
 
 
 def _configure_utf8_stdio() -> None:
@@ -62,6 +65,9 @@ def _pipeline_curation_report(
     candidate_embedding: dict[str, Any] | None,
     inbox_embedding: dict[str, Any] | None,
     daily_synthesis: str | None,
+    conceptual_synthesis: str | None,
+    conceptual_embedding: dict[str, Any] | None,
+    curator_review_queue: str | None,
 ) -> str:
     """Write a lightweight curation artifact for the morning pipeline."""
 
@@ -79,6 +85,9 @@ def _pipeline_curation_report(
         "memory_candidate_embeddings": (candidate_embedding or {}).get("embedded", 0),
         "memory_inbox_embeddings": (inbox_embedding or {}).get("embedded", 0),
         "daily_synthesis": bool(daily_synthesis),
+        "conceptual_synthesis": bool(conceptual_synthesis),
+        "conceptual_embeddings": (conceptual_embedding or {}).get("embedded", 0),
+        "curator_review_queue": bool(curator_review_queue),
     }
     lines = [
         f"# Morning Memory Pipeline - {report_date}",
@@ -92,9 +101,15 @@ def _pipeline_curation_report(
         f"- Memory candidate embeddings: {metadata['memory_candidate_embeddings']}",
         f"- Memory inbox embeddings: {metadata['memory_inbox_embeddings']}",
         f"- Daily synthesis: {'yes' if daily_synthesis else 'no'}",
+        f"- Conceptual synthesis: {'yes' if conceptual_synthesis else 'no'}",
+        f"- Conceptual embeddings: {metadata['conceptual_embeddings']}",
     ]
     if daily_synthesis:
         lines.append(f"- Daily synthesis artifact: `{daily_synthesis}`")
+    if conceptual_synthesis:
+        lines.append(f"- Conceptual synthesis artifact: `{conceptual_synthesis}`")
+    if curator_review_queue:
+        lines.append(f"- Curator review queue: `{curator_review_queue}`")
     if transversal and transversal.get("path"):
         lines.append(f"- Transversal artifact: `{transversal.get('path')}`")
     if candidates and candidates.get("path"):
@@ -125,6 +140,9 @@ def main() -> int:
     parser.add_argument("--embed-candidates", action="store_true", help="Embed reviewable memory candidates.")
     parser.add_argument("--embed-inbox", action="store_true", help="Embed daily memory inbox items.")
     parser.add_argument("--daily-synthesis", action="store_true", help="Generate the daily synthesis artifact after summaries.")
+    parser.add_argument("--conceptual-synthesis", action="store_true", help="Generate a separate LLM conceptual synthesis.")
+    parser.add_argument("--embed-conceptual", action="store_true", help="Embed conceptual synthesis artifacts.")
+    parser.add_argument("--curator-review-queue", action="store_true", help="Build the curator review queue from conceptual candidates.")
     parser.add_argument("--curation-report", action="store_true", help="Write a lightweight morning pipeline curation report artifact.")
     parser.add_argument("--json", action="store_true", help="Print generated summaries as JSON.")
     args = parser.parse_args()
@@ -158,6 +176,19 @@ def main() -> int:
         daily_synthesis_result = asyncio.run(
             generate_daily_synthesis(db_path, root=args.root, target_date=target)
         )
+    conceptual_synthesis_result = None
+    if args.conceptual_synthesis:
+        conceptual_synthesis_result = asyncio.run(
+            generate_conceptual_synthesis(target, root=args.root)
+        )
+    conceptual_embedding_result = None
+    if args.embed_conceptual:
+        conceptual_embedding_result = asyncio.run(
+            vectorize_conceptual_synthesis_artifacts(args.root)
+        )
+    curator_review_queue_result = None
+    if args.curator_review_queue:
+        curator_review_queue_result = str(build_queue(args.root))
     curation_report_result = None
     if args.curation_report:
         curation_report_result = _pipeline_curation_report(
@@ -172,6 +203,9 @@ def main() -> int:
             candidate_embedding=candidate_embedding_result,
             inbox_embedding=inbox_embedding_result,
             daily_synthesis=daily_synthesis_result,
+            conceptual_synthesis=conceptual_synthesis_result,
+            conceptual_embedding=conceptual_embedding_result,
+            curator_review_queue=curator_review_queue_result,
         )
     if args.json:
         print(json.dumps(
@@ -187,6 +221,9 @@ def main() -> int:
                 "candidate_embedding": candidate_embedding_result,
                 "inbox_embedding": inbox_embedding_result,
                 "daily_synthesis": daily_synthesis_result,
+                "conceptual_synthesis": conceptual_synthesis_result,
+                "conceptual_embedding": conceptual_embedding_result,
+                "curator_review_queue": curator_review_queue_result,
                 "curation_report": curation_report_result,
             },
             ensure_ascii=False,
@@ -212,6 +249,12 @@ def main() -> int:
             print(f"inbox_embedding: {inbox_embedding_result}")
         if daily_synthesis_result is not None:
             print(f"daily_synthesis: {daily_synthesis_result}")
+        if conceptual_synthesis_result is not None:
+            print(f"conceptual_synthesis: {conceptual_synthesis_result}")
+        if conceptual_embedding_result is not None:
+            print(f"conceptual_embedding: {conceptual_embedding_result}")
+        if curator_review_queue_result is not None:
+            print(f"curator_review_queue: {curator_review_queue_result}")
         if curation_report_result is not None:
             print(f"curation_report: {curation_report_result}")
     return 0

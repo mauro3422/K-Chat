@@ -4,6 +4,9 @@ User:
 System: ebo
 
 ## Memories
+- **decision:arquitectura-asistentes-por-usuario-2026-07-11**: 2026-07-11 04:30 | Kairos se diseña como un núcleo común capaz de sostener asistentes personalizados por usuario, cada uno con identidad, memoria y contexto propios.
+- **decision:formalizar-exactitud-temporal-memoria-2026-07-11**: 2026-07-11 04:30 | Formalizar la entrada y salida de recuerdos con timestamps y categorías temporales explícitas para evitar interpretar memoria histórica como reciente.
+- **user:vibecode-con-orden-2026-07-11**: 2026-07-11 04:30 | Mauro prefiere mantener la velocidad y exploración del vibecode, pero dentro de una arquitectura ordenada, reglas claras y verificación.
 - **Cuota Go**: detecta 401 "insufficient balance" y marca en registry
 - **Modelos Go**: se obtienen dinámicamente de la Go API (`GET /models`)
 - **Modelos free**: candidatos `-free` de la Zen API, verificados individualmente

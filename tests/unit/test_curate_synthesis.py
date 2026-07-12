@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -31,6 +31,7 @@ async def test_curate_all_passes_sessions_db_to_daily_synthesis(tmp_path):
     save_memory = AsyncMock(return_value="[OK] saved")
     llm_call = AsyncMock(return_value="NO_NEW_INFO")
     synth = AsyncMock(return_value="memory/synthesis/2026/06/27.md")
+    conceptual = AsyncMock(return_value="memory/2026/07/12/conceptual.md")
 
     with (
         patch("src.memory.curator.curate._get_sessions_db_path", return_value="sessions.db"),
@@ -40,6 +41,7 @@ async def test_curate_all_passes_sessions_db_to_daily_synthesis(tmp_path):
         patch("src.memory.curator.curate.curate_clusters", new=AsyncMock(return_value=[])),
         patch("src.memory.curator.curate.curate_sessions", new=AsyncMock(return_value=[])),
         patch("src.memory.synthesis.daily.generate_daily_synthesis", new=synth),
+        patch("src.memory.synthesis.conceptual.generate_conceptual_synthesis", new=conceptual),
         patch("src.memory.curator.curate._get_processing_catalog", return_value=None),
     ):
         result = await curate.curate_all(
@@ -51,11 +53,26 @@ async def test_curate_all_passes_sessions_db_to_daily_synthesis(tmp_path):
             artifact_root=tmp_path,
         )
 
-    synth.assert_awaited_once_with(db_path="sessions.db")
+    synth.assert_awaited_once_with(
+        db_path="sessions.db",
+        root=tmp_path,
+        target_date=curate._synthesis_target_date(),
+    )
     assert result["synthesis_path"] == "memory/synthesis/2026/06/27.md"
+    assert result["conceptual_path"] == "memory/2026/07/12/conceptual.md"
+    conceptual.assert_awaited_once_with(
+        curate._synthesis_target_date(),
+        root=tmp_path,
+        llm_call_fn=llm_call,
+    )
     assert result["report_path"]
     assert os.path.exists(result["report_path"])
     save_memory.assert_not_awaited()
+
+
+def test_synthesis_target_date_uses_the_four_am_boundary():
+    assert curate._synthesis_target_date(datetime(2026, 7, 12, 3, 59)) == datetime(2026, 7, 11).date()
+    assert curate._synthesis_target_date(datetime(2026, 7, 12, 4, 0)) == datetime(2026, 7, 12).date()
 
 
 @pytest.mark.anyio
@@ -191,11 +208,12 @@ async def test_curate_sessions_injects_relevant_and_provisional_context(tmp_path
     memory_db = tmp_path / "memory.db"
     with sqlite3.connect(sessions_db) as conn:
         conn.execute("CREATE TABLE sessions (session_id TEXT PRIMARY KEY, name TEXT, created_at TEXT)")
+        now = datetime.now()
         conn.executemany(
             "INSERT INTO sessions (session_id, name, created_at) VALUES (?, ?, ?)",
             [
-                ("s1", "First", "2026-07-10T12:00:00"),
-                ("s2", "Second", "2026-07-10T13:00:00"),
+                ("s1", "First", (now - timedelta(hours=2)).isoformat()),
+                ("s2", "Second", (now - timedelta(hours=1)).isoformat()),
             ],
         )
     with sqlite3.connect(memory_db) as conn:

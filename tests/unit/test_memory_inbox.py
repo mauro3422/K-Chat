@@ -100,6 +100,18 @@ def test_load_memory_inbox_skips_invalid_json(tmp_path):
     assert [item["inbox_id"] for item in items] == ["a", "b"]
 
 
+def test_load_memory_inbox_limit_zero_reads_all_items(tmp_path):
+    for _ in range(105):
+        append_memory_inbox_item(
+            {"key": "user:workflow", "value": "Mauro wants inbox-first memory."},
+            root=tmp_path,
+            timestamp="2026-07-02T09:30:00",
+        )
+
+    assert len(load_memory_inbox(root=tmp_path)) == 100
+    assert len(load_memory_inbox(root=tmp_path, limit=0)) == 105
+
+
 def test_inbox_embedding_text_includes_context():
     text = inbox_embedding_text(
         {

@@ -132,10 +132,34 @@ def _summary_lines(text: str) -> list[str]:
         line = raw.strip()
         if not line or line.startswith("<!--") or line.startswith("#"):
             continue
+        if _is_operational_metadata_line(line):
+            continue
         if line.startswith("- "):
             line = line[2:].strip()
         lines.append(line)
     return lines
+
+
+def _is_operational_metadata_line(line: str) -> bool:
+    """Return whether a whole line is pipeline metadata, not user content.
+
+    Only treat known metadata when it starts the bullet. A sentence such as
+    ``We discussed the artifact: provenance`` remains valid semantic input.
+    """
+
+    normalized = line.lstrip("-* ").strip().lower()
+    prefixes = (
+        "blended coherence",
+        "lsa rel=",
+        "pmi rel=",
+        "content_hash:",
+        "session:",
+        "channel:",
+        "messages:",
+        "artifact:",
+        "metadata:",
+    )
+    return normalized.startswith(prefixes)
 
 
 def _clip(text: str, limit: int = 500) -> str:
@@ -214,6 +238,8 @@ def build_transversal_synthesis(
         # Track which (session_id, line) we've already added as evidence per token
         seen_token_evidence: dict[str, set[tuple[str, str]]] = defaultdict(set)
         for token in _tokenize(semantic_text):
+            if not _is_actionable_topic(token):
+                continue
             token_counts[token] += 1
             if session_id:
                 token_sessions[token].add(session_id)
@@ -284,7 +310,7 @@ def build_transversal_synthesis(
             {
                 "session_id": str(item.get("session_id") or ""),
                 "channel": str(item.get("channel") or "web"),
-                "path": str(item.get("path") or ""),
+                "path": Path(str(item.get("path") or "")).name,
                 "content_hash": str(item.get("content_hash") or ""),
             }
             for item in selected
@@ -396,7 +422,10 @@ def generate_transversal_synthesis(
     digest = content_hash(rendered, limit=200000)
     path = transversal_synthesis_path(target, root=root)
     catalog = MemoryProcessingCatalogRepository(resolve_memory_db_path())
-    unchanged = path.exists() and catalog.is_processed(
+    file_digest = ""
+    if path.exists():
+        file_digest = content_hash(path.read_text(encoding="utf-8", errors="replace"), limit=200000)
+    unchanged = file_digest == digest and catalog.is_processed(
         source="transversal_synthesis",
         source_key=target.isoformat(),
         item_idx=-1,

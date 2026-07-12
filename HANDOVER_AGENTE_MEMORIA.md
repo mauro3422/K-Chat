@@ -8,6 +8,76 @@
 
 ## 1. Estado Actual Resumido
 
+### Continuación 2026-07-11 — síntesis conceptual y gates de promoción
+
+- ✅ `daily.md` queda como reporte operativo; la nueva `conceptual.md` contiene
+  panorama, temas, decisiones, hechos, preguntas, próximos pasos y candidatos
+  con evidencia/confianza generados por LLM.
+- ✅ El prompt conceptual excluye métricas, scores, IDs, rutas, saludos, retries
+  y ruido de herramientas; prohíbe inventar causalidad o estados de cierre.
+- ✅ Días sin actividad se marcan explícitamente y no llaman al LLM.
+- ✅ La transversal ya no convierte metadata de scoring (`blended`, `coherence`,
+  `1.00`, LSA/PMI) en temas y guarda fuentes portables por nombre de archivo.
+- ✅ La regeneración transversal compara también el hash del archivo real; el
+  catálogo ya no puede ocultar un artifact viejo o contaminado.
+- ✅ Confianza estadística alta ahora significa `review`; la autopromoción queda
+  bloqueada con `human_benchmark_required` hasta calibración humana aprobada.
+- ✅ `save_memory` deduplica retries exactos con la misma procedencia, sin perder
+  refuerzos legítimos provenientes de otro mensaje o sesión.
+- ✅ Pruebas focales nuevas para síntesis conceptual, días vacíos y filtrado de
+  metadata; 67 pruebas del flujo ampliado pasan.
+- ✅ Reprocesamiento histórico completo sobre la DB importada de Linux:
+  30 sesiones / 3.233 mensajes, 9 fechas entre 2026-06-15 y 2026-07-04.
+  Todas las fechas tienen `daily.md`, `transversal.md` y `conceptual.md`; las
+  sesiones test/vacías continúan excluidas por política.
+- ✅ El batch histórico reutiliza un único scorer inyectado en vez de reconstruir
+  TF-IDF/BM25/grafo/PMI por cada fecha.
+- ✅ Integración LLM conceptual corregida para el contrato real de `chat()`
+  (`response.message.content/reasoning_content`), razonadores que devuelven JSON
+  con saltos escapados y fallback/reintento del proveedor.
+- ✅ Segunda pasada de calidad conceptual: jerarquía explícita de evidencia
+  (usuario/tool/artifact/multifuente > asistente > inferencia), clasificación de
+  durabilidad y validador post-LLM. Se rechazan afirmaciones del asistente,
+  inferencias, claves no canónicas, métricas/versiones, deadlines vencidos,
+  condiciones transitorias, probes y detecciones triviales de entidad/idioma.
+- ✅ Los headings históricos ya dicen "registradas ese día" / "para esa fecha"
+  para impedir que planes o estados viejos se interpreten como actuales.
+- ✅ Las 9 síntesis fueron regeneradas y leídas semánticamente. Los falsos
+  candidatos de Linux, unicidad de mercado, identidad trivial y métricas antiguas
+  quedaron eliminados. Suite focal final: 63 pruebas pasando.
+- ✅ `conceptual.json` persiste la salida estructurada y
+  `conceptual.status.json` registra `current`/`generation_failed`, error y si se
+  preservó el último Markdown válido. Los timeouts ya no destruyen el resultado.
+- ✅ Las 9 síntesis conceptuales fueron embebidas como
+  `source=conceptual_synthesis` mediante identidad de pipeline propia.
+- ✅ Primer dataset supervisado delegado: 8 candidatos, 3 promote, 4 reject y
+  1 defer. Benchmark baseline F1=0.60; filtro automático por overlap F1=0.40.
+  Conclusión: overlap sirve como alerta, no como gate; autopromoción sigue OFF.
+- ✅ El overlap ahora es riesgo graduado (`low`, `medium`, `high`) con
+  recomendación `review`; ya no descarta candidatos buenos por sí solo.
+- ✅ Cola accionable generada en `memory/curator-review-queue.jsonl` con
+  candidate_id estable, overlap, riesgo y vigencia de bugs.
+- ✅ Auditoría de bugs conservadora: sólo marca `resolved` con un marcador
+  explícito de cierre; el resto queda `open_or_unverified` y requiere revisión
+  de código.
+- ✅ El script `build_curator_review_queue.py` permite regenerar esa cola.
+- ⚠️ El proveedor LLM sigue fallando para 2026-06-16 después de varios retries;
+  `conceptual.status.json` registra `generation_failed` y preserva el Markdown
+  previo. Es un problema externo de disponibilidad, no una pérdida de datos.
+
+### Cierre técnico de esta pasada
+
+- ✅ La cola conceptual se puede regenerar desde el CLI con
+  `--curator-review-queue` y queda visible para el curator workbench/dashboard.
+- ✅ La vectorización conceptual usa identidad propia, catálogo idempotente y
+  `VectorStore` real; los reintentos no duplican embeddings.
+- ✅ Confidencias LLM inválidas se rechazan como `invalid_confidence` sin abortar
+  toda la síntesis.
+- ✅ Daily y conceptual comparten una única fecha objetivo y reportan errores
+  separados; el filtro transversal sólo descarta líneas metadata completas.
+- ✅ La deduplicación del inbox inspecciona todo el histórico cuando necesita
+  verificar un retry con provenance explícita.
+
 ### Continuación 2026-07-10 (Windows + laptop)
 
 - ✅ `curate --help` ya usa `argparse` y no ejecuta mantenimiento por accidente.
