@@ -180,3 +180,64 @@ print("src.memory.vector.store" in sys.modules)
         "False",
         "False",
     ]
+
+
+def test_memory_repositories_constructor_is_lazy(monkeypatch) -> None:
+    from src.memory.repos_memory import container
+
+    calls: list[str] = []
+
+    class FakeVectorStore:
+        def __init__(self, db_path: str) -> None:
+            calls.append(f"vector:{db_path}")
+
+        def close(self) -> None:
+            calls.append("vector:close")
+
+    class FakeEntityGraph:
+        def __init__(self) -> None:
+            calls.append("entity")
+
+    class FakeHybridRetriever:
+        def __init__(self, db_path: str) -> None:
+            calls.append(f"hybrid:{db_path}")
+
+        def close(self) -> None:
+            calls.append("hybrid:close")
+
+    class FakeWorkCatalog:
+        def __init__(self, db_path: str) -> None:
+            calls.append(f"work:{db_path}")
+
+    class FakeProcessingCatalog:
+        def __init__(self, db_path: str) -> None:
+            calls.append(f"processing:{db_path}")
+
+    monkeypatch.setattr(container, "_build_vector_store", lambda db_path: FakeVectorStore(db_path))
+    monkeypatch.setattr(container, "_build_entity_graph", lambda: FakeEntityGraph())
+    monkeypatch.setattr(container, "_build_hybrid_retriever", lambda db_path: FakeHybridRetriever(db_path))
+    monkeypatch.setattr(container, "_build_work_catalog", lambda db_path: FakeWorkCatalog(db_path))
+    monkeypatch.setattr(container, "_build_processing_catalog", lambda db_path: FakeProcessingCatalog(db_path))
+
+    repos = container.MemoryRepositories(db_path="memory.db")
+
+    assert calls == []
+    assert repos._vector_store is None
+    assert repos._entity_graph is None
+    assert repos._hybrid_retriever is None
+    assert repos._work_catalog is None
+    assert repos._processing_catalog is None
+
+    _ = repos.vector_store
+    _ = repos.entity_graph
+    _ = repos.hybrid_retriever
+    _ = repos.work_catalog
+    _ = repos.processing_catalog
+
+    assert calls == [
+        "vector:memory.db",
+        "entity",
+        "hybrid:memory.db",
+        "work:memory.db",
+        "processing:memory.db",
+    ]
