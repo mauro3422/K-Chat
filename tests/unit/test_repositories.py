@@ -564,3 +564,24 @@ print(repos._memory is None)
         assert isinstance(second, FakeMemoryRepositories)
         assert second is not first
         assert len(FakeMemoryRepositories.instances) == 2
+
+    @pytest.mark.anyio
+    async def test_memory_setter_closes_replaced_bundle(self):
+        class FakeMemoryRepositories:
+            def __init__(self, name):
+                self.name = name
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        repos = get_repos()
+        first = FakeMemoryRepositories("first")
+        second = FakeMemoryRepositories("second")
+
+        repos.memory = first
+        repos.memory = second
+
+        assert first.closed is True
+        assert second.closed is False
+        assert repos._memory is second

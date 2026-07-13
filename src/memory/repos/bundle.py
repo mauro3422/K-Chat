@@ -36,6 +36,14 @@ class Repositories:
         # Keep memory.db construction lazy; most code paths only need sessions.db.
         pass
 
+    @staticmethod
+    def _close_memory_bundle(bundle: MemoryRepositories | None) -> None:
+        if bundle is None:
+            return
+        close = getattr(bundle, "close", None)
+        if callable(close):
+            close()
+
     @property
     def memory(self) -> MemoryRepositories:
         if self._memory is None:
@@ -46,6 +54,10 @@ class Repositories:
 
     @memory.setter
     def memory(self, value: MemoryRepositories | None) -> None:
+        if self._memory is value:
+            return
+        if self._memory is not None:
+            self._close_memory_bundle(self._memory)
         self._memory = value
 
     def close(self) -> None:
@@ -53,7 +65,7 @@ class Repositories:
         if self._memory is None:
             return
         try:
-            self._memory.close()
+            self._close_memory_bundle(self._memory)
         finally:
             # Drop the cached bundle so a later access can rebuild it cleanly.
             self._memory = None
