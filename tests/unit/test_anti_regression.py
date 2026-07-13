@@ -357,6 +357,8 @@ async def test_no_module_level_singletons() -> None:
 async def test_api_facade_is_minimal_shim() -> None:
     content = _read("src/api/__init__.py")
     assert "Compatibilidad mínima" in content
+    assert "from src.api.repos import get_repos" not in content
+    assert "def __getattr__(" in content
     assert "from src.api.session import" not in content
 
 
