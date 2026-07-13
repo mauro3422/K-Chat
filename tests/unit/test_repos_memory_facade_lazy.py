@@ -241,3 +241,61 @@ def test_memory_repositories_constructor_is_lazy(monkeypatch) -> None:
         "work:memory.db",
         "processing:memory.db",
     ]
+
+
+def test_memory_repositories_close_resets_cached_helpers(monkeypatch) -> None:
+    from src.memory.repos_memory import container
+
+    calls: list[str] = []
+
+    class FakeVectorStore:
+        def __init__(self, db_path: str) -> None:
+            self.db_path = db_path
+            self.closed = False
+            calls.append(f"vector:{db_path}")
+
+        def close(self) -> None:
+            self.closed = True
+            calls.append("vector:close")
+
+    class FakeHybridRetriever:
+        def __init__(self, db_path: str) -> None:
+            self.db_path = db_path
+            self.closed = False
+            calls.append(f"hybrid:{db_path}")
+
+        def close(self) -> None:
+            self.closed = True
+            calls.append("hybrid:close")
+
+    monkeypatch.setattr(container, "_build_vector_store", lambda db_path: FakeVectorStore(db_path))
+    monkeypatch.setattr(container, "_build_entity_graph", lambda: object())
+    monkeypatch.setattr(container, "_build_hybrid_retriever", lambda db_path: FakeHybridRetriever(db_path))
+    monkeypatch.setattr(container, "_build_work_catalog", lambda db_path: object())
+    monkeypatch.setattr(container, "_build_processing_catalog", lambda db_path: object())
+
+    repos = container.MemoryRepositories(db_path="memory.db")
+
+    first_vector = repos.vector_store
+    first_hybrid = repos.hybrid_retriever
+
+    repos.close()
+
+    assert first_vector.closed is True
+    assert first_hybrid.closed is True
+    assert repos._vector_store is None
+    assert repos._hybrid_retriever is None
+
+    second_vector = repos.vector_store
+    second_hybrid = repos.hybrid_retriever
+
+    assert second_vector is not first_vector
+    assert second_hybrid is not first_hybrid
+    assert calls == [
+        "vector:memory.db",
+        "hybrid:memory.db",
+        "vector:close",
+        "hybrid:close",
+        "vector:memory.db",
+        "hybrid:memory.db",
+    ]

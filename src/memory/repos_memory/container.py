@@ -143,6 +143,8 @@ class MemoryRepositories:
             close = getattr(resource, "close", None)
             if callable(close):
                 close()
+            # Drop the cached handle so a later access rebuilds a fresh helper.
+            setattr(self, attr_name, None)
 
 
 def get_memory_repos() -> MemoryRepositories:
