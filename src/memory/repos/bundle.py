@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from src.memory.repos.protocols import (
@@ -30,18 +30,28 @@ class Repositories:
     debug: DebugRepositoryProtocol
     saved_widgets: SavedWidgetRepositoryProtocol
     memory_index: MemoryIndexRepositoryProtocol
-    memory: MemoryRepositories | None = None  # memory.db repos (lazy-initialized)
+    _memory: MemoryRepositories | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
-        if self.memory is None:
+        # Keep memory.db construction lazy; most code paths only need sessions.db.
+        pass
+
+    @property
+    def memory(self) -> MemoryRepositories:
+        if self._memory is None:
             from src.memory.repos_memory import MemoryRepositories
 
-            self.memory = MemoryRepositories()
+            self._memory = MemoryRepositories()
+        return self._memory
+
+    @memory.setter
+    def memory(self, value: MemoryRepositories | None) -> None:
+        self._memory = value
 
     def close(self) -> None:
         """Close cached resources owned by nested repositories."""
-        if self.memory is not None:
-            self.memory.close()
+        if self._memory is not None:
+            self._memory.close()
 
 
 def get_repos(conn=None) -> Repositories:
@@ -52,7 +62,6 @@ def get_repos(conn=None) -> Repositories:
     from src.memory.repos.session_repository import SessionRepository
     from src.memory.repos.tool_call_repository import ToolCallRepository
     from src.memory.repos.widget_state_repository import WidgetStateRepository
-    from src.memory.repos_memory import get_memory_repos
 
     repos = Repositories(
         messages=MessageRepository(conn=conn),
@@ -62,6 +71,5 @@ def get_repos(conn=None) -> Repositories:
         debug=DebugRepository(conn=conn),
         saved_widgets=SavedWidgetRepository(conn=conn),
         memory_index=MemoryIndexRepository(conn=conn),
-        memory=get_memory_repos(),
     )
     return repos

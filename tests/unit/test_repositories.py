@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 import pytest
 from unittest.mock import patch, AsyncMock
 
@@ -492,6 +495,35 @@ class TestGetRepos:
         assert isinstance(repos.debug, DebugRepository)
         assert isinstance(repos.saved_widgets, SavedWidgetRepository)
         assert isinstance(repos.memory_index, MemoryIndexRepository)
+
+    @pytest.mark.anyio
+    async def test_get_repos_does_not_eagerly_build_memory_bundle(self):
+        script = r"""
+import importlib
+import sys
+
+bundle = importlib.import_module("src.memory.repos.bundle")
+print("src.memory.repos_memory" in sys.modules)
+print("src.memory.repos_memory.container" in sys.modules)
+repos = bundle.get_repos()
+print("src.memory.repos_memory" in sys.modules)
+print("src.memory.repos_memory.container" in sys.modules)
+print(repos._memory is None)
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        assert result.stdout.strip().splitlines() == [
+            "False",
+            "False",
+            "False",
+            "False",
+            "True",
+        ]
 
     @pytest.mark.anyio
     async def test_get_repos_passes_connection(self, mock_conn):
