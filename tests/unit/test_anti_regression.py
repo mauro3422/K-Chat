@@ -229,6 +229,32 @@ async def test_model_registry_has_required_api() -> None:
 # 10. Go quota detection must be integrated in failover
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 10. memory.analysis must stay lightweight at package import time
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def test_memory_analysis_package_is_lazy_and_does_not_reexport_heavy_modules() -> None:
+    content = _read("src/memory/analysis/__init__.py")
+    assert "__all__: list[str] = []" in content
+
+    for name in [key for key in sys.modules if key == "src.memory.analysis" or key.startswith("src.memory.analysis.")]:
+        sys.modules.pop(name, None)
+
+    import src.memory.analysis as analysis
+
+    assert analysis.__all__ == []
+    assert not hasattr(analysis, "CombinedScorer")
+    assert not hasattr(analysis, "MemoryCorpus")
+    assert "src.memory.analysis.scoring" not in sys.modules
+    assert "src.memory.analysis.corpus" not in sys.modules
+    assert "src.memory.analysis.graph_analysis" not in sys.modules
+
+    from src.memory.analysis.scoring import compute_statistical_thresholds
+
+    assert callable(compute_statistical_thresholds)
+    assert "src.memory.analysis.scoring" in sys.modules
+
+
 async def test_go_quota_detected_in_failover() -> None:
     content = _read("src/llm/failover.py")
     assert "insufficient balance" in content, \
