@@ -22,45 +22,69 @@ from src.memory.curator.recall_review import load_candidates, write_candidates
 from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
 
+logger = logging.getLogger(__name__)
+
 from src.memory.synthesis.candidates import (
     candidates_from_session_summary_artifact,
     generate_session_summary_candidates,
 )
 from src.memory.synthesis.vectorize import vectorize_session_summary_artifacts
 
-# Mathematical analysis modules (optional — degrade gracefully)
-try:
-    from src.memory.analysis import (
-        MemoryCorpus,
-        EntityGraph,
-        PMIClustering,
-        SemanticSimilarity,
-        CombinedScorer,
-        keyword_rank_with_scores,
-        candidate_confidence_from_scores,
-        compute_statistical_thresholds,
-        textrank_from_messages,
-        LatentSemanticAnalysis,
-        build_cross_turn_matrix,
-        cross_pmi,
-    )
-    from src.memory.analysis.pmi_relations import calculate_pmi_for_session
-
-    ANALYSIS_AVAILABLE = True
-except ImportError as _exc:
-    ANALYSIS_AVAILABLE = False
-    CombinedScorer = None
-    textrank_from_messages = None  # type: ignore
-    LatentSemanticAnalysis = None  # type: ignore
-    build_cross_turn_matrix = None  # type: ignore
-    cross_pmi = None  # type: ignore
-    logger.debug("Analysis modules not available: %s", _exc)
-
-logger = logging.getLogger(__name__)
-
 
 _project_root = memory_paths._project_root
 _default_target_date = memory_paths._default_target_date
+
+_ANALYSIS_SUPPORT: dict[str, Any] | None = None
+
+
+def _load_analysis_support() -> dict[str, Any]:
+    """Load optional analysis helpers lazily so imports stay lightweight."""
+
+    global _ANALYSIS_SUPPORT
+    if _ANALYSIS_SUPPORT is not None:
+        return _ANALYSIS_SUPPORT
+    try:
+        from src.memory.analysis.corpus import STOP, strip_code
+        from src.memory.analysis.pmi_relations import (
+            SPANISH_STOPWORDS,
+            calculate_pmi_for_session,
+            persist_pmi_relations,
+            stem_spanish,
+        )
+        from src.memory.analysis.scoring import (
+            CombinedScorer,
+            EntityGraph,
+            LatentSemanticAnalysis,
+            MemoryCorpus,
+            PMIClustering,
+            SemanticSimilarity,
+            build_cross_turn_matrix,
+            cross_pmi,
+            textrank_from_messages,
+        )
+    except ImportError as exc:
+        logger.debug("Analysis modules not available: %s", exc)
+        _ANALYSIS_SUPPORT = {}
+        return _ANALYSIS_SUPPORT
+
+    _ANALYSIS_SUPPORT = {
+        "STOP": STOP,
+        "SPANISH_STOPWORDS": SPANISH_STOPWORDS,
+        "CombinedScorer": CombinedScorer,
+        "EntityGraph": EntityGraph,
+        "LatentSemanticAnalysis": LatentSemanticAnalysis,
+        "MemoryCorpus": MemoryCorpus,
+        "PMIClustering": PMIClustering,
+        "SemanticSimilarity": SemanticSimilarity,
+        "build_cross_turn_matrix": build_cross_turn_matrix,
+        "calculate_pmi_for_session": calculate_pmi_for_session,
+        "cross_pmi": cross_pmi,
+        "persist_pmi_relations": persist_pmi_relations,
+        "stem_spanish": stem_spanish,
+        "strip_code": strip_code,
+        "textrank_from_messages": textrank_from_messages,
+    }
+    return _ANALYSIS_SUPPORT
 
 
 def session_summary_path(
@@ -275,7 +299,9 @@ def _keywords_scored(
     for term in cross_terms:
         counts[term] = int(counts[term] * 1.5)  # +50% boost for mutual terms
 
-    if scorer is not None and ANALYSIS_AVAILABLE:
+    if scorer is not None:
+        support = _load_analysis_support()
+        textrank_from_messages = support.get("textrank_from_messages")
         doc_len = sum(len(m.get("content", "").split()) for m in messages if _is_organic(m)) + 1
 
         # Compute TextRank scores per-term for this session
@@ -337,7 +363,7 @@ def build_session_summary(
     last_assistant = _normalize_message(assistant_messages[-1].get("content", "")) if assistant_messages else ""
 
     # Use scored keywords when scorer is available
-    if scorer is not None and ANALYSIS_AVAILABLE:
+    if scorer is not None:
         keywords = _keywords_scored(messages, scorer=scorer)
     else:
         keywords = _keywords(messages)
@@ -350,17 +376,21 @@ def build_session_summary(
     blended_coherence = 0.0
 
     _organic = [m for m in messages if not str(m.get("content", "")).startswith("[SYSTEM:")]
+    analysis = _load_analysis_support()
 
     pmi_entities_set = set()
-    if _organic and ANALYSIS_AVAILABLE:
+    calculate_pmi_for_session = analysis.get("calculate_pmi_for_session")
+    persist_pmi_relations = analysis.get("persist_pmi_relations")
+    LatentSemanticAnalysis = analysis.get("LatentSemanticAnalysis")
+    build_cross_turn_matrix = analysis.get("build_cross_turn_matrix")
+    cross_pmi = analysis.get("cross_pmi")
+    if _organic and calculate_pmi_for_session is not None and persist_pmi_relations is not None:
         pmi_relations, _ = calculate_pmi_for_session(
             [str(m.get("content", "")) for m in _organic],
             word_idf=word_idf,
             max_idf=max_idf,
             stem_map=stem_map,
         )
-        from src.memory.analysis.pmi_relations import persist_pmi_relations
-        from src.memory.memory_db_path import resolve_memory_db_path
         persist_pmi_relations(resolve_memory_db_path(), pmi_relations)
         for a, b, _ in pmi_relations:
             pmi_entities_set.add(a)
@@ -502,16 +532,22 @@ def _build_scorer(root: str | Path | None = None) -> "CombinedScorer | None":
     unavailable dependency degrades gracefully.  Returns None only when
     none of the components could be built at all.
     """
-    if not ANALYSIS_AVAILABLE or CombinedScorer is None:
+    support = _load_analysis_support()
+    CombinedScorer = support.get("CombinedScorer")
+    MemoryCorpus = support.get("MemoryCorpus")
+    EntityGraph = support.get("EntityGraph")
+    PMIClustering = support.get("PMIClustering")
+    SemanticSimilarity = support.get("SemanticSimilarity")
+    if not support or CombinedScorer is None or MemoryCorpus is None or EntityGraph is None or PMIClustering is None or SemanticSimilarity is None:
         return None
 
     base = Path(root) if root else _project_root()
     curated_db = resolve_memory_db_path()
 
-    corpus: Optional["MemoryCorpus"] = None
-    entity_graph: Optional["EntityGraph"] = None
-    pmi: Optional["PMIClustering"] = None
-    semantic: Optional["SemanticSimilarity"] = None
+    corpus: Any | None = None
+    entity_graph: Any | None = None
+    pmi: Any | None = None
+    semantic: Any | None = None
 
     try:
         corpus = MemoryCorpus(base)

@@ -9,16 +9,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from src.memory import paths as memory_paths
-from src.memory.analysis.corpus import tokenize_doc
 
 _project_root = memory_paths._project_root
 _default_target_date = memory_paths._default_target_date
-
-try:
-    from src.memory.analysis import candidate_confidence_from_scores  # noqa: F401
-    ANALYSIS_AVAILABLE = True
-except ImportError:
-    ANALYSIS_AVAILABLE = False
 
 
 def _candidate_id(payload: Mapping[str, Any]) -> str:
@@ -266,7 +259,7 @@ def candidates_from_session_summary_artifact(
     candidate_text = " ".join(lines)
 
     # --- Enhance confidence with mathematical scoring ---
-    if scorer is not None and ANALYSIS_AVAILABLE:
+    if scorer is not None:
         from src.memory.analysis.corpus import tokenize_doc
 
         tokens = tokenize_doc(candidate_text)
@@ -290,25 +283,30 @@ def candidates_from_session_summary_artifact(
         cross_pmi_score = float(meta.get("cross_pmi_score", 0.0))
         pmi_reliability = float(meta.get("pmi_reliability", 0.0))
 
-        from src.memory.analysis import candidate_confidence_from_scores
-
-        enhanced_confidence = candidate_confidence_from_scores(
-            kw_scores,
-            entity_names,
-            session_text=candidate_text,
-            scorer=scorer,
-            base_confidence=base_confidence,
-            lsa_coherence=lsa_coherence,
-            lsa_reliability=lsa_reliability,
-            cross_pmi_score=cross_pmi_score,
-            pmi_reliability=pmi_reliability,
-        )
-        final_confidence = enhanced_confidence
-        link_score = enhanced_confidence
-        link_reasons = [
-            str(policy.get("reason", "session_summary_signal")),
-            "enhanced_scoring",
-        ]
+        try:
+            from src.memory.analysis.scoring import candidate_confidence_from_scores
+        except ImportError:
+            final_confidence = base_confidence
+            link_score = base_confidence
+            link_reasons = [str(policy.get("reason", "session_summary_signal")), "summary_entity_hints"]
+        else:
+            enhanced_confidence = candidate_confidence_from_scores(
+                kw_scores,
+                entity_names,
+                session_text=candidate_text,
+                scorer=scorer,
+                base_confidence=base_confidence,
+                lsa_coherence=lsa_coherence,
+                lsa_reliability=lsa_reliability,
+                cross_pmi_score=cross_pmi_score,
+                pmi_reliability=pmi_reliability,
+            )
+            final_confidence = enhanced_confidence
+            link_score = enhanced_confidence
+            link_reasons = [
+                str(policy.get("reason", "session_summary_signal")),
+                "enhanced_scoring",
+            ]
     else:
         final_confidence = base_confidence
         link_score = base_confidence
@@ -373,8 +371,13 @@ def generate_session_summary_candidates(
     """
 
     from src.memory.curator.recall_review import load_candidates, write_candidates
-    from src.memory.analysis import compute_statistical_thresholds
     from src.memory.synthesis.session import _build_scorer, discover_session_summary_artifacts, session_summary_candidate_path
+
+    try:
+        from src.memory.analysis.scoring import compute_statistical_thresholds
+    except ImportError:
+        def compute_statistical_thresholds(confidences: list[float]) -> dict[str, float]:
+            return {"auto_promote_threshold": 1.0, "review_threshold": 0.0}
 
     target = target_date or _default_target_date()
     path = session_summary_candidate_path(target, root=root)
