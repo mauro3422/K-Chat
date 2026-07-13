@@ -76,6 +76,26 @@ class MemoryRepositories:
         self._work_catalog = work_catalog
         self._processing_catalog = processing_catalog
 
+    @staticmethod
+    def _close_resource(resource: Any) -> None:
+        close = getattr(resource, "close", None)
+        if callable(close):
+            close()
+
+    def _replace_cached_resource(
+        self,
+        attr_name: str,
+        value: Any | None,
+        *,
+        close_previous: bool = False,
+    ) -> None:
+        current = getattr(self, attr_name, None)
+        if current is value:
+            return
+        if close_previous and current is not None:
+            self._close_resource(current)
+        setattr(self, attr_name, value)
+
     def _resolve_db_path(self) -> str:
         if self._db_path is not None:
             return self._db_path
@@ -92,7 +112,7 @@ class MemoryRepositories:
 
     @vector_store.setter
     def vector_store(self, value: "VectorStore" | None) -> None:
-        self._vector_store = value
+        self._replace_cached_resource("_vector_store", value, close_previous=True)
 
     @property
     def entity_graph(self) -> "EntityRepository":
@@ -102,7 +122,7 @@ class MemoryRepositories:
 
     @entity_graph.setter
     def entity_graph(self, value: "EntityRepository" | None) -> None:
-        self._entity_graph = value
+        self._replace_cached_resource("_entity_graph", value)
 
     @property
     def hybrid_retriever(self) -> "HybridRetriever":
@@ -112,7 +132,7 @@ class MemoryRepositories:
 
     @hybrid_retriever.setter
     def hybrid_retriever(self, value: "HybridRetriever" | None) -> None:
-        self._hybrid_retriever = value
+        self._replace_cached_resource("_hybrid_retriever", value, close_previous=True)
 
     @property
     def work_catalog(self) -> "MemoryWorkCatalogRepository":
@@ -122,7 +142,7 @@ class MemoryRepositories:
 
     @work_catalog.setter
     def work_catalog(self, value: "MemoryWorkCatalogRepository" | None) -> None:
-        self._work_catalog = value
+        self._replace_cached_resource("_work_catalog", value)
 
     @property
     def processing_catalog(self) -> "MemoryProcessingCatalogRepository":
@@ -132,19 +152,24 @@ class MemoryRepositories:
 
     @processing_catalog.setter
     def processing_catalog(self, value: "MemoryProcessingCatalogRepository" | None) -> None:
-        self._processing_catalog = value
+        self._replace_cached_resource("_processing_catalog", value)
 
     def close(self) -> None:
         """Close cached resources owned by this repository bundle."""
-        for attr_name in ("_vector_store", "_hybrid_retriever"):
+        for attr_name in (
+            "_vector_store",
+            "_entity_graph",
+            "_hybrid_retriever",
+            "_work_catalog",
+            "_processing_catalog",
+        ):
             resource: Any = getattr(self, attr_name, None)
-            if resource is None:
-                continue
-            close = getattr(resource, "close", None)
-            if callable(close):
-                close()
-            # Drop the cached handle so a later access rebuilds a fresh helper.
-            setattr(self, attr_name, None)
+            try:
+                if resource is not None:
+                    self._close_resource(resource)
+            finally:
+                # Drop every cached helper so a later access rebuilds a fresh one.
+                setattr(self, attr_name, None)
 
 
 def get_memory_repos() -> MemoryRepositories:

@@ -268,34 +268,104 @@ def test_memory_repositories_close_resets_cached_helpers(monkeypatch) -> None:
             self.closed = True
             calls.append("hybrid:close")
 
+    class FakeEntityGraph:
+        def __init__(self) -> None:
+            calls.append("entity")
+
+    class FakeWorkCatalog:
+        def __init__(self, db_path: str) -> None:
+            self.db_path = db_path
+            calls.append(f"work:{db_path}")
+
+    class FakeProcessingCatalog:
+        def __init__(self, db_path: str) -> None:
+            self.db_path = db_path
+            calls.append(f"processing:{db_path}")
+
     monkeypatch.setattr(container, "_build_vector_store", lambda db_path: FakeVectorStore(db_path))
-    monkeypatch.setattr(container, "_build_entity_graph", lambda: object())
+    monkeypatch.setattr(container, "_build_entity_graph", lambda: FakeEntityGraph())
     monkeypatch.setattr(container, "_build_hybrid_retriever", lambda db_path: FakeHybridRetriever(db_path))
-    monkeypatch.setattr(container, "_build_work_catalog", lambda db_path: object())
-    monkeypatch.setattr(container, "_build_processing_catalog", lambda db_path: object())
+    monkeypatch.setattr(container, "_build_work_catalog", lambda db_path: FakeWorkCatalog(db_path))
+    monkeypatch.setattr(container, "_build_processing_catalog", lambda db_path: FakeProcessingCatalog(db_path))
 
     repos = container.MemoryRepositories(db_path="memory.db")
 
     first_vector = repos.vector_store
+    first_entity_graph = repos.entity_graph
     first_hybrid = repos.hybrid_retriever
+    first_work_catalog = repos.work_catalog
+    first_processing_catalog = repos.processing_catalog
 
     repos.close()
 
     assert first_vector.closed is True
     assert first_hybrid.closed is True
     assert repos._vector_store is None
+    assert repos._entity_graph is None
     assert repos._hybrid_retriever is None
+    assert repos._work_catalog is None
+    assert repos._processing_catalog is None
 
     second_vector = repos.vector_store
+    second_entity_graph = repos.entity_graph
     second_hybrid = repos.hybrid_retriever
+    second_work_catalog = repos.work_catalog
+    second_processing_catalog = repos.processing_catalog
 
     assert second_vector is not first_vector
+    assert second_entity_graph is not first_entity_graph
     assert second_hybrid is not first_hybrid
+    assert second_work_catalog is not first_work_catalog
+    assert second_processing_catalog is not first_processing_catalog
     assert calls == [
         "vector:memory.db",
+        "entity",
         "hybrid:memory.db",
+        "work:memory.db",
+        "processing:memory.db",
         "vector:close",
         "hybrid:close",
         "vector:memory.db",
+        "entity",
         "hybrid:memory.db",
+        "work:memory.db",
+        "processing:memory.db",
     ]
+
+
+def test_memory_repositories_setters_close_replaced_cached_helpers() -> None:
+    from src.memory.repos_memory import container
+
+    class FakeVectorStore:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeHybridRetriever:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    repos = container.MemoryRepositories(db_path="memory.db")
+    first_vector = FakeVectorStore("first")
+    second_vector = FakeVectorStore("second")
+    first_hybrid = FakeHybridRetriever("first")
+    second_hybrid = FakeHybridRetriever("second")
+
+    repos.vector_store = first_vector
+    repos.vector_store = second_vector
+    repos.hybrid_retriever = first_hybrid
+    repos.hybrid_retriever = second_hybrid
+
+    assert first_vector.closed is True
+    assert second_vector.closed is False
+    assert first_hybrid.closed is True
+    assert second_hybrid.closed is False
+    assert repos._vector_store is second_vector
+    assert repos._hybrid_retriever is second_hybrid
