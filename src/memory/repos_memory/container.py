@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-from src.memory.repos_memory.entity_repo import EntityRepository
-from src.memory.repos_memory.memory_index_repo import GlobalMemoryIndexRepository
-from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
-from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
-from src.memory.retrieval.hybrid_retriever import HybridRetriever
-from src.memory.vector.store import VectorStore
+if TYPE_CHECKING:
+    from src.memory.repos_memory.entity_repo import EntityRepository
+    from src.memory.repos_memory.memory_index_repo import GlobalMemoryIndexRepository
+    from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
+    from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
+    from src.memory.retrieval.hybrid_retriever import HybridRetriever
+    from src.memory.vector.store import VectorStore
+
+
+def _build_global_memory_index_repository():
+    from src.memory.repos_memory.memory_index_repo import GlobalMemoryIndexRepository
+
+    return GlobalMemoryIndexRepository()
 
 
 @dataclass
@@ -21,7 +28,7 @@ class MemoryRepositories:
     this via ``_repos.memory`` instead of creating connections directly.
     """
 
-    memory_index: GlobalMemoryIndexRepository = field(default_factory=GlobalMemoryIndexRepository)
+    memory_index: GlobalMemoryIndexRepository = field(default_factory=_build_global_memory_index_repository)
     vector_store: Optional[VectorStore] = field(default=None)
     entity_graph: Optional[EntityRepository] = field(default=None)
     hybrid_retriever: Optional[HybridRetriever] = field(default=None)
@@ -30,17 +37,25 @@ class MemoryRepositories:
 
     def __post_init__(self) -> None:
         from src.memory.memory_db_path import resolve_memory_db_path
+        from src.memory.retrieval.hybrid_retriever import HybridRetriever
+        from src.memory.vector.store import VectorStore
 
         db_path = resolve_memory_db_path()
         if self.vector_store is None:
             self.vector_store = VectorStore(db_path)
         if self.entity_graph is None:
+            from src.memory.repos_memory.entity_repo import EntityRepository
+
             self.entity_graph = EntityRepository()
         if self.hybrid_retriever is None:
             self.hybrid_retriever = HybridRetriever(db_path)
         if self.work_catalog is None:
+            from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
+
             self.work_catalog = MemoryWorkCatalogRepository(db_path)
         if self.processing_catalog is None:
+            from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
+
             self.processing_catalog = MemoryProcessingCatalogRepository(db_path)
 
     def close(self) -> None:
@@ -52,4 +67,3 @@ class MemoryRepositories:
 def get_memory_repos() -> MemoryRepositories:
     """Create a MemoryRepositories instance with default repos."""
     return MemoryRepositories()
-

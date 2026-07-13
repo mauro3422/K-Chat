@@ -5,10 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from src.memory.repos.base import _BaseRepository
-from src.memory.repos.debug_repository import DebugRepository
-from src.memory.repos.message_repository import MessageRecord, MessageRepository
-from src.memory.repos.memory_index_repository import MemoryIndexRepository
 from src.memory.repos.protocols import (
     DebugRepositoryProtocol,
     MemoryIndexRepositoryProtocol,
@@ -18,10 +14,6 @@ from src.memory.repos.protocols import (
     ToolCallRepositoryProtocol,
     WidgetStateRepositoryProtocol,
 )
-from src.memory.repos.saved_widget_repository import SavedWidgetRepository
-from src.memory.repos.session_repository import SessionRepository
-from src.memory.repos.tool_call_repository import ToolCallRepository
-from src.memory.repos.widget_state_repository import WidgetStateRepository
 
 if TYPE_CHECKING:
     from src.memory.repos_memory import MemoryRepositories
@@ -53,6 +45,13 @@ class Repositories:
 
 
 def get_repos(conn=None) -> Repositories:
+    from src.memory.repos.debug_repository import DebugRepository
+    from src.memory.repos.message_repository import MessageRepository
+    from src.memory.repos.memory_index_repository import MemoryIndexRepository
+    from src.memory.repos.saved_widget_repository import SavedWidgetRepository
+    from src.memory.repos.session_repository import SessionRepository
+    from src.memory.repos.tool_call_repository import ToolCallRepository
+    from src.memory.repos.widget_state_repository import WidgetStateRepository
     from src.memory.repos_memory import get_memory_repos
 
     repos = Repositories(
@@ -66,18 +65,3 @@ def get_repos(conn=None) -> Repositories:
         memory=get_memory_repos(),
     )
     return repos
-
-
-__all__ = [
-    "_BaseRepository",
-    "MessageRecord",
-    "MessageRepository",
-    "SessionRepository",
-    "ToolCallRepository",
-    "WidgetStateRepository",
-    "MemoryIndexRepository",
-    "DebugRepository",
-    "SavedWidgetRepository",
-    "Repositories",
-    "get_repos",
-]
