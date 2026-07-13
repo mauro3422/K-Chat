@@ -50,8 +50,13 @@ class Repositories:
 
     def close(self) -> None:
         """Close cached resources owned by nested repositories."""
-        if self._memory is not None:
+        if self._memory is None:
+            return
+        try:
             self._memory.close()
+        finally:
+            # Drop the cached bundle so a later access can rebuild it cleanly.
+            self._memory = None
 
 
 def get_repos(conn=None) -> Repositories:

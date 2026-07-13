@@ -535,3 +535,32 @@ print(repos._memory is None)
         assert repos.widget_states._conn is conn
         assert repos.debug._conn is conn
         assert repos.saved_widgets._conn is conn
+        assert repos.memory_index._conn is conn
+
+    @pytest.mark.anyio
+    async def test_close_resets_cached_memory_bundle(self, monkeypatch):
+        class FakeMemoryRepositories:
+            instances = []
+
+            def __init__(self):
+                self.closed = False
+                self.__class__.instances.append(self)
+
+            def close(self):
+                self.closed = True
+
+        monkeypatch.setattr("src.memory.repos_memory.MemoryRepositories", FakeMemoryRepositories)
+
+        repos = get_repos()
+        first = repos.memory
+        assert isinstance(first, FakeMemoryRepositories)
+
+        repos.close()
+
+        assert first.closed is True
+        assert repos._memory is None
+
+        second = repos.memory
+        assert isinstance(second, FakeMemoryRepositories)
+        assert second is not first
+        assert len(FakeMemoryRepositories.instances) == 2
