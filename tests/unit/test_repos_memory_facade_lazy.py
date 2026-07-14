@@ -371,6 +371,53 @@ def test_memory_repositories_setters_close_replaced_cached_helpers() -> None:
     assert repos._hybrid_retriever is second_hybrid
 
 
+def test_memory_repositories_setters_replace_even_if_close_fails(monkeypatch) -> None:
+    from src.memory.repos_memory import container
+
+    class FailingVectorStore:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            raise RuntimeError("vector close failed")
+
+    class FailingHybridRetriever:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            raise RuntimeError("hybrid close failed")
+
+    warnings: list[str] = []
+    monkeypatch.setattr("src.memory.repos_memory.container.logger.warning", lambda msg, **kwargs: warnings.append(msg))
+
+    repos = container.MemoryRepositories(db_path="memory.db")
+    first_vector = FailingVectorStore("first")
+    second_vector = FailingVectorStore("second")
+    first_hybrid = FailingHybridRetriever("first")
+    second_hybrid = FailingHybridRetriever("second")
+
+    repos.vector_store = first_vector
+    repos.vector_store = second_vector
+    repos.hybrid_retriever = first_hybrid
+    repos.hybrid_retriever = second_hybrid
+
+    assert first_vector.closed is True
+    assert second_vector.closed is False
+    assert first_hybrid.closed is True
+    assert second_hybrid.closed is False
+    assert repos._vector_store is second_vector
+    assert repos._hybrid_retriever is second_hybrid
+    assert warnings == [
+        "Failed to close replaced vector_store",
+        "Failed to close replaced hybrid_retriever",
+    ]
+
+
 def test_memory_repositories_memory_setter_replaces_even_if_close_fails(monkeypatch) -> None:
     from src.memory.repos.bundle import Repositories
 

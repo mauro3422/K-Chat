@@ -97,7 +97,10 @@ class MemoryRepositories:
         if current is value:
             return
         if close_previous and current is not None:
-            self._close_resource(current)
+            try:
+                self._close_resource(current)
+            except Exception:
+                logger.warning(f"Failed to close replaced {attr_name.removeprefix('_')}", exc_info=True)
         setattr(self, attr_name, value)
 
     def _resolve_db_path(self) -> str:
