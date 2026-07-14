@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,9 @@ from src.memory.repos.protocols import (
 
 if TYPE_CHECKING:
     from src.memory.repos_memory import MemoryRepositories
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -57,7 +61,10 @@ class Repositories:
         if self._memory is value:
             return
         if self._memory is not None:
-            self._close_memory_bundle(self._memory)
+            try:
+                self._close_memory_bundle(self._memory)
+            except Exception:
+                logger.warning("Failed to close replaced memory bundle", exc_info=True)
         self._memory = value
 
     def close(self) -> None:
