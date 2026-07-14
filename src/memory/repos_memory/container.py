@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -11,6 +12,9 @@ if TYPE_CHECKING:
     from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
     from src.memory.retrieval.hybrid_retriever import HybridRetriever
     from src.memory.vector.store import VectorStore
+
+
+logger = logging.getLogger(__name__)
 
 
 def _build_global_memory_index_repository() -> GlobalMemoryIndexRepository:
@@ -167,6 +171,8 @@ class MemoryRepositories:
             try:
                 if resource is not None:
                     self._close_resource(resource)
+            except Exception:
+                logger.warning("Failed to close %s", attr_name, exc_info=True)
             finally:
                 # Drop every cached helper so a later access rebuilds a fresh one.
                 setattr(self, attr_name, None)

@@ -369,3 +369,36 @@ def test_memory_repositories_setters_close_replaced_cached_helpers() -> None:
     assert second_hybrid.closed is False
     assert repos._vector_store is second_vector
     assert repos._hybrid_retriever is second_hybrid
+
+
+def test_memory_repositories_close_keeps_closing_after_failure() -> None:
+    from src.memory.repos_memory import container
+
+    class FailingVectorStore:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            raise RuntimeError("vector close failed")
+
+    class ClosingHybridRetriever:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    repos = container.MemoryRepositories(db_path="memory.db")
+    vector_store = FailingVectorStore()
+    hybrid_retriever = ClosingHybridRetriever()
+
+    repos.vector_store = vector_store
+    repos.hybrid_retriever = hybrid_retriever
+
+    repos.close()
+
+    assert vector_store.closed is True
+    assert hybrid_retriever.closed is True
+    assert repos._vector_store is None
+    assert repos._hybrid_retriever is None
