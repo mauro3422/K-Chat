@@ -73,6 +73,8 @@ class Repositories:
             return
         try:
             self._close_memory_bundle(self._memory)
+        except Exception:
+            logger.warning("Failed to close memory bundle", exc_info=True)
         finally:
             # Drop the cached bundle so a later access can rebuild it cleanly.
             self._memory = None

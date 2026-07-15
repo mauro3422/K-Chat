@@ -457,6 +457,42 @@ def test_memory_repositories_memory_setter_replaces_even_if_close_fails(monkeypa
     assert warnings == ["Failed to close replaced memory bundle"]
 
 
+def test_memory_repositories_close_keeps_clearing_cache_even_if_close_fails(monkeypatch) -> None:
+    from src.memory.repos.bundle import Repositories
+
+    class FakeMemoryRepositories:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            raise RuntimeError("memory close failed")
+
+    class DummyRepo:
+        pass
+
+    warnings: list[str] = []
+    monkeypatch.setattr("src.memory.repos.bundle.logger.warning", lambda msg, **kwargs: warnings.append(msg))
+
+    repos = Repositories(
+        messages=DummyRepo(),
+        sessions=DummyRepo(),
+        tool_calls=DummyRepo(),
+        widget_states=DummyRepo(),
+        debug=DummyRepo(),
+        saved_widgets=DummyRepo(),
+        memory_index=DummyRepo(),
+    )
+    memory = FakeMemoryRepositories()
+    repos.memory = memory
+
+    repos.close()
+
+    assert memory.closed is True
+    assert repos._memory is None
+    assert warnings == ["Failed to close memory bundle"]
+
+
 def test_memory_repositories_close_keeps_closing_after_failure() -> None:
     from src.memory.repos_memory import container
 
