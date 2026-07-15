@@ -493,6 +493,45 @@ def test_memory_repositories_close_keeps_clearing_cache_even_if_close_fails(monk
     assert warnings == ["Failed to close memory bundle"]
 
 
+def test_memory_repositories_close_rebuilds_bundle_on_next_access(monkeypatch) -> None:
+    from src.memory.repos.bundle import Repositories
+
+    instances: list[object] = []
+
+    class FakeMemoryRepositories:
+        def __init__(self) -> None:
+            self.closed = False
+            instances.append(self)
+
+        def close(self) -> None:
+            self.closed = True
+
+    class DummyRepo:
+        pass
+
+    monkeypatch.setattr("src.memory.repos_memory.MemoryRepositories", FakeMemoryRepositories)
+
+    repos = Repositories(
+        messages=DummyRepo(),
+        sessions=DummyRepo(),
+        tool_calls=DummyRepo(),
+        widget_states=DummyRepo(),
+        debug=DummyRepo(),
+        saved_widgets=DummyRepo(),
+        memory_index=DummyRepo(),
+    )
+
+    first = repos.memory
+    repos.close()
+    second = repos.memory
+
+    assert first.closed is True
+    assert second is not first
+    assert second.closed is False
+    assert repos._memory is second
+    assert len(instances) == 2
+
+
 def test_memory_repositories_close_keeps_closing_after_failure() -> None:
     from src.memory.repos_memory import container
 
