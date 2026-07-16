@@ -355,6 +355,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   }
 
   async handleRetry(text: string, model?: string, retryAttempt?: number): Promise<void> {
+    // Preserve the visible attempt number before abort() resets retry state.
+    const attempt = retryAttempt ?? Math.max(this.retryController?.count ?? 0, 1);
+
     // Save reference BEFORE abort() clears it
     const existingRetryEl = this._lastError ? this.lastAssistantMsgEl : null;
 
@@ -367,11 +370,8 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     let retryText = text;
     if (this._lastError) {
       const err = this._lastError;
-      // scheduleRetry already incremented count before calling onRetry,
-      // so count = actual attempt number (1-indexed)
-      const count = retryAttempt ?? this.retryController?.count ?? 1;
       const max = this.retryController?.maxRetries ?? 3;
-      retryText = `[SYSTEM: Retry attempt ${Math.min(count, max)}/${max}. Previous attempt failed with error: ${err.type} — ${err.message}. This is a retry of the same user message, do NOT assume any prior assistant response exists.]\n\n${text}`;
+      retryText = `[SYSTEM: Retry attempt ${Math.min(attempt, max)}/${max}. Previous attempt failed with error: ${err.type} — ${err.message}. This is a retry of the same user message, do NOT assume any prior assistant response exists.]\n\n${text}`;
       this._lastError = null; // consume
     }
 

@@ -76,4 +76,23 @@ describe('StreamOrchestrator retry prompt', () => {
     expect(retryPrompt).toContain('timeout');
     expect(retryPrompt).toContain('Mensaje original');
   });
+
+  it('falls back to the first retry attempt when the counter has been cleared', async () => {
+    const retryController = new RetryController();
+
+    const orchestrator = makeOrchestrator(retryController);
+    const handleChatSend = vi.fn(async () => {});
+
+    (orchestrator as any).handleChatSend = handleChatSend;
+    (orchestrator as any)._lastError = { type: 'rate_limit', message: 'límite alcanzado' };
+    (orchestrator as any).abort = vi.fn(() => {
+      retryController.resetRetryCount();
+    });
+
+    await orchestrator.handleRetry('Mensaje original', 'gpt-4');
+
+    const retryPrompt = ((handleChatSend.mock.calls[0] as unknown) as [string, string | undefined, number | undefined])[0];
+    expect(retryPrompt).toContain('Retry attempt 1/3');
+    expect(retryPrompt).toContain('rate_limit');
+  });
 });
