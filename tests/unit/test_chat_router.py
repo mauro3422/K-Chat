@@ -176,6 +176,25 @@ async def test_chat_rebuild_history_error(mock_get_repos, mock_rebuild):
     assert "Error loading history" in exc.value.detail
 
 
+@patch("web.routers.chat.rebuild_history", side_effect=Exception("DB fail"))
+@patch("web.routers.chat.get_repos")
+@pytest.mark.anyio
+async def test_chat_releases_lock_when_history_load_fails(mock_get_repos, mock_rebuild):
+    """A failed pre-stream setup must not leave the session lock held."""
+    mock_get_repos.return_value = _make_mock_repos()
+    bt = BackgroundTasks()
+    request = _make_request()
+    manager = SessionStreamLockManager()
+    request.app.state.chat_stream_lock_manager = manager
+
+    with pytest.raises(HTTPException):
+        await chat("s1", request, bt, message="hello", model="m1", files=[])
+
+    reacquired = await manager.try_acquire("s1")
+    assert reacquired is not None
+    manager.release("s1", reacquired)
+
+
 @patch("web.services.message_persister.log_turn")
 @patch("web.routers.chat.get_default_model", return_value="fallback-model")
 @patch("web.routers.chat.get_repos")
