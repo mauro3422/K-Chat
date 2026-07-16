@@ -1,4 +1,5 @@
 import sqlite3
+from collections.abc import Mapping
 from pathlib import Path
 
 import anyio
@@ -6,7 +7,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from src.config_loader import load_config
-from web.routers._node_helpers import _get_node_bridge, _peer_cluster_state
+from web.routers._node_helpers import _peer_cluster_state
 
 router = APIRouter()
 
@@ -25,6 +26,12 @@ def _bool_or_default(value, default: bool = False) -> bool:
 
 def _int_or_default(value, default: int = 0) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else default
+
+
+def _mapping_or_default(value, default: dict | None = None) -> dict:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return dict(default or {})
 
 
 def _ping_sqlite_readonly(path: str) -> None:
@@ -74,7 +81,7 @@ async def health(request: Request):
         coordinator = getattr(request.app.state, "node_coordinator", None)
         cluster = await _peer_cluster_state(request)
         if coordinator is not None:
-            snapshot = coordinator.snapshot()
+            snapshot = _mapping_or_default(coordinator.snapshot())
             coordination = {
                 "node_id": _text_or_default(snapshot.get("node_id"), _text_or_default(getattr(cfg, "node_id", None), "")),
                 "role": _text_or_default(snapshot.get("role"), _text_or_default(getattr(cfg, "node_role", None), "secondary")),
@@ -112,12 +119,15 @@ async def health(request: Request):
         lease_manager = getattr(request.app.state, "memory_lease_manager", None)
         coordinator = getattr(request.app.state, "node_coordinator", None)
         failover_state = getattr(request.app.state, "failover_state", None)
-        coord_snapshot = coordinator.snapshot() if coordinator is not None else {}
-        if not isinstance(coord_snapshot, dict):
-            coord_snapshot = {}
+        coord_snapshot = _mapping_or_default(coordinator.snapshot()) if coordinator is not None else {}
         lease_snapshot = lease_manager.snapshot() if lease_manager else None
-        if lease_snapshot is not None and not hasattr(lease_snapshot, "to_dict"):
-            lease_snapshot = None
+        if lease_snapshot is not None:
+            if hasattr(lease_snapshot, "to_dict"):
+                lease_snapshot = lease_snapshot.to_dict()
+            elif isinstance(lease_snapshot, Mapping):
+                lease_snapshot = dict(lease_snapshot)
+            else:
+                lease_snapshot = None
         node_role = _text_or_default(getattr(cfg, "node_role", None), "secondary")
         sync = {
             "role": _text_or_default(coord_snapshot.get("role"), node_role),
@@ -130,16 +140,14 @@ async def health(request: Request):
         memory = {
             "queue_size": len(queue) if queue is not None else 0,
             "queue_pending": queue.snapshot() if queue is not None else [],
-            "lease": lease_snapshot.to_dict() if lease_snapshot else None,
+            "lease": lease_snapshot,
             "freshness": {
                 "last_revision": _float_or_default(coord_snapshot.get("last_memory_revision", 0.0), 0.0),
                 "last_sync": _float_or_default(coord_snapshot.get("last_memory_sync", 0.0), 0.0),
                 "is_fresh": _bool_or_default(coord_snapshot.get("memory_is_fresh", True), True),
             },
         }
-        failover = failover_state.snapshot() if failover_state is not None else {}
-        if not isinstance(failover, dict):
-            failover = {}
+        failover = _mapping_or_default(failover_state.snapshot()) if failover_state is not None else {}
     except Exception:
         sync = {
             "role": node_role,
