@@ -6,6 +6,7 @@ from web.services.health_snapshot import (
     build_health_checks,
     build_health_coordination,
     build_health_runtime,
+    checks_are_healthy,
 )
 
 router = APIRouter()
@@ -61,13 +62,7 @@ async def health(request: Request):
             failover_snapshot=None,
         )
 
-    healthy_values = {"ok", "configured", "not_configured"}
-    status = 200 if all(
-        v in healthy_values
-        or (testing and k == "database")
-        or k in {"node_role", "cluster_name"}
-        for k, v in checks.items()
-    ) else 503
+    status = 200 if checks_are_healthy(checks, testing=testing) else 503
     payload = {
         "status": "ok" if status == 200 else "degraded",
         "checks": checks,

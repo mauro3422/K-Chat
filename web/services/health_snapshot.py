@@ -42,6 +42,15 @@ def _ping_sqlite_readonly(path: str) -> None:
         conn.close()
 
 
+def checks_are_healthy(checks: Mapping[str, str], *, testing: bool) -> bool:
+    return all(
+        value in {"ok", "configured", "not_configured"}
+        or (testing and key == "database")
+        or key in {"node_role", "cluster_name"}
+        for key, value in checks.items()
+    )
+
+
 async def build_health_checks(cfg: Any, *, testing: bool) -> dict[str, str]:
     checks: dict[str, str] = {}
 

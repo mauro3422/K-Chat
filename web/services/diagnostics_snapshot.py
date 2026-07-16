@@ -13,6 +13,7 @@ from web.services.health_snapshot import (
     build_health_checks,
     build_health_coordination,
     build_health_runtime,
+    checks_are_healthy,
 )
 
 
@@ -155,12 +156,7 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
             failover_snapshot=failover_state.snapshot() if failover_state is not None else None,
         )
         health = {
-            "status": "ok" if all(
-                v in {"ok", "configured", "not_configured"}
-                or (testing and k == "database")
-                or k in {"node_role", "cluster_name"}
-                for k, v in checks.items()
-            ) else "degraded",
+            "status": "ok" if checks_are_healthy(checks, testing=testing) else "degraded",
             "checks": checks,
             "coordination": build_health_coordination(cfg=cfg, coordinator_snapshot=coord_snapshot, cluster=cluster),
             "memory": health_memory,
