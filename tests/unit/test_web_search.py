@@ -88,6 +88,29 @@ async def test_run_empty_results(mock_httpx):
 
     result = await run(query="nothing")
     assert "No results found" in result
+    assert "0 results" in result
+
+
+@patch("src.tools.web_search.httpx")
+@pytest.mark.anyio
+async def test_run_bing_fallback_uses_fallback_payload(mock_httpx):
+    primary_resp = MagicMock()
+    primary_resp.json.return_value = {"results": []}
+    fallback_resp = MagicMock()
+    fallback_resp.json.return_value = {
+        "results": [{"title": "B1", "content": "BC1", "url": "https://bing.example/1"}],
+        "suggestions": ["bing-sug"],
+        "infoboxes": [{"content": "Bing infobox", "urls": [{"url": "https://bing.example/info"}]}],
+    }
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(side_effect=[primary_resp, fallback_resp])
+    mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+
+    result = await run(query="fallback")
+
+    assert "B1" in result
+    assert "bing-sug" in result
+    assert "Bing infobox" in result
 
 
 @patch("src.tools.web_search.httpx")

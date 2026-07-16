@@ -84,6 +84,12 @@ def _format_result(r: dict[str, Any]) -> str:
 VALID_TIME_RANGES = frozenset({"", "day", "week", "month", "year"})
 
 
+def _empty_results_message(fallback_used: bool) -> str:
+    if fallback_used:
+        return "No results found. SearXNG returned 0 results after Bing fallback."
+    return "No results found. SearXNG returned 0 results."
+
+
 async def _search_with_retry(
     query: str,
     results_lang: str,
@@ -182,19 +188,27 @@ async def _search_and_format_results(
         return error or "Search failed."
 
     results = data.get("results", [])[:max_results]
+    source_data = data
 
     # Default engines (DuckDuckGo, Google) often rate-limit automated
     # queries.  Fall back to Bing which is more permissive with
     # self-hosted SearXNG instances.
+    bing_data: dict[str, Any] | None = None
     if not results:
         logger.info("No results from default engines — retrying with Bing")
         bing_data = await _search_with_engines(
             query, language, time_range, page, safe_search, "bing", config=config,
         )
-        results = (bing_data.get("results", []) if bing_data else [])[:max_results]
+        if bing_data:
+            bing_results = bing_data.get("results", [])[:max_results]
+            if bing_results:
+                results = bing_results
+                source_data = bing_data
 
     if not results:
-        return "No results found."
+        if bing_data is None:
+            return "No results found. SearXNG returned 0 results and Bing fallback failed."
+        return _empty_results_message(fallback_used=True)
 
     out = [f"Search results for: {query}"]
     if categories and categories != "general":
@@ -204,12 +218,12 @@ async def _search_and_format_results(
         out.append(f"{i}. {_format_result(r)}")
         out.append("")
 
-    suggestions = data.get("suggestions", [])
+    suggestions = source_data.get("suggestions", [])
     if suggestions:
         out.append(f"Suggestions: {', '.join(suggestions[:5])}")
         out.append("")
 
-    infoboxes = data.get("infoboxes", [])
+    infoboxes = source_data.get("infoboxes", [])
     if infoboxes:
         for ib in infoboxes:
             ib_content = ib.get("content", "")
