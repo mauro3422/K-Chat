@@ -15,6 +15,7 @@ from web.services.health_snapshot import (
     build_health_runtime,
     checks_are_healthy,
 )
+from web.services.peer_cluster_snapshot import build_peer_cluster_snapshot, snapshot_error
 
 
 def _get_coordinator(request: Request):
@@ -32,11 +33,6 @@ def _get_bridge(request: Request):
     bridge = NodeLanBridge(config=cfg, coordinator=coordinator)
     request.app.state.node_bridge = bridge
     return bridge
-
-
-def _snapshot_error(source: str, exc: Exception) -> dict[str, str]:
-    return {"source": source, "error": str(exc)}
-
 
 async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "") -> dict[str, Any]:
     coordinator = _get_coordinator(request)
@@ -57,21 +53,14 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
     }
     if bridge is not None and peer_urls:
         try:
-            peer_result = await bridge.request_peer_states()
-            cluster = {
-                "peer_count": len(peer_urls),
-                "reachable_peers": len([state for state in peer_result.get("states", []) if isinstance(state, dict)]),
-                "unreachable_peers": len([error for error in peer_result.get("errors", []) if isinstance(error, dict)]),
-                "states": [state for state in peer_result.get("states", []) if isinstance(state, dict)],
-                "errors": [error for error in peer_result.get("errors", []) if isinstance(error, dict)],
-            }
+            cluster = await build_peer_cluster_snapshot(bridge)
         except Exception as exc:
             cluster = {
                 "peer_count": len(peer_urls),
                 "reachable_peers": 0,
                 "unreachable_peers": len(peer_urls),
                 "states": [],
-                "errors": [_snapshot_error("request_peer_states", exc)],
+                "errors": [snapshot_error("request_peer_states", exc)],
             }
 
     peer_memory = {
@@ -154,7 +143,7 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
         except Exception as exc:
             peer_memory = {
                 "peers": [],
-                "errors": [_snapshot_error("request_peer_memory_snapshots", exc)],
+                "errors": [snapshot_error("request_peer_memory_snapshots", exc)],
                 "summary": {
                     "peer_count": 0,
                     "configured_peer_count": len(peer_urls),

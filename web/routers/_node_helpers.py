@@ -19,6 +19,7 @@ from src.coordination.leader_lease import get_leader_lease_manager
 from src.coordination.memory_write_queue import get_memory_write_queue
 from src.coordination.node_state import NodeCoordinator, get_node_coordinator
 from web.routers._request_repos import request_repos
+from web.services.peer_cluster_snapshot import build_peer_cluster_snapshot
 from web.services.event_bus import IEventBus, get_event_bus
 from web.services.failover_state import get_failover_state
 
@@ -83,21 +84,4 @@ def _request_base_url(request: Request | None) -> str:
 
 async def _peer_cluster_state(request: Request) -> dict:
     bridge = _get_node_bridge(request)
-    if bridge is None or not bridge.peer_urls:
-        return {
-            "peer_count": 0,
-            "reachable_peers": 0,
-            "unreachable_peers": 0,
-            "states": [],
-            "errors": [],
-        }
-    peer_result = await bridge.request_peer_states()
-    states = [state for state in peer_result.get("states", []) if isinstance(state, dict)]
-    errors = [error for error in peer_result.get("errors", []) if isinstance(error, dict)]
-    return {
-        "peer_count": len(bridge.peer_urls),
-        "reachable_peers": len(states),
-        "unreachable_peers": len(errors),
-        "states": states,
-        "errors": errors,
-    }
+    return await build_peer_cluster_snapshot(bridge)
