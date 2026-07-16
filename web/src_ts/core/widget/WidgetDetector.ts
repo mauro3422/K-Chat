@@ -16,6 +16,8 @@ export class WidgetDetector {
 
   /** Full accumulated text being scanned */
   private accumulatedText = '';
+  /** Block spans already registered with the widget registry */
+  private registeredBlockSpans = new Set<string>();
 
   constructor(private registry: IWidgetRegistry) {}
 
@@ -29,6 +31,7 @@ export class WidgetDetector {
   /** Reset accumulated text (e.g. on new message) */
   reset(): void {
     this.accumulatedText = '';
+    this.registeredBlockSpans.clear();
   }
 
   /** Scan accumulated text for widget markers */
@@ -43,8 +46,12 @@ export class WidgetDetector {
       const code = match[2].trim();
       if (!code) continue;
 
-      // Register the code via injected registry
-      this.registry.register(code, key);
+      const spanKey = `${match.index}:${match.index + match[0].length}`;
+      if (!this.registeredBlockSpans.has(spanKey)) {
+        // Register the code via injected registry once per completed block span.
+        this.registry.register(code, key);
+        this.registeredBlockSpans.add(spanKey);
+      }
 
       markers.push({
         type: 'block',

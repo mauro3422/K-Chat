@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { WidgetDetector } from '../core/widget/WidgetDetector';
 import { WidgetRegistry } from '../core/widget/WidgetRegistry';
+import type { IWidgetRegistry } from '../types/widgets';
 
 describe('WidgetDetector', () => {
   it('returns only newly completed markers across feed calls', () => {
@@ -42,5 +43,20 @@ describe('WidgetDetector', () => {
     expect(tag).toBeDefined();
     expect(block ? detector.extractCode('', block) : null).toBe('<button>A</button>');
     expect(tag ? detector.extractCode('', tag) : null).toBeNull();
+  });
+
+  it('registers a completed block only once across later feed calls', () => {
+    const registry: Pick<IWidgetRegistry, 'register'> = {
+      register: vi.fn(() => 'widget-0'),
+    };
+    const detector = new WidgetDetector(registry as IWidgetRegistry);
+
+    const first = detector.feed('prefix ```html-widget demo\n<button>A</button>\n```');
+    const second = detector.feed(' suffix text');
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(0);
+    expect(registry.register).toHaveBeenCalledTimes(1);
+    expect(registry.register).toHaveBeenCalledWith('<button>A</button>', 'demo');
   });
 });
