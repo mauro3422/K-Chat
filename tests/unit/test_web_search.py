@@ -115,6 +115,38 @@ async def test_run_bing_fallback_uses_fallback_payload(mock_httpx):
 
 @patch("src.tools.web_search.httpx")
 @pytest.mark.anyio
+async def test_run_bing_fallback_returns_empty_results_message(mock_httpx):
+    primary_resp = MagicMock()
+    primary_resp.json.return_value = {"results": []}
+    fallback_resp = MagicMock()
+    fallback_resp.json.return_value = {"results": []}
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(side_effect=[primary_resp, fallback_resp])
+    mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+
+    result = await run(query="fallback-empty")
+
+    assert result == "No results found. SearXNG returned 0 results after Bing fallback."
+    assert mock_client.get.call_count == 2
+
+
+@patch("src.tools.web_search.httpx")
+@pytest.mark.anyio
+async def test_run_bing_fallback_failure_reports_diagnostic(mock_httpx):
+    primary_resp = MagicMock()
+    primary_resp.json.return_value = {"results": []}
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(side_effect=[primary_resp, Exception("bing down")])
+    mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+
+    result = await run(query="fallback-fail")
+
+    assert "Bing fallback failed" in result
+    assert mock_client.get.call_count == 2
+
+
+@patch("src.tools.web_search.httpx")
+@pytest.mark.anyio
 async def test_run_with_suggestions(mock_httpx):
     mock_resp = MagicMock()
     mock_resp.json.return_value = {
