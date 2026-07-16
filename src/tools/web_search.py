@@ -104,6 +104,7 @@ async def _search_with_retry(
     page: int = 1,
     safe_search: int = 0,
     time_range: str = "",
+    engines: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     params: dict[str, Any] = {
         "q": query,
@@ -112,6 +113,8 @@ async def _search_with_retry(
         "pageno": page,
         "safesearch": safe_search,
     }
+    if engines:
+        params["engines"] = engines
     if results_lang:
         params["language"] = results_lang
     if time_range:
@@ -146,30 +149,28 @@ async def _search_with_engines(
     ``engines`` is a comma-separated engine list (e.g. ``"bing"``) or
     ``None`` to use the instance's default engine selection.
     """
-    params: dict[str, Any] = {
-        "q": query,
-        "format": "json",
-        "pageno": page,
-        "safesearch": safe_search,
-    }
-    if engines:
-        params["engines"] = engines
-    if language:
-        params["language"] = language
-    if time_range:
-        params["time_range"] = time_range
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{_searxng_url(config=config)}/search",
-                params=params,
-                timeout=SEARCH_TIMEOUT,
-            )
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        logger.exception("Search with engines=%s failed", engines or "default")
-        return None
+    data, _ = await _search_with_retry(
+        query,
+        language,
+        SEARCH_TIMEOUT,
+        1,
+        config=config,
+        page=page,
+        safe_search=safe_search,
+        time_range=time_range,
+        engines=engines,
+    )
+    if data is None:
+        logger.warning("Search with engines=%s failed after retry", engines or "default")
+    return data
+
+
+def _empty_results_message(*, fallback_failed: bool = False, fallback_empty: bool = False) -> str:
+    if fallback_failed:
+        return "No results found. Default SearXNG engines returned 0 results; Bing fallback failed."
+    if fallback_empty:
+        return "No results found. Default SearXNG engines returned 0 results; Bing fallback also returned 0 results."
+    return "No results found. SearXNG returned 0 results."
 
 
 async def _search_and_format_results(
@@ -212,8 +213,8 @@ async def _search_and_format_results(
 
     if not results:
         if bing_data is None:
-            return "No results found. SearXNG returned 0 results and Bing fallback failed."
-        return _empty_results_message(fallback_used=True)
+            return _empty_results_message(fallback_failed=True)
+        return _empty_results_message(fallback_empty=True)
 
     out = [f"Search results for: {query}"]
     if categories and categories != "general":
