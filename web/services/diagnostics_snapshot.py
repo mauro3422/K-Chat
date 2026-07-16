@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastapi import Request
@@ -10,6 +9,11 @@ from fastapi import Request
 from src.coordination.lan_bridge import NodeLanBridge
 from src.coordination.node_state import get_node_coordinator
 from web.routers._memory_snapshot import build_memory_snapshot
+from web.services.health_snapshot import (
+    build_health_checks,
+    build_health_coordination,
+    build_health_runtime,
+)
 
 
 def _get_coordinator(request: Request):
@@ -32,17 +36,12 @@ def _get_bridge(request: Request):
 async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "") -> dict[str, Any]:
     coordinator = _get_coordinator(request)
     bridge = _get_bridge(request)
-    health = None
-    try:
-        from web.routers.health import health as health_endpoint
-
-        health_resp = await health_endpoint(request)
-        if hasattr(health_resp, "body"):
-            health = json.loads(health_resp.body.decode("utf-8"))
-    except Exception:
-        health = None
+    cfg = getattr(request.app.state, "config", None)
+    testing = bool(getattr(cfg, "testing", False))
 
     memory = await build_memory_snapshot(request, key_pattern=key_pattern)
+    checks = await build_health_checks(cfg, testing=testing)
+
     cluster = {
         "peer_count": 0,
         "reachable_peers": 0,
@@ -139,7 +138,68 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
         except Exception:
             pass
 
-    snapshot = coordinator.snapshot()
+    try:
+        coord_snapshot = coordinator.snapshot()
+    except Exception:
+        coord_snapshot = None
+
+    try:
+        failover_state = getattr(request.app.state, "failover_state", None)
+        sync, health_memory, failover = build_health_runtime(
+            cfg=cfg,
+            coordinator_snapshot=coord_snapshot,
+            coordinator_role=getattr(coordinator, "role", ""),
+            queue_size=int(memory.get("queue_size", 0) or 0),
+            queue_pending=list(memory.get("queue", []) or []),
+            lease_snapshot=memory.get("lease"),
+            failover_snapshot=failover_state.snapshot() if failover_state is not None else None,
+        )
+        health = {
+            "status": "ok" if all(
+                v in {"ok", "configured", "not_configured"}
+                or (testing and k == "database")
+                or k in {"node_role", "cluster_name"}
+                for k, v in checks.items()
+            ) else "degraded",
+            "checks": checks,
+            "coordination": build_health_coordination(cfg=cfg, coordinator_snapshot=coord_snapshot, cluster=cluster),
+            "memory": health_memory,
+            "sync": sync,
+            "failover": failover,
+        }
+    except Exception:
+        health = {
+            "status": "degraded",
+            "checks": checks,
+            "coordination": build_health_coordination(cfg=cfg, coordinator_snapshot=None, cluster=None),
+            "memory": {
+                "queue_size": 0,
+                "queue_pending": [],
+                "lease": None,
+                "freshness": {"last_revision": 0.0, "last_sync": 0.0, "is_fresh": True},
+            },
+            "sync": {
+                "role": str(getattr(cfg, "node_role", "secondary")),
+                "is_primary": False,
+                "has_recent_primary": False,
+                "memory_is_fresh": True,
+                "last_memory_revision": 0.0,
+                "last_memory_sync": 0.0,
+            },
+            "failover": {
+                "required_misses": 2,
+                "miss_count": 0,
+                "last_check_at": 0.0,
+                "last_primary_seen_at": 0.0,
+                "last_promotion_at": 0.0,
+                "last_action": "idle",
+                "last_reason": "",
+                "promoted_role": "",
+                "should_promote": False,
+            },
+        }
+
+    snapshot = coord_snapshot if coord_snapshot is not None else coordinator.snapshot()
     return {
         "node": snapshot,
         "bridge": {

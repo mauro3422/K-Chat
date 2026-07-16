@@ -75,6 +75,7 @@ async def test_api_diagnostics_returns_unified_snapshot():
     assert body["peer_memory"]["summary"]["peer_diffs"][0]["compare_severity"] == "medium"
     assert "memory" in body
     assert "health" in body
+    fake_bridge.request_peer_states.assert_awaited_once()
     fake_bridge.request_peer_memory_snapshots.assert_awaited_once_with(key_pattern="user:*")
     app.state.manage_memory_run.assert_awaited_once()
     assert app.state.manage_memory_run.await_args.kwargs["key_pattern"] == "user:*"
