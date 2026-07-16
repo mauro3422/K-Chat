@@ -77,9 +77,11 @@ async def test_chat_streaming_works(_mock_default, _mock_history, mock_builder):
     from src.api.session import ensure_session
     await init_db()
     await ensure_session("smoke-test-session")
-    mock_builder.return_value = lambda: iter([
-        '{"t":"content","d":"Smoke test OK"}\n',
-    ])
+
+    async def fake_stream():
+        yield '{"t":"content","d":"Smoke test OK"}\n'
+
+    mock_builder.return_value = fake_stream
     async with _make_client() as client:
         resp = await client.post(
             "/chat/smoke-test-session",

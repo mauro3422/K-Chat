@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 
 import anyio
 from fastapi import APIRouter, Request
@@ -26,6 +27,18 @@ def _int_or_default(value, default: int = 0) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else default
 
 
+def _ping_sqlite_readonly(path: str) -> None:
+    file_path = Path(path)
+    if not file_path.exists():
+        raise FileNotFoundError(file_path)
+
+    conn = sqlite3.connect(f"file:{file_path.as_posix()}?mode=ro", uri=True, timeout=1.0)
+    try:
+        conn.execute("SELECT 1")
+    finally:
+        conn.close()
+
+
 @router.get("/health")
 async def health(request: Request):
     checks = {}
@@ -37,19 +50,7 @@ async def health(request: Request):
         if not db_path:
             raise FileNotFoundError("sessions_db_path not configured")
 
-        def _ping_db(path: str) -> None:
-            from pathlib import Path
-
-            file_path = Path(path)
-            if not file_path.exists():
-                raise FileNotFoundError(file_path)
-            conn = sqlite3.connect(f"file:{file_path.as_posix()}?mode=ro", uri=True, timeout=1.0)
-            try:
-                conn.execute("SELECT 1")
-            finally:
-                conn.close()
-
-        await anyio.to_thread.run_sync(_ping_db, db_path)
+        await anyio.to_thread.run_sync(_ping_sqlite_readonly, db_path)
         checks["database"] = "ok"
     except Exception:
         checks["database"] = "skipped" if testing else "error"
@@ -165,7 +166,7 @@ async def health(request: Request):
             "promoted_role": "",
             "should_promote": False,
         }
-    
+
     healthy_values = {"ok", "configured", "not_configured"}
     status = 200 if all(
         v in healthy_values

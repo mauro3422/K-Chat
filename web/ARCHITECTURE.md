@@ -20,7 +20,7 @@
 
 | File | Routes | Responsibility |
 |------|--------|----------------|
-| `routers/health.py` | `GET /health` | DB + LLM provider connectivity check |
+| `routers/health.py` | `GET /health` | DB + LLM provider + cluster health check |
 | `routers/chat.py` | `POST /chat/{session_id}` | Accepts message + files, returns NDJSON stream, background tasks |
 | `routers/sessions.py` | `POST .../rename`, `POST .../delete` | Session management |
 | `routers/widgets.py` | `GET/POST .../widgets/*` | CRUD for HTML widgets: state, code, versions, save |
@@ -141,7 +141,7 @@ StreamingResponse(generate(), media_type="application/x-ndjson")
 | Pydantic | `chat.py`, `widgets.py` (payload models) |
 | Uvicorn | `dev_server.py` |
 | `src.api` | Domain modules for sessions, messages, widgets, debug, tools, history, skills, ASR |
-| `src.memory.connection_pool` | `health.py` (DB ping) |
+| `sqlite3` | `health.py` (read-only DB ping) |
 | `dependencies.manage` | `app_factory.py` (SearXNG lifecycle) |
 
 ### Internal (`web/`)
@@ -184,7 +184,7 @@ message_renderer.py    ← message_renderer_contract.py, widget_contract.py
 | **`message_renderer.py` duplicates logic** | Extracts widgets via regex *and* calls `render_msg_with_phases` — widget extraction could be a service. |
 | **No auth on `/chat/{session_id}`** | Anyone with a session UUID can post messages. Only rate limiting protects the endpoint. |
 | **`_max_backend_logs = 100` hardcoded** | Should be configurable or at least a constant at module level with a clear name. |
-| **`health.py` imports at call time** | `from src.memory.connection_pool import get_conn` inside the function — inconsistent with other modules. |
+| **`health.py` builds a large snapshot from loose app state** | The endpoint is still easy to drift as new state fields appear; a dedicated typed snapshot helper would make the response contract easier to evolve. |
 | **No tests in `web/`** | No test files found; the architecture would benefit from integration tests for the streaming flow. |
 | **CSP `unsafe-inline`** | Required for inline scripts/styles but weakens XSS protection; consider nonces or hashes. |
 
