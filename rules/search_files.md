@@ -4,7 +4,7 @@
 <!-- auto:params -->
 | Parámetro | Tipo | Requerido | Default | Descripción |
 |---|---|---|---|---|
-| `case_sensitive` | boolean | No | False | Busqueda exacta (default: false = ignora mayusculas/minusculas) |
+| `case_sensitive` | boolean | No | false | Busqueda exacta (default: false = ignora mayusculas/minusculas) |
 | `context_lines` | integer | No | 2 | Lineas de contexto antes y despues de cada coincidencia (default: 2, max: 10) |
 | `file_pattern` | string | No |  | Filtro glob para archivos (ej: '*.py', '*.md', '*.{py,js}'). Vacio = todos. |
 | `max_results` | integer | No | 50 | Maximo de coincidencias a mostrar (default: 50, max: 200) |

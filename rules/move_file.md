@@ -1,18 +1,9 @@
 # move_file
+**Mueve, renombra o copia archivos y directorios. Reemplaza mv y cp. Operaciones: 'move' (mover/renombrar), 'copy' (copiar). El destino puede ser un directorio (preserva nombre) o una ruta completa.**
 
-Mueve o copia archivos y directorios.
-
-## Parametros
-- `source` (requerido): origen
-- `dest` (requerido): destino
-- `operation` (opcional): "move" (default) o "copy"
-
-## Comportamiento
-- Crea directorios destino si no existen
-- NO sobreescribe archivos existentes (seguridad)
-- Si destino es un directorio existente, pega el nombre del origen
-- Usa `shutil.move` para move, `shutil.copy2`/`copytree` para copy
-
-## Limites
-- No soporta wildcards/glob (usar execute_command para eso)
-- No soporta sobreescritura forzada
+<!-- auto:params -->
+| Parámetro | Tipo | Requerido | Default | Descripción |
+|---|---|---|---|---|
+| `dest` | string | Sí |  | Ruta de destino (archivo o directorio) |
+| `operation` | string | No | move | 'move' = mover/renombrar, 'copy' = copiar Values: move, copy |
+| `source` | string | Sí |  | Ruta del archivo o directorio origen |

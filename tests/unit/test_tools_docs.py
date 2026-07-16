@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock, mock_open
@@ -262,3 +264,21 @@ Manual section below
             assert "**First tool**" in all_written
             assert "<!-- auto:params -->" in all_written
             assert "Manual section below" in all_written
+
+
+@pytest.mark.anyio
+async def test_rules_files_match_registry_definitions():
+    from src.context.tools_docs import _auto_section
+    from src.paths import CONTEXT_DIR
+    from src.tools import get_default_registry
+
+    rules_dir = os.path.join(CONTEXT_DIR, "rules")
+    registry = get_default_registry().definitions
+
+    for name, defn in sorted(registry.items()):
+        path = os.path.join(rules_dir, f"{name}.md")
+        assert os.path.exists(path), f"Missing generated rules file for {name}"
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        expected_auto = _auto_section(name, defn["function"])
+        assert content.startswith(expected_auto), f"Outdated rules file for {name}"

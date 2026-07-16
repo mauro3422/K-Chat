@@ -7,5 +7,5 @@
 | `count` | integer | No |  | Number of commits for log/diff (default: 5) |
 | `cwd` | string | No |  | Working directory (default: $HOME) |
 | `message` | string | No |  | Commit message (required for commit operation) |
-| `operation` | string | Sí |  | Git operation to perform Valores: status, diff, log, branch, add, commit, push, pull, clone |
+| `operation` | string | Sí |  | Git operation to perform Values: status, diff, log, branch, add, commit, push, pull, clone |
 | `path` | string | No |  | File path for add operation, or clone URL/directory |
