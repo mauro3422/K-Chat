@@ -9,7 +9,7 @@ import { IWidgetRegistry } from '../../types/widgets';
  */
 export class WidgetDetector {
   /** Regex for ```html-widget [key] \n ... \n``` blocks */
-  private static BLOCK_RE = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)(?:\n```|$)/g;
+  private static BLOCK_RE = /```html-widget(?:\s+([\w\-]+))?\s*\n([\s\S]*?)\n```/g;
 
   /** Regex for [Widget:key] or [Widget key] inline tags */
   private static TAG_RE = /\[Widget:?\s*([\w\-]+)\]/gi;
@@ -21,8 +21,9 @@ export class WidgetDetector {
 
   /** Feed new text chunk and return newly detected markers */
   feed(text: string): WidgetMarker[] {
+    const previousLength = this.accumulatedText.length;
     this.accumulatedText += text;
-    return this.scan();
+    return this.scan(previousLength);
   }
 
   /** Reset accumulated text (e.g. on new message) */
@@ -31,7 +32,7 @@ export class WidgetDetector {
   }
 
   /** Scan accumulated text for widget markers */
-  private scan(): WidgetMarker[] {
+  private scan(previousLength: number): WidgetMarker[] {
     const markers: WidgetMarker[] = [];
 
     // Find ```html-widget blocks
@@ -65,23 +66,21 @@ export class WidgetDetector {
       });
     }
 
-    return markers;
+    return markers.filter(marker => marker.endPos > previousLength);
   }
 
   /** Check if text contains any widget markers */
   hasWidgets(text: string): boolean {
     WidgetDetector.BLOCK_RE.lastIndex = 0;
-    return WidgetDetector.BLOCK_RE.test(text);
+    if (WidgetDetector.BLOCK_RE.test(text)) return true;
+    WidgetDetector.TAG_RE.lastIndex = 0;
+    return WidgetDetector.TAG_RE.test(text);
   }
 
   /** Extract a widget code block from text at a specific position */
   extractCode(text: string, marker: WidgetMarker): string | null {
     if (marker.type === 'tag') {
-      // Look up code by key via registry
-      const id = Object.keys(this.registry.getRegistry()).find(
-        k => this.registry.getRegistry()[k] && k.includes('widget-')
-      );
-      return marker.key ? this.registry.getCode(`_code_${marker.key}`) || null : null;
+      return null;
     }
     return marker.code || null;
   }
