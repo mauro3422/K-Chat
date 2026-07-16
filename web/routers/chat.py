@@ -105,44 +105,6 @@ async def chat(
         raise HTTPException(400, "Invalid session_id")
     if not message.strip():
         raise HTTPException(400, detail="Empty message")
-    model = model or get_default_model()
-
-    attachments = _save_attachments(session_id, files)
-    full_message = _build_message_with_attachments(message, attachments)
-
-    repos = getattr(request.app.state, 'repos', None) or get_repos()
-    orchestrator_deps = OrchestratorDeps(
-        repos=repos,
-        history_service=request.app.state.history_service,
-        telemetry_service=request.app.state.telemetry_service,
-        llm_service=request.app.state.llm_service,
-        tool_service=request.app.state.tool_service,
-        retrieval_service=request.app.state.retrieval_service,
-        session_id=session_id,
-        tagged=True,
-        background_tasks=background_tasks,
-    )
-    await repos.sessions.ensure(
-        session_id,
-        origin_node_id=_resolve_origin_node_id(),
-    )
-    try:
-        history = await rebuild_history(session_id, model, messages_repo=repos.messages)
-    except Exception as e:
-        logger.error("Error rebuilding history for %s: %s", session_id, e)
-        raise HTTPException(500, "Error loading history")
-
-    try:
-        await repos.messages.save_record(MessageRecord(session_id=session_id, role="user", content=full_message, model=model))
-    except Exception as e:
-        logger.error("Error saving user message for %s: %s", session_id, e)
-
-    from web.services.message_persister import save_assistant_message
-
-    async def _wrapped_save(*a: Any, **kw: Any) -> None:
-        logbus = getattr(request.app.state, "logbus", None)
-        user_msg = kw.pop("user_msg", full_message)
-        return await save_assistant_message(*a, **kw, user_msg=user_msg, repos=repos, logbus=logbus)
 
     lock_manager = _get_stream_lock_manager(request)
     session_lock = await lock_manager.try_acquire(session_id)
@@ -159,6 +121,45 @@ async def chat(
         return StreamingResponse(_busy_stream(), media_type="application/x-ndjson")
 
     try:
+        model = model or get_default_model()
+
+        attachments = _save_attachments(session_id, files)
+        full_message = _build_message_with_attachments(message, attachments)
+
+        repos = getattr(request.app.state, 'repos', None) or get_repos()
+        orchestrator_deps = OrchestratorDeps(
+            repos=repos,
+            history_service=request.app.state.history_service,
+            telemetry_service=request.app.state.telemetry_service,
+            llm_service=request.app.state.llm_service,
+            tool_service=request.app.state.tool_service,
+            retrieval_service=request.app.state.retrieval_service,
+            session_id=session_id,
+            tagged=True,
+            background_tasks=background_tasks,
+        )
+        await repos.sessions.ensure(
+            session_id,
+            origin_node_id=_resolve_origin_node_id(),
+        )
+        try:
+            history = await rebuild_history(session_id, model, messages_repo=repos.messages)
+        except Exception as e:
+            logger.error("Error rebuilding history for %s: %s", session_id, e)
+            raise HTTPException(500, "Error loading history")
+
+        try:
+            await repos.messages.save_record(MessageRecord(session_id=session_id, role="user", content=full_message, model=model))
+        except Exception as e:
+            logger.error("Error saving user message for %s: %s", session_id, e)
+
+        from web.services.message_persister import save_assistant_message
+
+        async def _wrapped_save(*a: Any, **kw: Any) -> None:
+            logbus = getattr(request.app.state, "logbus", None)
+            user_msg = kw.pop("user_msg", full_message)
+            return await save_assistant_message(*a, **kw, user_msg=user_msg, repos=repos, logbus=logbus)
+
         generate = build_stream_generator(
             session_id,
             full_message,

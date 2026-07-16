@@ -235,7 +235,7 @@ async def test_chat_rejects_second_stream_for_same_session(mock_build_gen, mock_
     mock_build_gen.return_value = fake_gen
 
     bt = BackgroundTasks()
-    result = await chat("s1", request, bt, message="hello", model="my-model", files=[])
+    result = await chat("s1", request, bt, message="hello", model=None, files=[])
     chunks = []
     async for chunk in result.body_iterator:
         chunks.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
@@ -249,4 +249,7 @@ async def test_chat_rejects_second_stream_for_same_session(mock_build_gen, mock_
         },
     }
     mock_build_gen.assert_not_called()
+    mock_default.assert_not_called()
+    mock_rebuild.assert_not_called()
+    mock_get_repos.return_value.messages.save_record.assert_not_called()
     manager.release("s1", held)
