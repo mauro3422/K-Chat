@@ -13,7 +13,9 @@ from src.api.repos import MessageRecord, get_repos
 from web.services.chat_stream import build_stream_generator
 from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.protocols import MessagePersisterProtocol, StreamGeneratorProtocol
+from web.services.session_stream_locks import SessionStreamLockManager
 from web.services.stream_retry_handler import StreamRetryHandler
+from web.services.stream_contract import serialize_stream_event
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -35,6 +37,18 @@ def _resolve_origin_node_id() -> str:
         return getattr(coordinator, "node_id", "") or ""
     except Exception:
         return ""
+
+
+def _get_stream_lock_manager(request: Request) -> SessionStreamLockManager:
+    state = request.app.state
+    state_dict = getattr(state, "__dict__", {})
+    manager = state_dict.get("chat_stream_lock_manager")
+    if isinstance(manager, SessionStreamLockManager):
+        return manager
+
+    manager = SessionStreamLockManager()
+    setattr(state, "chat_stream_lock_manager", manager)
+    return manager
 
 
 class ChatPayload(BaseModel):
@@ -130,19 +144,45 @@ async def chat(
         user_msg = kw.pop("user_msg", full_message)
         return await save_assistant_message(*a, **kw, user_msg=user_msg, repos=repos, logbus=logbus)
 
-    generate = build_stream_generator(
-        session_id,
-        full_message,
-        history,
-        model,
-        background_tasks,
-        deps=StreamGeneratorDeps(
-            retry_handler=StreamRetryHandler(max_retries=2, llm_chat_stream_fn=llm_chat_stream),
-            save_fn=_wrapped_save,
-        ),
-        orchestrator_deps=orchestrator_deps,
-    )
-    return StreamingResponse(generate(), media_type="application/x-ndjson")
+    lock_manager = _get_stream_lock_manager(request)
+    session_lock = await lock_manager.try_acquire(session_id)
+    if session_lock is None:
+        async def _busy_stream():
+            yield serialize_stream_event(
+                "error",
+                {
+                    "type": "bad_request",
+                    "message": "Ya hay un stream activo para esta sesión",
+                },
+            )
+
+        return StreamingResponse(_busy_stream(), media_type="application/x-ndjson")
+
+    try:
+        generate = build_stream_generator(
+            session_id,
+            full_message,
+            history,
+            model,
+            background_tasks,
+            deps=StreamGeneratorDeps(
+                retry_handler=StreamRetryHandler(max_retries=2, llm_chat_stream_fn=llm_chat_stream),
+                save_fn=_wrapped_save,
+            ),
+            orchestrator_deps=orchestrator_deps,
+        )
+    except Exception:
+        lock_manager.release(session_id, session_lock)
+        raise
+
+    async def _guarded_stream():
+        try:
+            async for chunk in generate():
+                yield chunk
+        finally:
+            lock_manager.release(session_id, session_lock)
+
+    return StreamingResponse(_guarded_stream(), media_type="application/x-ndjson")
 
 
 @router.get("/chat/{session_id}/attachment/{filename}")

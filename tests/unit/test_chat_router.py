@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from unittest.mock import ANY, patch, AsyncMock, MagicMock
 
@@ -5,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 
 from web.routers.chat import router, chat, ChatPayload
+from web.services.session_stream_locks import SessionStreamLockManager
 from src.core.debug_info import DebugInfo
 
 
@@ -208,3 +211,42 @@ async def test_chat_save_wrapper_journals_once(mock_build_gen, mock_rebuild, moc
 
     assert mock_log_turn.call_count == 1
     assert mock_log_turn.call_args.kwargs["user_msg"] == "hello"
+
+
+@patch("web.routers.chat.get_default_model", return_value="fallback-model")
+@patch("web.routers.chat.get_repos")
+@patch("web.routers.chat.rebuild_history", new_callable=AsyncMock)
+@patch("web.routers.chat.build_stream_generator")
+@pytest.mark.anyio
+async def test_chat_rejects_second_stream_for_same_session(mock_build_gen, mock_rebuild, mock_get_repos, mock_default):
+    """A concurrent request for the same session should return a busy error stream."""
+    mock_rebuild.return_value = [{"role": "user", "content": "hello"}]
+    mock_get_repos.return_value = _make_mock_repos()
+    request = _make_request()
+    manager = SessionStreamLockManager()
+    request.app.state.chat_stream_lock_manager = manager
+
+    held = await manager.try_acquire("s1")
+    assert held is not None
+
+    async def fake_gen():
+        yield '{"t":"content","d":"hi"}\n'
+
+    mock_build_gen.return_value = fake_gen
+
+    bt = BackgroundTasks()
+    result = await chat("s1", request, bt, message="hello", model="my-model", files=[])
+    chunks = []
+    async for chunk in result.body_iterator:
+        chunks.append(chunk.decode() if isinstance(chunk, bytes) else chunk)
+
+    payload = json.loads("".join(chunks))
+    assert payload == {
+        "t": "error",
+        "d": {
+            "type": "bad_request",
+            "message": "Ya hay un stream activo para esta sesión",
+        },
+    }
+    mock_build_gen.assert_not_called()
+    manager.release("s1", held)
