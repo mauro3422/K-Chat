@@ -195,7 +195,7 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
             },
         }
 
-    snapshot = coord_snapshot if coord_snapshot is not None else coordinator.snapshot()
+    snapshot = coord_snapshot if coord_snapshot is not None else memory.get("source", {})
     return {
         "node": snapshot,
         "bridge": {

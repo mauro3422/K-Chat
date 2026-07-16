@@ -29,6 +29,22 @@ def _get_lease_manager(request: Request):
     return getattr(request.app.state, "memory_lease_manager", None) or get_memory_lease_manager(getattr(request.app.state, "config", None))
 
 
+def _coordinator_snapshot_or_default(coordinator, request: Request) -> dict[str, Any]:
+    cfg = getattr(request.app.state, "config", None)
+    try:
+        return coordinator.snapshot()
+    except Exception:
+        return {
+            "node_id": getattr(cfg, "node_id", "") or "",
+            "role": getattr(cfg, "node_role", "") or "secondary",
+            "cluster_name": getattr(cfg, "cluster_name", "") or "kairos",
+            "last_memory_revision": 0.0,
+            "last_memory_sync": 0.0,
+            "memory_is_fresh": False,
+            "peers": [],
+        }
+
+
 async def _compare_memory(request: Request, key_pattern: str = "", fmt: str = "json") -> tuple[str, dict | None]:
     result = await _get_manage_memory_run(request)(
         operation="compare",
@@ -94,7 +110,7 @@ async def build_memory_snapshot(request: Request, key_pattern: str = "") -> dict
     lease = lease_manager.snapshot()
     queue = _get_queue(request)
     coordinator = _get_coordinator(request)
-    coord_snapshot = coordinator.snapshot()
+    coord_snapshot = _coordinator_snapshot_or_default(coordinator, request)
     compare_result, parsed = await _compare_memory(request, key_pattern=key_pattern, fmt="json")
     compare_summary = summarize_memory_compare(parsed)
     return {

@@ -82,6 +82,74 @@ async def test_api_diagnostics_returns_unified_snapshot():
 
 
 @pytest.mark.anyio
+async def test_api_diagnostics_survives_failed_coordinator_snapshot():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="primary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+    )
+
+    class _BrokenCoordinator:
+        role = "primary"
+
+        def snapshot(self):
+            raise RuntimeError("snapshot failed")
+
+        async def is_primary(self):
+            return False
+
+    class _Queue:
+        persistence_path = "memory.db"
+
+        def __len__(self):
+            return 0
+
+        def snapshot(self):
+            return []
+
+    class _LeaseManager:
+        def snapshot(self):
+            return None
+
+    fake_bridge = MagicMock()
+    fake_bridge.base_url = "http://127.0.0.1:8000"
+    fake_bridge.peer_urls = []
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+
+    app.state.node_coordinator = _BrokenCoordinator()
+    app.state.node_bridge = fake_bridge
+    app.state.memory_write_queue = _Queue()
+    app.state.memory_lease_manager = _LeaseManager()
+    app.state.manage_memory_run = AsyncMock(return_value='{"only_in_md":[],"only_in_db":[],"mismatched":[],"rename_candidates":[]}')
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/diagnostics?key_pattern=user:*")
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["ok"] is True
+    assert body["node"]["node_id"] == "node-a"
+    assert body["node"]["role"] == "primary"
+    assert body["memory"]["source"]["node_id"] == "node-a"
+
+
+@pytest.mark.anyio
 async def test_diagnostics_page_contains_peer_action_links():
     from fastapi.testclient import TestClient
     from web.app_factory import create_app
