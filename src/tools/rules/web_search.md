@@ -6,8 +6,8 @@
 |---|---|---|---|---|
 | `categories` | string | No | general | Comma-separated categories. Available: general, news, images, videos, music, files, social, science, it, web, wikimedia, dictionaries, maps, apps |
 | `language` | string | No |  | Language code to filter results (e.g. 'es', 'en', 'fr'). Leave empty for automatic detection. |
-| `max_results` | integer | No | 3 | Maximum number of results to return (default: 3, max: 20) |
-| `page` | integer | No | 1 | Page number for pagination (starts at 1) |
+| `max_results` | integer | No | 3 | Maximum number of results to return. Range: 1..20 |
+| `page` | integer | No | 1 | Page number for pagination. Minimum: 1 |
 | `query` | string | Sí |  | The search query |
-| `safe_search` | integer | No | 0 | Safe search level: 0=None, 1=Moderate, 2=Strict Valores: 0, 1, 2 |
-| `time_range` | string | No |  | Time range for results: 'day', 'week', 'month', or 'year'. Empty for no filter. Valores: , day, week, month, year |
+| `safe_search` | integer | No | 0 | Safe search level: 0=None, 1=Moderate, 2=Strict Values: 0, 1, 2 |
+| `time_range` | string | No |  | Time range for results: 'day', 'week', 'month', or 'year'. Empty for no filter. Values: , day, week, month, year |

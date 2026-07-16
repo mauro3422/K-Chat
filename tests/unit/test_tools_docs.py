@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch, MagicMock, mock_open
 
 
-
 @pytest.mark.anyio
 async def test_build_tools_md_with_tools():
     mock_defs = {
@@ -93,6 +92,26 @@ async def test_build_tools_md_integer_param():
 
 
 @pytest.mark.anyio
+async def test_auto_section_includes_numeric_bounds():
+    mock_fn = {
+        "description": "Test tool",
+        "parameters": {
+            "properties": {
+                "limit": {"type": "integer", "description": "Number of entries", "default": 10, "minimum": 1, "maximum": 20},
+            },
+            "required": [],
+        },
+    }
+
+    from src.context.tools_docs import _auto_section
+
+    result = _auto_section("test_tool", mock_fn)
+
+    assert "Range: 1..20" in result
+    assert "| `limit` | integer | No | 10 | Number of entries Range: 1..20 |" in result
+
+
+@pytest.mark.anyio
 async def test_auto_section_generates_table():
     mock_fn = {
         "description": "Test tool",
@@ -112,9 +131,9 @@ async def test_auto_section_generates_table():
     assert "# test_tool" in result
     assert "**Test tool**" in result
     assert "<!-- auto:params -->" in result
-    assert "| Parámetro | Tipo | Requerido | Default | Descripción |" in result
+    assert "| Par\u00e1metro | Tipo | Requerido | Default | Descripci\u00f3n |" in result
     assert "|---|---|---|---|---|" in result
-    assert "| `param1` | string | Sí |  | First param |" in result
+    assert "| `param1` | string | S\u00ed |  | First param |" in result
     assert "| `param2` | integer | No | 10 | Second param |" in result
 
 
@@ -173,7 +192,7 @@ async def test_build_rules_files_preserves_manual_section():
     existing_content = """# tool1
 **First tool**
 <!-- auto:params -->
-| Parámetro | Tipo | Requerido | Default | Descripción |
+| Par\u00e1metro | Tipo | Requerido | Default | Descripci\u00f3n |
 |---|---|---|---|---|
 | `param1` | string | No |  | First param |
 ---

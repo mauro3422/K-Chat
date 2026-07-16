@@ -13,10 +13,13 @@ async def test_definition_structure():
     props = DEFINITION["function"]["parameters"]["properties"]
     assert "query" in props
     assert "max_results" in props
+    assert props["max_results"]["minimum"] == 1
+    assert props["max_results"]["maximum"] == 20
     assert "categories" in props
     assert "language" in props
     assert "time_range" in props
     assert "page" in props
+    assert props["page"]["minimum"] == 1
     assert "safe_search" in props
     assert DEFINITION["function"]["parameters"]["required"] == ["query"]
 

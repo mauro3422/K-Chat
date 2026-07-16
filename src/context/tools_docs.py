@@ -8,8 +8,29 @@ _AUTO_MARKER = "<!-- auto:params -->"
 _MANUAL_SEPARATOR = "\n---\n\n"
 
 
+def _param_notes(pdef: dict[str, Any]) -> str:
+    notes = []
+    enum = pdef.get("enum")
+    if enum:
+        notes.append(f"Values: {', '.join(str(e) for e in enum)}")
+
+    minimum = pdef.get("minimum")
+    maximum = pdef.get("maximum")
+    if minimum is not None or maximum is not None:
+        if minimum is not None and maximum is not None:
+            notes.append(f"Range: {minimum}..{maximum}")
+        elif minimum is not None:
+            notes.append(f"Minimum: {minimum}")
+        else:
+            notes.append(f"Maximum: {maximum}")
+
+    if not notes:
+        return ""
+    return " " + " ".join(notes)
+
+
 def _auto_section(name: str, fn: dict) -> str:
-    """Generates the auto-generated param section for a tool rule file."""
+    """Generate the auto-generated param section for a tool rule file."""
     desc = fn["description"]
     props = fn.get("parameters", {}).get("properties", {})
     required = fn.get("parameters", {}).get("required", [])
@@ -17,28 +38,26 @@ def _auto_section(name: str, fn: dict) -> str:
         f"# {name}",
         f"**{desc}**\n",
         _AUTO_MARKER,
-        "| Parámetro | Tipo | Requerido | Default | Descripción |",
+        "| Par\u00e1metro | Tipo | Requerido | Default | Descripci\u00f3n |",
         "|---|---|---|---|---|",
     ]
     for pname, pdef in sorted(props.items()):
         ptype = pdef.get("type", "string")
-        req = "Sí" if pname in required else "No"
+        req = "S\u00ed" if pname in required else "No"
         default = pdef.get("default", "")
         pdesc = pdef.get("description", "")
-        enum = pdef.get("enum")
-        if enum:
-            pdesc += f" Valores: {', '.join(str(e) for e in enum)}"
+        pdesc += _param_notes(pdef)
         lines.append(f"| `{pname}` | {ptype} | {req} | {default} | {pdesc} |")
     return "\n".join(lines) + "\n"
 
 
 def _build_tools_md(tool_definitions: dict[str, Any]) -> str:
-    """Generates a markdown document listing all available tools.
+    """Generate a markdown document listing all available tools.
 
     The output is consumed by the system prompt to inform the LLM about
     which tools are available and how to call them.
 
-    *tool_definitions* — required injection from the caller.
+    *tool_definitions* - required injection from the caller.
     """
 
     lines = [
@@ -58,6 +77,7 @@ def _build_tools_md(tool_definitions: dict[str, Any]) -> str:
             ptype = pdef.get("type", "string")
             req_label = "required" if pname in required else "optional"
             pdesc = pdef.get("description", "")
+            pdesc += _param_notes(pdef)
             lines.append(f"  - `{pname}` ({ptype}) ({req_label}): {pdesc}")
             default = pdef.get("default", "")
             if ptype == "string":
@@ -73,12 +93,12 @@ def _build_tools_md(tool_definitions: dict[str, Any]) -> str:
 
 
 def _build_rules_files(rules_dir: str, tool_definitions: dict[str, Any]) -> None:
-    """Generates rules/<tool>.md files from TOOL_DEFINITIONS.
+    """Generate rules/<tool>.md files from TOOL_DEFINITIONS.
 
     Each file has an auto-generated params table (regenerated on every call)
     and a manual section below '---' that is preserved across generations.
 
-    *tool_definitions* — required injection from the caller.
+    *tool_definitions* - required injection from the caller.
     """
 
     os.makedirs(rules_dir, exist_ok=True)

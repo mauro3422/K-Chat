@@ -30,8 +30,10 @@ DEFINITION = {
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "Maximum number of results to return (default: 3, max: 20)",
-                    "default": 3
+                    "description": "Maximum number of results to return.",
+                    "default": 3,
+                    "minimum": 1,
+                    "maximum": MAX_RESULTS
                 },
                 "categories": {
                     "type": "string",
@@ -51,8 +53,9 @@ DEFINITION = {
                 },
                 "page": {
                     "type": "integer",
-                    "description": "Page number for pagination (starts at 1)",
-                    "default": 1
+                    "description": "Page number for pagination.",
+                    "default": 1,
+                    "minimum": 1
                 },
                 "safe_search": {
                     "type": "integer",
@@ -255,7 +258,7 @@ async def run(config=None, **kwargs: Any) -> str:
     if not query:
         return "[ERROR] The search query is empty. Provide text to search for."
 
-    max_results = min(max(max_results, 1), 20)
+    max_results = min(max(max_results, 1), MAX_RESULTS)
 
     if time_range and time_range not in VALID_TIME_RANGES:
         return f"[ERROR] '{time_range}' is not a valid time_range. Use: day, week, month, or year."
