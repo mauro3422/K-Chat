@@ -7,7 +7,6 @@
  * - FNV-1a 32-bit hashing for state keys (not for IDs)
  *
  * NOW INSTANCE-BASED: inject via IWidgetRegistry interface.
- * For convenience, a default singleton is exported at module level.
  */
 
 import { IWidgetRegistry } from '../../types/widgets';
@@ -168,5 +167,3 @@ export class WidgetRegistry implements IWidgetRegistry {
   }
 }
 
-/** Default singleton instance for convenience and simple use cases */
-export const defaultWidgetRegistry = new WidgetRegistry();

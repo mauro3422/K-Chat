@@ -1,6 +1,5 @@
 import { IDomRenderer } from '../types/rendering';
 import { IWidgetRegistry } from '../types/widgets';
-import { defaultWidgetRegistry } from '../core/widget/WidgetRegistry';
 import { C } from '../core/infra/DomContracts';
 
 /**
@@ -20,7 +19,7 @@ interface DOMPurifyLib {
 export interface MarkdownRendererDeps {
   markedFn: ((text: string) => string) | MarkedLib;
   dompurifyFn: DOMPurifyLib;
-  widgetRegistry?: IWidgetRegistry;
+  widgetRegistry: IWidgetRegistry;
 }
 
 export class BrowserDomRenderer implements IDomRenderer {
@@ -31,7 +30,7 @@ export class BrowserDomRenderer implements IDomRenderer {
   constructor(
     markedFn: ((text: string) => string) | MarkedLib,
     dompurifyFn: DOMPurifyLib,
-    widgetRegistry?: IWidgetRegistry,
+    widgetRegistry: IWidgetRegistry,
   ) {
     this.markedFn = (text: string) => {
       if (typeof markedFn === 'function') {
@@ -40,7 +39,7 @@ export class BrowserDomRenderer implements IDomRenderer {
       return markedFn.parse(text, { breaks: true, gfm: true });
     };
     this.dompurifyFn = dompurifyFn;
-    this.widgetRegistry = widgetRegistry || defaultWidgetRegistry;
+    this.widgetRegistry = widgetRegistry;
   }
 
   renderMessage(container: HTMLElement, content: string, isMarkdown: boolean): void {
