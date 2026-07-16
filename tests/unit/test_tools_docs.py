@@ -92,6 +92,35 @@ async def test_build_tools_md_integer_param():
 
 
 @pytest.mark.anyio
+async def test_build_tools_md_preserves_falsy_defaults():
+    mock_defs = {
+        "toggle_tool": {
+            "function": {
+                "name": "toggle_tool",
+                "description": "Toggle a flag",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "integer", "description": "Counter", "default": 0},
+                        "enabled": {"type": "boolean", "description": "Feature switch", "default": False},
+                    },
+                    "required": [],
+                },
+            },
+        },
+    }
+
+    from src.context.tools_docs import _build_tools_md
+
+    result = _build_tools_md(mock_defs)
+
+    assert "count=0" in result
+    assert "enabled=false" in result
+    assert "count=5" not in result
+    assert "enabled=5" not in result
+
+
+@pytest.mark.anyio
 async def test_auto_section_includes_numeric_bounds():
     mock_fn = {
         "description": "Test tool",

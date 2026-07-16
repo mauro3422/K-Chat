@@ -29,6 +29,27 @@ def _param_notes(pdef: dict[str, Any]) -> str:
     return " " + " ".join(notes)
 
 
+def _example_value(pname: str, pdef: dict[str, Any]) -> str:
+    ptype = pdef.get("type", "string")
+    default = pdef.get("default", None)
+
+    if ptype == "string":
+        val = default if default not in (None, "") else f"example {pname}"
+        return f'{pname}="{val}"'
+
+    if ptype == "boolean":
+        if default is None:
+            val = "false"
+        else:
+            val = "true" if bool(default) else "false"
+        return f"{pname}={val}"
+
+    if default is not None:
+        return f"{pname}={default}"
+
+    return f"{pname}=5"
+
+
 def _auto_section(name: str, fn: dict) -> str:
     """Generate the auto-generated param section for a tool rule file."""
     desc = fn["description"]
@@ -79,13 +100,7 @@ def _build_tools_md(tool_definitions: dict[str, Any]) -> str:
             pdesc = pdef.get("description", "")
             pdesc += _param_notes(pdef)
             lines.append(f"  - `{pname}` ({ptype}) ({req_label}): {pdesc}")
-            default = pdef.get("default", "")
-            if ptype == "string":
-                val = default or f"example {pname}"
-                example_parts.append(f'{pname}="{val}"')
-            else:
-                val = default or 5
-                example_parts.append(f"{pname}={val}")
+            example_parts.append(_example_value(pname, pdef))
         if example_parts:
             lines.append(f"  Example: `{name}({', '.join(example_parts)})`")
         lines.append("")
