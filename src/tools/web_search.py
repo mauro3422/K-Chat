@@ -189,6 +189,7 @@ async def _search_and_format_results(
 
     results = data.get("results", [])[:max_results]
     source_data = data
+    bing_fallback_used = False
 
     # Default engines (DuckDuckGo, Google) often rate-limit automated
     # queries.  Fall back to Bing which is more permissive with
@@ -204,6 +205,7 @@ async def _search_and_format_results(
             if bing_results:
                 results = bing_results
                 source_data = bing_data
+                bing_fallback_used = True
 
     if not results:
         if bing_data is None:
@@ -213,6 +215,8 @@ async def _search_and_format_results(
     out = [f"Search results for: {query}"]
     if categories and categories != "general":
         out[0] += f" (categories: {categories})"
+    if bing_fallback_used:
+        out.append("Fallback engine: bing")
     out.append("")
     for i, r in enumerate(results, 1):
         out.append(f"{i}. {_format_result(r)}")

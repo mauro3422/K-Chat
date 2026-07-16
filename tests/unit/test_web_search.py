@@ -111,6 +111,7 @@ async def test_run_bing_fallback_uses_fallback_payload(mock_httpx):
     assert "B1" in result
     assert "bing-sug" in result
     assert "Bing infobox" in result
+    assert "Fallback engine: bing" in result
 
 
 @patch("src.tools.web_search.httpx")
