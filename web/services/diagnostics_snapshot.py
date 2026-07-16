@@ -34,6 +34,10 @@ def _get_bridge(request: Request):
     return bridge
 
 
+def _snapshot_error(source: str, exc: Exception) -> dict[str, str]:
+    return {"source": source, "error": str(exc)}
+
+
 async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "") -> dict[str, Any]:
     coordinator = _get_coordinator(request)
     bridge = _get_bridge(request)
@@ -43,38 +47,47 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
     memory = await build_memory_snapshot(request, key_pattern=key_pattern)
     checks = await build_health_checks(cfg, testing=testing)
 
+    peer_urls = list(bridge.peer_urls) if bridge is not None else []
     cluster = {
-        "peer_count": 0,
+        "peer_count": len(peer_urls),
         "reachable_peers": 0,
-        "unreachable_peers": 0,
+        "unreachable_peers": len(peer_urls),
         "states": [],
         "errors": [],
     }
-    if bridge is not None and bridge.peer_urls:
+    if bridge is not None and peer_urls:
         try:
             peer_result = await bridge.request_peer_states()
             cluster = {
-                "peer_count": len(bridge.peer_urls),
+                "peer_count": len(peer_urls),
                 "reachable_peers": len([state for state in peer_result.get("states", []) if isinstance(state, dict)]),
                 "unreachable_peers": len([error for error in peer_result.get("errors", []) if isinstance(error, dict)]),
                 "states": [state for state in peer_result.get("states", []) if isinstance(state, dict)],
                 "errors": [error for error in peer_result.get("errors", []) if isinstance(error, dict)],
             }
-        except Exception:
-            pass
+        except Exception as exc:
+            cluster = {
+                "peer_count": len(peer_urls),
+                "reachable_peers": 0,
+                "unreachable_peers": len(peer_urls),
+                "states": [],
+                "errors": [_snapshot_error("request_peer_states", exc)],
+            }
 
     peer_memory = {
         "peers": [],
         "errors": [],
         "summary": {
             "peer_count": 0,
+            "configured_peer_count": len(peer_urls),
+            "error_count": 0,
             "aligned_peers": 0,
             "stale_peers": 0,
             "stale_details": [],
             "peer_diffs": [],
         },
     }
-    if bridge is not None and bridge.peer_urls:
+    if bridge is not None and peer_urls:
         try:
             memory_result = await bridge.request_peer_memory_snapshots(key_pattern=key_pattern)
             local_revision = float(
@@ -130,14 +143,28 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
                 "errors": [error for error in memory_result.get("errors", []) if isinstance(error, dict)],
                 "summary": {
                     "peer_count": len(peers),
+                    "configured_peer_count": len(peer_urls),
+                    "error_count": len([error for error in memory_result.get("errors", []) if isinstance(error, dict)]),
                     "aligned_peers": aligned,
                     "stale_peers": stale,
                     "stale_details": stale_details,
                     "peer_diffs": peer_diffs,
                 },
             }
-        except Exception:
-            pass
+        except Exception as exc:
+            peer_memory = {
+                "peers": [],
+                "errors": [_snapshot_error("request_peer_memory_snapshots", exc)],
+                "summary": {
+                    "peer_count": 0,
+                    "configured_peer_count": len(peer_urls),
+                    "error_count": 1,
+                    "aligned_peers": 0,
+                    "stale_peers": 0,
+                    "stale_details": [],
+                    "peer_diffs": [],
+                },
+            }
 
     try:
         coord_snapshot = coordinator.snapshot()

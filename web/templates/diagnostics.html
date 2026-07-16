@@ -482,6 +482,13 @@
         <h2>Sincronía de Memoria</h2>
         <div class="diag-muted">Ruta cola: {{ memory.queue_path or 'n/a' }}</div>
         <div class="diag-muted" style="margin-top: 4px;">Severity: <span id="val-severity">{{ compare_summary.severity or 'clean' }}</span></div>
+        <div class="diag-muted" style="margin-top: 4px;">
+          Peers consultados: {{ peer_memory_summary.peer_count or 0 }}/{{ peer_memory_summary.configured_peer_count or cluster.peer_count or 0 }}
+          · Errores: {{ peer_memory_summary.error_count or 0 }}
+        </div>
+        {% if peer_memory.errors %}
+        <div class="diag-muted" style="margin-top: 4px;">Ultimo error: {{ peer_memory.errors[0].error or peer_memory.errors[0].detail or 'n/a' }}</div>
+        {% endif %}
         <ul class="diag-list" id="list-actions" style="margin-top: 8px;">
           {% for action in compare_summary.actions or [] %}
             <li>{{ action }}</li>

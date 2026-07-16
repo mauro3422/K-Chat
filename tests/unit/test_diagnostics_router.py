@@ -150,6 +150,56 @@ async def test_api_diagnostics_survives_failed_coordinator_snapshot():
 
 
 @pytest.mark.anyio
+async def test_api_diagnostics_records_peer_snapshot_errors():
+    from fastapi.testclient import TestClient
+    from web.app_factory import create_app
+
+    fake_config = MagicMock(
+        testing=True,
+        log_level="INFO",
+        http_rate_limit=10,
+        node_id="node-a",
+        node_role="primary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=10.0,
+    )
+
+    fake_bridge = MagicMock()
+    fake_bridge.base_url = "http://127.0.0.1:8000"
+    fake_bridge.peer_urls = ["http://peer-a:8000", "http://peer-b:8000"]
+    fake_bridge.broadcast_once = AsyncMock(return_value={"ok": True})
+    fake_bridge.request_peer_states = AsyncMock(side_effect=RuntimeError("state request failed"))
+    fake_bridge.request_peer_memory_snapshots = AsyncMock(side_effect=RuntimeError("memory request failed"))
+
+    with (
+        patch("web.app_factory.load_config", return_value=fake_config),
+        patch("web.app_factory.init_db", new_callable=AsyncMock),
+        patch("web.app_factory.init_memory_db", new_callable=AsyncMock),
+        patch("web.app_factory.get_repos", return_value=MagicMock()),
+        patch("web.app_factory.deps.searxng_start", return_value=None),
+        patch("web.app_factory.deps.searxng_stop", return_value=None),
+    ):
+        app = create_app()
+
+    app.state.node_bridge = fake_bridge
+    app.state.manage_memory_run = AsyncMock(return_value='{"only_in_md": [], "only_in_db": [], "mismatched": [], "rename_candidates": []}')
+
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/api/diagnostics?key_pattern=user:*")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["cluster"]["peer_count"] == 2
+    assert body["cluster"]["reachable_peers"] == 0
+    assert body["cluster"]["unreachable_peers"] == 2
+    assert body["cluster"]["errors"][0]["source"] == "request_peer_states"
+    assert body["peer_memory"]["summary"]["configured_peer_count"] == 2
+    assert body["peer_memory"]["summary"]["peer_count"] == 0
+    assert body["peer_memory"]["summary"]["error_count"] == 1
+    assert body["peer_memory"]["errors"][0]["source"] == "request_peer_memory_snapshots"
+
+
+@pytest.mark.anyio
 async def test_diagnostics_page_contains_peer_action_links():
     from fastapi.testclient import TestClient
     from web.app_factory import create_app
@@ -217,6 +267,7 @@ async def test_diagnostics_page_contains_peer_action_links():
     assert "fetch(withKeyPattern('/api/diagnostics')" in html
     assert "withKeyPattern(`/api/diagnostics/peer?" in html
     assert "key_pattern: keyPattern" in html
+    assert "Peers consultados:" in html
     assert 'data-peer-url="http://peer-a:8000"' in html
     assert 'data-peer-kind="diagnostics"' in html
     assert 'data-peer-kind="memory"' in html
