@@ -74,6 +74,7 @@ describe('RetryController contract', () => {
 
     vi.advanceTimersByTime(2100);
     expect(onRetry).toHaveBeenCalledOnce();
+    expect(onRetry).toHaveBeenCalledWith(1);
   });
 
   it('getStreamTimeout returns default 120000', () => {

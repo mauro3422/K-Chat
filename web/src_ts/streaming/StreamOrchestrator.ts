@@ -22,7 +22,7 @@ export { type StreamHandlerContext } from './ContentHandler';
 export interface IStreamOrchestrator {
   handleChatSend(text: string, files?: File[], model?: string): Promise<void>;
   abort(): void;
-  handleRetry(text: string, model?: string): void;
+  handleRetry(text: string, model?: string, retryAttempt?: number): void;
 }
 
 export class StreamOrchestrator implements IStreamOrchestrator {
@@ -354,7 +354,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     this.debug?.logUI('stream_aborted', 'cancelado por usuario');
   }
 
-  async handleRetry(text: string, model?: string): Promise<void> {
+  async handleRetry(text: string, model?: string, retryAttempt?: number): Promise<void> {
     // Save reference BEFORE abort() clears it
     const existingRetryEl = this._lastError ? this.lastAssistantMsgEl : null;
 
@@ -369,7 +369,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       const err = this._lastError;
       // scheduleRetry already incremented count before calling onRetry,
       // so count = actual attempt number (1-indexed)
-      const count = this.retryController?.count ?? 1;
+      const count = retryAttempt ?? this.retryController?.count ?? 1;
       const max = this.retryController?.maxRetries ?? 3;
       retryText = `[SYSTEM: Retry attempt ${Math.min(count, max)}/${max}. Previous attempt failed with error: ${err.type} — ${err.message}. This is a retry of the same user message, do NOT assume any prior assistant response exists.]\n\n${text}`;
       this._lastError = null; // consume
@@ -511,7 +511,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         assistantEl: this.lastAssistantMsgEl!,
         userText: text,
         reason: message,
-        onRetry: () => this.handleRetry(text, this.currentModel ?? undefined),
+        onRetry: (attempt) => this.handleRetry(text, this.currentModel ?? undefined, attempt),
       });
       this._finalizeStream();
       return;
@@ -640,7 +640,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         assistantEl,
         userText: retryText,
         reason: 'empty response',
-        onRetry: () => this.handleRetry(retryText, this.currentModel ?? undefined),
+        onRetry: (attempt) => this.handleRetry(retryText, this.currentModel ?? undefined, attempt),
       });
       this._finalizeStream();
     } else {

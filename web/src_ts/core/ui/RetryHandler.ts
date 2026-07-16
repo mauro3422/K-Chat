@@ -9,7 +9,7 @@ export interface IRetryController {
     assistantEl: HTMLElement;
     userText: string;
     reason: string;
-    onRetry: () => void;
+    onRetry: (attempt: number) => void;
   }): void;
   resetRetryCount(): void;
 }
@@ -34,9 +34,10 @@ export class RetryController implements IRetryController {
     assistantEl: HTMLElement;
     userText: string;
     reason: string;
-    onRetry: () => void;
+    onRetry: (attempt: number) => void;
   }): void {
     this.count++;
+    const attempt = this.count;
     this.debug?.logUI('retry', `Retry ${this.count}/${this.maxRetries}: ${reason}`);
 
     // Stop the pulsing animation on the failed message
@@ -62,7 +63,7 @@ export class RetryController implements IRetryController {
     const delay = 2000 * this.count;
     this._retryTimer = setTimeout(() => {
       this._retryTimer = null;
-      onRetry();
+      onRetry(attempt);
     }, delay);
   }
 
