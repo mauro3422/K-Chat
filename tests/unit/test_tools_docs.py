@@ -141,6 +141,25 @@ async def test_auto_section_includes_numeric_bounds():
 
 
 @pytest.mark.anyio
+async def test_auto_section_formats_boolean_defaults_lowercase():
+    mock_fn = {
+        "description": "Test tool",
+        "parameters": {
+            "properties": {
+                "flag": {"type": "boolean", "description": "Feature flag", "default": False},
+            },
+            "required": [],
+        },
+    }
+
+    from src.context.tools_docs import _auto_section
+
+    result = _auto_section("test_tool", mock_fn)
+
+    assert "| `flag` | boolean | No | false | Feature flag |" in result
+
+
+@pytest.mark.anyio
 async def test_auto_section_generates_table():
     mock_fn = {
         "description": "Test tool",

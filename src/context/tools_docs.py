@@ -8,6 +8,14 @@ _AUTO_MARKER = "<!-- auto:params -->"
 _MANUAL_SEPARATOR = "\n---\n\n"
 
 
+def _format_default_cell(default: Any) -> str:
+    if default is None:
+        return ""
+    if isinstance(default, bool):
+        return "true" if default else "false"
+    return str(default)
+
+
 def _param_notes(pdef: dict[str, Any]) -> str:
     notes = []
     enum = pdef.get("enum")
@@ -65,7 +73,7 @@ def _auto_section(name: str, fn: dict) -> str:
     for pname, pdef in sorted(props.items()):
         ptype = pdef.get("type", "string")
         req = "S\u00ed" if pname in required else "No"
-        default = pdef.get("default", "")
+        default = _format_default_cell(pdef.get("default", ""))
         pdesc = pdef.get("description", "")
         pdesc += _param_notes(pdef)
         lines.append(f"| `{pname}` | {ptype} | {req} | {default} | {pdesc} |")
