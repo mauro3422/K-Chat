@@ -1,12 +1,10 @@
 import os
 
 import pytest
-from unittest.mock import AsyncMock
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, mock_open
 
 
-@pytest.mark.anyio
-async def test_build_tools_md_with_tools():
+def test_build_tools_md_with_tools():
     mock_defs = {
         "web_search": {
             "function": {
@@ -56,8 +54,7 @@ async def test_build_tools_md_with_tools():
     assert 'path="example path"' in result
 
 
-@pytest.mark.anyio
-async def test_build_tools_md_empty():
+def test_build_tools_md_empty():
     from src.context.tools_docs import _build_tools_md
 
     result = _build_tools_md({})
@@ -66,8 +63,7 @@ async def test_build_tools_md_empty():
     assert "**" not in result[len("# Available Tools\n"):]
 
 
-@pytest.mark.anyio
-async def test_build_tools_md_integer_param():
+def test_build_tools_md_integer_param():
     mock_defs = {
         "get_tool_history": {
             "function": {
@@ -93,8 +89,7 @@ async def test_build_tools_md_integer_param():
     assert "(integer)" in result
 
 
-@pytest.mark.anyio
-async def test_build_tools_md_preserves_falsy_defaults():
+def test_build_tools_md_preserves_falsy_defaults():
     mock_defs = {
         "toggle_tool": {
             "function": {
@@ -122,8 +117,7 @@ async def test_build_tools_md_preserves_falsy_defaults():
     assert "enabled=5" not in result
 
 
-@pytest.mark.anyio
-async def test_auto_section_includes_numeric_bounds():
+def test_auto_section_includes_numeric_bounds():
     mock_fn = {
         "description": "Test tool",
         "parameters": {
@@ -142,8 +136,7 @@ async def test_auto_section_includes_numeric_bounds():
     assert "| `limit` | integer | No | 10 | Number of entries Range: 1..20 |" in result
 
 
-@pytest.mark.anyio
-async def test_auto_section_formats_boolean_defaults_lowercase():
+def test_auto_section_formats_boolean_defaults_lowercase():
     mock_fn = {
         "description": "Test tool",
         "parameters": {
@@ -161,8 +154,7 @@ async def test_auto_section_formats_boolean_defaults_lowercase():
     assert "| `flag` | boolean | No | false | Feature flag |" in result
 
 
-@pytest.mark.anyio
-async def test_auto_section_generates_table():
+def test_auto_section_generates_table():
     mock_fn = {
         "description": "Test tool",
         "parameters": {
@@ -187,8 +179,7 @@ async def test_auto_section_generates_table():
     assert "| `param2` | integer | No | 10 | Second param |" in result
 
 
-@pytest.mark.anyio
-async def test_build_rules_files_creates_files():
+def test_build_rules_files_creates_files():
     mock_defs = {
         "tool1": {
             "function": {
@@ -223,8 +214,7 @@ async def test_build_rules_files_creates_files():
             assert mock_file().write.call_count == 2
 
 
-@pytest.mark.anyio
-async def test_build_rules_files_preserves_manual_section():
+def test_build_rules_files_preserves_manual_section():
     mock_defs = {
         "tool1": {
             "function": {
@@ -266,8 +256,7 @@ Manual section below
             assert "Manual section below" in all_written
 
 
-@pytest.mark.anyio
-async def test_rules_files_match_registry_definitions():
+def test_rules_files_match_registry_definitions():
     from src.context.tools_docs import _auto_section
     from src.paths import CONTEXT_DIR
     from src.tools import get_default_registry
