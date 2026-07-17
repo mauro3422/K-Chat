@@ -12,6 +12,7 @@ from typing import Any, Iterable, Mapping
 
 from src.memory import paths as memory_paths
 from src.memory.content_hash import content_hash
+from src.memory.curator.candidate_quality import evaluate_candidate_signal
 from src.memory.curator.recall_review import load_candidates, write_candidates
 from src.memory.embedding_identity import transversal_synthesis_embedding_identity
 from src.memory.memory_db_path import resolve_memory_db_path
@@ -62,68 +63,17 @@ def _extract_metadata(text: str) -> dict[str, Any]:
 
 
 def _tokenize(text: str) -> list[str]:
-    stop = {
-        "assistant", "channel", "content", "extractive", "first", "last",
-        "message", "messages", "metadata", "session", "snapshot", "summary",
-        "user", "para", "pero", "como", "todo", "esta", "este", "esto",
-        "sobre", "cuando", "porque", "tiene", "hacer", "desde", "entre",
-        "available", "content_hash", "created_at", "message_count", "notes",
-        "session_id", "user_message_count", "assistant_message_count",
-        "source", "sources", "keyword", "keywords", "hola", "otra",
-        # Additional Spanish stopwords to reduce noise
-        "estoy", "estas", "estamos", "estan", "eres", "somos", "soy",
-        "sistema", "cosa", "cosas", "dice", "dijo", "hecho", "punto",
-        "parte", "forma", "tipo", "modo", "vez", "veces", "dia", "dias",
-        "aqui", "alli", "alla", "ahora", "nunca", "siempre", "tambien",
-        "entonces", "despues", "antes", "media", "medio", "misma", "mismo",
-        "bueno", "buena", "gran", "nueva", "nuevo", "nuevas", "nuevos",
-        "propio", "propia", "poco", "poca", "mucha", "mucho", "muchas", "muchos",
-        "vamos", "vaya", "sido", "tanto", "tan", "tal",
-    }
     tokens: list[str] = []
-    for raw in re.findall(r"[A-Za-zÁÉÍÓÚáéíóúÑñ0-9_.-]{4,}", text or ""):
+    for raw in re.findall(r"[^\W_]+(?:[._-][^\W_]+)*", text or "", re.UNICODE):
         token = raw.lower().strip("._-")
-        if (
-            not token
-            or token in stop
-            or token.isdigit()
-            or re.fullmatch(r"[a-f0-9]{12,}", token)
-            or re.fullmatch(r"\d{4}-\d{2}-\d{2}t?\d*", token)
-            or re.fullmatch(r"[a-f0-9-]{20,}", token)
-        ):
+        if not evaluate_candidate_signal(token).accepted:
             continue
         tokens.append(token)
     return tokens
 
 
 def _is_actionable_topic(topic: str) -> bool:
-    token = topic.lower().strip("` ._-")
-    if len(token) < 4:
-        return False
-    if token in {
-        "available", "content_hash", "created_at", "message_count", "notes",
-        "session_id", "user_message_count", "assistant_message_count",
-        "source", "sources", "keyword", "keywords", "hola", "otra",
-        # Additional Spanish stopwords
-        "estoy", "estas", "estamos", "estan", "eres", "somos", "soy",
-        "sistema", "cosa", "cosas", "dice", "dijo", "hecho", "punto",
-        "parte", "forma", "tipo", "modo", "vez", "veces", "dia", "dias",
-        "aqui", "alli", "alla", "ahora", "nunca", "siempre", "tambien",
-        "entonces", "despues", "antes", "media", "medio", "misma", "mismo",
-        "bueno", "buena", "gran", "nueva", "nuevo", "nuevas", "nuevos",
-        "propio", "propia", "poco", "poca", "mucha", "mucho", "muchas", "muchos",
-        "vamos", "vaya", "sido", "tanto", "tan", "tal",
-    }:
-        return False
-    if token.isdigit():
-        return False
-    if re.fullmatch(r"[a-f0-9]{12,}", token):
-        return False
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}t?\d*", token):
-        return False
-    if re.fullmatch(r"[a-f0-9-]{20,}", token):
-        return False
-    return True
+    return evaluate_candidate_signal(topic).accepted
 
 
 def _summary_lines(text: str) -> list[str]:

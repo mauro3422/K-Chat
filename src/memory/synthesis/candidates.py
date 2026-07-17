@@ -9,6 +9,12 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from src.memory import paths as memory_paths
+from src.memory.curator.candidate_lifecycle import (
+    CandidateLifecycleIndex,
+    candidate_has_decision,
+    merge_candidate_observation,
+)
+from src.memory.curator.candidate_quality import candidate_has_sufficient_signal
 
 _project_root = memory_paths._project_root
 _default_target_date = memory_paths._default_target_date
@@ -383,8 +389,16 @@ def generate_session_summary_candidates(
     path = session_summary_candidate_path(target, root=root)
     existing = load_candidates(path)
     by_id = {str(candidate.get("candidate_id")): dict(candidate) for candidate in existing}
+    lifecycle = CandidateLifecycleIndex.from_root(
+        root or _project_root(),
+        exclude_paths=(path,),
+    )
+    observed_at = timestamp or datetime.now().isoformat(timespec="seconds")
     created = 0
     refreshed = 0
+    reused = 0
+    preserved_decisions = 0
+    filtered = 0
 
     # Build scorer if not provided
     if scorer is None:
@@ -394,18 +408,35 @@ def generate_session_summary_candidates(
     new_candidates: list[dict[str, Any]] = []
     for artifact in discover_session_summary_artifacts(root=root):
         for candidate in candidates_from_session_summary_artifact(
-            artifact, timestamp=timestamp, scorer=scorer
+            artifact, timestamp=observed_at, scorer=scorer
         ):
+            if not candidate_has_sufficient_signal(candidate):
+                filtered += 1
+                continue
             cid = str(candidate.get("candidate_id") or "")
-            if cid in by_id:
-                previous = by_id[cid]
-                merged = dict(candidate)
-                # Rebuild derived fields (entities, relations, confidence)
-                # while preserving any human decision already recorded.
-                for key in ("status", "promotion_decision", "decision", "created_at"):
-                    if key in previous:
-                        merged[key] = previous[key]
-                by_id[cid] = merged
+            previous = by_id.get(cid)
+            if previous is not None and candidate_has_decision(previous):
+                preserved_decisions += 1
+                continue
+
+            observation = lifecycle.observe(
+                candidate,
+                observed_at=observed_at,
+            )
+            if observation.outcome != "new":
+                by_id.pop(cid, None)
+                if observation.outcome == "reused_pending":
+                    reused += 1
+                else:
+                    preserved_decisions += 1
+                continue
+
+            if previous is not None:
+                by_id[cid] = merge_candidate_observation(
+                    previous,
+                    candidate,
+                    observed_at,
+                )
                 refreshed += 1
                 continue
             new_candidates.append(candidate)
@@ -429,11 +460,15 @@ def generate_session_summary_candidates(
             by_id[str(c.get("candidate_id"))] = c
             created += 1
 
-    if by_id:
+    lifecycle.flush()
+    if by_id or existing:
         write_candidates(path, list(by_id.values()))
     return {
         "path": str(path),
         "created": created,
         "refreshed": refreshed,
+        "reused": reused,
+        "preserved_decisions": preserved_decisions,
+        "filtered": filtered,
         "total": len(by_id),
     }

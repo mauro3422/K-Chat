@@ -10,6 +10,8 @@ from typing import Any, Iterable, Mapping
 
 from src.memory import paths as memory_paths
 from src.memory.content_hash import content_hash
+from src.memory.curator.candidate_lifecycle import discover_candidate_artifacts
+from src.memory.curator.candidate_quality import candidate_has_sufficient_signal
 from src.memory.curator.recall_review import load_candidates, query_terms, suggest_metadata
 from src.memory.embedding_identity import memory_candidate_embedding_identity
 from src.memory.memory_db_path import resolve_memory_db_path
@@ -38,14 +40,8 @@ def candidate_root(root: str | Path | None = None) -> Path:
 def discover_candidate_files(root: str | Path | None = None) -> list[Path]:
     """Find reviewable candidate JSONL artifacts under ``memory/*/*/*/candidates/*.jsonl``."""
 
-    base = candidate_root(root)
-    if not base.exists():
-        return []
-    paths = list(base.glob("*/*/*/candidates/*.jsonl"))
-    review_queue = base / "curator-review-queue.jsonl"
-    if review_queue.exists():
-        paths.append(review_queue)
-    return sorted(paths, reverse=True)
+    base = Path(root) if root is not None else _project_root()
+    return discover_candidate_artifacts(base)
 
 
 def load_candidate_records(
@@ -60,6 +56,8 @@ def load_candidate_records(
     for path in candidate_paths:
         for candidate in load_candidates(path):
             payload = dict(candidate)
+            if not candidate_has_sufficient_signal(payload):
+                continue
             payload.setdefault("candidate_id", "")
             candidate_id = str(payload["candidate_id"]).strip()
             session_id = str(payload.get("session_id") or "").strip()

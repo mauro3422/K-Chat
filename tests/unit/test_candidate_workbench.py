@@ -186,6 +186,32 @@ def test_load_candidate_records_deduplicates_historical_copies(tmp_path):
     assert records[0]["_candidate_path"] == str(newer)
 
 
+def test_load_candidate_records_filters_pending_noise_but_keeps_valid_and_decided(tmp_path):
+    path = _candidate_path(tmp_path)
+    write_candidates(
+        path,
+        [
+            {"candidate_id": "weak", "status": "pending", "topic": "solo"},
+            {
+                "candidate_id": "valid",
+                "status": "pending",
+                "topic": "memoria",
+                "query": "memoria vectorial",
+            },
+            {
+                "candidate_id": "decided",
+                "status": "rejected",
+                "topic": "lado",
+                "decision": "reject",
+            },
+        ],
+    )
+
+    records = load_candidate_records(tmp_path)
+
+    assert [record["candidate_id"] for record in records] == ["valid", "decided"]
+
+
 def test_candidate_embedding_text_includes_relations_and_provenance(tmp_path):
     path = _candidate_path(tmp_path)
     write_candidates(

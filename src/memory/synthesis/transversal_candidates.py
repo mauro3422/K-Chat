@@ -9,6 +9,11 @@ from typing import Any, Mapping
 
 from src.memory import paths as memory_paths
 from src.memory.content_hash import content_hash
+from src.memory.curator.candidate_lifecycle import (
+    CandidateLifecycleIndex,
+    candidate_has_decision,
+    merge_candidate_observation,
+)
 from src.memory.curator.recall_review import load_candidates, write_candidates
 
 _project_root = memory_paths._project_root
@@ -254,12 +259,23 @@ def generate_transversal_synthesis_candidates(
     path = transversal_synthesis_candidate_path(target, root=root)
     existing = load_candidates(path)
     by_id = {str(candidate.get("candidate_id")): dict(candidate) for candidate in existing}
+    lifecycle = CandidateLifecycleIndex.from_root(
+        root or _project_root(),
+        exclude_paths=(path,),
+    )
+    observed_at = timestamp or datetime.now().isoformat(timespec="seconds")
     stale_ids: set[str] = set()
     created = 0
+    refreshed = 0
+    reused = 0
+    preserved_decisions = 0
     for artifact in discover_transversal_synthesis_artifacts(root=root):
         if str(artifact.get("date") or "") != target.isoformat():
             continue
-        fresh = candidates_from_transversal_synthesis_artifact(artifact, timestamp=timestamp)
+        fresh = candidates_from_transversal_synthesis_artifact(
+            artifact,
+            timestamp=observed_at,
+        )
         fresh_ids = {str(candidate.get("candidate_id") or "") for candidate in fresh}
         artifact_path = str(artifact.get("path") or "")
         for cid, candidate in by_id.items():
@@ -272,7 +288,30 @@ def generate_transversal_synthesis_candidates(
                 stale_ids.add(cid)
         for candidate in fresh:
             cid = str(candidate.get("candidate_id") or "")
-            if cid in by_id:
+            previous = by_id.get(cid)
+            if previous is not None and candidate_has_decision(previous):
+                preserved_decisions += 1
+                continue
+
+            observation = lifecycle.observe(
+                candidate,
+                observed_at=observed_at,
+            )
+            if observation.outcome != "new":
+                by_id.pop(cid, None)
+                if observation.outcome == "reused_pending":
+                    reused += 1
+                else:
+                    preserved_decisions += 1
+                continue
+
+            if previous is not None:
+                by_id[cid] = merge_candidate_observation(
+                    previous,
+                    candidate,
+                    observed_at,
+                )
+                refreshed += 1
                 continue
             by_id[cid] = candidate
             created += 1
@@ -280,10 +319,14 @@ def generate_transversal_synthesis_candidates(
     for cid in stale_ids:
         by_id.pop(cid, None)
 
-    if by_id:
+    lifecycle.flush()
+    if by_id or existing:
         write_candidates(path, list(by_id.values()))
     return {
         "path": str(path),
         "created": created,
+        "refreshed": refreshed,
+        "reused": reused,
+        "preserved_decisions": preserved_decisions,
         "total": len(by_id),
     }

@@ -456,3 +456,37 @@ def test_generate_session_summary_candidates_writes_idempotent_jsonl(tmp_path):
     assert rows[0]["proposed_relations"]
     assert rows[0]["promotion_decision"] in {"hold", "review"}
     assert rows[0]["promotion_decision"] != "auto_promote"
+
+
+def test_generate_session_candidates_reuses_pending_id_across_daily_partitions(tmp_path):
+    path = session_summary_path("s1", root=tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        '<!-- metadata: {"session_id": "s1", "channel": "web"} -->\n'
+        "# Session Summary - Demo\n\n- Mauro quiere memoria por capas con embeddings.\n",
+        encoding="utf-8",
+    )
+
+    first = generate_session_summary_candidates(
+        root=tmp_path,
+        target_date=date(2026, 7, 2),
+        timestamp="2026-07-02T10:00:00",
+    )
+    second = generate_session_summary_candidates(
+        root=tmp_path,
+        target_date=date(2026, 7, 3),
+        timestamp="2026-07-03T10:00:00",
+    )
+
+    first_path = session_summary_candidate_path(date(2026, 7, 2), root=tmp_path)
+    second_path = session_summary_candidate_path(date(2026, 7, 3), root=tmp_path)
+    saved = json.loads(first_path.read_text(encoding="utf-8").splitlines()[0])
+
+    assert first["created"] == 1
+    assert second["created"] == 0
+    assert second["reused"] == 1
+    assert second["total"] == 0
+    assert second_path.exists() is False
+    assert saved["lifecycle"]["observation_count"] == 2
+    assert saved["lifecycle"]["age_days"] == 1
+    assert saved["temporal"]["last_seen"] == "2026-07-03T10:00:00"
