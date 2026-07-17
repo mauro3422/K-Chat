@@ -152,6 +152,7 @@ def canonical_name(name: str) -> str:
 
 
 def learn_from_text(text: str) -> None:
+    snapshot_to_save: dict[str, object] | None = None
     with _entities_lock:
         global _LEARNED_COUNT_SINCE_SAVE
         words = _find_words(text)
@@ -178,21 +179,33 @@ def learn_from_text(text: str) -> None:
                         _LEARNED_ENTITIES["tecnologia"].add(word)
                     _LEARNED_COUNT_SINCE_SAVE += 1
                     if _LEARNED_COUNT_SINCE_SAVE >= 10:
-                        save_learned_entities()
+                        snapshot_to_save = _snapshot_learned_entities()
+
+    if snapshot_to_save is not None:
+        _persist_learned_entities(snapshot_to_save)
+
+
+def _snapshot_learned_entities() -> dict[str, object]:
+    return {
+        "learned": {k: list(v) for k, v in _LEARNED_ENTITIES.items()},
+        "freq": dict(_CANDIDATE_FREQ),
+    }
+
+
+def _persist_learned_entities(data: dict[str, object], filepath: Optional[str] = None) -> None:
+    import json
+
+    if filepath is None:
+        filepath = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "learned_entities.json")
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, "w") as f:
+        json.dump(data, f, indent=2)
 
 
 def save_learned_entities(filepath: Optional[str] = None) -> None:
     with _entities_lock:
-        import json
-        if filepath is None:
-            filepath = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "learned_entities.json")
-        data = {
-            "learned": {k: list(v) for k, v in _LEARNED_ENTITIES.items()},
-            "freq": dict(_CANDIDATE_FREQ),
-        }
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=2)
+        data = _snapshot_learned_entities()
+    _persist_learned_entities(data, filepath)
 
 
 def load_learned_entities(filepath: Optional[str] = None) -> None:
