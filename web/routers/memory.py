@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -19,15 +19,19 @@ from web.routers._memory_snapshot import (
     _get_repos,
 )
 from web.routers._node_helpers import _get_coordinator, _get_event_bus
+from web.services.lan_auth import require_lan_request
 
-router = APIRouter(prefix="/api/memory")
+router = APIRouter(
+    prefix="/api/memory",
+    dependencies=[Depends(require_lan_request)],
+)
 
 
 class MemoryMaintenancePayload(BaseModel):
     dry_run: bool = Field(default=False)
     confirm: bool = Field(default=False)
-    key_pattern: str = Field(default="")
-    fmt: str = Field(default="text")
+    key_pattern: str = Field(default="", max_length=512)
+    fmt: str = Field(default="text", max_length=32)
 
 
 @router.get("/compare")

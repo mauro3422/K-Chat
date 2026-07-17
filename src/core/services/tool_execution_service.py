@@ -11,23 +11,39 @@ if TYPE_CHECKING:
     from src.core.services.protocols import TelemetryServiceProtocol
 
 
-def _wrap_run_with_cache_invalidation() -> Callable[..., AsyncGenerator[Any, None]]:
-    """Wrap run_parallel_tools to inject invalidate_cache_fn into tool kwargs.
+def _wrap_run_with_runtime_dependencies(
+    lan_request_signer: Any = None,
+) -> Callable[..., AsyncGenerator[Any, None]]:
+    """Wrap run_parallel_tools to inject runtime dependencies into tool kwargs.
 
     This breaks the tools→context cycle: instead of save_memory importing
     invalidate_context_cache directly, the Core layer (which sits above both
     tools and context) bridges them.
     """
-    async def _run_with_inv(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
-        async for event in run_parallel_tools(*args, **kwargs, invalidate_cache_fn=invalidate_context_cache):
+    async def _run_with_dependencies(
+        *args: Any,
+        **kwargs: Any,
+    ) -> AsyncGenerator[Any, None]:
+        async for event in run_parallel_tools(
+            *args,
+            **kwargs,
+            invalidate_cache_fn=invalidate_context_cache,
+            lan_request_signer=lan_request_signer,
+        ):
             yield event
-    return _run_with_inv
+    return _run_with_dependencies
 
 
 class ToolExecutionService(ToolExecutionServiceProtocol):
-    def __init__(self, tool_registry: ToolRegistryProtocol | None = None, telemetry_service: 'TelemetryServiceProtocol | None' = None):
+    def __init__(
+        self,
+        tool_registry: ToolRegistryProtocol | None = None,
+        telemetry_service: 'TelemetryServiceProtocol | None' = None,
+        lan_request_signer: Any = None,
+    ):
         self.tool_registry = tool_registry or tools.get_default_registry()
         self.telemetry_service = telemetry_service
+        self.lan_request_signer = lan_request_signer
 
     async def execute(
         self,
@@ -45,7 +61,7 @@ class ToolExecutionService(ToolExecutionServiceProtocol):
         used_tools: list[str] = []
         tool_detail: list[dict[str, Any]] = []
 
-        run_fn = _wrap_run_with_cache_invalidation()
+        run_fn = _wrap_run_with_runtime_dependencies(self.lan_request_signer)
         loop_fn: ToolLoopProtocol = run_tool_loop_streaming if streaming else run_tool_loop_sync
         async for event in loop_fn(
             history, model, session_id, tagged, debug, phases_output,

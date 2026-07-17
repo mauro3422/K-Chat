@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from src.coordination.memory_write_queue import apply_pending_memory_writes
@@ -41,12 +41,13 @@ from web.routers._node_helpers import (
 )
 from web.routers._node_models import NodeEventPayload, NodeHeartbeatPayload
 from web.services.node_observability import _memory_observability, _memory_write_mode, _runtime_mode
+from web.services.lan_auth import enforce_lan_node_identity, require_lan_request
 from web.services.session_directory import session_summary_from_row
 
 router = APIRouter(prefix="/api/node")
 
 
-@router.get("/sessions")
+@router.get("/sessions", dependencies=[Depends(require_lan_request)])
 async def node_sessions(request: Request, limit: int = 50) -> JSONResponse:
     coordinator = _get_coordinator(request)
     repos = _request_repos(request)
@@ -146,8 +147,9 @@ async def node_runtime(request: Request) -> JSONResponse:
     )
 
 
-@router.post("/heartbeat")
+@router.post("/heartbeat", dependencies=[Depends(require_lan_request)])
 async def node_heartbeat(payload: NodeHeartbeatPayload, request: Request) -> JSONResponse:
+    enforce_lan_node_identity(request, payload.node_id)
     coordinator = _get_coordinator(request)
     if payload.node_id:
         peer_url = normalize_lan_peer_url(payload.base_url)
@@ -166,7 +168,7 @@ async def node_heartbeat(payload: NodeHeartbeatPayload, request: Request) -> JSO
     return JSONResponse({"ok": True, "state": snapshot})
 
 
-@router.post("/promote")
+@router.post("/promote", dependencies=[Depends(require_lan_request)])
 async def node_promote(request: Request) -> JSONResponse:
     coordinator = _get_coordinator(request)
     lease_manager = _get_leader_lease_manager(request)
@@ -186,7 +188,7 @@ async def node_promote(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "state": snapshot, "applied": applied})
 
 
-@router.post("/demote")
+@router.post("/demote", dependencies=[Depends(require_lan_request)])
 async def node_demote(request: Request) -> JSONResponse:
     coordinator = _get_coordinator(request)
     lease_manager = _get_leader_lease_manager(request)
@@ -197,7 +199,8 @@ async def node_demote(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "state": snapshot})
 
 
-@router.post("/event")
+@router.post("/event", dependencies=[Depends(require_lan_request)])
 async def node_event(payload: NodeEventPayload, request: Request) -> JSONResponse:
+    enforce_lan_node_identity(request, str(payload.source.get("node_id", "")))
     await relay_memory_event(request, payload.type, {"data": payload.data, "source": payload.source})
     return JSONResponse({"ok": True, "type": payload.type})

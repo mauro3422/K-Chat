@@ -28,7 +28,14 @@ class TestExecuteToolBatch:
         async for _ in gen:
             pass
 
-        tool_fn.assert_called_once_with(query="test", _session_id="ses", _repos=repos, _skill_registry=None, _invalidate_cache_fn=None)
+        tool_fn.assert_called_once_with(
+            query="test",
+            _session_id="ses",
+            _repos=repos,
+            _skill_registry=None,
+            _invalidate_cache_fn=None,
+            _lan_request_signer=None,
+        )
         assert results["call_1"] == ("some result", "ok")
 
     @pytest.mark.anyio
@@ -44,7 +51,37 @@ class TestExecuteToolBatch:
         gen = _execute_tool_batch(tcs_info, tool_map, "ses", False, results, repos)
         async for _ in gen:
             pass
-        tool_fn.assert_called_once_with(query="test", _session_id="ses", _repos=repos, _skill_registry=None, _invalidate_cache_fn=None)
+        tool_fn.assert_called_once_with(
+            query="test",
+            _session_id="ses",
+            _repos=repos,
+            _skill_registry=None,
+            _invalidate_cache_fn=None,
+            _lan_request_signer=None,
+        )
+
+    @pytest.mark.anyio
+    async def test_passes_injected_lan_signer_to_tool(self, repos):
+        from src.tools.runner import _execute_tool_batch
+
+        signer = object()
+        tool_fn = AsyncMock(return_value="result")
+        tc = MagicMock(id="call_1")
+        results = {}
+
+        gen = _execute_tool_batch(
+            [(tc, "save_memory", {"key": "user:test"})],
+            {"save_memory": tool_fn},
+            "ses",
+            False,
+            results,
+            repos,
+            lan_request_signer=signer,
+        )
+        async for _ in gen:
+            pass
+
+        assert tool_fn.await_args.kwargs["_lan_request_signer"] is signer
 
 
     @pytest.mark.anyio

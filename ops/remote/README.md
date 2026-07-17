@@ -33,6 +33,17 @@ KAIROS_LINUX_IDENTITY
 KAIROS_LINUX_BASE_URL
 ```
 
+Las comprobaciones LAN que leen memoria o mutan coordinación requieren:
+
+```text
+KAIROS_LAN_SHARED_SECRET
+KAIROS_LAN_CLIENT_NODE_ID=kairos-ops
+```
+
+La identidad debe estar incluida en `KAIROS_LAN_ALLOWED_NODE_IDS` de cada nodo.
+El cliente firma automáticamente cada operación sensible y falla localmente si
+falta el secreto; nunca lo imprime ni lo agrega al archivo de nodos.
+
 ## Commands
 
 ```bash

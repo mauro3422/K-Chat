@@ -130,6 +130,7 @@ async def run(**kwargs) -> str:
     scope = str(kwargs.get("scope") or "inbox").strip().lower()
     _session_id = kwargs.get("_session_id")
     _invalidate_cache_fn = kwargs.get("_invalidate_cache_fn")
+    _lan_request_signer = kwargs.get("_lan_request_signer")
     _repos = kwargs.get("_repos")
     _force_local_write = bool(kwargs.get("_force_local_write", False))
     _root = kwargs.get("_root")
@@ -163,7 +164,11 @@ async def run(**kwargs) -> str:
             pass
         else:
             bridge_cfg = coordinator.config or load_config()
-            bridge = NodeLanBridge(config=bridge_cfg, coordinator=coordinator)
+            bridge = NodeLanBridge(
+                config=bridge_cfg,
+                coordinator=coordinator,
+                request_signer=_lan_request_signer,
+            )
             permission = await bridge.request_memory_write(key, value)
             if permission.get("ok") and permission.get("granted"):
                 return str(permission.get("response", {}).get("result", "[OK] memory write approved by primary."))
@@ -177,7 +182,11 @@ async def run(**kwargs) -> str:
             )
             try:
                 bridge_cfg = coordinator.config or load_config()
-                bridge = NodeLanBridge(config=bridge_cfg, coordinator=coordinator)
+                bridge = NodeLanBridge(
+                    config=bridge_cfg,
+                    coordinator=coordinator,
+                    request_signer=_lan_request_signer,
+                )
                 await bridge.broadcast_event(
                     "memory_write_queued",
                     {
@@ -262,7 +271,11 @@ async def run(**kwargs) -> str:
     if err is None and coordinator is not None and coordinator.peer_urls:
         try:
             bridge_cfg = coordinator.config or load_config()
-            bridge = NodeLanBridge(config=bridge_cfg, coordinator=coordinator)
+            bridge = NodeLanBridge(
+                config=bridge_cfg,
+                coordinator=coordinator,
+                request_signer=_lan_request_signer,
+            )
             await bridge.broadcast_event(
                 "memory_updated",
                 {"key": key_clean, "value": value_clean, "node_id": coordinator.node_id},

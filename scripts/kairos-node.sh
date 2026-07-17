@@ -73,8 +73,8 @@ preflight() {
   fi
   service_control is-active --quiet || echo "ADVERTENCIA: el servicio ${SERVICE} no está activo." >&2
   health >/dev/null 2>&1 || echo "ADVERTENCIA: /health no responde; update puede repararlo." >&2
-  curl --fail --silent "http://127.0.0.1:${PORT}/api/node/sync/status" >/dev/null 2>&1 || \
-    echo "ADVERTENCIA: no se pudo comprobar la sincronización LAN." >&2
+  curl --fail --silent "http://127.0.0.1:${PORT}/api/node/runtime" >/dev/null 2>&1 || \
+    echo "ADVERTENCIA: no se pudo comprobar el runtime LAN." >&2
   (( failed == 0 )) || return 1
   printf 'preflight=ok repo=%s service=%s scope=%s free_kb=%s\n' "$ROOT" "$SERVICE" "$SERVICE_SCOPE" "$free_kb"
 }

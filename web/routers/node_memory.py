@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from src.api.node_memory import process_embedding_jobs
@@ -26,9 +26,13 @@ from web.routers._node_helpers import (
     _peer_cluster_state,
 )
 from web.routers._node_models import NodeEmbeddingJobPayload, NodeMemoryWritePayload
+from web.services.lan_auth import enforce_lan_node_identity, require_lan_request
 from web.services.node_observability import _memory_observability
 
-router = APIRouter(prefix="/api/node")
+router = APIRouter(
+    prefix="/api/node",
+    dependencies=[Depends(require_lan_request)],
+)
 
 
 def _get_embedding_queue(request: Request):
@@ -39,6 +43,7 @@ def _get_embedding_queue(request: Request):
 
 @router.post("/memory/request")
 async def memory_request(payload: NodeMemoryWritePayload, request: Request) -> JSONResponse:
+    enforce_lan_node_identity(request, str(payload.source.get("node_id", "")))
     coordinator = _get_coordinator(request)
     config = getattr(request.app.state, "config", None)
     preferred_role = str(getattr(config, "node_role", "secondary"))
@@ -117,6 +122,7 @@ async def memory_flush(request: Request) -> JSONResponse:
 
 @router.post("/embeddings/jobs")
 async def embedding_jobs(payload: NodeEmbeddingJobPayload, request: Request) -> JSONResponse:
+    enforce_lan_node_identity(request, str(payload.source.get("node_id", "")))
     coordinator = _get_coordinator(request)
     source_node = str(payload.source.get("node_id", ""))
     if payload.dry_run:

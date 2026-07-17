@@ -154,7 +154,9 @@ def _ensure_core_services(app: FastAPI, cfg=None, repos=None, logbus=None) -> No
     if not hasattr(app.state, "history_service"):
         app.state.history_service = HistoryService(repos=repos)
     if not hasattr(app.state, "tool_service"):
-        app.state.tool_service = ToolExecutionService()
+        app.state.tool_service = ToolExecutionService(
+            lan_request_signer=getattr(app.state, "lan_request_signer", None)
+        )
     if not hasattr(app.state, "retrieval_service"):
         app.state.retrieval_service = RetrievalService(config=cfg)
     if not hasattr(app.state, "llm_service"):
@@ -337,6 +339,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             config=cfg,
             coordinator=app.state.node_coordinator,
             on_primary_yield=lambda reason: app.state.failover_state.reset(reason),
+            request_signer=getattr(app.state, "lan_request_signer", None),
         )
     try:
         if await app.state.node_coordinator.is_primary():
@@ -474,6 +477,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.warning("Failed to stop node failover task on shutdown", exc_info=True)
     try:
+        lan_auth_guard = getattr(app.state, "lan_auth_guard", None)
+        if lan_auth_guard is not None:
+            lan_auth_guard.clear()
+    except Exception:
+        logger.warning("Failed to clear LAN authentication state on shutdown", exc_info=True)
+    try:
         reset_web_runtime_state()
     except Exception:
         logger.warning("Failed to reset web runtime state on shutdown", exc_info=True)
@@ -604,6 +613,11 @@ def create_app() -> FastAPI:
     from src.coordination.embedding_job_queue import get_embedding_job_queue, configure_embedding_job_queue
     from src.coordination.memory_lease import get_memory_lease_manager, configure_memory_lease_manager
     from src.coordination.leader_lease import get_leader_lease_manager, configure_leader_lease_manager
+    from src.coordination.lan_auth import (
+        LanRequestSigner,
+        LanRequestVerifier,
+        parse_lan_node_ids,
+    )
     from src.coordination.node_state import get_node_coordinator, configure_node_coordinator
     from src.tools.manage_memory import run as manage_memory_run
     from src.tools.save_memory import run as save_memory_run
@@ -620,6 +634,46 @@ def create_app() -> FastAPI:
     node_coordinator = get_node_coordinator(cfg)
     configure_node_coordinator(node_coordinator)
     app.state.node_coordinator = node_coordinator
+    from web.services.lan_auth import LanAuthGuard
+
+    raw_lan_secret = getattr(cfg, "lan_shared_secret", "")
+    lan_secret = raw_lan_secret.strip() if isinstance(raw_lan_secret, str) else ""
+    raw_allowed_nodes = getattr(cfg, "lan_allowed_node_ids", "")
+    allowed_nodes = parse_lan_node_ids(
+        raw_allowed_nodes if isinstance(raw_allowed_nodes, str) else ""
+    )
+    node_id = str(node_coordinator.node_id or "").strip()
+    if node_id:
+        allowed_nodes.add(node_id)
+
+    raw_window = getattr(cfg, "lan_auth_window_seconds", 30)
+    window_seconds = int(raw_window) if isinstance(raw_window, (int, float)) else 30
+    raw_capacity = getattr(cfg, "lan_auth_nonce_capacity", 4096)
+    nonce_capacity = int(raw_capacity) if isinstance(raw_capacity, (int, float)) else 4096
+    raw_max_body = getattr(cfg, "lan_auth_max_body_bytes", 3 * 1024 * 1024)
+    max_body_bytes = int(raw_max_body) if isinstance(raw_max_body, (int, float)) else 3 * 1024 * 1024
+    allow_unsigned_loopback = getattr(cfg, "lan_auth_allow_loopback", False) is True
+
+    app.state.lan_request_signer = (
+        LanRequestSigner(lan_secret, node_id)
+        if lan_secret and node_id
+        else None
+    )
+    app.state.lan_auth_guard = LanAuthGuard(
+        LanRequestVerifier(
+            lan_secret,
+            allowed_nodes,
+            window_seconds=window_seconds,
+            nonce_capacity=nonce_capacity,
+        ),
+        testing=getattr(cfg, "testing", False) is True,
+        allow_unsigned_loopback=allow_unsigned_loopback,
+        max_body_bytes=max_body_bytes,
+    )
+    if not lan_secret:
+        logger.warning(
+            "LAN authentication is not configured; sensitive LAN routes are locked"
+        )
     app.state.memory_write_queue = get_memory_write_queue(cfg)
     configure_memory_write_queue(app.state.memory_write_queue)
     app.state.embedding_job_queue = get_embedding_job_queue(cfg)

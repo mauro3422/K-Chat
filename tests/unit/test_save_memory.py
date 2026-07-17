@@ -166,6 +166,36 @@ async def test_save_memory_blocked_on_secondary_node(temp_memory_file):
 
 
 @pytest.mark.anyio
+async def test_save_memory_injects_lan_signer_into_secondary_bridge(temp_memory_file):
+    coordinator = NodeCoordinator(
+        type("Cfg", (), {"peer_urls": "http://peer-a:8000"})()
+    )
+    await coordinator.demote()
+    configure_node_coordinator(coordinator)
+    signer = object()
+
+    with patch("src.tools.save_memory.NodeLanBridge") as bridge_type:
+        bridge = bridge_type.return_value
+        bridge.request_memory_write = AsyncMock(
+            return_value={"ok": False, "queued": True, "error": "down"}
+        )
+        bridge.broadcast_event = AsyncMock(return_value={"ok": True})
+        result = await save_memory_run(
+            key="Preferencia",
+            value="Python",
+            scope="canonical",
+            _lan_request_signer=signer,
+        )
+
+    assert "queued" in result
+    assert bridge_type.call_count == 2
+    assert all(
+        call.kwargs["request_signer"] is signer
+        for call in bridge_type.call_args_list
+    )
+
+
+@pytest.mark.anyio
 async def test_save_memory_broadcasts_memory_updated_event(temp_memory_file):
     coordinator = NodeCoordinator(type("Cfg", (), {"peer_urls": "http://peer-a:8000", "node_heartbeat_ttl": 30.0})())
     await coordinator.promote()

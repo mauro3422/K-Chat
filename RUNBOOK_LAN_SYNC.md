@@ -20,13 +20,82 @@ Este documento resume cómo operar el estado actual del sistema entre dos instan
 - `GET /health` — salud general con coordinación, sync y failover.
 - `GET /api/node/state` — estado local del nodo.
 - `GET /api/node/runtime` — estado operativo resumido: `normal`, `degraded` o `fallback`.
-- `GET /api/node/diagnostics` — diagnóstico unificado de nodo, bridge y memoria.
-- `GET /api/node/sync/status` — cola, lease y frescura de memoria.
+- `GET /api/node/diagnostics` — diagnóstico unificado de nodo, bridge y memoria; requiere autenticación LAN.
+- `GET /api/node/sync/status` — cola, lease y frescura de memoria; requiere autenticación LAN.
 - `GET /api/node/failover/status` — estado observable de failover.
-- `GET /api/memory/status` — cola y lease de memoria.
-- `GET /api/memory/diagnostics` — comparación memoria.md vs memory.db.
-- `GET /api/memory/conflicts` — resumen accionable de conflictos.
+- `GET /api/memory/status` — cola y lease de memoria; requiere autenticación LAN.
+- `GET /api/memory/diagnostics` — comparación memoria.md vs memory.db; requiere autenticación LAN.
+- `GET /api/memory/conflicts` — resumen accionable de conflictos; requiere autenticación LAN.
 - `GET /api/telegram/status` — estado de reflejo de Telegram.
+
+## Autenticación del perímetro LAN
+
+Las rutas mutables y las que exponen memoria, colas, sesiones o diagnósticos
+requieren HMAC-SHA256. La firma cubre método, path, timestamp, nonce, identidad
+del nodo y hash SHA-256 del cuerpo. Los nonces solo se aceptan una vez dentro de
+una ventana acotada.
+
+Antes de sincronizar nodos:
+
+1. Generá un secreto una sola vez, fuera del repositorio:
+
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(48))"
+   ```
+
+2. Colocá el mismo valor en el `.env` local de ambos nodos:
+
+   ```env
+   KAIROS_LAN_SHARED_SECRET=<secreto-generado>
+   KAIROS_LAN_AUTH_WINDOW_SECONDS=30
+   KAIROS_LAN_AUTH_ALLOW_LOOPBACK=false
+   ```
+
+3. Autorizá identidades explícitas. En la primaria:
+
+   ```env
+   KAIROS_LAN_ALLOWED_NODE_IDS=pc-secundaria,kairos-ops
+   ```
+
+   En la secundaria:
+
+   ```env
+   KAIROS_LAN_ALLOWED_NODE_IDS=pc-principal,kairos-ops
+   ```
+
+4. Para `lan_field_smoke.py`, `lan_failover_drill.py` y `kairos_remote.py`,
+   exportá el mismo secreto y una identidad operativa autorizada:
+
+   ```bash
+   export KAIROS_LAN_SHARED_SECRET='<secreto-generado>'
+   export KAIROS_LAN_CLIENT_NODE_ID='kairos-ops'
+   ```
+
+   En PowerShell:
+
+   ```powershell
+   $env:KAIROS_LAN_SHARED_SECRET = '<secreto-generado>'
+   $env:KAIROS_LAN_CLIENT_NODE_ID = 'kairos-ops'
+   ```
+
+5. Reiniciá ambos servicios. Primero verificá los endpoints públicos
+   `/health`, `/api/node/state` y `/api/node/runtime`; después ejecutá
+   `lan-doctor` o `smoke:lan`, que firman automáticamente las operaciones
+   protegidas.
+
+Si falta el secreto, las rutas sensibles responden `503`; si falta o falla la
+firma responden `401`; una identidad no autorizada responde `403`; un nonce
+repetido responde `409`. No se registran secretos, firmas completas ni cuerpos.
+
+`KAIROS_LAN_AUTH_ALLOW_LOOPBACK=true` es un bypass explícito limitado a la
+interfaz loopback. Usalo solo cuando una herramienta local que no firma lo
+necesite. `TESTING=true` también omite la firma y nunca debe usarse en
+producción.
+
+Los paneles web de memoria y sincronización consultan rutas protegidas. Para
+usarlos desde un navegador en la misma máquina configurá explícitamente el
+bypass loopback; para operar desde otra PC mantenelo desactivado y usá los
+clientes firmados. No expongas el secreto en JavaScript ni en parámetros de URL.
 
 `/api/node/runtime` y `/api/node/sync/status` incluyen `observability` para leer rapido el estado fino de memoria:
 
@@ -149,6 +218,7 @@ Memory probe: primary -> secondary, key=lan_field_smoke:..., write=35.0ms, api_w
 - Elegí una PC como primaria inicial.
 - Asigná `KAIROS_NODE_ID` estable en ambas máquinas.
 - Configurá `KAIROS_PEER_URLS` con la URL LAN de la otra PC.
+- Configurá `KAIROS_LAN_SHARED_SECRET` y `KAIROS_LAN_ALLOWED_NODE_IDS` en ambas.
 - Confirmá que ambas máquinas pueden verse por red local.
 - Reiniciá el servidor después de tocar `.env`.
 
@@ -198,7 +268,6 @@ Primaria:
 curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/api/node/state
 curl http://127.0.0.1:8000/api/node/runtime
-curl http://127.0.0.1:8000/api/node/sync/status
 curl http://127.0.0.1:8000/api/node/failover/status
 ```
 
@@ -208,23 +277,26 @@ Secundaria:
 curl http://192.168.1.40:8000/health
 curl http://192.168.1.40:8000/api/node/state
 curl http://192.168.1.40:8000/api/node/runtime
-curl http://192.168.1.40:8000/api/node/sync/status
 curl http://192.168.1.40:8000/api/node/failover/status
 curl http://192.168.1.40:8000/api/telegram/status
 ```
 
-Prueba de memoria:
+Estado protegido y prueba de memoria firmados:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/memory/sync -H "Content-Type: application/json" -d '{"dry_run":false,"confirm":true,"key_pattern":"","fmt":"text"}'
-curl -X POST http://127.0.0.1:8000/api/node/memory/flush
+python ops/remote/kairos_remote.py doctor --node pc
+python scripts/lan_field_smoke.py --primary-url http://127.0.0.1:8000 --secondary-url http://192.168.1.40:8000
 ```
 
-Prueba de failover:
+No uses `curl` directo para `/api/memory/*`, `/api/node/memory/*` ni
+`/api/node/sync/status`: requieren timestamp, nonce, identidad y firma del
+cuerpo. Los clientes anteriores construyen esos encabezados sin exponer el
+secreto.
+
+Prueba de promoción firmada:
 
 ```bash
-curl -X POST http://192.168.1.40:8000/api/node/promote
-curl http://192.168.1.40:8000/api/node/failover/status
+python scripts/lan_field_smoke.py --primary-url http://127.0.0.1:8000 --secondary-url http://192.168.1.40:8000 --promote-secondary
 ```
 
 Si usás otra IP o puerto, reemplazalos por la URL LAN real del nodo.
@@ -236,6 +308,8 @@ Para que los nodos se vean solos después de reiniciar, configurá en cada máqu
 - `KAIROS_NODE_ID`: un nombre estable, por ejemplo `mauro-pc` y `archlinux`.
 - `KAIROS_PEER_URLS`: la URL del otro nodo, por ejemplo `http://192.168.1.40:8000` en la principal y `http://192.168.1.35:8000` en la secundaria.
 - `KAIROS_NODE_HEARTBEAT_TTL`: dejalo en `15.0` salvo que quieras un timeout más largo.
+- `KAIROS_LAN_SHARED_SECRET`: el mismo secreto aleatorio en ambos nodos.
+- `KAIROS_LAN_ALLOWED_NODE_IDS`: el ID del peer y las identidades operativas permitidas.
 
 Con eso, el arranque queda automático:
 

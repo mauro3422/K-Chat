@@ -42,13 +42,33 @@ class ToolRunnerProtocol(Protocol):
         tool_map: dict[str, Any] | None = None,
         skill_registry: Any | None = None,
         invalidate_cache_fn: Any | None = None,
+        lan_request_signer: Any | None = None,
     ) -> AsyncGenerator[Any, None]: ...
 
 
-async def _execute_tool_batch(tcs_info: list[tuple[Any, str, dict[str, Any]]], tool_map: dict[str, Any], session_id: str, tagged: bool, results: dict[str, tuple[str, str]], repos: 'Repositories', skill_registry: Any | None = None, invalidate_cache_fn: Any | None = None) -> AsyncGenerator[Any, None]:
+async def _execute_tool_batch(
+    tcs_info: list[tuple[Any, str, dict[str, Any]]],
+    tool_map: dict[str, Any],
+    session_id: str,
+    tagged: bool,
+    results: dict[str, tuple[str, str]],
+    repos: 'Repositories',
+    skill_registry: Any | None = None,
+    invalidate_cache_fn: Any | None = None,
+    lan_request_signer: Any | None = None,
+) -> AsyncGenerator[Any, None]:
     async def wrap_tool(tc, name, args):
         try:
-            tool_result = await _await_if_needed(tool_map[name](**args, _session_id=session_id, _repos=repos, _skill_registry=skill_registry, _invalidate_cache_fn=invalidate_cache_fn))
+            tool_result = await _await_if_needed(
+                tool_map[name](
+                    **args,
+                    _session_id=session_id,
+                    _repos=repos,
+                    _skill_registry=skill_registry,
+                    _invalidate_cache_fn=invalidate_cache_fn,
+                    _lan_request_signer=lan_request_signer,
+                )
+            )
             status = "error" if tool_result and tool_result.startswith("[ERROR]") else "ok"
         except asyncio.TimeoutError:
             logger.warning("Tool execution timed out for '%s'", name)
@@ -124,10 +144,21 @@ async def _execute_and_persist_tools(
     tool_detail: list[dict[str, Any]],
     skill_registry: Any | None = None,
     invalidate_cache_fn: Any | None = None,
+    lan_request_signer: Any | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Execute tools in batch and persist results."""
     results: dict[str, tuple[str, str]] = {}
-    async for event in _execute_tool_batch(tcs_info, tool_map, session_id, tagged, results, repos=repos, skill_registry=skill_registry, invalidate_cache_fn=invalidate_cache_fn):
+    async for event in _execute_tool_batch(
+        tcs_info,
+        tool_map,
+        session_id,
+        tagged,
+        results,
+        repos=repos,
+        skill_registry=skill_registry,
+        invalidate_cache_fn=invalidate_cache_fn,
+        lan_request_signer=lan_request_signer,
+    ):
         yield event
     await _persist_tool_results(tcs_info, results, session_id, turn, history, tool_detail, repos)
 
@@ -145,6 +176,7 @@ async def run_parallel_tools(
     tool_map: dict[str, Any] | None = None,
     skill_registry: Any | None = None,
     invalidate_cache_fn: Any | None = None,
+    lan_request_signer: Any | None = None,
 ) -> AsyncGenerator[Any, None]:
     import src.tools
     if tool_map is None:
@@ -177,6 +209,8 @@ async def run_parallel_tools(
 
     async for event in _execute_and_persist_tools(
         tcs_info, tool_map, session_id, turn, tagged, repos, history, tool_detail,
-        skill_registry=skill_registry, invalidate_cache_fn=invalidate_cache_fn,
+        skill_registry=skill_registry,
+        invalidate_cache_fn=invalidate_cache_fn,
+        lan_request_signer=lan_request_signer,
     ):
         yield event

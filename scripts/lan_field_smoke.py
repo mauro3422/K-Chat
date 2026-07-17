@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Two-node LAN field smoke test for Kairos.
 
-This is intentionally an edge script: it talks to public HTTP endpoints from
-RUNBOOK_LAN_SYNC.md and avoids importing app internals.
+This is intentionally an edge script: it talks to HTTP endpoints documented in
+RUNBOOK_LAN_SYNC.md and signs sensitive LAN operations.
 """
 
 from __future__ import annotations
@@ -18,6 +18,12 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.lan_auth_client import build_json_request, signer_from_environment
 
 
 DEFAULT_TIMEOUT = 30.0
@@ -50,6 +56,7 @@ class Step:
 class Client:
     def __init__(self, timeout: float = DEFAULT_TIMEOUT) -> None:
         self.timeout = timeout
+        self._signer = signer_from_environment("lan-field-smoke")
 
     def request(
         self,
@@ -63,12 +70,12 @@ class Client:
         url = node.url + path
         if params:
             url += "?" + urllib.parse.urlencode(params)
-        body = None
-        headers = {"Accept": "application/json"}
-        if payload is not None:
-            body = json.dumps(payload).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-        request = urllib.request.Request(url, data=body, headers=headers, method=method)
+        request = build_json_request(
+            method,
+            url,
+            payload=payload,
+            signer=self._signer,
+        )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 raw = response.read().decode("utf-8")

@@ -12,6 +12,12 @@ import httpx
 
 from src.config_loader import Config
 from src.coordination.embedding_job_queue import get_embedding_job_queue, replay_pending_embedding_jobs
+from src.coordination.lan_auth import (
+    LanRequestSignerProtocol,
+    encode_json_body,
+    is_sensitive_lan_request,
+    request_path,
+)
 from src.coordination.lan_discovery import detect_lan_ip
 from src.coordination.memory_write_queue import get_memory_write_queue, replay_pending_memory_writes
 from src.coordination.node_state import NodeCoordinator
@@ -57,6 +63,7 @@ class NodeLanBridge:
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
         lan_ip_resolver: Callable[[], str] = detect_lan_ip,
         on_primary_yield: Callable[[str], None] | None = None,
+        request_signer: LanRequestSignerProtocol | None = None,
     ) -> None:
         self._config = config
         self._coordinator = coordinator
@@ -65,6 +72,7 @@ class NodeLanBridge:
         self._client_factory = client_factory or (lambda: httpx.AsyncClient(timeout=3.0))
         self._lan_ip_resolver = lan_ip_resolver
         self._on_primary_yield = on_primary_yield
+        self._request_signer = request_signer
 
     def _response_json(self, response: httpx.Response) -> dict:
         """Safely parse JSON response, returning {} for empty bodies."""
@@ -457,7 +465,30 @@ class NodeLanBridge:
         last_exc: Exception | None = None
         for attempt in range(attempts):
             try:
-                response = await getattr(client, method)(url, **kwargs)
+                request_kwargs = dict(kwargs)
+                body = b""
+                if "json" in request_kwargs:
+                    body = encode_json_body(request_kwargs["json"])
+                elif isinstance(request_kwargs.get("content"), bytes):
+                    body = request_kwargs["content"]
+
+                if self._request_signer is None:
+                    if is_sensitive_lan_request(method, url):
+                        raise RuntimeError(
+                            "LAN request signing is not configured for a sensitive operation"
+                        )
+                else:
+                    headers = dict(request_kwargs.get("headers", {}))
+                    headers.update(
+                        self._request_signer.sign_headers(
+                            method,
+                            request_path(url),
+                            body,
+                        )
+                    )
+                    request_kwargs["headers"] = headers
+
+                response = await getattr(client, method)(url, **request_kwargs)
                 response.raise_for_status()
                 return response
             except Exception as exc:

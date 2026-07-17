@@ -20,7 +20,11 @@ def _get_bridge(request: Request) -> NodeLanBridge | None:
     cfg = getattr(request.app.state, "config", None)
     if coordinator is None:
         return None
-    bridge = NodeLanBridge(config=cfg, coordinator=coordinator)
+    bridge = NodeLanBridge(
+        config=cfg,
+        coordinator=coordinator,
+        request_signer=getattr(request.app.state, "lan_request_signer", None),
+    )
     request.app.state.node_bridge = bridge
     return bridge
 

@@ -10,33 +10,33 @@ from pydantic import BaseModel, Field
 
 
 class NodeHeartbeatPayload(BaseModel):
-    node_id: str = Field(default="")
-    role: str = Field(default="secondary")
-    base_url: str = Field(default="")
+    node_id: str = Field(default="", max_length=128)
+    role: str = Field(default="secondary", max_length=32)
+    base_url: str = Field(default="", max_length=2048)
     metadata: dict = Field(default_factory=dict)
 
 
 class NodeEventPayload(BaseModel):
-    type: str = Field(default="unknown")
+    type: str = Field(default="unknown", max_length=128)
     data: dict | list | str | int | float | bool | None = None
     source: dict = Field(default_factory=dict)
 
 
 class NodeMemoryWritePayload(BaseModel):
-    key: str = Field(default="")
-    value: str = Field(default="")
+    key: str = Field(default="", max_length=512)
+    value: str = Field(default="", max_length=262144)
     source: dict = Field(default_factory=dict)
 
 
 class NodeEmbeddingJobItem(BaseModel):
-    source: str = Field(default="session")
-    source_key: str = Field(default="")
+    source: str = Field(default="session", max_length=64)
+    source_key: str = Field(default="", max_length=512)
     item_idx: int = Field(default=0)
-    text: str = Field(default="")
-    content_hash: str = Field(default="")
+    text: str = Field(default="", max_length=32768)
+    content_hash: str = Field(default="", max_length=128)
 
 
 class NodeEmbeddingJobPayload(BaseModel):
-    items: list[NodeEmbeddingJobItem] = Field(default_factory=list)
+    items: list[NodeEmbeddingJobItem] = Field(default_factory=list, max_length=64)
     source: dict = Field(default_factory=dict)
     dry_run: bool = Field(default=False)

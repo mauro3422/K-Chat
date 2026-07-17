@@ -2,7 +2,10 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import AsyncGenerator, Any
 
-from src.core.services.tool_execution_service import ToolExecutionService
+from src.core.services.tool_execution_service import (
+    ToolExecutionService,
+    _wrap_run_with_runtime_dependencies,
+)
 
 
 @pytest.mark.anyio
@@ -135,6 +138,30 @@ async def test_execute_injects_cache_invalidation_wrapper():
 
     assert captured_run_fn is not None
     assert callable(captured_run_fn)
+
+
+@pytest.mark.anyio
+async def test_runtime_wrapper_injects_lan_signer():
+    signer = object()
+    captured_kwargs: dict[str, Any] = {}
+
+    async def fake_parallel_tools(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        yield "ok"
+
+    with patch(
+        "src.core.services.tool_execution_service.run_parallel_tools",
+        new=fake_parallel_tools,
+    ):
+        events = [
+            event
+            async for event in _wrap_run_with_runtime_dependencies(signer)(
+                "tool-calls"
+            )
+        ]
+
+    assert events == ["ok"]
+    assert captured_kwargs["lan_request_signer"] is signer
 
 
 @pytest.mark.anyio

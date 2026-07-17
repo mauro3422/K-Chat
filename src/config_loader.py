@@ -71,6 +71,12 @@ class Config:
     lan_discovery_port: int = 42429
     lan_discovery_interval: float = 5.0
     lan_discovery_ttl: float = 20.0
+    lan_shared_secret: str = ""
+    lan_allowed_node_ids: str = ""
+    lan_auth_window_seconds: int = 30
+    lan_auth_nonce_capacity: int = 4096
+    lan_auth_max_body_bytes: int = 3 * 1024 * 1024
+    lan_auth_allow_loopback: bool = False
 
 
 def _resolve_project_root() -> Path:
@@ -123,6 +129,12 @@ def load_config(overrides: dict | None = None) -> Config:
         lan_discovery_port=int(os.getenv("KAIROS_LAN_DISCOVERY_PORT", "42429")),
         lan_discovery_interval=float(os.getenv("KAIROS_LAN_DISCOVERY_INTERVAL", "5.0")),
         lan_discovery_ttl=float(os.getenv("KAIROS_LAN_DISCOVERY_TTL", "20.0")),
+        lan_shared_secret=os.getenv("KAIROS_LAN_SHARED_SECRET", ""),
+        lan_allowed_node_ids=os.getenv("KAIROS_LAN_ALLOWED_NODE_IDS", ""),
+        lan_auth_window_seconds=int(os.getenv("KAIROS_LAN_AUTH_WINDOW_SECONDS", "30")),
+        lan_auth_nonce_capacity=int(os.getenv("KAIROS_LAN_AUTH_NONCE_CAPACITY", "4096")),
+        lan_auth_max_body_bytes=int(os.getenv("KAIROS_LAN_AUTH_MAX_BODY_BYTES", str(3 * 1024 * 1024))),
+        lan_auth_allow_loopback=os.getenv("KAIROS_LAN_AUTH_ALLOW_LOOPBACK", "false").lower() in ("1", "true", "yes"),
     )
 
     if overrides:

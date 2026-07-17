@@ -36,7 +36,11 @@ def _request_bridge(request: Request | None):
     config = getattr(state, "config", None) if state is not None else None
     if coordinator is None or is_unconfigured_mock(coordinator):
         return None
-    bridge = NodeLanBridge(config=config, coordinator=coordinator)
+    bridge = NodeLanBridge(
+        config=config,
+        coordinator=coordinator,
+        request_signer=getattr(state, "lan_request_signer", None),
+    )
     if state is not None:
         state.node_bridge = bridge
     return bridge

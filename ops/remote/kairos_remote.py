@@ -27,6 +27,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.lan_auth_client import build_json_request, signer_from_environment
+
 
 CODEX_DELEGATION_GUIDE = """\
 [Contexto operativo remoto]
@@ -425,7 +427,12 @@ def action_doctor(profile: NodeProfile, *, json_output: bool = False) -> int:
 def action_http_get(profile: NodeProfile, path: str, *, timeout: float = 12) -> int:
     url = profile.base_url + path
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        request = build_json_request(
+            "GET",
+            url,
+            signer=signer_from_environment("kairos-ops"),
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             print(response.read().decode("utf-8", errors="replace"))
         return 0
     except Exception as exc:
@@ -491,14 +498,15 @@ def action_memory_preflight(profile: NodeProfile, *, json_output: bool = False, 
 
 def _http_json(profile: NodeProfile, path: str, payload: dict[str, Any] | None = None, *, timeout: float = 20) -> dict[str, Any]:
     url = profile.base_url + path
-    data = None
     method = "GET"
-    headers = {"Accept": "application/json"}
     if payload is not None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         method = "POST"
-        headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    request = build_json_request(
+        method,
+        url,
+        payload=payload,
+        signer=signer_from_environment("kairos-ops"),
+    )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         raw = response.read().decode("utf-8", errors="replace")
     parsed = json.loads(raw)
@@ -508,7 +516,12 @@ def _http_json(profile: NodeProfile, path: str, payload: dict[str, Any] | None =
 
 
 def _http_json_url(url: str, *, timeout: float = 20) -> dict[str, Any]:
-    with urllib.request.urlopen(url, timeout=timeout) as response:
+    request = build_json_request(
+        "GET",
+        url,
+        signer=signer_from_environment("kairos-ops"),
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         raw = response.read().decode("utf-8", errors="replace")
     parsed = json.loads(raw)
     if not isinstance(parsed, dict):
@@ -517,12 +530,11 @@ def _http_json_url(url: str, *, timeout: float = 20) -> dict[str, Any]:
 
 
 def _http_json_post_url(url: str, payload: dict[str, Any], *, timeout: float = 20) -> dict[str, Any]:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    request = urllib.request.Request(
+    request = build_json_request(
+        "POST",
         url,
-        data=body,
-        headers={"Accept": "application/json", "Content-Type": "application/json"},
-        method="POST",
+        payload=payload,
+        signer=signer_from_environment("kairos-ops"),
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         raw = response.read().decode("utf-8", errors="replace")

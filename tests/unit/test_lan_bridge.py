@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from pathlib import Path
 import time
 
 import pytest
 
 from src.coordination.lan_bridge import NodeLanBridge, parse_peer_urls
+from src.coordination.lan_auth import LanRequestSigner
 from src.coordination.memory_write_queue import MemoryWriteQueue
 from src.coordination.node_state import NodeCoordinator
 
@@ -15,6 +16,25 @@ from src.coordination.node_state import NodeCoordinator
 def test_parse_peer_urls_handles_commas_and_newlines() -> None:
     peers = parse_peer_urls("http://a:8000, https://b:9000/\nhttp://c:7000  ")
     assert peers == ["http://a:8000", "https://b:9000", "http://c:7000"]
+
+
+def _config(peer_urls: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        host="127.0.0.1",
+        port=8000,
+        peer_urls=peer_urls,
+        node_base_url="",
+        node_id="node-a",
+        node_role="secondary",
+        cluster_name="kairos",
+        node_heartbeat_ttl=12.0,
+        sessions_db_path="",
+        memory_db_path="",
+    )
+
+
+def _request_signer() -> LanRequestSigner:
+    return LanRequestSigner("test-secret", "node-a")
 
 
 def test_base_url_prefers_explicit_node_address_over_bind_host() -> None:
@@ -85,11 +105,11 @@ class _FakeClient:
     async def __aexit__(self, exc_type, exc, tb):
         return None
 
-    async def post(self, url: str, json: dict):
+    async def post(self, url: str, json: dict, headers: dict | None = None):
         self.calls.append((url, json))
         return self.responses[url]
 
-    async def get(self, url: str, params: dict | None = None):
+    async def get(self, url: str, params: dict | None = None, headers: dict | None = None):
         self.calls.append((url, params or {}))
         return self.responses[url]
 
@@ -106,13 +126,13 @@ class _FailThenSuccessClient:
     async def __aexit__(self, exc_type, exc, tb):
         return None
 
-    async def post(self, url: str, json: dict):
+    async def post(self, url: str, json: dict, headers: dict | None = None):
         self.calls.append((url, json))
         if url in self.failures:
             raise RuntimeError("peer down")
         return self.responses[url]
 
-    async def get(self, url: str, params: dict | None = None):
+    async def get(self, url: str, params: dict | None = None, headers: dict | None = None):
         self.calls.append((url, params or {}))
         if url in self.failures:
             raise RuntimeError("peer down")
@@ -146,23 +166,18 @@ class _RetryClient:
     async def __aexit__(self, exc_type, exc, tb):
         return None
 
-    async def post(self, url: str, json: dict):
+    async def post(self, url: str, json: dict, headers: dict | None = None):
         self.calls.append((url, json))
         return self.response
 
-    async def get(self, url: str, params: dict | None = None):
+    async def get(self, url: str, params: dict | None = None, headers: dict | None = None):
         self.calls.append((url, params or {}))
         return self.response
 
 
 @pytest.mark.anyio
 async def test_broadcast_once_posts_peer_heartbeat_and_records_remote_state() -> None:
-    cfg = MagicMock(
-        host="127.0.0.1",
-        port=8000,
-        peer_urls="http://peer-a:8000, http://peer-b:8000",
-        node_heartbeat_ttl=12.0,
-    )
+    cfg = _config("http://peer-a:8000, http://peer-b:8000")
     coordinator = NodeCoordinator(cfg)
 
     responses = {
@@ -174,7 +189,12 @@ async def test_broadcast_once_posts_peer_heartbeat_and_records_remote_state() ->
         ),
     }
     fake_client = _FakeClient(responses)
-    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: fake_client)
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: fake_client,
+        request_signer=_request_signer(),
+    )
 
     result = await bridge.broadcast_once()
 
@@ -212,6 +232,7 @@ async def test_promoted_secondary_yields_when_preferred_primary_returns() -> Non
         coordinator,
         client_factory=lambda: _FakeClient({"http://peer-a:8000/api/node/heartbeat": response}),
         on_primary_yield=yielded.append,
+        request_signer=_request_signer(),
     )
 
     await bridge.broadcast_once()
@@ -244,6 +265,7 @@ async def test_promoted_secondary_replays_queued_writes_when_preferred_primary_r
         cfg,
         coordinator,
         client_factory=lambda: _FakeClient({"http://peer-a:8000/api/node/heartbeat": response}),
+        request_signer=_request_signer(),
     )
     mock_request = AsyncMock(return_value={"ok": True, "granted": True, "queued": False})
 
@@ -260,12 +282,7 @@ async def test_promoted_secondary_replays_queued_writes_when_preferred_primary_r
 
 @pytest.mark.anyio
 async def test_broadcast_event_posts_to_each_peer() -> None:
-    cfg = MagicMock(
-        host="127.0.0.1",
-        port=8000,
-        peer_urls="http://peer-a:8000, http://peer-b:8000",
-        node_heartbeat_ttl=12.0,
-    )
+    cfg = _config("http://peer-a:8000, http://peer-b:8000")
     coordinator = NodeCoordinator(cfg)
 
     responses = {
@@ -273,7 +290,12 @@ async def test_broadcast_event_posts_to_each_peer() -> None:
         "http://peer-b:8000/api/node/event": _FakeResponse({"ok": True}),
     }
     fake_client = _FakeClient(responses)
-    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: fake_client)
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: fake_client,
+        request_signer=_request_signer(),
+    )
 
     result = await bridge.broadcast_event("memory_updated", {"session_id": "s1"})
 
@@ -286,12 +308,7 @@ async def test_broadcast_event_posts_to_each_peer() -> None:
 
 @pytest.mark.anyio
 async def test_request_memory_snapshot_gets_peer_diagnostics() -> None:
-    cfg = MagicMock(
-        host="127.0.0.1",
-        port=8000,
-        peer_urls="http://peer-a:8000",
-        node_heartbeat_ttl=12.0,
-    )
+    cfg = _config("http://peer-a:8000")
     coordinator = NodeCoordinator(cfg)
 
     responses = {
@@ -308,7 +325,12 @@ async def test_request_memory_snapshot_gets_peer_diagnostics() -> None:
         ),
     }
     fake_client = _FakeClient(responses)
-    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: fake_client)
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: fake_client,
+        request_signer=_request_signer(),
+    )
 
     result = await bridge.request_memory_snapshot(key_pattern="user:*")
 
@@ -340,7 +362,12 @@ async def test_request_session_directory_marks_peer_rows_as_remote() -> None:
             }],
         }),
     }
-    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: _FakeClient(responses))
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: _FakeClient(responses),
+        request_signer=_request_signer(),
+    )
 
     result = await bridge.request_session_directory()
 
@@ -350,16 +377,16 @@ async def test_request_session_directory_marks_peer_rows_as_remote() -> None:
 
 @pytest.mark.anyio
 async def test_broadcast_event_retries_transient_failures() -> None:
-    cfg = MagicMock(
-        host="127.0.0.1",
-        port=8000,
-        peer_urls="http://peer-a:8000",
-        node_heartbeat_ttl=12.0,
-    )
+    cfg = _config("http://peer-a:8000")
     coordinator = NodeCoordinator(cfg)
     flaky_response = _FlakyResponse({"ok": True}, failures_before_success=1)
     fake_client = _RetryClient(flaky_response)
-    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: fake_client)
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: fake_client,
+        request_signer=_request_signer(),
+    )
 
     with patch("src.coordination.lan_bridge.anyio.sleep", new=AsyncMock()):
         result = await bridge.broadcast_event("memory_updated", {"session_id": "s1"})
@@ -370,12 +397,7 @@ async def test_broadcast_event_retries_transient_failures() -> None:
 
 @pytest.mark.anyio
 async def test_request_memory_write_falls_back_to_next_peer() -> None:
-    cfg = MagicMock(
-        host="127.0.0.1",
-        port=8000,
-        peer_urls="http://peer-a:8000, http://peer-b:8000",
-        node_heartbeat_ttl=12.0,
-    )
+    cfg = _config("http://peer-a:8000, http://peer-b:8000")
     coordinator = NodeCoordinator(cfg)
     responses = {
         "http://peer-b:8000/api/node/memory/request": _FakeResponse({"ok": True, "granted": True, "queued": False}),
@@ -384,7 +406,12 @@ async def test_request_memory_write_falls_back_to_next_peer() -> None:
         responses,
         failures={"http://peer-a:8000/api/node/memory/request"},
     )
-    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: fake_client)
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: fake_client,
+        request_signer=_request_signer(),
+    )
 
     result = await bridge.request_memory_write("Preferencia", "Python")
 
@@ -397,12 +424,7 @@ async def test_request_memory_write_falls_back_to_next_peer() -> None:
 
 @pytest.mark.anyio
 async def test_request_embedding_jobs_posts_to_primary_peer() -> None:
-    cfg = MagicMock(
-        host="127.0.0.1",
-        port=8000,
-        peer_urls="http://peer-a:8000",
-        node_heartbeat_ttl=12.0,
-    )
+    cfg = _config("http://peer-a:8000")
     coordinator = NodeCoordinator(cfg)
     responses = {
         "http://peer-a:8000/api/node/embeddings/jobs": _FakeResponse(
@@ -410,7 +432,12 @@ async def test_request_embedding_jobs_posts_to_primary_peer() -> None:
         ),
     }
     fake_client = _FakeClient(responses)
-    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: fake_client)
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: fake_client,
+        request_signer=_request_signer(),
+    )
 
     result = await bridge.request_embedding_jobs(
         [{"source": "session", "source_key": "s1", "item_idx": 0, "text": "hello"}],
@@ -426,12 +453,7 @@ async def test_request_embedding_jobs_posts_to_primary_peer() -> None:
 
 @pytest.mark.anyio
 async def test_broadcast_once_replays_pending_memory_writes_when_primary_returns(tmp_path: Path) -> None:
-    cfg = MagicMock(
-        host="127.0.0.1",
-        port=8000,
-        peer_urls="http://peer-a:8000",
-        node_heartbeat_ttl=12.0,
-    )
+    cfg = _config("http://peer-a:8000")
     coordinator = NodeCoordinator(cfg)
     queue = MemoryWriteQueue(persistence_path=str(tmp_path / "queue.json"))
     queue.enqueue("Preferencia", "Python", source_node="node-a", reason="primary_unavailable")
@@ -442,7 +464,12 @@ async def test_broadcast_once_replays_pending_memory_writes_when_primary_returns
         ),
     }
     fake_client = _FakeClient(responses)
-    bridge = NodeLanBridge(cfg, coordinator, client_factory=lambda: fake_client)
+    bridge = NodeLanBridge(
+        cfg,
+        coordinator,
+        client_factory=lambda: fake_client,
+        request_signer=_request_signer(),
+    )
 
     mock_request = AsyncMock(return_value={"ok": True, "granted": True, "queued": False})
 

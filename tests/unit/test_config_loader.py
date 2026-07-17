@@ -79,6 +79,24 @@ class TestLoadConfig:
         assert cfg.testing is True
 
     @pytest.mark.anyio
+    async def test_loads_lan_authentication_from_env(self, monkeypatch):
+        monkeypatch.setenv("KAIROS_LAN_SHARED_SECRET", "shared-test-secret")
+        monkeypatch.setenv("KAIROS_LAN_ALLOWED_NODE_IDS", "node-b,kairos-ops")
+        monkeypatch.setenv("KAIROS_LAN_AUTH_WINDOW_SECONDS", "45")
+        monkeypatch.setenv("KAIROS_LAN_AUTH_NONCE_CAPACITY", "2048")
+        monkeypatch.setenv("KAIROS_LAN_AUTH_MAX_BODY_BYTES", "1048576")
+        monkeypatch.setenv("KAIROS_LAN_AUTH_ALLOW_LOOPBACK", "true")
+
+        cfg = load_config()
+
+        assert cfg.lan_shared_secret == "shared-test-secret"
+        assert cfg.lan_allowed_node_ids == "node-b,kairos-ops"
+        assert cfg.lan_auth_window_seconds == 45
+        assert cfg.lan_auth_nonce_capacity == 2048
+        assert cfg.lan_auth_max_body_bytes == 1048576
+        assert cfg.lan_auth_allow_loopback is True
+
+    @pytest.mark.anyio
     async def test_env_fallback_key(self, monkeypatch):
         """OPENCODE_ZEN_API_KEY_FALLBACK used when primary key is empty."""
         monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "")

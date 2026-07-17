@@ -11,6 +11,12 @@ Kairos descubre automáticamente otros nodos de su mismo clúster en la red loca
 
 El descubrimiento elimina la configuración manual entre nodos, pero no puede crear por sí solo un nombre que todos los navegadores resuelvan. Para un enlace estable dentro de una red se necesita DNS local o mDNS; para publicar el producto en Internet se necesita un dominio HTTPS y un servicio de registro/autenticación. El multicast queda exclusivamente como mecanismo LAN.
 
+El multicast solo descubre direcciones: no autoriza operaciones. Heartbeats,
+eventos, escrituras, embeddings, sesiones y endpoints de memoria usan el
+secreto `KAIROS_LAN_SHARED_SECRET` y una identidad incluida en
+`KAIROS_LAN_ALLOWED_NODE_IDS`. Un peer descubierto que no pueda firmar o cuyo
+`node_id` no esté permitido no entra al perímetro administrativo.
+
 ## Servicio persistente
 
 En Windows:
