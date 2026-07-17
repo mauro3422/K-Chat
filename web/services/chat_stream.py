@@ -160,12 +160,15 @@ def build_stream_generator(
             logger.error("Stream error for %s: [%s] %s — %s: %s", session_id, error_type, error_msg, type(e).__name__, e)
             if _deps.retry_handler is not None and _deps.retry_handler.can_retry and state.has_output():
                 try:
+                    recovered = False
                     async for rtipo, rtoken in _deps.retry_handler.attempt_recovery(
                         history, state.full_content, state.full_reasoning, model, session_id,
                     ):
                         state.append(rtipo, rtoken)
                         yield serialize_stream_event(rtipo, rtoken)
-                    return
+                        recovered = True
+                    if recovered:
+                        return
                 except Exception as recover_err:
                     logger.error("Recovery also failed for %s: %s", session_id, recover_err)
             yield serialize_stream_event("error", {"type": error_type, "message": error_msg})

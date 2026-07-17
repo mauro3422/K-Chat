@@ -574,6 +574,28 @@ class TestStreamError:
         assert events[0] == {"t": "content", "d": "partial "}
         assert events[1] == {"t": "content", "d": "recovered text"}
 
+    async def test_error_is_emitted_when_exception_recovery_is_empty(self, deps, background_tasks, orch_deps):
+        """A recovery that produces no events must not hide the original failure."""
+        deps.retry_handler.can_retry = True
+
+        async def stream_then_crash(*args, **kwargs):
+            yield ("content", "partial ")
+            raise RuntimeError("connection lost")
+
+        deps.chat_stream_fn = stream_then_crash
+        deps.retry_handler.attempt_recovery = _make_stream([])
+
+        gen = build_stream_generator(
+            session_id="s1", message="hi", history=[], model="gpt4",
+            background_tasks=background_tasks, deps=deps,
+            orchestrator_deps=orch_deps,
+        )
+        events = _parse_events([line async for line in gen()])
+
+        assert events[0] == {"t": "content", "d": "partial "}
+        assert events[1]["t"] == "error"
+        assert events[1]["d"]["type"] == "network"
+
     async def test_retry_not_attempted_without_output(self, deps, background_tasks, orch_deps):
         """If the error happens before any content, retry is skipped."""
         deps.retry_handler.can_retry = True
