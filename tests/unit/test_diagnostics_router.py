@@ -97,7 +97,7 @@ async def test_api_diagnostics_normalizes_string_peer_urls():
     )
     fake_bridge = MagicMock()
     fake_bridge.base_url = "http://127.0.0.1:8000"
-    fake_bridge.peer_urls = "http://peer-a:8000"
+    fake_bridge.peer_urls = "  http://peer-a:8000/  "
     fake_bridge.broadcast_once = AsyncMock(return_value={"ok": True})
     fake_bridge.request_peer_states = AsyncMock(return_value={
         "ok": True,

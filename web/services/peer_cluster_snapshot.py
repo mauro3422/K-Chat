@@ -9,11 +9,20 @@ def snapshot_error(source: str, exc: Exception) -> dict[str, str]:
     return {"source": source, "error": str(exc)}
 
 
+def _normalize_peer_url(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    peer = str(raw).strip().rstrip("/")
+    return peer or None
+
+
 def peer_urls_from_bridge(bridge: Any) -> list[str]:
     peer_urls = getattr(bridge, "peer_urls", []) or []
     if isinstance(peer_urls, str):
-        return [peer_urls] if peer_urls else []
-    return list(peer_urls)
+        normalized = _normalize_peer_url(peer_urls)
+        return [normalized] if normalized else []
+    normalized = [_normalize_peer_url(peer) for peer in peer_urls]
+    return list(dict.fromkeys(peer for peer in normalized if peer))
 
 
 def _dict_entries(items: Any) -> list[dict[str, Any]]:

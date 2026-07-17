@@ -4,14 +4,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 @pytest.mark.anyio
 async def test_build_peer_cluster_snapshot_normalizes_peer_urls_and_filters_entries():
-    from web.services.peer_cluster_snapshot import build_peer_cluster_snapshot
+    from web.services.peer_cluster_snapshot import build_peer_cluster_snapshot, peer_urls_from_bridge
 
     bridge = MagicMock()
-    bridge.peer_urls = "http://peer-a:8000"
+    bridge.peer_urls = "  http://peer-a:8000/  "
     bridge.request_peer_states = AsyncMock(return_value={
         "states": [{"node_id": "peer-a"}, "ignored"],
         "errors": [{"peer_url": "http://peer-a:8000", "error": "timeout"}, None],
     })
+
+    assert peer_urls_from_bridge(bridge) == ["http://peer-a:8000"]
 
     snapshot = await build_peer_cluster_snapshot(bridge)
 
