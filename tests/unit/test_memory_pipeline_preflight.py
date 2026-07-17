@@ -99,6 +99,11 @@ def test_memory_pipeline_preflight_runs_backfill_then_audit(tmp_path):
     assert result["snapshot"]["vectors"] == 1
     assert result["snapshot"]["processing_total"] == 1
     assert result["issues"] == []
+    assert result["status"] == "attention"
+    assert result["ok"] is True
+    assert "daily synthesis is missing" in result["attention"]
+    assert result["snapshot"]["integrity_status"] == "ok"
+    assert result["snapshot"]["coverage_status"] == "attention"
 
 
 def test_memory_pipeline_report_keeps_node_differences_separate_from_failures():
@@ -119,6 +124,7 @@ def test_memory_pipeline_report_keeps_node_differences_separate_from_failures():
     assert differences[0]["differences"]["sessions"] == {"local": 2, "remote": 1}
     assert differences[0]["differences"]["vectors"] == {"local": 5, "remote": 4}
     assert report["ok"] is True
+    assert report["status"] == "attention"
 
 
 class _FailingJsonRunner:

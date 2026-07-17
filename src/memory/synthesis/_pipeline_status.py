@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from src.memory.health_contract import normalize_health_status
+
 
 def _priority_for_inbox(item: Mapping[str, Any]) -> int:
     urgency = str(item.get("urgency") or "normal").lower()
@@ -81,8 +83,12 @@ def memory_pipeline_status(plan: Mapping[str, Any]) -> dict[str, Any]:
     if int(git.get("stashes") or 0) > 0:
         issues.append(f"{git.get('stashes')} stash(es) pending")
 
-    if preflight and not preflight.get("ok", False):
-        issues.append("memory preflight has issues")
+    preflight_status = normalize_health_status(
+        preflight.get("status"),
+        legacy_ok=preflight.get("ok"),
+    )
+    if preflight and preflight_status != "ok":
+        issues.append(f"memory preflight {preflight_status}")
     if laptop.get("status") in {"not_configured", "error", "unknown", "degraded"}:
         issues.append(f"laptop health {laptop.get('status', 'unknown')}")
 
@@ -91,7 +97,9 @@ def memory_pipeline_status(plan: Mapping[str, Any]) -> dict[str, Any]:
 
     blocking = [
         issue for issue in issues
-        if "preflight" in issue or "branch behind" in issue or "laptop health error" in issue
+        if "memory preflight error" in issue
+        or "branch behind" in issue
+        or "laptop health error" in issue
     ]
     if blocking:
         status = "blocked"

@@ -639,7 +639,83 @@ def test_memory_pipeline_status_marks_blocked_when_preflight_fails():
     )
 
     assert status["status"] == "blocked"
-    assert "memory preflight has issues" in status["issues"]
+    assert "memory preflight error" in status["issues"]
+
+
+def test_memory_pipeline_status_keeps_coverage_attention_non_blocking():
+    status = memory_pipeline_status(
+        {
+            "pending_inbox": [],
+            "inbox_groups": [],
+            "candidate_cards": [],
+            "ready_candidate_cards": [],
+            "curation_decisions": [],
+            "curation_report": {"path": "memory/2026/07/17/events/curation.md"},
+            "daily_synthesis": {"path": "memory/2026/07/17/daily.md"},
+            "transversal_synthesis": {
+                "path": "memory/2026/07/17/transversal.md",
+                "metadata": {"session_count": 2},
+            },
+            "health": {
+                "git": {"dirty": False, "behind": 0, "stashes": 0},
+                "preflight": {
+                    "ok": True,
+                    "status": "attention",
+                    "attention": ["sessions have missing vectors=18"],
+                },
+                "laptop": {"status": "ok"},
+            },
+        }
+    )
+
+    assert status["status"] == "attention"
+    assert "memory preflight attention" in status["issues"]
+
+
+def test_compact_morning_plan_propagates_layered_preflight_contract():
+    audit_health = {
+        "contract_version": 2,
+        "status": "attention",
+        "integrity": {"status": "ok"},
+        "coverage": {"status": "attention"},
+        "quality": {"status": "warning"},
+    }
+    plan = {
+        "date": "2026-07-17",
+        "actions": [],
+        "health": {
+            "git": {
+                "branch": "main",
+                "changed": 0,
+                "untracked": 0,
+                "ahead": 0,
+                "behind": 0,
+                "stashes": 0,
+            },
+            "preflight": {
+                "ok": True,
+                "status": "attention",
+                "issues": [],
+                "attention": ["sessions have missing vectors=18"],
+                "warnings": ["curated memories have low signal=19"],
+                "audit": {"health": audit_health},
+                "snapshot": {"missing_sessions": 18},
+            },
+            "laptop": {"status": "ok", "available": True, "warnings": []},
+        },
+        "pipeline_status": {"status": "attention"},
+    }
+
+    compact = compact_morning_plan(plan)
+
+    preflight = compact["health"]["preflight"]
+    assert preflight["ok"] is True
+    assert preflight["status"] == "attention"
+    assert preflight["attention"] == ["sessions have missing vectors=18"]
+    assert preflight["warnings"] == ["curated memories have low signal=19"]
+    assert preflight["health"] == audit_health
+    assert compact["summary"] == "status=attention; actions=0; preflight=attention; laptop=ok"
+    assert compact["priorities"][0]["title"] == "Revisar preflight local de memoria"
 
 
 def test_memory_pipeline_status_flags_degraded_laptop_without_blocking():

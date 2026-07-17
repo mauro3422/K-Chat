@@ -69,6 +69,33 @@ JSON para tool futura:
 python ops/remote/kairos_remote.py preflight --node laptop --json
 ```
 
+## Contrato de health
+
+`scripts/memory_audit.py` y el preflight publican `status` y tres dimensiones:
+
+- `integrity`: invariantes tecnicas bloqueantes, como tablas requeridas ausentes,
+  enlaces de catalogo rotos, vectores sin catalogar, fuentes huerfanas o etapas
+  de procesamiento fallidas/obsoletas.
+- `coverage`: cobertura operativa de sesiones, vectores, trabajo pendiente y
+  sintesis diaria/transversal.
+- `quality`: deuda curatorial no bloqueante, como timestamps ausentes, memorias
+  vacias/cortas, low-signal, vague, probe o valores duplicados.
+
+Los niveles tienen esta semantica estable:
+
+- `error`: fallo tecnico bloqueante; el comando termina con codigo distinto de cero.
+- `attention`: cobertura incompleta que requiere seguimiento, sin declarar corrupcion.
+- `warning`: señal historica o de calidad curada que no bloquea el runtime.
+- `ok`: no hay hallazgos en la dimension evaluada.
+
+El campo heredado `ok` se conserva y ahora significa exclusivamente que
+`integrity.status != "error"`. Un payload puede tener `ok: true` y
+`status: "attention"` o `"warning"`; los consumidores operativos deben usar
+`status` y las dimensiones, no interpretar `ok` como ausencia total de deuda.
+Los campos heredados `synthesis.exists`, `synthesis.count` y
+`synthesis.latest` siguen describiendo la sintesis diaria. La sintesis
+transversal se informa en `synthesis.transversal`.
+
 ## Que valida el preflight
 
 - Git local/remoto.

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
-from scripts.memory_audit import _content_hash, run_audit
+from scripts.memory_audit import _content_hash, resolve_audit_root, run_audit
+from src.memory.maintenance.audit_cli import build_parser
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
 
 
@@ -70,6 +72,7 @@ def _init_memory_db(path):
         )
         """
     )
+    MemoryWorkCatalogRepository.ensure_schema(conn)
     conn.commit()
     conn.close()
 
@@ -85,6 +88,10 @@ def test_memory_audit_reports_missing_session_vectors(tmp_path):
     assert report["summary"]["sessions_with_missing_vectors"] == 1
     assert report["summary"]["sessions_with_stale_vectors"] == 0
     assert report["sessions"][0]["missing_hashes"]
+    assert report["status"] == "attention"
+    assert report["health"]["integrity"]["status"] == "ok"
+    assert report["health"]["coverage"]["status"] == "attention"
+    assert report["health"]["coverage"]["metrics"]["exchange_coverage_ratio"] == 0.0
     assert report["ok"] is True
 
 
@@ -102,12 +109,23 @@ def test_memory_audit_reports_stale_session_vectors(tmp_path):
     )
     conn.commit()
     conn.close()
+    MemoryWorkCatalogRepository(str(memory_db)).mark(
+        source="session",
+        source_key="s1",
+        item_idx=0,
+        content_hash="stale-hash",
+        status="embedded",
+        vec_rowid=1,
+        reason="test_fixture",
+    )
 
     report = run_audit(sessions_db=str(sessions_db), memory_db=str(memory_db), root=str(tmp_path))
 
     assert report["summary"]["sessions_with_stale_vectors"] == 1
     assert report["sessions"][0]["stale_vectors"][0]["hash"] == "stale-hash"[:12]
-    assert report["ok"] is False
+    assert report["health"]["coverage"]["status"] == "attention"
+    assert report["health"]["integrity"]["status"] == "ok"
+    assert report["ok"] is True
 
 
 def test_memory_audit_reports_legacy_vector_tables(tmp_path):
@@ -259,6 +277,58 @@ def test_memory_audit_scores_curated_memory_quality(tmp_path):
     assert quality["probe"] == 1
     assert quality["avg_quality_score"] < 1.0
     assert report["summary"]["curated_low_signal"] == 1
+    assert report["health"]["quality"]["status"] == "warning"
+    assert report["health"]["quality"]["metrics"]["missing_timestamp"] == 1
+
+
+def test_memory_audit_reports_quality_warning_without_blocking_integrity(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    exchange_text = (
+        "User: Tell me a meaningful thing about distributed memory systems.\n"
+        "Assistant: Distributed memory systems need stable hashes for incremental work."
+    )
+    digest = _content_hash(exchange_text)
+    conn = sqlite3.connect(memory_db)
+    conn.execute(
+        """
+        INSERT INTO vec_meta (rowid, source, source_key, exchange_idx, text, hash, content_hash, created_at)
+        VALUES (1, 'session', 's1', 0, ?, ?, ?, '2026-07-17T10:00:00')
+        """,
+        (exchange_text, digest, digest),
+    )
+    conn.execute(
+        "INSERT INTO memory_index (key, value, updated_at) VALUES ('test:probe', 'ok', '2026-07-17T10:00:00')"
+    )
+    conn.commit()
+    conn.close()
+    MemoryWorkCatalogRepository(str(memory_db)).mark(
+        source="session",
+        source_key="s1",
+        item_idx=0,
+        content_hash=digest,
+        status="embedded",
+        vec_rowid=1,
+        reason="test_fixture",
+    )
+    artifact_dir = tmp_path / "memory" / "2026" / "07" / "17"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "daily.md").write_text("# Daily\n", encoding="utf-8")
+    (artifact_dir / "transversal.md").write_text("# Transversal\n", encoding="utf-8")
+
+    report = run_audit(
+        sessions_db=str(sessions_db),
+        memory_db=str(memory_db),
+        root=str(tmp_path),
+    )
+
+    assert report["health"]["integrity"]["status"] == "ok"
+    assert report["health"]["coverage"]["status"] == "ok"
+    assert report["health"]["quality"]["status"] == "warning"
+    assert report["status"] == "warning"
+    assert report["ok"] is True
 
 
 def test_memory_audit_reports_uncataloged_memory_vectors(tmp_path):
@@ -307,3 +377,48 @@ def test_memory_audit_fails_on_missing_catalog_vector_link(tmp_path):
     assert report["ok"] is False
     assert report["catalog"]["missing_vec_links"] == 1
     assert report["summary"]["catalog_missing_vec_links"] == 1
+    assert report["status"] == "error"
+    assert report["health"]["integrity"]["status"] == "error"
+
+
+def test_resolve_audit_root_accepts_repo_and_src_memory(tmp_path):
+    src_memory = tmp_path / "src" / "memory"
+    src_memory.mkdir(parents=True)
+
+    assert resolve_audit_root(tmp_path) == tmp_path.resolve()
+    assert resolve_audit_root(src_memory) == tmp_path.resolve()
+    assert resolve_audit_root(tmp_path / "memory") == tmp_path.resolve()
+
+
+def test_memory_audit_cli_defaults_to_repository_root():
+    args = build_parser().parse_args([])
+
+    assert Path(args.root).resolve() == resolve_audit_root(Path(__file__))
+    assert not Path(args.root).as_posix().endswith("src/memory")
+
+
+def test_memory_audit_finds_daily_and_transversal_synthesis_from_src_memory_root(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+    src_memory = tmp_path / "src" / "memory"
+    src_memory.mkdir(parents=True)
+    artifact_dir = tmp_path / "memory" / "2026" / "07" / "17"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "daily.md").write_text("# Daily\n", encoding="utf-8")
+    (artifact_dir / "transversal.md").write_text("# Transversal\n", encoding="utf-8")
+
+    report = run_audit(
+        sessions_db=str(sessions_db),
+        memory_db=str(memory_db),
+        root=str(src_memory),
+    )
+
+    assert Path(report["paths"]["root"]) == tmp_path.resolve()
+    assert report["synthesis"]["exists"] is True
+    assert report["synthesis"]["count"] == 1
+    assert report["synthesis"]["daily"]["exists"] is True
+    assert report["synthesis"]["transversal"]["exists"] is True
+    assert report["health"]["coverage"]["metrics"]["daily_synthesis_count"] == 1
+    assert report["health"]["coverage"]["metrics"]["transversal_synthesis_count"] == 1

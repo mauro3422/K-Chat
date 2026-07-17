@@ -14,6 +14,7 @@ from src.memory.curator.candidate_workbench import list_candidate_cards
 from src.memory.curator.curation_queue import build_curation_queue
 from src.memory.curator.curation_events import load_curation_decisions
 from src.memory.curator.memory_inbox import load_memory_inbox
+from src.memory.health_contract import normalize_health_status
 
 from src.memory.synthesis._health import (
     git_health, laptop_health, preflight_health, build_health,
@@ -311,6 +312,11 @@ def compact_morning_plan(plan: Mapping[str, Any], *, action_limit: int = 12) -> 
     git = health.get("git") if isinstance(health.get("git"), Mapping) else {}
     laptop = health.get("laptop") if isinstance(health.get("laptop"), Mapping) else {}
     preflight = health.get("preflight") if isinstance(health.get("preflight"), Mapping) else {}
+    preflight_audit = (
+        preflight.get("audit")
+        if isinstance(preflight.get("audit"), Mapping)
+        else {}
+    )
     failed_laptop_checks = [
         dict(item)
         for item in laptop.get("failed_checks") or []
@@ -368,7 +374,15 @@ def compact_morning_plan(plan: Mapping[str, Any], *, action_limit: int = 12) -> 
             },
             "preflight": {
                 "ok": preflight.get("ok") if preflight else None,
+                "status": (
+                    normalize_health_status(preflight.get("status"), legacy_ok=preflight.get("ok"))
+                    if preflight
+                    else "not_run"
+                ),
                 "issues": preflight.get("issues", []) if preflight else [],
+                "attention": preflight.get("attention", []) if preflight else [],
+                "warnings": preflight.get("warnings", []) if preflight else [],
+                "health": preflight_audit.get("health", {}) if preflight else {},
                 "snapshot": preflight.get("snapshot", {}) if preflight else {},
             },
             "laptop": {
@@ -419,7 +433,11 @@ def morning_plan_summary(compact_plan: Mapping[str, Any]) -> str:
     laptop = health.get("laptop") if isinstance(health.get("laptop"), Mapping) else {}
     preflight = health.get("preflight") if isinstance(health.get("preflight"), Mapping) else {}
     status = str(pipeline.get("status") or "unknown")
-    preflight_text = "ok" if preflight.get("ok") is True else "issues" if preflight.get("ok") is False else "not_run"
+    preflight_text = (
+        normalize_health_status(preflight.get("status"), legacy_ok=preflight.get("ok"))
+        if preflight and preflight.get("ok") is not None
+        else "not_run"
+    )
     return (
         f"status={status}; actions={counts.get('actions', 0)}; "
         f"preflight={preflight_text}; laptop={laptop.get('status', 'unknown')}"
@@ -461,12 +479,25 @@ def morning_plan_priorities(compact_plan: Mapping[str, Any], *, limit: int = 3) 
                 "command": top.get("runbook_command") or "curator_workbench action=runbook item_id=top",
             }
         )
-    if preflight and preflight.get("ok") is False:
+    preflight_status = normalize_health_status(
+        preflight.get("status"),
+        legacy_ok=preflight.get("ok"),
+    )
+    if preflight and preflight_status != "ok":
+        findings = [
+            *list(preflight.get("issues") or []),
+            *list(preflight.get("attention") or []),
+            *list(preflight.get("warnings") or []),
+        ]
         priorities.append(
             {
                 "priority": f"P{len(priorities) + 1}",
-                "title": "Resolver preflight local de memoria",
-                "reason": "; ".join(str(item) for item in list(preflight.get("issues") or [])[:3]) or "preflight local con issues",
+                "title": (
+                    "Resolver preflight local de memoria"
+                    if preflight_status == "error"
+                    else "Revisar preflight local de memoria"
+                ),
+                "reason": "; ".join(str(item) for item in findings[:3]) or f"preflight local {preflight_status}",
                 "command": "python scripts\\daily_memory_report.py --preview --preflight --json --compact-json",
             }
         )
@@ -646,9 +677,13 @@ def render_morning_plan(plan: Mapping[str, Any]) -> str:
     else:
         lines.append(f"- Git: unavailable ({'; '.join(git.get('warnings') or [])})")
     if preflight:
-        status = "ok" if preflight.get("ok") else "issues"
-        issues = preflight.get("issues") or []
-        suffix = f" - {', '.join(str(item) for item in issues[:3])}" if issues else ""
+        status = normalize_health_status(preflight.get("status"), legacy_ok=preflight.get("ok"))
+        findings = [
+            *list(preflight.get("issues") or []),
+            *list(preflight.get("attention") or []),
+            *list(preflight.get("warnings") or []),
+        ]
+        suffix = f" - {', '.join(str(item) for item in findings[:3])}" if findings else ""
         lines.append(f"- Memory preflight: {status}{suffix}")
     else:
         lines.append("- Memory preflight: not run")
@@ -663,8 +698,8 @@ def render_morning_plan(plan: Mapping[str, Any]) -> str:
             if command:
                 lines.append(f"- {label}: `{command}`")
     warnings = list(git.get("warnings") or []) + list(laptop.get("warnings") or [])
-    if preflight.get("issues"):
-        warnings.extend(str(issue) for issue in preflight.get("issues", []))
+    for field in ("issues", "attention", "warnings"):
+        warnings.extend(str(issue) for issue in preflight.get(field, []))
     if warnings:
         lines.append("")
         lines.append("### Warnings")

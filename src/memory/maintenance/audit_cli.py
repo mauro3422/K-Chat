@@ -12,14 +12,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.memory.maintenance.audit import run_audit, SessionAudit
+from src.memory.maintenance.audit import run_audit
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Read-only audit of Kairos memory embeddings and synthesis state.")
     parser.add_argument("--sessions-db", default="")
     parser.add_argument("--memory-db", default="")
-    parser.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
+    parser.add_argument(
+        "--root",
+        default=str(PROJECT_ROOT),
+        help="Repository root, memory/ directory, or src/memory directory.",
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     return parser
 
@@ -28,6 +32,13 @@ def print_text_report(report: dict[str, Any]) -> None:
     counts = report["counts"]
     summary = report["summary"]
     print("Kairos memory audit")
+    health = report["health"]
+    print(
+        "health: "
+        f"status={health['status']} integrity={health['integrity']['status']} "
+        f"coverage={health['coverage']['status']} quality={health['quality']['status']} "
+        f"legacy_ok={report['ok']}"
+    )
     print(f"sessions={counts['sessions']} messages={counts['messages']} memory_entries={counts['memory_index']}")
     print(f"vectors={counts['memory_vec_meta']} sources={json.dumps(report['vector_sources'], sort_keys=True)}")
     catalog = report["catalog"]
@@ -70,7 +81,16 @@ def print_text_report(report: dict[str, Any]) -> None:
         print(f"legacy: sessions.db has vec_meta with {report['legacy']['sessions_db_vec_meta_count']} rows")
 
     synthesis = report["synthesis"]
-    print(f"synthesis: exists={synthesis['exists']} count={synthesis['count']} latest={synthesis['latest'] or '-'}")
+    print(
+        "synthesis: "
+        f"daily={synthesis['daily']['count']} latest_daily={synthesis['daily']['latest'] or '-'} "
+        f"transversal={synthesis['transversal']['count']} "
+        f"latest_transversal={synthesis['transversal']['latest'] or '-'}"
+    )
+    for dimension_name in ("integrity", "coverage", "quality"):
+        dimension = health[dimension_name]
+        for issue in dimension["issues"]:
+            print(f"- {dimension_name}/{dimension['status']}: {issue}")
 
     printed = False
     for session in report["sessions"]:

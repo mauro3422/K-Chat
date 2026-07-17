@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 from src.memory.maintenance.backfill_processing_catalog import run_backfill
 from src.memory.maintenance.audit import run_audit
 from src.memory.maintenance.repair import apply_catalog_repairs, plan_repairs
+from src.memory.health_contract import normalize_health_status, worst_health_status
 
 
 class RemoteCommandRunner(Protocol):
@@ -84,7 +85,15 @@ def node_snapshot(report: dict[str, Any]) -> dict[str, Any]:
     counts = report.get("counts", {})
     processing = report.get("processing_catalog", {})
     summary = report.get("summary", {})
+    health = report.get("health", {})
+    integrity = health.get("integrity", {})
+    coverage = health.get("coverage", {})
+    quality = health.get("quality", {})
     return {
+        "status": normalize_health_status(report.get("status"), legacy_ok=report.get("ok")),
+        "integrity_status": normalize_health_status(integrity.get("status"), legacy_ok=report.get("ok")),
+        "coverage_status": normalize_health_status(coverage.get("status")),
+        "quality_status": normalize_health_status(quality.get("status")),
         "sessions": int(counts.get("sessions", 0)),
         "messages": int(counts.get("messages", 0)),
         "memory_entries": int(counts.get("memory_index", 0)),
@@ -101,10 +110,19 @@ def node_snapshot(report: dict[str, Any]) -> dict[str, Any]:
         "processing_stale": int(summary.get("processing_stale", 0)),
         "duplicates": dict(report.get("duplicates", {})),
         "synthesis_count": int(report.get("synthesis", {}).get("count", 0)),
+        "transversal_synthesis_count": int(
+            report.get("synthesis", {}).get("transversal", {}).get("count", 0)
+        ),
     }
 
 
 def node_issues(report: dict[str, Any]) -> list[str]:
+    health = report.get("health", {})
+    integrity = health.get("integrity", {}) if isinstance(health, dict) else {}
+    if isinstance(integrity, dict) and integrity:
+        return [str(item) for item in integrity.get("issues", []) if str(item).strip()]
+
+    # Compatibility fallback for audit payloads older than contract v2.
     issues: list[str] = []
     summary = report.get("summary", {})
     processing = report.get("processing_catalog", {})
@@ -129,6 +147,14 @@ def node_issues(report: dict[str, Any]) -> list[str]:
             first = stale_rows[0]
             issues.append(f"first stale processing row={first.get('stage')} {first.get('source')}:{first.get('source_key')}")
     return issues
+
+
+def _dimension_issues(report: dict[str, Any], dimension: str) -> list[str]:
+    health = report.get("health", {})
+    payload = health.get(dimension, {}) if isinstance(health, dict) else {}
+    if not isinstance(payload, dict):
+        return []
+    return [str(item) for item in payload.get("issues", []) if str(item).strip()]
 
 
 def run_local_pipeline(
@@ -163,26 +189,38 @@ def run_local_pipeline(
             root=resolved_root,
         )
         issues = node_issues(audit)
+        attention = _dimension_issues(audit, "coverage")
+        warnings = _dimension_issues(audit, "quality")
+        ok = bool(audit.get("ok", False)) and not issues
+        status = normalize_health_status(audit.get("status"), legacy_ok=ok)
+        if not ok:
+            status = "error"
         return {
             "node": node,
-            "ok": not issues,
+            "ok": ok,
+            "status": status,
             "error": "",
             "repair": repair_report.as_dict(),
             "backfill": backfill,
             "audit": audit,
             "snapshot": node_snapshot(audit),
             "issues": issues,
+            "attention": attention,
+            "warnings": warnings,
         }
     except Exception as exc:
         return {
             "node": node,
             "ok": False,
+            "status": "error",
             "error": str(exc),
             "repair": {},
             "backfill": {},
             "audit": {},
             "snapshot": {},
             "issues": [str(exc)],
+            "attention": [],
+            "warnings": [],
         }
 
 
@@ -203,11 +241,14 @@ def run_remote_pipeline(
         return {
             "node": node,
             "ok": False,
+            "status": "error",
             "error": str(exc),
             "backfill": {},
             "audit": {},
             "snapshot": {},
             "issues": [str(exc)],
+            "attention": [],
+            "warnings": [],
         }
     return payload
 
@@ -238,6 +279,7 @@ def compare_snapshots(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "catalog_total",
             "processing_total",
             "synthesis_count",
+            "transversal_synthesis_count",
             "vector_sources",
             "catalog_statuses",
             "processing_stages",
@@ -260,8 +302,15 @@ def compare_snapshots(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def build_pipeline_report(nodes: list[dict[str, Any]]) -> dict[str, Any]:
     comparisons = compare_snapshots(nodes)
     failed = [node for node in nodes if not node.get("ok", False)]
+    statuses = [
+        normalize_health_status(node.get("status"), legacy_ok=node.get("ok"))
+        for node in nodes
+    ]
+    if any(comparison.get("differences") for comparison in comparisons):
+        statuses.append("attention")
     return {
         "ok": not failed,
+        "status": worst_health_status(statuses),
         "nodes": nodes,
         "comparisons": comparisons,
         "failed_nodes": [node.get("node", "") for node in failed],
@@ -275,7 +324,7 @@ def print_short_report(report: dict[str, Any]) -> None:
     for node in nodes:
         snapshot = node.get("snapshot", {})
         backfill = node.get("backfill", {})
-        status = "OK" if node.get("ok", False) else "FAIL"
+        status = normalize_health_status(node.get("status"), legacy_ok=node.get("ok")).upper()
         print(
             f"[{status}] {node.get('node')}: "
             f"sessions={snapshot.get('sessions', 0)} vectors={snapshot.get('vectors', 0)} "
@@ -285,6 +334,10 @@ def print_short_report(report: dict[str, Any]) -> None:
         )
         for issue in node.get("issues", [])[:4]:
             print(f"  - {issue}")
+        for item in node.get("attention", [])[:4]:
+            print(f"  - attention: {item}")
+        for warning in node.get("warnings", [])[:4]:
+            print(f"  - warning: {warning}")
     for comparison in report.get("comparisons", []):
         differences = comparison.get("differences", {})
         if not differences:
@@ -293,7 +346,7 @@ def print_short_report(report: dict[str, Any]) -> None:
         print(f"[DIFF] {comparison.get('base')} vs {comparison.get('node')}: {len(differences)} fields differ")
         for key, values in list(differences.items())[:8]:
             print(f"  - {key}: {json.dumps(values, ensure_ascii=False, sort_keys=True)}")
-    if not report.get("ok", False):
+    if report.get("status") == "error":
         print("Inconsistent memory pipeline state remains after backfill.")
 
 

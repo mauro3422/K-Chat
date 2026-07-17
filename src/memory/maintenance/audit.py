@@ -19,6 +19,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.memory.health_contract import (
+    health_dimension,
+    health_status_semantics,
+    worst_health_status,
+)
+
 
 @dataclass
 class SessionAudit:
@@ -26,6 +32,7 @@ class SessionAudit:
     name: str = ""
     message_count: int = 0
     exchange_count: int = 0
+    eligible_exchange_count: int = 0
     vector_count: int = 0
     missing_hashes: list[str] = field(default_factory=list)
     stale_vectors: list[dict[str, Any]] = field(default_factory=list)
@@ -48,6 +55,16 @@ def table_exists(conn: sqlite3.Connection, table: str) -> bool:
         (table,),
     ).fetchone()
     return row is not None
+
+
+def resolve_audit_root(root: str | Path | None = None) -> Path:
+    """Resolve a repository root from repo, memory/, or src/memory paths."""
+
+    candidate = Path(root).resolve() if root is not None else Path(__file__).resolve().parents[3]
+    for current in (candidate, *candidate.parents):
+        if (current / "src" / "memory").is_dir():
+            return current
+    return candidate
 
 
 def _count(conn: sqlite3.Connection, table: str) -> int:
@@ -130,9 +147,10 @@ def _source_counts(conn: sqlite3.Connection) -> dict[str, int]:
 
 
 def _catalog_summary(conn: sqlite3.Connection) -> dict[str, Any]:
+    has_vec_meta = table_exists(conn, "vec_meta")
     if not table_exists(conn, "memory_work_catalog"):
         uncataloged_rows = []
-        if table_exists(conn, "vec_meta"):
+        if has_vec_meta:
             uncataloged_rows = conn.execute(
                 """
                 SELECT rowid, source, source_key, exchange_idx,
@@ -172,18 +190,20 @@ def _catalog_summary(conn: sqlite3.Connection) -> dict[str, Any]:
             "SELECT status, COUNT(1) AS count FROM memory_work_catalog GROUP BY status"
         ).fetchall()
     }
-    missing_vec_links = conn.execute(
-        """
-        SELECT COUNT(1)
-        FROM memory_work_catalog c
-        LEFT JOIN vec_meta m ON m.rowid = c.vec_rowid
-        WHERE c.status IN ('embedded', 'deduped')
-          AND c.vec_rowid IS NOT NULL
-          AND m.rowid IS NULL
-        """
-    ).fetchone()[0]
+    missing_vec_links = 0
+    if has_vec_meta:
+        missing_vec_links = conn.execute(
+            """
+            SELECT COUNT(1)
+            FROM memory_work_catalog c
+            LEFT JOIN vec_meta m ON m.rowid = c.vec_rowid
+            WHERE c.status IN ('embedded', 'deduped')
+              AND c.vec_rowid IS NOT NULL
+              AND m.rowid IS NULL
+            """
+        ).fetchone()[0]
     uncataloged_rows = []
-    if table_exists(conn, "vec_meta"):
+    if has_vec_meta:
         uncataloged_rows = conn.execute(
             """
             SELECT v.rowid, v.source, v.source_key, v.exchange_idx,
@@ -556,6 +576,7 @@ def _audit_sessions(sessions_conn: sqlite3.Connection, memory_conn: sqlite3.Conn
             name=str(session["name"] or ""),
             message_count=len(messages),
             exchange_count=len(exchanges),
+            eligible_exchange_count=len(current_hashes),
             vector_count=len(vector_rows),
             missing_hashes=missing,
             stale_vectors=stale,
@@ -583,20 +604,173 @@ def _audit_sessions(sessions_conn: sqlite3.Connection, memory_conn: sqlite3.Conn
     return audits, orphan_vectors
 
 
-def _latest_synthesis(root: str) -> dict[str, Any]:
-    from src.memory import paths as memory_paths
+def _artifact_inventory(root: str | Path, filename: str) -> dict[str, Any]:
     base = Path(root) / "memory"
-    if not base.exists():
-        return {"exists": False, "latest": "", "count": 0}
-    files = sorted(base.glob("*/*/*/daily.md"), key=lambda path: path.stat().st_mtime, reverse=True)
+    files = (
+        sorted(base.glob(f"*/*/*/{filename}"), key=lambda path: path.stat().st_mtime, reverse=True)
+        if base.exists()
+        else []
+    )
     return {
-        "exists": True,
+        "exists": bool(files),
         "latest": str(files[0]) if files else "",
         "count": len(files),
     }
 
 
-def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
+def _synthesis_inventory(root: str | Path) -> dict[str, Any]:
+    daily = _artifact_inventory(root, "daily.md")
+    transversal = _artifact_inventory(root, "transversal.md")
+    return {
+        # Legacy fields retain their original daily-synthesis meaning.
+        **daily,
+        "daily": daily,
+        "transversal": transversal,
+    }
+
+
+def _finding(code: str, count: int, message: str) -> dict[str, Any]:
+    return {"code": code, "count": int(count), "message": message}
+
+
+def _audit_health(
+    *,
+    required_tables_missing: list[str],
+    session_audits: list[SessionAudit],
+    orphan_vectors: list[dict[str, Any]],
+    catalog: dict[str, Any],
+    processing: dict[str, Any],
+    quality: dict[str, Any],
+    synthesis: dict[str, Any],
+) -> dict[str, Any]:
+    integrity_findings: list[dict[str, Any]] = []
+    if required_tables_missing:
+        integrity_findings.append(
+            _finding(
+                "missing_required_tables",
+                len(required_tables_missing),
+                f"required tables missing: {', '.join(required_tables_missing)}",
+            )
+        )
+    integrity_checks = [
+        ("catalog_missing_vec_links", int(catalog.get("missing_vec_links", 0)), "catalog vector links missing"),
+        ("uncataloged_vectors", int(catalog.get("uncataloged_vectors", 0)), "vectors missing catalog entries"),
+        ("orphan_vector_sources", len(orphan_vectors), "session vectors reference missing sessions"),
+        ("processing_failed", int(processing.get("failed", 0)), "processing catalog rows failed"),
+        ("processing_stale", int(processing.get("stale", 0)), "processing catalog rows are stale"),
+    ]
+    for code, count, message in integrity_checks:
+        if count:
+            integrity_findings.append(_finding(code, count, f"{message}={count}"))
+
+    missing_sessions = [audit for audit in session_audits if audit.missing_hashes]
+    stale_sessions = [audit for audit in session_audits if audit.stale_vectors]
+    eligible_exchanges = sum(audit.eligible_exchange_count for audit in session_audits)
+    missing_exchanges = sum(len(audit.missing_hashes) for audit in session_audits)
+    covered_exchanges = max(0, eligible_exchanges - missing_exchanges)
+    coverage_findings: list[dict[str, Any]] = []
+    coverage_checks = [
+        ("sessions_with_missing_vectors", len(missing_sessions), "sessions have missing vectors"),
+        ("sessions_with_stale_vectors", len(stale_sessions), "sessions have stale vectors"),
+        ("processing_pending", int(processing.get("pending", 0)), "processing rows remain pending"),
+        (
+            "daily_synthesis_missing",
+            0 if synthesis.get("daily", {}).get("exists", False) else 1,
+            "daily synthesis is missing",
+        ),
+        (
+            "transversal_synthesis_missing",
+            0 if synthesis.get("transversal", {}).get("exists", False) else 1,
+            "transversal synthesis is missing",
+        ),
+    ]
+    for code, count, message in coverage_checks:
+        if count:
+            suffix = f"={count}" if count > 1 else ""
+            coverage_findings.append(_finding(code, count, f"{message}{suffix}"))
+
+    quality_findings: list[dict[str, Any]] = []
+    quality_checks = [
+        ("curated_empty", int(quality.get("empty", 0)), "curated memories are empty"),
+        ("curated_too_short", int(quality.get("too_short", 0)), "curated memories are too short"),
+        (
+            "curated_missing_timestamp",
+            int(quality.get("missing_timestamp", 0)),
+            "curated memories lack canonical timestamps",
+        ),
+        ("curated_low_signal", int(quality.get("low_signal", 0)), "curated memories have low signal"),
+        ("curated_vague", int(quality.get("vague", 0)), "curated memories are vague"),
+        ("curated_probe", int(quality.get("probe", 0)), "curated memories look like probes"),
+        (
+            "curated_duplicate_value_groups",
+            int(quality.get("duplicate_value_groups", 0)),
+            "curated memory values are duplicated",
+        ),
+    ]
+    for code, count, message in quality_checks:
+        if count:
+            quality_findings.append(_finding(code, count, f"{message}={count}"))
+
+    integrity = health_dimension(
+        finding_status="error",
+        findings=integrity_findings,
+        metrics={
+            "required_tables_missing": required_tables_missing,
+            "catalog_missing_vec_links": int(catalog.get("missing_vec_links", 0)),
+            "uncataloged_vectors": int(catalog.get("uncataloged_vectors", 0)),
+            "orphan_vector_sources": len(orphan_vectors),
+            "processing_failed": int(processing.get("failed", 0)),
+            "processing_stale": int(processing.get("stale", 0)),
+        },
+    )
+    coverage = health_dimension(
+        finding_status="attention",
+        findings=coverage_findings,
+        metrics={
+            "sessions": len(session_audits),
+            "sessions_with_missing_vectors": len(missing_sessions),
+            "sessions_with_stale_vectors": len(stale_sessions),
+            "eligible_exchanges": eligible_exchanges,
+            "covered_exchanges": covered_exchanges,
+            "missing_exchanges": missing_exchanges,
+            "exchange_coverage_ratio": (
+                round(covered_exchanges / eligible_exchanges, 3) if eligible_exchanges else 1.0
+            ),
+            "processing_pending": int(processing.get("pending", 0)),
+            "daily_synthesis_count": int(synthesis.get("daily", {}).get("count", 0)),
+            "transversal_synthesis_count": int(synthesis.get("transversal", {}).get("count", 0)),
+        },
+    )
+    quality_dimension = health_dimension(
+        finding_status="warning",
+        findings=quality_findings,
+        metrics={
+            "total": int(quality.get("total", 0)),
+            "empty": int(quality.get("empty", 0)),
+            "too_short": int(quality.get("too_short", 0)),
+            "missing_timestamp": int(quality.get("missing_timestamp", 0)),
+            "low_signal": int(quality.get("low_signal", 0)),
+            "vague": int(quality.get("vague", 0)),
+            "probe": int(quality.get("probe", 0)),
+            "duplicate_value_groups": int(quality.get("duplicate_value_groups", 0)),
+            "avg_quality_score": float(quality.get("avg_quality_score", 1.0)),
+        },
+    )
+    status = worst_health_status(
+        [integrity["status"], coverage["status"], quality_dimension["status"]]
+    )
+    return {
+        "contract_version": 2,
+        "status": status,
+        "semantics": health_status_semantics(),
+        "integrity": integrity,
+        "coverage": coverage,
+        "quality": quality_dimension,
+    }
+
+
+def run_audit(*, sessions_db: str, memory_db: str, root: str | Path) -> dict[str, Any]:
+    resolved_root = resolve_audit_root(root)
     with closing(_connect_readonly(sessions_db)) as sessions_conn, closing(_connect_readonly(memory_db)) as memory_conn:
         session_audits, orphan_vectors = _audit_sessions(sessions_conn, memory_conn)
         stale_sessions = [audit for audit in session_audits if audit.stale_vectors]
@@ -619,20 +793,54 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
 
         legacy_vector_tables = table_exists(sessions_conn, "vec_meta")
         legacy_vector_count = _count(sessions_conn, "vec_meta") if legacy_vector_tables else 0
-        processing_catalog = _processing_catalog_summary(sessions_conn, memory_conn, root=root)
+        processing_catalog = _processing_catalog_summary(
+            sessions_conn,
+            memory_conn,
+            root=str(resolved_root),
+        )
         curated_quality = _curated_memory_quality(memory_conn)
 
         catalog = _catalog_summary(memory_conn)
+        synthesis = _synthesis_inventory(resolved_root)
+        required_tables_missing = [
+            f"{database}.{table}"
+            for database, conn, tables in (
+                ("sessions", sessions_conn, ("sessions", "messages")),
+                (
+                    "memory",
+                    memory_conn,
+                    (
+                        "memory_index",
+                        "vec_meta",
+                        "memory_work_catalog",
+                        "memory_processing_catalog",
+                    ),
+                ),
+            )
+            for table in tables
+            if not table_exists(conn, table)
+        ]
+        health = _audit_health(
+            required_tables_missing=required_tables_missing,
+            session_audits=session_audits,
+            orphan_vectors=orphan_vectors,
+            catalog=catalog,
+            processing=processing_catalog,
+            quality=curated_quality,
+            synthesis=synthesis,
+        )
 
         return {
-            "ok": not stale_sessions
-            and not orphan_vectors
-            and catalog["missing_vec_links"] == 0
-            and catalog["uncataloged_vectors"] == 0
-            and processing_catalog["failed"] == 0
-            and processing_catalog["stale"] == 0
-            and curated_quality["empty"] == 0,
-            "paths": {"sessions_db": sessions_db, "memory_db": memory_db},
+            # Legacy compatibility: `ok` now means only "no blocking
+            # technical-integrity error". Consumers must inspect `status`.
+            "ok": health["integrity"]["ok"],
+            "status": health["status"],
+            "health": health,
+            "paths": {
+                "root": str(resolved_root),
+                "sessions_db": sessions_db,
+                "memory_db": memory_db,
+            },
             "counts": {
                 "sessions": _count(sessions_conn, "sessions"),
                 "messages": _count(sessions_conn, "messages"),
@@ -666,7 +874,7 @@ def run_audit(*, sessions_db: str, memory_db: str, root: str) -> dict[str, Any]:
                 "curated_duplicate_value_groups": curated_quality["duplicate_value_groups"],
             },
             "orphan_vectors": orphan_vectors,
-            "synthesis": _latest_synthesis(root),
+            "synthesis": synthesis,
             "checkpoints": checkpoints,
             "legacy": {
                 "sessions_db_has_vec_meta": legacy_vector_tables,
