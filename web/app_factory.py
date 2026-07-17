@@ -190,6 +190,98 @@ async def _prime_verified_model_cache(app: FastAPI, timeout: float = 10) -> None
         logger.warning("Failed to prime verified model cache: %s", e)
 
 
+def _bounded_retry_delay(
+    consecutive_failures: int,
+    *,
+    minimum_seconds: float = 1.0,
+    maximum_seconds: float = 30.0,
+) -> float:
+    minimum = max(0.05, float(minimum_seconds))
+    maximum = max(minimum, float(maximum_seconds))
+    exponent = min(max(0, int(consecutive_failures) - 1), 10)
+    return min(maximum, minimum * (2 ** exponent))
+
+
+async def _run_resilient_periodic_task(
+    operation: Callable[[], Awaitable[None]],
+    *,
+    task_name: str,
+    interval_seconds: float,
+    run_immediately: bool,
+    retry_minimum_seconds: float = 1.0,
+    retry_maximum_seconds: float = 30.0,
+) -> None:
+    interval = max(0.05, float(interval_seconds))
+    if not run_immediately:
+        await asyncio.sleep(interval)
+
+    consecutive_failures = 0
+    while True:
+        try:
+            await operation()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            consecutive_failures += 1
+            delay = _bounded_retry_delay(
+                consecutive_failures,
+                minimum_seconds=retry_minimum_seconds,
+                maximum_seconds=retry_maximum_seconds,
+            )
+            logger.warning(
+                "%s iteration failed; consecutive_failures=%d retry_in=%.2fs error=%s",
+                task_name,
+                consecutive_failures,
+                delay,
+                exc,
+                exc_info=True,
+            )
+        else:
+            consecutive_failures = 0
+            delay = interval
+        await asyncio.sleep(delay)
+
+
+async def _run_node_heartbeat_iteration(app: FastAPI) -> None:
+    await app.state.node_bridge.broadcast_once()
+
+
+async def _run_node_failover_iteration(app: FastAPI, *, ttl: float) -> None:
+    coordinator = app.state.node_coordinator
+    failover_state = app.state.failover_state
+    if await coordinator.is_primary():
+        failover_state.reset("already_primary")
+        return
+    if await coordinator.has_recent_primary():
+        failover_state.note_check(primary_seen=True, reason="recent_primary")
+        return
+    failover_state.note_check(primary_seen=False, reason="missing_primary")
+    if failover_state.miss_count < failover_state.required_misses:
+        return
+
+    lease_manager = app.state.leader_lease_manager
+    lease = lease_manager.acquire(
+        coordinator.node_id,
+        ttl=ttl,
+        reason="leader_election",
+    )
+    if lease is None:
+        failover_state.last_action = "lease_busy"
+        failover_state.last_reason = "leader_lease_busy"
+        return
+
+    snapshot = await coordinator.promote()
+    failover_state.note_promotion(reason="leader_election")
+    try:
+        await app.state.event_bus.publish("leader_changed", {"role": "primary", "state": snapshot})
+    except Exception:
+        logger.warning("Failed to publish leader_changed after failover", exc_info=True)
+    try:
+        await app.state.node_bridge.broadcast_once()
+    except Exception:
+        logger.warning("Node LAN heartbeat broadcast failed after failover", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     cfg = getattr(app.state, "config", None) or load_config()
@@ -308,66 +400,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.lan_discovery_task = asyncio.create_task(app.state.lan_discovery.run())
 
     if has_static_peers or discovery_enabled:
-        async def _sync_node_heartbeats() -> None:
-            try:
-                await app.state.node_bridge.broadcast_once()
-                while True:
-                    await asyncio.sleep(app.state.node_bridge.interval)
-                    await app.state.node_bridge.broadcast_once()
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.warning("Node LAN heartbeat loop stopped: %s", e, exc_info=True)
+        app.state.node_bridge_task = asyncio.create_task(
+            _run_resilient_periodic_task(
+                lambda: _run_node_heartbeat_iteration(app),
+                task_name="Node LAN heartbeat",
+                interval_seconds=app.state.node_bridge.interval,
+                run_immediately=True,
+            )
+        )
 
-        app.state.node_bridge_task = asyncio.create_task(_sync_node_heartbeats())
-
-        async def _monitor_node_failover() -> None:
-            try:
-                while True:
-                    ttl = float(getattr(cfg, "node_heartbeat_ttl", 15.0) or 15.0)
-                    interval = float(getattr(cfg, "node_failover_check_interval", 0.0) or 0.0)
-                    if interval <= 0:
-                        interval = max(1.0, ttl / 3.0)
-                    await asyncio.sleep(interval)
-                    coordinator = app.state.node_coordinator
-                    failover_state = app.state.failover_state
-                    if await coordinator.is_primary():
-                        failover_state.reset("already_primary")
-                        continue
-                    if await coordinator.has_recent_primary():
-                        failover_state.note_check(primary_seen=True, reason="recent_primary")
-                        continue
-                    failover_state.note_check(primary_seen=False, reason="missing_primary")
-                    if failover_state.miss_count < failover_state.required_misses:
-                        continue
-
-                    lease_manager = app.state.leader_lease_manager
-                    lease = lease_manager.acquire(
-                        coordinator.node_id,
-                        ttl=ttl,
-                        reason="leader_election",
-                    )
-                    if lease is None:
-                        failover_state.last_action = "lease_busy"
-                        failover_state.last_reason = "leader_lease_busy"
-                        continue
-
-                    snapshot = await coordinator.promote()
-                    failover_state.note_promotion(reason="leader_election")
-                    try:
-                        await app.state.event_bus.publish("leader_changed", {"role": "primary", "state": snapshot})
-                    except Exception:
-                        logger.warning("Failed to publish leader_changed after failover", exc_info=True)
-                    try:
-                        await app.state.node_bridge.broadcast_once()
-                    except Exception:
-                        logger.warning("Node LAN heartbeat broadcast failed after failover", exc_info=True)
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.warning("Node failover monitor stopped: %s", e, exc_info=True)
-
-        app.state.node_failover_task = asyncio.create_task(_monitor_node_failover())
+        ttl = float(getattr(cfg, "node_heartbeat_ttl", 15.0) or 15.0)
+        failover_interval = float(getattr(cfg, "node_failover_check_interval", 0.0) or 0.0)
+        if failover_interval <= 0:
+            failover_interval = max(1.0, ttl / 3.0)
+        app.state.node_failover_task = asyncio.create_task(
+            _run_resilient_periodic_task(
+                lambda: _run_node_failover_iteration(app, ttl=ttl),
+                task_name="Node failover monitor",
+                interval_seconds=failover_interval,
+                run_immediately=False,
+            )
+        )
     yield
     if searxng_started:
         deps.searxng_stop()
