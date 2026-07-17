@@ -3,6 +3,20 @@ import json
 import scripts.daily_memory_report as script
 
 
+def test_configure_utf8_stdout_when_supported(monkeypatch):
+    calls = []
+
+    class Stream:
+        def reconfigure(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr(script.sys, "stdout", Stream())
+
+    script._configure_utf8_stdout()
+
+    assert calls == [{"encoding": "utf-8", "errors": "replace"}]
+
+
 def _plan():
     return {
         "date": "2026-07-02",

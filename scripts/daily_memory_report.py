@@ -20,7 +20,16 @@ from src.memory.synthesis.morning_plan import (
 )
 
 
+def _configure_utf8_stdout() -> None:
+    """Keep report output portable on Windows consoles."""
+
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(encoding="utf-8", errors="replace")
+
+
 def main() -> int:
+    _configure_utf8_stdout()
     parser = argparse.ArgumentParser(description="Generate morning memory plan from curator artifacts.")
     parser.add_argument("--root", default=str(ROOT), help="Project root.")
     parser.add_argument("--date", default="", help="Target date YYYY-MM-DD.")
