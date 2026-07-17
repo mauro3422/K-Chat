@@ -16,16 +16,16 @@ from web.services.stream_error_classifier import classify_error
 from web.services.stream_retry_handler import StreamRetryHandler
 from web.services.stream_contract import serialize_stream_event
 from web.services.chat_stream_contract import StreamGeneratorDeps
-from web.services.protocols import MessagePersisterProtocol, StreamGeneratorProtocol
+from web.services.protocols import (
+    MessagePersisterProtocol,
+    SessionArtifactCoordinatorProtocol,
+    StreamGeneratorProtocol,
+)
 from web.services.stream_state import StreamState
 
 logger = logging.getLogger(__name__)
 
 HEARTBEAT_INTERVAL = 20
-
-# Per-session locks to prevent data races between concurrent vectorization
-# and delete operations for the same session_id.
-_vectorize_locks: dict[str, asyncio.Lock] = {}
 
 
 def build_stream_generator(
@@ -172,7 +172,12 @@ def build_stream_generator(
             return
         finally:
             # Always enqueue background vectorization (even on disconnect)
-            background_tasks.add_task(_vectorize_session, session_id, _orch_deps)
+            background_tasks.add_task(
+                _vectorize_session,
+                session_id,
+                _orch_deps,
+                _deps.session_artifact_coordinator,
+            )
 
             if state.dirty and state.has_output():
                 logger.info("Saving partial message for session %s after stream interruption", session_id)
@@ -181,63 +186,82 @@ def build_stream_generator(
     return generate
 
 
-async def _vectorize_session(session_id: str, orchestrator_deps: OrchestratorDeps | None = None) -> None:
-    """Background task: vectorize session exchanges (FASE 7 + FASE 2 pipeline).
+async def _run_vectorization_pipeline(session_id: str, repos: Any) -> None:
+    """Run the vectorization pipeline after coordination and existence checks."""
+    _vs = importlib.import_module("src.memory.vectorize_sessions").vectorize_session
+    heuristic_mod = importlib.import_module("src.memory.clustering.heuristic")
+    relations_mod = importlib.import_module("src.memory.clustering.relations")
+    linker_mod = importlib.import_module("src.memory.entity.linker")
+    resolve_memory_db_path = importlib.import_module(
+        "src.memory.memory_db_path"
+    ).resolve_memory_db_path
+    HeuristicClusterer = heuristic_mod.HeuristicClusterer
+    flush_clusters_to_db = heuristic_mod.flush_clusters_to_db
+    detect_relations = relations_mod.detect_relations
+    flush_relations_to_db = relations_mod.flush_relations_to_db
+    EntityLinker = linker_mod.EntityLinker
+    flush_entities_to_db = linker_mod.flush_entities_to_db
+    flush_entity_relations_to_db = linker_mod.flush_relations_to_db
+    flush_entity_mentions_to_db = linker_mod.flush_entity_mentions_to_db
+    db_path = resolve_memory_db_path()
+    clusterer = HeuristicClusterer()
+    linker = EntityLinker()
 
-    Runs the full pipeline per exchange:
-      keywords → noise filter → embed → cluster → extract entities → link entities
+    count, noise, mappings, _ = await _vs(
+        session_id, clusterer=clusterer, repos=repos, linker=linker,
+    )
+    if count <= 0:
+        return
 
-    Reuses the repos connection pool instead of opening standalone connections.
-    Fails silently — never blocks the stream response.
+    await flush_clusters_to_db(clusterer, db_path, mappings=mappings)
+    cluster_dicts = [c.as_dict for c in clusterer.clusters.values()]
+    relations = detect_relations(cluster_dicts)
+    if relations:
+        await flush_relations_to_db(relations, db_path)
 
-    Uses a per-session asyncio lock to prevent data races with concurrent
-    delete_memory or delete_cascade operations for the same session_id.
-    """
-    if session_id not in _vectorize_locks:
-        _vectorize_locks[session_id] = asyncio.Lock()
-    lock = _vectorize_locks[session_id]
-    async with lock:
-        try:
-            if not orchestrator_deps or not orchestrator_deps.repos:
-                raise ValueError(
-                    "_vectorize_session requires orchestrator_deps.repos. "
-                    "Inject via the composition root."
-                )
-            repos = orchestrator_deps.repos
-            _vs = importlib.import_module("src.memory.vectorize_sessions").vectorize_session
-            heuristic_mod = importlib.import_module("src.memory.clustering.heuristic")
-            relations_mod = importlib.import_module("src.memory.clustering.relations")
-            linker_mod = importlib.import_module("src.memory.entity.linker")
-            resolve_memory_db_path = importlib.import_module("src.memory.memory_db_path").resolve_memory_db_path
-            HeuristicClusterer = heuristic_mod.HeuristicClusterer
-            flush_clusters_to_db = heuristic_mod.flush_clusters_to_db
-            detect_relations = relations_mod.detect_relations
-            flush_relations_to_db = relations_mod.flush_relations_to_db
-            EntityLinker = linker_mod.EntityLinker
-            flush_entities_to_db = linker_mod.flush_entities_to_db
-            flush_entity_relations_to_db = linker_mod.flush_relations_to_db
-            flush_entity_mentions_to_db = linker_mod.flush_entity_mentions_to_db
-            db_path = resolve_memory_db_path()
-            clusterer = HeuristicClusterer()
-            linker = EntityLinker()
+    await flush_entities_to_db(linker, db_path)
+    await flush_entity_relations_to_db(linker, db_path)
+    await flush_entity_mentions_to_db(linker, db_path)
 
-            count, noise, mappings, _ = await _vs(
-                session_id, clusterer=clusterer, repos=repos, linker=linker,
+    logger.info(
+        "Vectorized session %s: %d exchanges (%d noise, %d clusters, %d entities)",
+        session_id,
+        count,
+        noise,
+        len(clusterer.clusters),
+        len(linker.get_entities()),
+    )
+
+
+async def _vectorize_session(
+    session_id: str,
+    orchestrator_deps: OrchestratorDeps | None = None,
+    coordinator: SessionArtifactCoordinatorProtocol | None = None,
+) -> None:
+    """Vectorize a session without racing destructive artifact cleanup."""
+    if coordinator is None:
+        logger.error(
+            "Skipping vectorization for %s: session artifact coordinator is required",
+            session_id,
+        )
+        return
+
+    try:
+        if not orchestrator_deps or not orchestrator_deps.repos:
+            raise ValueError(
+                "_vectorize_session requires orchestrator_deps.repos. "
+                "Inject via the composition root."
             )
-            if count > 0:
-                await flush_clusters_to_db(clusterer, db_path, mappings=mappings)
-                cluster_dicts = [c.as_dict for c in clusterer.clusters.values()]
-                relations = detect_relations(cluster_dicts)
-                if relations:
-                    await flush_relations_to_db(relations, db_path)
-
-                await flush_entities_to_db(linker, db_path)
-                await flush_entity_relations_to_db(linker, db_path)
-                await flush_entity_mentions_to_db(linker, db_path)
-
-                logger.info("Vectorized session %s: %d exchanges (%d noise, %d clusters, %d entities)",
-                            session_id, count, noise, len(clusterer.clusters), len(linker.get_entities()))
-        except Exception:
-            logger.exception("Failed to vectorize session %s (non-fatal)", session_id)
-        finally:
-            _vectorize_locks.pop(session_id, None)
+        repos = orchestrator_deps.repos
+        async with coordinator.coordinate(session_id):
+            if not await repos.sessions.exists(session_id):
+                logger.info(
+                    "Skipping vectorization for deleted session %s",
+                    session_id,
+                )
+                return
+            await _run_vectorization_pipeline(session_id, repos)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("Failed to vectorize session %s (non-fatal)", session_id)

@@ -15,6 +15,7 @@ async def test_stream_generator_deps_defaults_are_empty():
     assert deps.retry_handler is None
     assert deps.save_fn is None
     assert deps.rename_fn is None
+    assert deps.session_artifact_coordinator is None
 
 
 @pytest.mark.anyio

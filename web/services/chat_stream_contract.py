@@ -7,7 +7,10 @@ from collections.abc import Callable, Generator
 from typing import Any
 
 from web.services.loop_detector import LoopDetector
-from web.services.protocols import MessagePersisterProtocol
+from web.services.protocols import (
+    MessagePersisterProtocol,
+    SessionArtifactCoordinatorProtocol,
+)
 from web.services.stream_retry_handler import StreamRetryHandler
 
 
@@ -20,3 +23,4 @@ class StreamGeneratorDeps:
     retry_handler: StreamRetryHandler | None = None
     save_fn: MessagePersisterProtocol | None = None
     rename_fn: Callable | None = None
+    session_artifact_coordinator: SessionArtifactCoordinatorProtocol | None = None

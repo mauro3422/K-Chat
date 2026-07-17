@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 
 from web.routers.chat import router, chat, ChatPayload
+from web.services.session_artifact_coordinator import SessionArtifactCoordinator
 from web.services.session_stream_locks import SessionStreamLockManager
 from src.core.debug_info import DebugInfo
 
@@ -65,6 +66,7 @@ def _make_request():
         tool_service=MagicMock(),
         retrieval_service=MagicMock(),
         logbus=None,
+        session_artifact_coordinator=SessionArtifactCoordinator(),
     )
     return request
 
@@ -101,6 +103,10 @@ async def test_chat_success(mock_build_gen, mock_rebuild, mock_get_repos, mock_d
     assert save_record.role == "user"
     assert save_record.content == "hello"
     assert save_record.model == "my-model"
+    assert (
+        mock_build_gen.call_args.kwargs["deps"].session_artifact_coordinator
+        is request.app.state.session_artifact_coordinator
+    )
     mock_default.assert_not_called()  # model was provided
 
 

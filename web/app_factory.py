@@ -597,6 +597,7 @@ def create_app() -> FastAPI:
     # â”€â”€ Composition Root: create & inject all Lego blocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     from web.services.event_bus import EventBus, set_event_bus
     from web.services.failover_state import FailoverState, configure_failover_state
+    from web.services.session_artifact_coordinator import SessionArtifactCoordinator
     from web.services.session_stream_locks import SessionStreamLockManager
     from web.services.telegram_reflection import TelegramReflectionState, configure_telegram_reflection_state
     from src.coordination.memory_write_queue import get_memory_write_queue, configure_memory_write_queue
@@ -610,6 +611,7 @@ def create_app() -> FastAPI:
     event_bus = EventBus()
     set_event_bus(event_bus)
     app.state.event_bus = event_bus
+    app.state.session_artifact_coordinator = SessionArtifactCoordinator()
     app.state.chat_stream_lock_manager = SessionStreamLockManager()
     app.state.telegram_reflection_state = TelegramReflectionState()
     configure_telegram_reflection_state(app.state.telegram_reflection_state)

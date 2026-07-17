@@ -8,6 +8,7 @@ from src.gateway_log import log_event
 from src.coordination.lan_bridge import NodeLanBridge
 from web.routers._node_helpers import _request_base_url, _request_repos
 from web.routers._request_repos import is_unconfigured_mock
+from web.services.protocols import SessionArtifactCoordinatorProtocol
 from web.services.session_directory import merge_session_entries, session_summary_from_row
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,21 @@ def _request_bridge(request: Request | None):
     if state is not None:
         state.node_bridge = bridge
     return bridge
+
+
+def _request_artifact_coordinator(
+    request: Request | None,
+) -> SessionArtifactCoordinatorProtocol:
+    if request is None:
+        raise RuntimeError("session artifact coordinator requires an app request")
+    coordinator = getattr(
+        request.app.state,
+        "session_artifact_coordinator",
+        None,
+    )
+    if coordinator is None:
+        raise RuntimeError("session artifact coordinator is not configured")
+    return coordinator
 
 
 async def _local_session_entries(request: Request | None, limit: int) -> list[dict]:
@@ -118,7 +134,9 @@ async def toggle_favorite(session_id: str, body: dict = Body(...), *, request: R
 @router.post("/sessions/{session_id}/delete")
 async def delete(session_id: str, request: Request = None) -> JSONResponse:
     repos = _request_repos(request)
-    await repos.sessions.delete_cascade(session_id, repos=repos)
+    coordinator = _request_artifact_coordinator(request)
+    async with coordinator.coordinate(session_id):
+        await repos.sessions.delete_cascade(session_id, repos=repos)
     log_event("INFO", "web", "session_deleted", session_id, meta={"session_id": session_id})
     # Notify other web UI tabs via SSE
     try:

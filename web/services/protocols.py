@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from contextlib import AbstractAsyncContextManager
 from typing import Any, Protocol
 
 from src.api.repos import DebugInfo
@@ -11,6 +12,13 @@ from web.services.message_renderer_contract import MessageRenderDeps
 class StreamGeneratorProtocol(Protocol):
     """Protocol for an async generator function that yields NDJSON stream events."""
     def __call__(self) -> AsyncGenerator[str, None]:
+        ...
+
+
+class SessionArtifactCoordinatorProtocol(Protocol):
+    """Serialize session artifact mutations for one session at a time."""
+
+    def coordinate(self, session_id: str) -> AbstractAsyncContextManager[None]:
         ...
 
 

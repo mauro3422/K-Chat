@@ -1,10 +1,12 @@
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from web.routers.sessions import router, rename, delete, list_sessions
+from web.services.session_artifact_coordinator import SessionArtifactCoordinator
 
 
 @pytest.fixture
@@ -65,7 +67,18 @@ async def test_delete_success(mock_get_repos):
     repos = MagicMock()
     repos.sessions = AsyncMock()
     mock_get_repos.return_value = repos
-    result = await delete("sid-1")
+    event_bus = MagicMock()
+    event_bus.publish = AsyncMock()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                repos=None,
+                event_bus=event_bus,
+                session_artifact_coordinator=SessionArtifactCoordinator(),
+            )
+        )
+    )
+    result = await delete("sid-1", request)
     assert isinstance(result, JSONResponse)
     repos.sessions.delete_cascade.assert_called_once_with("sid-1", repos=repos)
 

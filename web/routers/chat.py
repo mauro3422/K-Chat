@@ -169,6 +169,7 @@ async def chat(
             deps=StreamGeneratorDeps(
                 retry_handler=StreamRetryHandler(max_retries=2, llm_chat_stream_fn=llm_chat_stream),
                 save_fn=_wrapped_save,
+                session_artifact_coordinator=request.app.state.session_artifact_coordinator,
             ),
             orchestrator_deps=orchestrator_deps,
         )
