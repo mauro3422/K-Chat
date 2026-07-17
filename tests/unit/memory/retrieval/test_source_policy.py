@@ -1,3 +1,5 @@
+import pytest
+
 from src.memory.retrieval.source_policy import (
     approve_weight_policy_draft,
     build_weight_policy_draft,
@@ -41,6 +43,27 @@ def test_source_layer_policy_from_file_reads_approved_json(tmp_path):
     assert policy.weight_for("memory") == 1.0
 
 
+def test_load_weight_policy_rejects_non_approved_payload_in_active_path(tmp_path):
+    path = policy_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        '{"version": "v1", "status": "draft", "weights": {"memory": 0.2}}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="approved status"):
+        load_weight_policy(tmp_path)
+
+
+@pytest.mark.parametrize("proposed_weight", [-0.1, float("inf"), float("nan")])
+def test_build_weight_policy_draft_rejects_unsafe_weights(tmp_path, proposed_weight):
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        build_weight_policy_draft(
+            [{"layer": "memory_candidate", "proposed_weight": proposed_weight}],
+            root=tmp_path,
+        )
+
+
 def test_build_weight_policy_draft_only_changes_nonzero_deltas(tmp_path):
     draft = build_weight_policy_draft(
         [
@@ -80,6 +103,16 @@ def test_build_weight_policy_draft_only_changes_nonzero_deltas(tmp_path):
             "rationale": "positive curator outcomes dominate",
         }
     ]
+
+
+def test_build_weight_policy_draft_allows_zero_weight_to_disable_a_source(tmp_path):
+    draft = build_weight_policy_draft(
+        [{"layer": "memory_inbox", "proposed_weight": 0.0}],
+        root=tmp_path,
+        timestamp="2026-07-04T10:00:00",
+    )
+
+    assert draft["weights"]["memory_inbox"] == 0.0
 
 
 def test_write_weight_policy_draft_writes_non_active_artifact(tmp_path):
@@ -129,6 +162,20 @@ def test_approve_weight_policy_draft_promotes_to_approved_file(tmp_path):
     assert approved["approval_reason"] == "curator reviewed"
     assert approved["path"] == str(policy_path(tmp_path))
     assert load_weight_policy(tmp_path)["weights"]["memory_candidate"] == 0.82
+
+
+def test_approve_weight_policy_draft_rejects_unsafe_weights(tmp_path):
+    path = draft_policy_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        '{"version": "v1", "status": "draft", "weights": {"memory": -0.1}}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        approve_weight_policy_draft(root=tmp_path)
+
+    assert not policy_path(tmp_path).exists()
 
 
 def test_compare_policy_rankings_shows_rank_shift_from_approved_weights(tmp_path):

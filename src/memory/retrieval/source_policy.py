@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from datetime import datetime
 from pathlib import Path
@@ -40,6 +41,24 @@ def default_weights() -> dict[str, float]:
     return {key: float(value) for key, value in SourceLayerPolicy().weights.items()}
 
 
+def _validated_weights(weights: Mapping[str, Any], *, policy_name: str) -> dict[str, float]:
+    """Return finite, non-negative source weights from a policy payload."""
+
+    normalized: dict[str, float] = {}
+    for key, value in weights.items():
+        source = str(key).strip()
+        if not source:
+            raise ValueError(f"{policy_name} weights cannot contain an empty source")
+        try:
+            weight = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{policy_name} weight for {source!r} must be numeric") from exc
+        if not math.isfinite(weight) or weight < 0:
+            raise ValueError(f"{policy_name} weight for {source!r} must be finite and non-negative")
+        normalized[source] = weight
+    return normalized
+
+
 def load_weight_policy(root: str | Path | None = None) -> dict[str, Any]:
     """Load an approved weight policy, falling back to built-in defaults."""
 
@@ -54,12 +73,14 @@ def load_weight_policy(root: str | Path | None = None) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("retrieval weight policy must be a JSON object")
+    if payload.get("status") != "approved":
+        raise ValueError("retrieval weight policy must have approved status")
     weights = payload.get("weights")
     if not isinstance(weights, Mapping):
         raise ValueError("retrieval weight policy must contain object weights")
     return {
         **payload,
-        "weights": {str(key): float(value) for key, value in weights.items()},
+        "weights": _validated_weights(weights, policy_name="retrieval weight policy"),
         "path": str(path),
     }
 
@@ -88,7 +109,9 @@ def build_weight_policy_draft(
         if not layer:
             continue
         current = float(weights.get(layer, recommendation.get("current_weight") or 0.0))
-        proposed = float(recommendation.get("proposed_weight") or current)
+        proposed_value = recommendation.get("proposed_weight")
+        proposed = current if proposed_value is None else float(proposed_value)
+        _validated_weights({layer: proposed}, policy_name="retrieval weight policy draft")
         if round(proposed - current, 6) == 0:
             continue
         weights[layer] = proposed
@@ -157,7 +180,7 @@ def approve_weight_policy_draft(
         "approved_at": ts,
         "approved_by": approved_by,
         "approval_reason": reason,
-        "weights": {str(key): float(value) for key, value in weights.items()},
+        "weights": _validated_weights(weights, policy_name="draft policy"),
     }
     path = policy_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
