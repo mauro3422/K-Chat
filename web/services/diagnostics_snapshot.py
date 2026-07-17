@@ -15,7 +15,7 @@ from web.services.health_snapshot import (
     build_health_runtime,
     checks_are_healthy,
 )
-from web.services.peer_cluster_snapshot import build_peer_cluster_snapshot, snapshot_error
+from web.services.peer_cluster_snapshot import build_peer_cluster_snapshot, peer_urls_from_bridge, snapshot_error
 
 
 def _get_coordinator(request: Request):
@@ -43,7 +43,7 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
     memory = await build_memory_snapshot(request, key_pattern=key_pattern)
     checks = await build_health_checks(cfg, testing=testing)
 
-    peer_urls = list(bridge.peer_urls) if bridge is not None else []
+    peer_urls = peer_urls_from_bridge(bridge)
     cluster = {
         "peer_count": len(peer_urls),
         "reachable_peers": 0,
@@ -216,7 +216,7 @@ async def build_diagnostics_snapshot(request: Request, *, key_pattern: str = "")
         "node": snapshot,
         "bridge": {
             "base_url": bridge.base_url if bridge is not None else "",
-            "peer_urls": bridge.peer_urls if bridge is not None else [],
+            "peer_urls": peer_urls,
         },
         "cluster": cluster,
         "peer_memory": peer_memory,

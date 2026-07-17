@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from src.coordination.lan_bridge import NodeLanBridge
 from web.services.diagnostics_snapshot import build_diagnostics_snapshot
+from web.services.peer_cluster_snapshot import peer_urls_from_bridge
 
 router = APIRouter(prefix="/api/diagnostics")
 
@@ -36,7 +37,7 @@ async def peer_diagnostics(request: Request, peer_url: str, kind: str = "diagnos
     if bridge is None:
         return JSONResponse({"ok": False, "error": "node bridge not available"}, status_code=503)
     peer = peer_url.strip().rstrip("/")
-    if peer not in bridge.peer_urls:
+    if peer not in peer_urls_from_bridge(bridge):
         return JSONResponse({"ok": False, "error": "peer not configured"}, status_code=404)
 
     if kind == "state":

@@ -9,7 +9,7 @@ def snapshot_error(source: str, exc: Exception) -> dict[str, str]:
     return {"source": source, "error": str(exc)}
 
 
-def _peer_urls_from_bridge(bridge: Any) -> list[str]:
+def peer_urls_from_bridge(bridge: Any) -> list[str]:
     peer_urls = getattr(bridge, "peer_urls", []) or []
     if isinstance(peer_urls, str):
         return [peer_urls] if peer_urls else []
@@ -21,7 +21,7 @@ def _dict_entries(items: Any) -> list[dict[str, Any]]:
 
 
 async def build_peer_cluster_snapshot(bridge: Any) -> dict[str, Any]:
-    peer_urls = _peer_urls_from_bridge(bridge)
+    peer_urls = peer_urls_from_bridge(bridge)
     if bridge is None or not peer_urls:
         return {
             "peer_count": 0,
