@@ -26,6 +26,8 @@ def _load_registry() -> dict[str, dict[str, Any]]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
+    if not isinstance(data, dict):
+        return {}
 
     models = data.get("models", [])
     catalog: dict[str, dict[str, Any]] = {}

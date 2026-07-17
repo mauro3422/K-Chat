@@ -52,3 +52,14 @@ async def test_reset_model_cache_clears_lru_cache(tmp_path, monkeypatch):
     assert model_catalog.get_model_metadata("missing") is None
     model_catalog.reset_model_cache()
     assert model_catalog.get_model_metadata("missing") is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("registry_data", [[], None, "not a catalog"])
+async def test_load_registry_ignores_non_object_root(tmp_path, monkeypatch, registry_data):
+    registry = tmp_path / "model_registry.json"
+    registry.write_text(json.dumps(registry_data), encoding="utf-8")
+    monkeypatch.setenv("KAIROS_MODEL_REGISTRY", str(registry))
+    model_catalog._load_registry.cache_clear()
+
+    assert model_catalog.get_model_metadata("any-model") is None
