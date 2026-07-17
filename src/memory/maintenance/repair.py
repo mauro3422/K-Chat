@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,6 +55,9 @@ class RepairReport:
     applied_catalog_rows: int = 0
     vectorized_sessions: dict[str, int] = field(default_factory=dict)
     pruned_stale_vectors: int = 0
+    scope_session_ids: list[str] | None = None
+    missing_session_ids: list[str] = field(default_factory=list)
+    batch_summary: dict[str, Any] = field(default_factory=dict)
 
     @property
     def counts(self) -> dict[str, int]:
@@ -69,8 +72,109 @@ class RepairReport:
             "applied_catalog_rows": self.applied_catalog_rows,
             "vectorized_sessions": self.vectorized_sessions,
             "pruned_stale_vectors": self.pruned_stale_vectors,
+            "scope": {
+                "session_ids": self.scope_session_ids,
+                "missing_session_ids": self.missing_session_ids,
+            },
+            "batch_summary": self.batch_summary,
             "actions": [action.as_dict() for action in self.actions],
         }
+
+
+def _normalize_session_ids(session_ids: Iterable[str] | None) -> tuple[str, ...] | None:
+    if session_ids is None:
+        return None
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in session_ids:
+        session_id = str(value).strip()
+        if not session_id or session_id in seen:
+            continue
+        seen.add(session_id)
+        normalized.append(session_id)
+    return tuple(normalized)
+
+
+def _effective_session_scope(
+    report: RepairReport,
+    session_ids: Iterable[str] | None,
+) -> tuple[str, ...] | None:
+    explicit = _normalize_session_ids(session_ids)
+    if explicit is not None:
+        return explicit
+    return _normalize_session_ids(report.scope_session_ids)
+
+
+def _action_in_session_scope(action: RepairAction, scope: tuple[str, ...] | None) -> bool:
+    if scope is None:
+        return True
+    return action.source == "session" and action.source_key in scope
+
+
+def _action_counts_by_session(report: RepairReport) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = {}
+    for action in report.actions:
+        if action.source != "session":
+            continue
+        session_counts = counts.setdefault(action.source_key, {})
+        session_counts[action.action] = session_counts.get(action.action, 0) + 1
+    return counts
+
+
+def build_batch_summary(
+    *,
+    planned: RepairReport,
+    final: RepairReport,
+    applied_catalog_rows: int = 0,
+    vectorized_sessions: dict[str, int] | None = None,
+    pruned_stale_vectors: int = 0,
+    source_node_id: str = "",
+) -> dict[str, Any]:
+    """Build a stable per-session summary for a repair batch."""
+
+    vectorized = vectorized_sessions or {}
+    planned_by_session = _action_counts_by_session(planned)
+    remaining_by_session = _action_counts_by_session(final)
+    scoped = planned.scope_session_ids
+    session_ids = scoped if scoped is not None else sorted(
+        set(planned_by_session) | set(remaining_by_session) | set(vectorized)
+    )
+    sessions: dict[str, dict[str, Any]] = {}
+    catalog_action_names = {
+        "catalog_embedded",
+        "catalog_deduped",
+        "catalog_noise",
+        "catalog_memory_embedded",
+        "orphan_catalog_row",
+    }
+    for session_id in session_ids:
+        planned_counts = planned_by_session.get(session_id, {})
+        sessions[session_id] = {
+            "planned": planned_counts,
+            "applied_catalog_rows": (
+                sum(planned_counts.get(action, 0) for action in catalog_action_names)
+                if applied_catalog_rows
+                else 0
+            ),
+            "vectorized": int(vectorized.get(session_id, 0)),
+            "pruned_stale_vectors": (
+                planned_counts.get("stale_vector", 0)
+                if pruned_stale_vectors
+                else 0
+            ),
+            "remaining": remaining_by_session.get(session_id, {}),
+        }
+    return {
+        "session_ids": list(session_ids),
+        "missing_session_ids": list(planned.missing_session_ids),
+        "source_node_id": source_node_id,
+        "planned": planned.counts,
+        "applied_catalog_rows": int(applied_catalog_rows),
+        "vectorized": sum(int(value) for value in vectorized.values()),
+        "pruned_stale_vectors": int(pruned_stale_vectors),
+        "remaining": final.counts,
+        "sessions": sessions,
+    }
 
 
 def _dedupe_actions(actions: list[RepairAction]) -> list[RepairAction]:
@@ -365,8 +469,14 @@ def _plan_orphan_session_vectors(
         ))
 
 
-def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
-    report = RepairReport()
+def plan_repairs(
+    *,
+    sessions_db: str,
+    memory_db: str,
+    session_ids: Iterable[str] | None = None,
+) -> RepairReport:
+    scope = _normalize_session_ids(session_ids)
+    report = RepairReport(scope_session_ids=list(scope) if scope is not None else None)
     with _connect(sessions_db, readonly=True) as sessions_conn, _connect(memory_db, readonly=True) as memory_conn:
         if not table_exists(sessions_conn, "sessions") or not table_exists(sessions_conn, "messages"):
             return report
@@ -374,6 +484,15 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
             "SELECT session_id, name FROM sessions ORDER BY created_at ASC"
         ).fetchall()
         valid_session_ids = {str(session["session_id"]) for session in sessions}
+        if scope is not None:
+            report.missing_session_ids = [
+                session_id for session_id in scope if session_id not in valid_session_ids
+            ]
+            selected_session_ids = set(scope) - set(report.missing_session_ids)
+            sessions = [
+                session for session in sessions
+                if str(session["session_id"]) in selected_session_ids
+            ]
 
         for session in sessions:
             session_id = str(session["session_id"])
@@ -491,18 +610,27 @@ def plan_repairs(*, sessions_db: str, memory_db: str) -> RepairReport:
                         content_hash=digest,
                         reason="no_matching_vector",
                     ))
-        _plan_memory_vector_catalog_repairs(memory_conn, report)
-        _plan_orphan_memory_catalog_repairs(memory_conn, report)
-        _plan_orphan_session_vectors(sessions_conn, memory_conn, report)
-        _plan_orphan_session_catalog_repairs(sessions_conn, memory_conn, report)
+        if scope is None:
+            _plan_memory_vector_catalog_repairs(memory_conn, report)
+            _plan_orphan_memory_catalog_repairs(memory_conn, report)
+            _plan_orphan_session_vectors(sessions_conn, memory_conn, report)
+            _plan_orphan_session_catalog_repairs(sessions_conn, memory_conn, report)
     report.actions = _dedupe_actions(report.actions)
     return report
 
 
-def apply_catalog_repairs(*, memory_db: str, report: RepairReport) -> int:
+def apply_catalog_repairs(
+    *,
+    memory_db: str,
+    report: RepairReport,
+    session_ids: Iterable[str] | None = None,
+) -> int:
+    scope = _effective_session_scope(report, session_ids)
     catalog = MemoryWorkCatalogRepository(memory_db)
     applied = 0
     for action in report.actions:
+        if not _action_in_session_scope(action, scope):
+            continue
         if action.action not in {"catalog_embedded", "catalog_deduped", "catalog_noise", "catalog_memory_embedded"}:
             continue
         catalog.mark(
@@ -517,7 +645,10 @@ def apply_catalog_repairs(*, memory_db: str, report: RepairReport) -> int:
             **_catalog_identity_kwargs(action.source),
         )
         applied += 1
-    orphan_rows = [action for action in report.actions if action.action == "orphan_catalog_row"]
+    orphan_rows = [
+        action for action in report.actions
+        if action.action == "orphan_catalog_row" and _action_in_session_scope(action, scope)
+    ]
     if orphan_rows:
         with _connect(memory_db, readonly=False) as conn:
             for action in orphan_rows:
@@ -538,11 +669,21 @@ def _delete_if_table_exists(conn: sqlite3.Connection, table: str, column: str, r
         conn.execute(f"DELETE FROM {table} WHERE {column} = ?", (rowid,))
 
 
-def prune_stale_vectors(*, memory_db: str, report: RepairReport) -> int:
+def prune_stale_vectors(
+    *,
+    memory_db: str,
+    report: RepairReport,
+    session_ids: Iterable[str] | None = None,
+) -> int:
+    scope = _effective_session_scope(report, session_ids)
     rowids = sorted({
         int(action.vec_rowid)
         for action in report.actions
-        if action.action == "stale_vector" and action.vec_rowid is not None
+        if (
+            action.action == "stale_vector"
+            and action.vec_rowid is not None
+            and _action_in_session_scope(action, scope)
+        )
     })
     if not rowids:
         return 0
@@ -567,22 +708,35 @@ def prune_stale_vectors(*, memory_db: str, report: RepairReport) -> int:
         conn.close()
 
 
-async def vectorize_missing(report: RepairReport) -> dict[str, int]:
-    from src.memory.repos import get_repos
+async def vectorize_missing(
+    report: RepairReport,
+    *,
+    session_ids: Iterable[str] | None = None,
+    source_node_id: str,
+    repos: Any | None = None,
+) -> dict[str, int]:
     from src.memory.vectorize_sessions import vectorize_session
 
+    scope = _effective_session_scope(report, session_ids)
     targets: dict[str, set[int]] = {}
     for action in report.actions:
-        if action.action == "missing_vector":
+        if action.action == "missing_vector" and _action_in_session_scope(action, scope):
             targets.setdefault(action.source_key, set()).add(action.item_idx)
 
+    normalized_source_node_id = source_node_id.strip()
+    if targets and not normalized_source_node_id:
+        raise ValueError("source_node_id is required when vectorizing missing sessions")
+
     results: dict[str, int] = {}
-    repos = get_repos()
+    if repos is None:
+        from src.memory.repos import get_repos
+        repos = get_repos()
     for session_id, indexes in sorted(targets.items()):
         count, _noise_count, _mappings, _entities = await vectorize_session(
             session_id,
             repos=repos,
             exchange_indexes=indexes,
+            source_node_id=normalized_source_node_id,
         )
         results[session_id] = count
     return results
