@@ -75,4 +75,26 @@ describe('HealthOverviewPanel', () => {
     expect(panelEl.textContent).toContain('node-a');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('renders a degraded response and escapes snapshot labels', async () => {
+    const apiClient = {
+      health: vi.fn(async () => new Response(JSON.stringify({
+        status: 'degraded',
+        checks: { database: '<img src=x onerror=alert(1)>', llm_provider: 'configured' },
+        coordination: { node_id: '<script>bad()</script>', role: 'secondary', peer_count: 0 },
+        failover: { last_action: '<b>retry</b>' },
+      }), { status: 503 })),
+    };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const panel = new HealthOverviewPanel(apiClient as never, logger);
+    panel.init();
+
+    await panel.refresh();
+
+    expect(panelEl.textContent).toContain('degraded');
+    expect(panelEl.textContent).toContain('<script>bad()</script>');
+    expect(panelEl.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(panelEl.querySelector('script, img, b')).toBeNull();
+    expect(apiClient.health).toHaveBeenCalledOnce();
+  });
 });

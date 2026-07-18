@@ -34,6 +34,10 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     return fetch(`${this.baseUrl}/sessions`);
   }
 
+  health(): Promise<Response> {
+    return fetch(`${this.baseUrl}/health`, { cache: 'no-store' });
+  }
+
   createSession(): Promise<Response> {
     return fetch(`${this.baseUrl}/sessions/create`, { method: 'POST' });
   }

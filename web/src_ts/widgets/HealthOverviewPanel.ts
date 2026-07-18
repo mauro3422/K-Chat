@@ -64,7 +64,7 @@ export class HealthOverviewPanel {
   async refresh(): Promise<void> {
     if (!this.panelEl) return;
     try {
-      const resp = await fetch('/health', { cache: 'no-store' });
+      const resp = await this.apiClient.health();
       const data = await resp.json() as HealthOverview;
       this.render(data);
     } catch (err) {
@@ -81,6 +81,7 @@ export class HealthOverviewPanel {
     }
 
     const status = health.status || 'unknown';
+    const statusLabel = this.escape(status);
     const checks = health.checks || {};
     const coord = health.coordination || {};
     const cluster = coord.cluster || {};
@@ -93,17 +94,17 @@ export class HealthOverviewPanel {
 
     this.panelEl.innerHTML = `
       <div class="health-overview-summary">
-        <span class="health-overview-pill health-overview-pill-${status === 'ok' ? 'ok' : 'warn'}">${status}</span>
-        <span class="health-overview-pill">${coord.node_id || 'node'}</span>
-        <span class="health-overview-pill">${coord.role || sync.role || 'secondary'}</span>
+        <span class="health-overview-pill health-overview-pill-${status === 'ok' ? 'ok' : 'warn'}">${statusLabel}</span>
+        <span class="health-overview-pill">${this.escape(coord.node_id || 'node')}</span>
+        <span class="health-overview-pill">${this.escape(coord.role || sync.role || 'secondary')}</span>
         <span class="health-overview-pill">${healthyPeers}/${totalPeers} peers</span>
       </div>
       <div class="health-overview-grid">
-        <div><strong>DB</strong><span>${checks.database || 'n/a'}</span></div>
-        <div><strong>LLM</strong><span>${checks.llm_provider || 'n/a'}</span></div>
+        <div><strong>DB</strong><span>${this.escape(checks.database || 'n/a')}</span></div>
+        <div><strong>LLM</strong><span>${this.escape(checks.llm_provider || 'n/a')}</span></div>
         <div><strong>Memoria</strong><span>${memoryFresh ? 'fresca' : 'pendiente'}</span></div>
         <div><strong>Queue</strong><span>${memory.queue_size ?? 0}</span></div>
-        <div><strong>Failover</strong><span>${failover.last_action || 'idle'}</span></div>
+        <div><strong>Failover</strong><span>${this.escape(failover.last_action || 'idle')}</span></div>
         <div><strong>Promote</strong><span>${failover.should_promote ? 'sí' : 'no'}</span></div>
       </div>
       <div class="health-overview-meta">
