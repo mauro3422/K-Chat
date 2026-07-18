@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from src.memory.repos.protocols import (
     DebugRepositoryProtocol,
     MemoryIndexRepositoryProtocol,
+    MemoryReceiptRepositoryProtocol,
     MessageRepositoryProtocol,
     SavedWidgetRepositoryProtocol,
     SessionRepositoryProtocol,
@@ -34,6 +35,7 @@ class Repositories:
     debug: DebugRepositoryProtocol
     saved_widgets: SavedWidgetRepositoryProtocol
     memory_index: MemoryIndexRepositoryProtocol
+    memory_receipts: MemoryReceiptRepositoryProtocol | None = None
     _memory: MemoryRepositories | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -84,6 +86,7 @@ def get_repos(conn=None) -> Repositories:
     from src.memory.repos.debug_repository import DebugRepository
     from src.memory.repos.message_repository import MessageRepository
     from src.memory.repos.memory_index_repository import MemoryIndexRepository
+    from src.memory.repos.memory_receipt_repository import MemoryReceiptRepository
     from src.memory.repos.saved_widget_repository import SavedWidgetRepository
     from src.memory.repos.session_repository import SessionRepository
     from src.memory.repos.tool_call_repository import ToolCallRepository
@@ -97,5 +100,6 @@ def get_repos(conn=None) -> Repositories:
         debug=DebugRepository(conn=conn),
         saved_widgets=SavedWidgetRepository(conn=conn),
         memory_index=MemoryIndexRepository(conn=conn),
+        memory_receipts=MemoryReceiptRepository(conn=conn),
     )
     return repos

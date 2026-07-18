@@ -158,7 +158,10 @@ def _ensure_core_services(app: FastAPI, cfg=None, repos=None, logbus=None) -> No
             lan_request_signer=getattr(app.state, "lan_request_signer", None)
         )
     if not hasattr(app.state, "retrieval_service"):
-        app.state.retrieval_service = RetrievalService(config=cfg)
+        app.state.retrieval_service = RetrievalService(
+            config=cfg,
+            receipt_repo=getattr(repos, "memory_receipts", None),
+        )
     if not hasattr(app.state, "llm_service"):
         app.state.llm_service = LLMService(
             telemetry_service=app.state.telemetry_service,

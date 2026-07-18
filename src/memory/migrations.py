@@ -453,6 +453,38 @@ async def _migration_025_sessions_origin_node_id(conn: Any, engine: Any) -> None
     """)
 
 
+async def _migration_026_memory_receipts(conn: Any, engine: Any) -> None:
+    """Persist compact handles for memories previously injected into a chat."""
+
+    await engine.execute(conn, """
+        CREATE TABLE IF NOT EXISTS memory_receipts (
+            receipt_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+            source TEXT NOT NULL,
+            source_key TEXT NOT NULL DEFAULT '',
+            item_idx INTEGER NOT NULL DEFAULT 0,
+            vec_rowid INTEGER,
+            content_hash TEXT NOT NULL DEFAULT '',
+            tag TEXT NOT NULL DEFAULT '',
+            excerpt TEXT NOT NULL DEFAULT '',
+            trigger_query TEXT NOT NULL DEFAULT '',
+            injection_count INTEGER NOT NULL DEFAULT 1,
+            injected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_injected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_hydrated_at TEXT NOT NULL DEFAULT '',
+            UNIQUE(session_id, source, source_key, item_idx)
+        )
+    """)
+    await engine.execute(conn, """
+        CREATE INDEX IF NOT EXISTS idx_memory_receipts_session_recent
+        ON memory_receipts (session_id, last_injected_at DESC)
+    """)
+    await engine.execute(conn, """
+        CREATE INDEX IF NOT EXISTS idx_memory_receipts_session_tag
+        ON memory_receipts (session_id, tag)
+    """)
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -479,4 +511,5 @@ MIGRATIONS = (
     _migration_023_memory_index_unique,
     _migration_024_restore_session_memory_index,
     _migration_025_sessions_origin_node_id,
+    _migration_026_memory_receipts,
 )

@@ -19,6 +19,7 @@ from src.memory.migrations import (
     _migration_011_cleanup_orphans,
     _migration_019_memory_index_weight,
     _migration_022_add_session_favorite,
+    _migration_026_memory_receipts,
     MIGRATIONS,
 )
 from src.memory.sqlite_engine import SQLiteEngine
@@ -189,6 +190,20 @@ class TestMigration011CleanupOrphans:
         assert engine.execute.call_count == 10
 
 
+class TestMigration026MemoryReceipts:
+    @pytest.mark.anyio
+    async def test_creates_receipt_table_and_indexes(self):
+        conn = MagicMock()
+        engine = AsyncMock()
+
+        await _migration_026_memory_receipts(conn, engine)
+
+        assert engine.execute.call_count == 3
+        statements = "\n".join(call.args[1] for call in engine.execute.call_args_list)
+        assert "CREATE TABLE IF NOT EXISTS memory_receipts" in statements
+        assert "UNIQUE(session_id, source, source_key, item_idx)" in statements
+
+
 class TestIdempotentAddColumnMigrations:
     @pytest.mark.anyio
     async def test_known_duplicate_columns_do_not_warn_on_rerun(self, caplog):
@@ -239,4 +254,4 @@ class TestMigrationRegistry:
 
     @pytest.mark.anyio
     async def test_migration_count(self):
-        assert len(MIGRATIONS) == 25
+        assert len(MIGRATIONS) == 26

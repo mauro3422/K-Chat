@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.core.services.retrieval_service import RetrievalService
@@ -218,6 +219,56 @@ class TestRetrieve:
         result = await service.retrieve("hello")
 
         assert result == (None, True)
+
+    @pytest.mark.anyio
+    async def test_persists_current_receipts_and_injects_prior_handles(self):
+        current = MagicMock()
+        current.rowid = 8
+        current.source = "memory"
+        current.source_key = "user:workflow"
+        current.item_idx = 0
+        current.content_hash = "hash"
+        current.text = "Contenido caliente actual"
+        current.to_dict.return_value = {
+            "rowid": 8,
+            "text": current.text,
+            "source": current.source,
+            "source_key": current.source_key,
+            "score": 0.8,
+        }
+        retriever = MagicMock(
+            search=AsyncMock(return_value=[current]),
+            was_reranker_degraded=False,
+        )
+        receipt_repo = SimpleNamespace(
+            upsert_many=AsyncMock(),
+            list_recent=AsyncMock(
+                return_value=[
+                    {
+                        "receipt_id": "mr_old",
+                        "source": "session",
+                        "source_key": "past",
+                        "tag": "session:past",
+                        "excerpt": "Contexto anterior compacto",
+                        "trigger_query": "tema anterior",
+                    }
+                ]
+            ),
+            count=AsyncMock(return_value=2),
+        )
+        service = RetrievalService(
+            retrieval_service=retriever,
+            receipt_repo=receipt_repo,
+        )
+
+        block, degraded = await service.retrieve("nuevo tema", session_id="current")
+
+        assert degraded is False
+        assert block is not None
+        assert "Contenido caliente actual" in block
+        assert "[receipt:mr_" in block
+        assert "[mr_old]" in block
+        receipt_repo.upsert_many.assert_awaited_once()
 
 
 class TestRetrieveIfAllowed:

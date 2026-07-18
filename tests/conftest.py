@@ -103,6 +103,23 @@ _SESSIONS_SCHEMA_STATEMENTS = [
         updated_at TEXT DEFAULT (datetime('now')),
         PRIMARY KEY (session_id, key)
     )""",
+    """CREATE TABLE IF NOT EXISTS memory_receipts (
+        receipt_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+        source TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        item_idx INTEGER NOT NULL DEFAULT 0,
+        vec_rowid INTEGER,
+        content_hash TEXT,
+        tag TEXT NOT NULL,
+        excerpt TEXT NOT NULL,
+        trigger_query TEXT DEFAULT '',
+        injection_count INTEGER NOT NULL DEFAULT 1,
+        injected_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_injected_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_hydrated_at TEXT,
+        UNIQUE(session_id, source, source_key, item_idx)
+    )""",
     """CREATE TABLE IF NOT EXISTS gateway_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ts TEXT NOT NULL DEFAULT (datetime('now')),
@@ -130,6 +147,8 @@ _SESSIONS_SCHEMA_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_saved_widgets_session_id ON saved_widgets (session_id)",
     "CREATE INDEX IF NOT EXISTS idx_widget_versions_session_id ON widget_versions (session_id)",
     "CREATE INDEX IF NOT EXISTS idx_memory_index_key ON memory_index (key)",
+    "CREATE INDEX IF NOT EXISTS idx_memory_receipts_session_recent ON memory_receipts (session_id, last_injected_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_memory_receipts_source ON memory_receipts (session_id, source, source_key)",
     "CREATE INDEX IF NOT EXISTS idx_tool_calls_session_created ON tool_calls (session_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_gateway_log_ts ON gateway_log (ts DESC)",
     "CREATE INDEX IF NOT EXISTS idx_gateway_log_service ON gateway_log (service, ts DESC)",

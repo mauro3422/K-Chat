@@ -5,6 +5,7 @@ from collections import defaultdict
 PER_TOOL_LIMITS: dict[str, tuple[int, int]] = {
     "save_memory": (10, 30),
     "recall_memories": (5, 30),
+    "hydrate_memory_receipt": (10, 30),
     "memory_search": (10, 30),
     "manage_memory": (5, 30),
     "delete_memory": (10, 30),

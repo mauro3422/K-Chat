@@ -25,7 +25,7 @@ def hydrate_results(
         conn.row_factory = sqlite3.Row
     columns = _vec_meta_columns(conn)
     select_cols = ["source", "source_key", "text"]
-    for optional in ("created_at", "metadata", "relevance_score"):
+    for optional in ("created_at", "metadata", "relevance_score", "exchange_idx", "content_hash"):
         if optional in columns:
             select_cols.append(optional)
     hydrated = []
@@ -47,6 +47,8 @@ def hydrate_results(
             "created_at": created_at,
             "metadata": metadata,
             "relevance_score": relevance_score,
+            "item_idx": int(row["exchange_idx"] or 0) if "exchange_idx" in row.keys() else 0,
+            "content_hash": str(row["content_hash"] or "") if "content_hash" in row.keys() else "",
             "score": score,
         })
     return hydrated

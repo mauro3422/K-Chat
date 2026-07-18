@@ -246,7 +246,20 @@ build_system_prompt(session_context)
                     └──▶ memory.db structured reads
 ```
 
-### 3.3 Session Vectorization Flow
+### 3.3 Recibos de memoria e hidratación bajo demanda
+
+Cada resultado recuperado en el turno actual se inyecta completo y queda asociado a
+un recibo estable (`mr_<hash>`). En turnos posteriores, el prompt conserva solamente
+un ledger compacto con ID, etiqueta, extracto y consulta disparadora. Si el tema vuelve
+a ser relevante, `hydrate_memory_receipt` resuelve el recibo dentro de la sesión actual
+y carga la memoria canónica o el intercambio original junto con una ventana de contexto.
+
+La identidad lógica es `(session_id, source, source_key, item_idx)`: una nueva versión
+del mismo recuerdo actualiza el recibo existente con el último vector y `content_hash`,
+sin duplicar versiones calientes en el contexto. Los embeddings históricos continúan
+en `memory.db`; el recibo es un puntero consultable, no otra copia del contenido.
+
+### 3.4 Session Vectorization Flow
 
 ```
 chat_stream → complete → background_tasks

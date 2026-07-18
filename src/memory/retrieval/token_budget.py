@@ -100,6 +100,7 @@ def format_memories_for_prompt(
         text = r.get("text", "")
         source = r.get("source", "?")
         key = r.get("source_key", "")
+        receipt_id = r.get("receipt_id", "")
         entities = r.get("entities", [])
         
         ent_str = ""
@@ -108,7 +109,8 @@ def format_memories_for_prompt(
             ent_str = f" [entidades: {', '.join(ent_names)}]"
         
         rel_score = r.get("relevance_score", 0.5)
-        lines.append(f"{i}. [{score_pct}%|rel:{rel_score:.2f}] {key}{ent_str}")
+        receipt_ref = f" [receipt:{receipt_id}]" if receipt_id else ""
+        lines.append(f"{i}. [{score_pct}%|rel:{rel_score:.2f}] {key}{ent_str}{receipt_ref}")
         lines.append(f"   {text}")
         lines.append("")
     

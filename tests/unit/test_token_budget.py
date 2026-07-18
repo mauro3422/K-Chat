@@ -229,6 +229,21 @@ class TestFormatMemoriesForPrompt:
         output = format_memories_for_prompt([a_result])
         assert "rel:" in output
 
+    def test_format_includes_receipt_handle_when_present(self):
+        output = format_memories_for_prompt(
+            [
+                {
+                    "text": "contexto caliente",
+                    "score": 0.8,
+                    "source": "memory",
+                    "source_key": "user:workflow",
+                    "receipt_id": "mr_123",
+                }
+            ]
+        )
+
+        assert "[receipt:mr_123]" in output
+
     def test_relevance_score_default_formatting(self):
         results = [{"text": "x", "score": 0.5, "source": "m", "source_key": "k"}]
         output = format_memories_for_prompt(results)

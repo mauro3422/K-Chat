@@ -8,6 +8,7 @@ from collections import OrderedDict
 from typing import Any
 
 from src.memory.retrieval.token_budget import format_memories_for_prompt
+from src.memory.retrieval.receipts import build_memory_receipt, format_receipt_ledger
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class RetrievalService:
         config: Any | None = None,
         retrieval_service: Any | None = None,
         entity_graph_repo: Any | None = None,
+        receipt_repo: Any | None = None,
         recall_event_root: str | None = None,
         record_recall_events: bool = True,
     ):
@@ -39,6 +41,7 @@ class RetrievalService:
         self._retrieval_cache: OrderedDict[str, tuple[str | None, bool]] = OrderedDict()
         self._retrieval_service = retrieval_service
         self._entity_graph_repo = entity_graph_repo
+        self._receipt_repo = receipt_repo
         self._config = config
         self._recall_event_root = recall_event_root
         self._record_recall_events = record_recall_events
@@ -115,7 +118,24 @@ class RetrievalService:
             logger.info("Auto-retrieval: %d results for session %s", len(results), (session_id or "default")[:12])
 
             if results:
-                dicts = [r.to_dict() for r in results]
+                receipts: list[dict[str, Any]] = []
+                if self._receipt_repo is not None and session_id:
+                    receipts = [
+                        build_memory_receipt(session_id, result, message_user[:1000])
+                        for result in results
+                    ]
+                    await self._receipt_repo.upsert_many(session_id, receipts)
+
+                receipt_by_rowid = {
+                    receipt.get("vec_rowid"): receipt for receipt in receipts
+                }
+                dicts = []
+                for result in results:
+                    payload = result.to_dict()
+                    receipt = receipt_by_rowid.get(getattr(result, "rowid", None))
+                    if receipt is not None:
+                        payload["receipt_id"] = receipt["receipt_id"]
+                    dicts.append(payload)
                 memory_block = format_memories_for_prompt(dicts, query=message_user[:1000])
                 if include_graph_context:
                     graph_context = await self._active_recall_graph_context(
@@ -124,8 +144,17 @@ class RetrievalService:
                     )
                     if graph_context:
                         memory_block = f"{memory_block}\n\n{graph_context}"
+                ledger = await self._receipt_ledger(
+                    session_id,
+                    exclude_ids={receipt["receipt_id"] for receipt in receipts},
+                )
+                if ledger:
+                    memory_block = f"{memory_block}\n\n{ledger}"
                 logger.info("Auto-retrieval: memory block %d chars", len(memory_block))
                 return memory_block, degraded
+            ledger = await self._receipt_ledger(session_id)
+            if ledger:
+                return ledger, degraded
         except Exception as e:
             logger.info("Auto-retrieval failed (non-fatal): %s", e)
             degraded = True
@@ -137,6 +166,26 @@ class RetrievalService:
                     logger.warning("Failed to close retriever", exc_info=True)
 
         return None, degraded
+
+    async def _receipt_ledger(
+        self,
+        session_id: str | None,
+        *,
+        exclude_ids: set[str] | None = None,
+    ) -> str:
+        if self._receipt_repo is None or not session_id:
+            return ""
+        try:
+            recent = await self._receipt_repo.list_recent(
+                session_id,
+                limit=20,
+                exclude_ids=exclude_ids,
+            )
+            total = await self._receipt_repo.count(session_id)
+            return format_receipt_ledger(recent, total_count=total)
+        except Exception:
+            logger.info("Memory receipt ledger unavailable (non-fatal)", exc_info=True)
+            return ""
 
     async def _active_recall_graph_context(self, results: list[Any], *, query: str) -> str:
         """Append curated graph context for explicit recall prompt injection."""
@@ -236,7 +285,8 @@ class RetrievalService:
         policy = self._active_recall_policy(message_user)
         active_recall = bool(getattr(policy, "should_recall", False))
         if not active_recall and not self._check_throttle(session_id or "default", message_user):
-            return None, False
+            ledger = await self._receipt_ledger(session_id)
+            return (ledger or None), False
 
         source_filter = None if active_recall else "session"
         top_k = 10 if active_recall else 8

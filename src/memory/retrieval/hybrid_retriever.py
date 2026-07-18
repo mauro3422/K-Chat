@@ -28,6 +28,8 @@ class HybridResult:
     text: str
     source: str = ""
     source_key: str = ""
+    item_idx: int = 0
+    content_hash: str = ""
     relevance_score: float = 0.5
     vector_score: float = 0.0
     keyword_score: float = 0.0
@@ -53,6 +55,8 @@ class HybridResult:
             "text": self.text,
             "source": self.source,
             "source_key": self.source_key,
+            "item_idx": self.item_idx,
+            "content_hash": self.content_hash,
             "score": self.fusion_score,
             "entities": self.entities,
         }
@@ -255,6 +259,8 @@ class HybridRetriever:
                 text=hd["text"],
                 source=hd["source"],
                 source_key=hd["source_key"],
+                item_idx=hd.get("item_idx", 0),
+                content_hash=hd.get("content_hash", ""),
                 vector_score=vec_dict.get(rowid, 0.0),
                 keyword_score=kw_dict.get(rowid, 0.0),
                 entity_score=ent_dict.get(rowid, 0.0),
