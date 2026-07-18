@@ -45,6 +45,7 @@ class TestAppFactory:
         from web.app_factory import create_app
         app = create_app()
         paths = [r.path for r in app.routes if hasattr(r, "path")]
+        assert "/live" in paths
         assert "/health" in paths
         assert "/" in paths
         assert "/favicon.ico" in paths

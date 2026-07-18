@@ -20,7 +20,7 @@
 
 | File | Routes | Responsibility |
 |------|--------|----------------|
-| `routers/health.py` | `GET /health` | DB + LLM provider + cluster health check |
+| `routers/health.py` | `GET /live`, `GET /health` | Cheap process liveness plus DB + LLM provider + cluster health check |
 | `routers/chat.py` | `POST /chat/{session_id}` | Accepts message + files, returns NDJSON stream, background tasks |
 | `routers/sessions.py` | `POST .../rename`, `POST .../delete` | Session management |
 | `routers/widgets.py` | `GET/POST .../widgets/*` | CRUD for HTML widgets: state, code, versions, save |

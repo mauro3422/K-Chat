@@ -55,7 +55,7 @@ class Config:
     telegram_allowed_users: str = ""
     # ── Watchdog ────────────────────────────────────────────────────
     watchdog_interval: int = 5
-    watchdog_url: str = "http://127.0.0.1:8000/health"
+    watchdog_url: str = "http://127.0.0.1:8000/live"
     # ── Session retention ──────────────────────────────────────────
     session_max_age_days: int = 90
     # ── LAN coordination ─────────────────────────────────────────────
@@ -114,7 +114,7 @@ def load_config(overrides: dict | None = None) -> Config:
         telegram_allowed_users=os.getenv("TELEGRAM_ALLOWED_USERS", ""),
         # ── Watchdog ───────────────────────────────────────────────
         watchdog_interval=int(os.getenv("WATCHDOG_INTERVAL", "5")),
-        watchdog_url=os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/health"),
+        watchdog_url=os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/live"),
         # ── Session retention ──────────────────────────────────────
         session_max_age_days=int(os.getenv("SESSION_MAX_AGE_DAYS", "90")),
         node_id=os.getenv("KAIROS_NODE_ID", "") or os.getenv("HOSTNAME", "") or os.getenv("COMPUTERNAME", ""),

@@ -12,6 +12,16 @@ from web.services.health_snapshot import (
 router = APIRouter()
 
 
+@router.get("/live")
+async def live(request: Request):
+    cfg = getattr(request.app.state, "config", None)
+    return {
+        "status": "ok",
+        "node_id": getattr(cfg, "node_id", "") if cfg is not None else "",
+        "role": getattr(cfg, "node_role", "") if cfg is not None else "",
+    }
+
+
 @router.get("/health")
 async def health(request: Request):
     cfg = getattr(request.app.state, "config", None)

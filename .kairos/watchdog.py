@@ -40,7 +40,7 @@ logger = logging.getLogger("watchdog")
 # ─── Config ─────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ERROR_CONTEXT_FILE = PROJECT_ROOT / ".kairos" / "error_context.md"
-HEALTH_URL = os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/health")
+HEALTH_URL = os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/live")
 CHECK_INTERVAL = int(os.getenv("WATCHDOG_INTERVAL", "15"))
 # Allow up to 5 minutes for first-time startup. Model loading can temporarily
 # occupy the event loop even after uvicorn binds its port.

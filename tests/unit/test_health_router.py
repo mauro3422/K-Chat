@@ -36,6 +36,24 @@ def test_health_reports_database_ok(tmp_path):
     assert body["checks"]["database"] == "ok"
 
 
+def test_live_endpoint_is_minimal_and_fast(tmp_path):
+    config = SimpleNamespace(
+        testing=False,
+        node_id="node-1",
+        node_role="secondary",
+    )
+
+    with _make_client(config) as client:
+        response = client.get("/live")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "node_id": "node-1",
+        "role": "secondary",
+    }
+
+
 def test_health_marks_missing_database_degraded_when_not_testing(tmp_path):
     config = SimpleNamespace(
         testing=False,
