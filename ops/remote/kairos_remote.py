@@ -375,7 +375,7 @@ def collect_doctor_checks(profile: NodeProfile) -> list[DoctorCheck]:
             timeout=20,
         ),
         _ssh_check(profile, "memory_audit", remote_python_command(profile, "scripts/memory_audit.py"), timeout=60),
-        _http_check(profile, "health", "/health"),
+        _http_check(profile, "health", "/live"),
         _http_check(profile, "node_state", "/api/node/state"),
         _http_check(profile, "node_runtime", "/api/node/runtime"),
         _http_check(profile, "sync_status", "/api/node/sync/status"),

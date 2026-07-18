@@ -369,6 +369,36 @@ def test_remote_doctor_report_can_emit_json(monkeypatch, capsys, tmp_path) -> No
     assert payload["checks"][1]["hint"] == "revisar health"
 
 
+def test_remote_doctor_uses_liveness_endpoint(monkeypatch, tmp_path) -> None:
+    module = load_remote_client_module()
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("fake", encoding="utf-8")
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.40",
+        user="maurol",
+        repo=str(tmp_path),
+        identity_file=str(identity),
+        service_url="http://192.168.1.40:8000",
+    )
+    paths = []
+
+    monkeypatch.setattr(module.Path, "exists", lambda _path: True)
+    monkeypatch.setattr(module, "_ssh_check", lambda *_args, **_kwargs: module.DoctorCheck(name=_args[1], ok=True, detail="ok"))
+
+    def fake_http_check(_profile, name, path, *, timeout=8):
+        paths.append((name, path))
+        return module.DoctorCheck(name=name, ok=True, detail="ok")
+
+    monkeypatch.setattr(module, "_http_check", fake_http_check)
+
+    checks = module.collect_doctor_checks(profile)
+
+    assert [check.name for check in checks if check.name == "health"] == ["health"]
+    assert ("health", "/live") in paths
+    assert ("health", "/health") not in paths
+
+
 def test_memory_preflight_action_emits_json(monkeypatch, capsys, tmp_path) -> None:
     module = load_remote_client_module()
     from scripts import memory_pipeline_preflight as pipeline
