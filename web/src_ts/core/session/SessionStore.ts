@@ -86,6 +86,12 @@ export class SessionStore implements ISessionStore {
     eventBus.on<{ sessionId: string; name: string }>('session:rename', renameCb);
     this._boundListeners.push({ event: 'session:rename', cb: renameCb as EventCallback<any> });
 
+    const remoteRenameCb = (data: { id: string; name: string }) => {
+      this.applySessionName(data.id, data.name);
+    };
+    eventBus.on<{ id: string; name: string }>('sse:session-renamed', remoteRenameCb);
+    this._boundListeners.push({ event: 'sse:session-renamed', cb: remoteRenameCb as EventCallback<any> });
+
     const deleteCb = async (data: { sessionId: string }) => {
       await this.deleteSession(data.sessionId);
     };
@@ -172,6 +178,10 @@ export class SessionStore implements ISessionStore {
     } catch (err) {
       this._logger.warn('renameSession API failed', err);
     }
+    this.applySessionName(id, name);
+  }
+
+  private applySessionName(id: string, name: string): void {
     const session = this._sessions.find(s => s.id === id);
     if (session) {
       session.name = name;

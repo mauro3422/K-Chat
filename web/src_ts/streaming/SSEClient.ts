@@ -3,7 +3,7 @@ import { IWidgetRegistry } from '../types/widgets';
 import { IIframeBuilder } from '../types/iframe';
 import { IWidgetContainerRenderer } from '../types/widget-renderer';
 import { IDebugManager } from '../types/debug';
-import { SSEEvent, SSENewMessage, SSEMemoryWriteCompleted, SSEMemoryWriteQueued, SSEStreamReasoning, SSEStreamContent, SSEStreamTool, SSEStreamMemory, SSEStreamError, SSEStreamNotification } from '../types/sse';
+import { SSEEvent, SSENewMessage, SSEMemoryWriteCompleted, SSEMemoryWriteQueued, SSESessionRenamed, SSEStreamReasoning, SSEStreamContent, SSEStreamTool, SSEStreamMemory, SSEStreamError, SSEStreamNotification } from '../types/sse';
 import { StreamDispatcher } from './StreamDispatcher';
 import { ContentHandler, StreamHandlerContext } from './ContentHandler';
 import { IMessageView } from '../types/message-view';
@@ -141,6 +141,9 @@ export class SSEClient implements ISSEClient {
         break;
       case 'new_message':
         this.handleNewMessage(event.data);
+        break;
+      case 'session_renamed':
+        this.handleSessionRenamed(event.data);
         break;
       case 'session_deleted':
         this.handleSessionDeleted(event.data);
@@ -309,6 +312,13 @@ export class SSEClient implements ISSEClient {
 
   private handleSessionDeleted(data: { session_id: string }): void {
     this.eventBus.emit('sse:session-deleted', { id: data.session_id });
+  }
+
+  private handleSessionRenamed(data: SSESessionRenamed): void {
+    this.eventBus.emit('sse:session-renamed', {
+      id: data.session_id,
+      name: data.name,
+    });
   }
 
   private handleMessageDeleted(data: { session_id: string; message_id: number }): void {

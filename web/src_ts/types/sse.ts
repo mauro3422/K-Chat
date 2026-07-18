@@ -45,6 +45,11 @@ export interface SSESessionDeleted {
   session_id: string;
 }
 
+export interface SSESessionRenamed {
+  session_id: string;
+  name: string;
+}
+
 export interface SSEMessageDeleted {
   session_id: string;
   message_id: number;
@@ -74,6 +79,7 @@ export type SSEEvent =
   | { type: 'stream:error'; data: SSEStreamError }
   | { type: 'stream:notification'; data: SSEStreamNotification }
   | { type: 'new_message'; data: SSENewMessage }
+  | { type: 'session_renamed'; data: SSESessionRenamed }
   | { type: 'session_deleted'; data: SSESessionDeleted }
   | { type: 'message_deleted'; data: SSEMessageDeleted }
   | { type: 'memory_write_queued'; data: SSEMemoryWriteQueued }

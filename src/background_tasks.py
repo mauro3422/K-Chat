@@ -18,11 +18,11 @@ async def auto_rename_session(
     model: str,
     chat_fn: Callable[..., Any] | None = None,
     session_repo=None,
-) -> None:
+) -> str | None:
     """Generates an automatic title for the session if it has no name yet."""
     repo = _get_session_repo(session_repo)
     if not await repo.check_should_rename(session_id):
-        return
+        return None
     prompt = (
         "Generate a very short, direct, and descriptive title of 3 to 5 words for a chat "
         "that starts with the following message. Do not use quotes or introductions, respond "
@@ -39,5 +39,7 @@ async def auto_rename_session(
         title = (r.message.content or "").strip().replace('"', '').replace("'", "")[:50]
         if title:
             await repo.rename(session_id, title)
+            return title
     except Exception as e:
         logger.warning("auto_rename failed (session=%s): %s", session_id, e)
+    return None

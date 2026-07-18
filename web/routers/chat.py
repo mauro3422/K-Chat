@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, R
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from src.api.background import auto_rename_session
 from src.api.llm_client import get_default_model, llm_chat_stream
 from src.api.orchestrator import OrchestratorDeps, rebuild_history
 from src.api.repos import MessageRecord, get_repos
@@ -160,6 +161,19 @@ async def chat(
             user_msg = kw.pop("user_msg", full_message)
             return await save_assistant_message(*a, **kw, user_msg=user_msg, repos=repos, logbus=logbus)
 
+        async def _rename_and_publish(sid: str, first_message: str, selected_model: str) -> None:
+            title = await auto_rename_session(
+                sid,
+                first_message,
+                selected_model,
+                session_repo=repos.sessions,
+            )
+            if title:
+                await request.app.state.event_bus.publish(
+                    "session_renamed",
+                    {"session_id": sid, "name": title},
+                )
+
         generate = build_stream_generator(
             session_id,
             full_message,
@@ -169,6 +183,7 @@ async def chat(
             deps=StreamGeneratorDeps(
                 retry_handler=StreamRetryHandler(max_retries=2, llm_chat_stream_fn=llm_chat_stream),
                 save_fn=_wrapped_save,
+                rename_fn=_rename_and_publish,
                 session_artifact_coordinator=request.app.state.session_artifact_coordinator,
             ),
             orchestrator_deps=orchestrator_deps,
