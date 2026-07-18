@@ -143,6 +143,26 @@ def _format_exchange_context(rows: list[Any], item_idx: int, window: int) -> str
     return "\n".join(lines)
 
 
+def _format_indexed_exchange_context(rows: list[Any], item_idx: int) -> str:
+    lines: list[str] = []
+    current_idx: int | None = None
+    for row in rows:
+        if hasattr(row, "keys"):
+            role = str(row["role"] or "")
+            content = str(row["content"] or "")
+            exchange_idx = int(row["exchange_idx"])
+        else:
+            role = str(row[0] or "")
+            content = str(row[1] or "")
+            exchange_idx = int(row[2])
+        if exchange_idx != current_idx:
+            marker = "anchor" if exchange_idx == item_idx else "nearby"
+            lines.append(f"### Exchange {exchange_idx} ({marker})")
+            current_idx = exchange_idx
+        lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
 def _format_candidates(rows: list[dict[str, Any]]) -> str:
     lines = ["Matching memory receipts:"]
     for row in rows:
@@ -193,12 +213,14 @@ async def run(**kwargs) -> str:
         if canonical:
             full_text = str(canonical)
     elif source == "session" and repos is not None:
-        messages = await repos.messages.get_session_messages(source_key, limit=500)
-        session_context = _format_exchange_context(
-            messages,
-            int(receipt.get("item_idx", 0)),
-            context_window,
-        )
+        item_idx = int(receipt.get("item_idx", 0))
+        get_window = getattr(repos.messages, "get_session_exchange_window", None)
+        if get_window is not None:
+            messages = await get_window(source_key, item_idx, context_window)
+            session_context = _format_indexed_exchange_context(messages, item_idx)
+        else:
+            messages = await repos.messages.get_session_messages(source_key, limit=500)
+            session_context = _format_exchange_context(messages, item_idx, context_window)
 
     await receipt_repo.touch_hydrated(session_id, receipt_id)
     metadata = vector_source.get("metadata")

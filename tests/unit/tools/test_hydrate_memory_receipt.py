@@ -120,6 +120,56 @@ async def test_hydrate_canonical_memory_uses_full_value_and_touches_receipt():
 
 
 @pytest.mark.anyio
+async def test_hydrate_session_uses_indexed_exchange_window():
+    receipt_repo = SimpleNamespace(
+        get=AsyncMock(
+            return_value={
+                "receipt_id": "mr_long",
+                "source": "session",
+                "source_key": "past-session",
+                "item_idx": 505,
+                "vec_rowid": 10,
+                "content_hash": "hash",
+                "tag": "session:past-session",
+                "excerpt": "compact",
+                "trigger_query": "tema",
+            }
+        ),
+        touch_hydrated=AsyncMock(),
+        search=AsyncMock(),
+    )
+    get_window = AsyncMock(
+        return_value=[
+            ("user", "pregunta 504", 504),
+            ("assistant", "respuesta 504", 504),
+            ("user", "pregunta 505", 505),
+            ("assistant", "respuesta 505", 505),
+            ("user", "pregunta 506", 506),
+        ]
+    )
+    repos = SimpleNamespace(
+        memory_receipts=receipt_repo,
+        messages=SimpleNamespace(get_session_exchange_window=get_window),
+    )
+
+    with patch(
+        "src.tools.hydrate_memory_receipt._load_vector_source",
+        return_value={"text": "intercambio vectorizado", "metadata": "{}"},
+    ):
+        output = await run(
+            receipt_id="mr_long",
+            context_window=1,
+            _session_id="current",
+            _repos=repos,
+        )
+
+    get_window.assert_awaited_once_with("past-session", 505, 1)
+    assert "Exchange 505 (anchor)" in output
+    assert "pregunta 504" in output
+    assert "pregunta 506" in output
+
+
+@pytest.mark.anyio
 async def test_query_returns_candidate_receipts_when_ambiguous():
     receipt_repo = SimpleNamespace(
         search=AsyncMock(

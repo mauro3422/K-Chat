@@ -77,6 +77,43 @@ class MessageRepository(_BaseRepository):
             logger.exception("Failed to get session messages for %s", session_id)
             return []
 
+    async def get_session_exchange_window(
+        self,
+        session_id: str,
+        item_idx: int,
+        window: int = 1,
+    ) -> list[tuple[Any, ...]]:
+        """Return an indexed exchange and nearby exchanges without a session-wide limit."""
+
+        anchor = max(0, int(item_idx))
+        radius = max(0, min(int(window), 4))
+        try:
+            async with self._connection() as conn:
+                cursor = await conn.execute(
+                    """
+                    WITH indexed AS (
+                        SELECT role, content, id,
+                               SUM(CASE WHEN role='user' THEN 1 ELSE 0 END)
+                                   OVER (ORDER BY id) - 1 AS exchange_idx
+                        FROM messages
+                        WHERE session_id=?
+                    )
+                    SELECT role, content, exchange_idx
+                    FROM indexed
+                    WHERE exchange_idx BETWEEN ? AND ?
+                    ORDER BY id ASC
+                    """,
+                    (session_id, max(0, anchor - radius), anchor + radius),
+                )
+                return await cursor.fetchall()
+        except Exception:
+            logger.exception(
+                "Failed to get exchange window %s for session %s",
+                anchor,
+                session_id,
+            )
+            return []
+
     async def delete_session_messages(self, session_id: str) -> int:
         """Delete ALL messages for a session. Keeps the session itself."""
         try:

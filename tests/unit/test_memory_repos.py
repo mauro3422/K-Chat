@@ -163,6 +163,36 @@ class TestMessageRepository:
         assert msgs == []
 
     @pytest.mark.anyio
+    async def test_get_session_exchange_window_reaches_beyond_first_500_messages(
+        self,
+        setup_test_db,
+    ):
+        await SessionRepository().ensure("sess_long")
+        repo = MessageRepository()
+        rows = []
+        for index in range(510):
+            rows.extend(
+                [
+                    ("sess_long", "user", f"pregunta {index}", "2026-07-18T00:00:00"),
+                    ("sess_long", "assistant", f"respuesta {index}", "2026-07-18T00:00:01"),
+                ]
+            )
+        async with repo._transaction() as conn:
+            await conn.executemany(
+                """
+                INSERT INTO messages (session_id, role, content, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                rows,
+            )
+
+        window = await repo.get_session_exchange_window("sess_long", 505, window=1)
+
+        assert {row["exchange_idx"] for row in window} == {504, 505, 506}
+        assert any(row["content"] == "pregunta 505" for row in window)
+        assert any(row["content"] == "respuesta 506" for row in window)
+
+    @pytest.mark.anyio
     async def test_delete_empty_assistant(self, setup_test_db):
         await SessionRepository().ensure("sess_1")
         repo = MessageRepository()
