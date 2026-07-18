@@ -126,6 +126,14 @@ async def test_chat_form_ts_exists() -> None:
     assert "setStreamingState" in content
 
 
+async def test_chat_submit_button_submits_form_for_pointer_and_touch() -> None:
+    template = _read("web/templates/chat_ts.html")
+    assert '<button type="submit" id="chat-submit-btn"' in template, (
+        "The send/stop control must submit #chat-form so click and touch use "
+        "the same ChatForm.handleSubmit path as Enter."
+    )
+
+
 async def test_logger_ts_reexport_exists() -> None:
     content = _read("web/src_ts/core/infra/Logger.ts")
     assert "export class Logger" in content
