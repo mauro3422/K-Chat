@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sqlite3
 from collections.abc import Mapping
 from pathlib import Path
@@ -13,7 +14,9 @@ def _text_or_default(value, default: str = "") -> str:
 
 
 def _float_or_default(value, default: float = 0.0) -> float:
-    return value if isinstance(value, (int, float)) else default
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+        return float(value)
+    return default
 
 
 def _bool_or_default(value, default: bool = False) -> bool:
