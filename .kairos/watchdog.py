@@ -60,8 +60,9 @@ def _health_check() -> bool:
     """Returns True if the server is healthy."""
     try:
         import urllib.request
+        timeout = max(1.0, float(os.getenv("WATCHDOG_HEALTH_TIMEOUT", "20")))
         req = urllib.request.Request(HEALTH_URL, method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status == 200
     except Exception:
         return False

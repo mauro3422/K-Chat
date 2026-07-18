@@ -11,6 +11,7 @@ WorkingDirectory=%h/dev/K-Chat
 Environment=WATCHDOG_INTERVAL=15
 Environment=WATCHDOG_REQUIRED_FAILURES=6
 Environment=WATCHDOG_URL=http://127.0.0.1:8000/health
+Environment=WATCHDOG_HEALTH_TIMEOUT=20
 Environment=WATCHDOG_STARTUP_GRACE=300
 Environment=WATCHDOG_STARTUP_TIMEOUT=300
 Environment=KAIROS_WEB_SERVICE=k-chat.service

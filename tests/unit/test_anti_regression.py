@@ -657,6 +657,8 @@ async def test_watchdog_has_grace_300_and_failures_6() -> None:
         "Watchdog REQUIRED_FAILURES must be 6 (was 3) to avoid false positives."
     assert "_managed_service_is_active() and downtime < STARTUP_GRACE" in content, \
         "Active services inside startup grace must not be restarted."
+    assert 'os.getenv("WATCHDOG_HEALTH_TIMEOUT", "20")' in content, \
+        "Cluster-aware health checks need enough time for peer probes."
 
 
 async def test_watchdog_delegates_web_process_ownership_to_systemd() -> None:
