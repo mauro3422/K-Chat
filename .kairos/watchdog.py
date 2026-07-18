@@ -42,9 +42,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ERROR_CONTEXT_FILE = PROJECT_ROOT / ".kairos" / "error_context.md"
 HEALTH_URL = os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/health")
 CHECK_INTERVAL = int(os.getenv("WATCHDOG_INTERVAL", "15"))
-# Allow up to 3 minutes for first-time startup (embedding model download
-# from HuggingFace can take 60-120 seconds on the first run).
-STARTUP_GRACE = int(os.getenv("WATCHDOG_STARTUP_GRACE", "180"))
+# Allow up to 5 minutes for first-time startup. Model loading can temporarily
+# occupy the event loop even after uvicorn binds its port.
+STARTUP_GRACE = int(os.getenv("WATCHDOG_STARTUP_GRACE", "300"))
 # Require N consecutive failures before triggering recovery.
 # Tools like recall_memories & web_search can block the main thread for
 # 60-120s — shorter windows cause false-positive kills.
@@ -52,7 +52,7 @@ REQUIRED_FAILURES = int(os.getenv("WATCHDOG_REQUIRED_FAILURES", "6"))
 # Max retries for restart attempts
 MAX_RESTART_RETRIES = 3
 # Time to wait for the new server to come up after restart (seconds)
-SERVER_STARTUP_TIMEOUT = int(os.getenv("WATCHDOG_STARTUP_TIMEOUT", "180"))
+SERVER_STARTUP_TIMEOUT = int(os.getenv("WATCHDOG_STARTUP_TIMEOUT", "300"))
 
 # ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -77,6 +77,21 @@ def _wait_for_server(timeout: int = SERVER_STARTUP_TIMEOUT) -> bool:
             return True
         time.sleep(2)
     return False
+
+
+def _managed_service_is_active() -> bool:
+    """Return whether systemd still considers the web service active."""
+    service = os.getenv("KAIROS_WEB_SERVICE", "k-chat.service").strip()
+    if not service:
+        return False
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "is-active", "--quiet", service],
+            timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 # ─── Git + error context ────────────────────────────────────────────────
@@ -235,14 +250,10 @@ def main() -> None:
     logger.info("  Project root: %s", PROJECT_ROOT)
     logger.info("=" * 50)
 
-    # If the server isn't healthy yet, ask its canonical service to start it.
+    # systemd owns startup. A fresh process may be temporarily unresponsive
+    # while loading models, so the watchdog observes without racing it.
     if not _health_check():
-        logger.info("No healthy managed server detected on startup")
-        if kill_and_restart():
-            logger.info("Initial server start successful")
-        else:
-            logger.critical("Server could not start on initial attempt")
-            # Continue monitoring — might recover later
+        logger.info("Managed server is warming up; startup grace is %ds", STARTUP_GRACE)
     else:
         logger.info("Server already running on startup — monitoring")
 
@@ -279,6 +290,17 @@ def main() -> None:
             logger.warning("Health check failed (%d consecutive)", consecutive_failures)
 
             if consecutive_failures < REQUIRED_FAILURES:
+                time.sleep(CHECK_INTERVAL)
+                continue
+
+            downtime = now - last_healthy
+            if _managed_service_is_active() and downtime < STARTUP_GRACE:
+                logger.info(
+                    "Managed service is active and still inside startup grace "
+                    "(%.0fs/%ds); skipping recovery",
+                    downtime,
+                    STARTUP_GRACE,
+                )
                 time.sleep(CHECK_INTERVAL)
                 continue
 

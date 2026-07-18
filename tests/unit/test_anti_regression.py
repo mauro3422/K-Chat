@@ -648,13 +648,15 @@ async def test_curate_retire_uses_per_session_commit() -> None:
         "curate.py _retire_old_sessions must rollback on session deletion failure."
 
 
-async def test_watchdog_has_grace_180_and_failures_6() -> None:
-    """Watchdog must tolerate slow model downloads (180s grace, 6 failures)."""
+async def test_watchdog_has_grace_300_and_failures_6() -> None:
+    """Watchdog must tolerate slow model warmup (300s grace, 6 failures)."""
     content = _read(".kairos/watchdog.py")
-    assert 'STARTUP_GRACE = int(os.getenv("WATCHDOG_STARTUP_GRACE", "180"))' in content, \
-        "Watchdog STARTUP_GRACE must be 180s (was 10s) to tolerate model downloads."
+    assert 'STARTUP_GRACE = int(os.getenv("WATCHDOG_STARTUP_GRACE", "300"))' in content, \
+        "Watchdog STARTUP_GRACE must be 300s to tolerate model warmup."
     assert 'REQUIRED_FAILURES = int(os.getenv("WATCHDOG_REQUIRED_FAILURES", "6"))' in content, \
         "Watchdog REQUIRED_FAILURES must be 6 (was 3) to avoid false positives."
+    assert "_managed_service_is_active() and downtime < STARTUP_GRACE" in content, \
+        "Active services inside startup grace must not be restarted."
 
 
 async def test_watchdog_delegates_web_process_ownership_to_systemd() -> None:
