@@ -104,8 +104,8 @@ Los stashes viejos quedan preservados como patches versionados. Las ramas tempor
 
 Base verificada:
 
-- PC `master`, `origin/master`, laptop `master` y laptop `origin/master` estan en `524e589 feat: add candidate run comparison utility`.
-- La laptop conserva archivos no trackeados fuera de `master`; no se borraron ni se movieron durante esta auditoria.
+- PC `master`, `origin/master`, laptop `master` y laptop `origin/master` estan en `8a430de fix: use liveness endpoint in remote doctor`.
+- La laptop tenia archivos no trackeados fuera de `master`; se clasificaron antes de archivarlos.
 
 Clasificacion:
 
@@ -118,6 +118,8 @@ Clasificacion:
 
 Decision:
 
-- Mantener los archivos remotos por ahora para no perder informacion.
 - No incorporarlos en bloque a `master`.
-- Siguiente limpieza recomendada: moverlos en la laptop a un directorio de archivo recuperable fuera del flujo normal, despues de confirmar que no hay una automatizacion dependiente de esos paths.
+- Se confirmo que ninguna automatizacion ni ruta activa dependia de esos paths.
+- El 2026-07-18 se movieron a `/home/maurol/dev/K-Chat-local-archive/untracked-20260718-015942`.
+- El archivo conserva `MANIFEST.txt`, `SHA256SUMS.txt` y `RESTORE.sh`; la operacion es reversible.
+- La copia de trabajo de la laptop quedo limpia y alineada con `origin/master`.
