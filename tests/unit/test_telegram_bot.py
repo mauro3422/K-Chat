@@ -169,6 +169,24 @@ class TestTelegramClusterGate:
         mock_run_bot.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_provider_warmup_resets_registry_before_listing_models():
+    from channels.telegram.bot import _warmup_provider
+
+    provider = MagicMock()
+    provider.list_models = AsyncMock(return_value=["model-a", "model-b"])
+    with (
+        patch("src.llm.providers.reset_registry") as reset_registry,
+        patch("src.llm.providers._get_provider", return_value=provider) as get_provider,
+    ):
+        model_count = await _warmup_provider()
+
+    reset_registry.assert_called_once_with()
+    get_provider.assert_called_once_with()
+    provider.list_models.assert_awaited_once_with()
+    assert model_count == 2
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # ADAPTER SESSION MANAGEMENT TESTS
 # ═══════════════════════════════════════════════════════════════════════

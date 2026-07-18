@@ -41,6 +41,16 @@ _stop_event = asyncio.Event()
 _MAX_CONSECUTIVE_ERRORS = 10
 
 
+async def _warmup_provider() -> int:
+    """Reset provider state and verify that the configured backend responds."""
+    from src.llm.providers import _get_provider, reset_registry
+
+    reset_registry()
+    provider = _get_provider()
+    models = await provider.list_models()
+    return len(models)
+
+
 # ─── Main loop ─────────────────────────────────────────────────────────
 
 async def run_bot(config: TelegramConfig) -> None:
@@ -66,11 +76,8 @@ async def run_bot(config: TelegramConfig) -> None:
 
     # ── Warmup: preheat httpx connection pool ──────────────────────────
     try:
-        from src.llm.providers import _get_provider, _reset_provider
-        _reset_provider()
-        provider = _get_provider()
-        models = await provider.list_models()
-        logger.info("Warmup OK: %d models available", len(models))
+        model_count = await _warmup_provider()
+        logger.info("Warmup OK: %d models available", model_count)
     except Exception as we:
         logger.warning("Warmup failed (non-fatal): %s", we)
 
