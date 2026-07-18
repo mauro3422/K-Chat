@@ -99,3 +99,25 @@ Decision:
 No queda trabajo reciente de laptop fuera de `master` relacionado con UI, reconexion, rate limits o fixes de bugs del 2026-07-03/2026-07-04. Esos cambios ya estan integrados.
 
 Los stashes viejos quedan preservados como patches versionados. Las ramas temporales `codex/preserve-laptop-*` pueden borrarse despues de que este archivo este en `master` y sincronizado en PC/laptop/GitHub.
+
+## Untracked laptop audit - 2026-07-18
+
+Base verificada:
+
+- PC `master`, `origin/master`, laptop `master` y laptop `origin/master` estan en `524e589 feat: add candidate run comparison utility`.
+- La laptop conserva archivos no trackeados fuera de `master`; no se borraron ni se movieron durante esta auditoria.
+
+Clasificacion:
+
+- Rescatado en `master`: el prototipo `scripts/compare_runs.py` inspiro `scripts/compare_candidate_runs.py`, una version local saneada, ASCII, estructurada y con tests.
+- No integrar a ciegas: `pmi_script_replacement.py`, `fix_pmi.py`, `test_pmi.py` y `tests/unit/test_pmi_relations.py`. El PMI local actual ya contiene una ruta mas madura con stemming, IDF y compatibilidad de API; estos archivos remotos son prototipos anteriores o parches ad hoc.
+- No integrar a ciegas: `src/memory/synthesis/curator.py`, `tests/unit/test_curator.py` y `tests/unit/test_graph_analysis_new.py`. El repo actual ya tiene `src/memory/curator/*`, `src/memory/synthesis/*` y cobertura extensa; el curador remoto duplica caminos y necesita diseno antes de entrar.
+- Generado/cache visual: `.playwright-mcp/` contiene capturas y YAMLs de Playwright MCP de julio 2026.
+- Vendor suelto: `web/static/d3.min.js` pesa 276 KB y no esta referenciado por `master` en esta auditoria.
+- Peligroso: `wipe_and_resynthesize.py` ejecuta `DELETE` sobre tablas de memoria (`entities`, `entity_relations`, `concept_canonical`, `memory_processing_catalog`). No debe ejecutarse sin backup y aprobacion explicita.
+
+Decision:
+
+- Mantener los archivos remotos por ahora para no perder informacion.
+- No incorporarlos en bloque a `master`.
+- Siguiente limpieza recomendada: moverlos en la laptop a un directorio de archivo recuperable fuera del flujo normal, despues de confirmar que no hay una automatizacion dependiente de esos paths.
