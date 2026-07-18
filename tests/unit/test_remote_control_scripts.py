@@ -514,6 +514,11 @@ def test_linux_user_service_has_restart_and_bounded_shutdown() -> None:
     assert 'if [[ -L "$UNIT_FILE" ]]' in source
     assert 'EXEC_START="$ROOT/venv/bin/python -m uvicorn"' in source
     assert source.index('"$ROOT/venv/bin/python"') < source.index('"$ROOT/.venv/bin/python"')
+    assert 'systemctl --user stop "$WATCHDOG_SERVICE"' in source
+    assert 'install -m 600 "$ROOT/.kairos/k-chat-watchdog.service"' in source
+    assert source.index('systemctl --user restart "$SERVICE"') < source.index(
+        'systemctl --user restart "$WATCHDOG_SERVICE"'
+    )
 
 
 def test_linux_bootstrap_prefers_repo_venv_python() -> None:

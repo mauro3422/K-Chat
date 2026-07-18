@@ -657,6 +657,18 @@ async def test_watchdog_has_grace_180_and_failures_6() -> None:
         "Watchdog REQUIRED_FAILURES must be 6 (was 3) to avoid false positives."
 
 
+async def test_watchdog_delegates_web_process_ownership_to_systemd() -> None:
+    """The watchdog must never create a second uvicorn process."""
+    content = _read(".kairos/watchdog.py")
+    unit = _read(".kairos/k-chat-watchdog.service")
+
+    assert "subprocess.Popen" not in content
+    assert '["systemctl", "--user", "restart", service]' in content
+    assert "Watchdog exited; managed web service left untouched" in content
+    assert "Wants=network-online.target k-chat.service" in unit
+    assert "Environment=KAIROS_WEB_SERVICE=k-chat.service" in unit
+
+
 async def test_models_availability_auto_refreshes_when_empty() -> None:
     """debug.py /models/availability must auto-refresh when registry is empty."""
     content = _read("web/routers/debug.py")

@@ -5,7 +5,7 @@ Each component is a Lego brick — independent, replaceable, testable.
 
 | File | Lego | Purpose |
 |------|------|---------|
-| `watchdog.py` | 🛡️ Watchdog | Health-check daemon: monitors web server + bot, captures crash context, restarts via systemd |
+| `watchdog.py` | 🛡️ Watchdog | Health-check daemon: monitors web server + bot, captures crash context, delegates restart to systemd |
 | `error_context.md` | 📋 Crash Log | Written by watchdog after crash. Read by `src/context/builder.py` on boot → Kairos auto-heals |
 | `k-chat.service` | 🌐 Web Server | Systemd user service for uvicorn (FastAPI on :8000) |
 | `k-chat-watchdog.service` | 🛡️ Watchdog Service | Systemd user service that runs watchdog.py |
@@ -35,7 +35,7 @@ Each component is a Lego brick — independent, replaceable, testable.
 │       │  3 fallos consecutivos → crash confirmado                    │
 │       │  → Captura git diff + últimos commits                        │
 │       │  → Escribe error_context.md                                  │
-│       │  → systemctl restart k-chat.service                         │
+│       │  → systemctl --user restart k-chat.service                  │
 │       │                                                               │
 │       └── Monitoreo pasivo del bot                                   │
 │           Cada ~60s verifica que el PID del bot esté vivo            │
@@ -61,6 +61,7 @@ Each component is a Lego brick — independent, replaceable, testable.
 - 3 fallos consecutivos para confirmar crash (evita falsos positivos)
 - Cooldown de 60s entre recuperaciones
 - Captura git diff + últimos commits en `error_context.md`
+- Nunca crea ni mata uvicorn directamente: `k-chat.service` es el único dueño del proceso web
 - También verifica el PID del bot cada ~60s (log warning, no restart — eso lo hace systemd)
 
 ## Self-Healing Flow

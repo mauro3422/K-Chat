@@ -3,8 +3,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE="${KAIROS_SERVICE:-k-chat}"
+WATCHDOG_SERVICE="${SERVICE}-watchdog"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT_FILE="$UNIT_DIR/${SERVICE}.service"
+WATCHDOG_UNIT_FILE="$UNIT_DIR/${WATCHDOG_SERVICE}.service"
 
 if [[ -x "$ROOT/venv/bin/python" ]]; then
   EXEC_START="$ROOT/venv/bin/python -m uvicorn"
@@ -15,6 +17,11 @@ else
 fi
 
 install -d -m 700 "$UNIT_DIR"
+# Older watchdog versions owned uvicorn directly. Stop them before
+# restarting the canonical web service to prevent a race for port 8000.
+if systemctl --user is-active --quiet "$WATCHDOG_SERVICE"; then
+  systemctl --user stop "$WATCHDOG_SERVICE"
+fi
 if [[ -L "$UNIT_FILE" ]]; then
   rm -f "$UNIT_FILE"
 fi
@@ -44,7 +51,14 @@ ReadWritePaths=$ROOT
 WantedBy=default.target
 EOF
 chmod 600 "$UNIT_FILE"
+if [[ -f "$ROOT/.kairos/k-chat-watchdog.service" ]]; then
+  install -m 600 "$ROOT/.kairos/k-chat-watchdog.service" "$WATCHDOG_UNIT_FILE"
+fi
 systemctl --user daemon-reload
 systemctl --user enable --now "$SERVICE"
 systemctl --user restart "$SERVICE"
+if [[ -f "$WATCHDOG_UNIT_FILE" ]]; then
+  systemctl --user enable "$WATCHDOG_SERVICE"
+  systemctl --user restart "$WATCHDOG_SERVICE"
+fi
 echo "service=$SERVICE unit=$UNIT_FILE"

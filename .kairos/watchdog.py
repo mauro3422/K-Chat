@@ -6,13 +6,11 @@ Monitors the web server health endpoint. If the server is unreachable
 
 1. Captures the git diff and last commits
 2. Writes ``.kairos/error_context.md`` with full crash context
-3. Force-kills ALL old uvicorn processes (ensures no zombie on the port)
-4. Frees port 8000 with ``fuser -k`` as ultimate fallback
-5. Starts a FRESH uvicorn process directly (not via systemd)
-6. Waits for the new server to pass a health check
+3. Asks the canonical systemd user service to restart
+4. Waits for the managed server to pass a health check
 
-This ensures the latest code always runs after a restart, even if
-systemd's own restart mechanism leaves zombie processes behind.
+Only systemd owns the uvicorn process. The watchdog never spawns or kills
+the web server directly, preventing duplicate listeners and restart races.
 
 Usage:
     python .kairos/watchdog.py                  # foreground
@@ -28,10 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
-import signal
-import socket
 import subprocess
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -45,9 +40,6 @@ logger = logging.getLogger("watchdog")
 # ─── Config ─────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ERROR_CONTEXT_FILE = PROJECT_ROOT / ".kairos" / "error_context.md"
-PID_FILE = PROJECT_ROOT / ".kairos" / "server.pid"
-SERVER_LOG = PROJECT_ROOT / ".kairos" / "server_stdout.log"
-SERVER_ERR_LOG = PROJECT_ROOT / ".kairos" / "server_stderr.log"
 HEALTH_URL = os.getenv("WATCHDOG_URL", "http://127.0.0.1:8000/health")
 CHECK_INTERVAL = int(os.getenv("WATCHDOG_INTERVAL", "15"))
 # Allow up to 3 minutes for first-time startup (embedding model download
@@ -63,91 +55,6 @@ MAX_RESTART_RETRIES = 3
 SERVER_STARTUP_TIMEOUT = int(os.getenv("WATCHDOG_STARTUP_TIMEOUT", "180"))
 
 # ─── Helpers ────────────────────────────────────────────────────────────
-
-UVICORN_MATCH = "uvicorn web.server:app"
-
-
-def _is_port_in_use(port: int = 8000) -> bool:
-    """Check if a TCP port is in use (IPv4)."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(1)
-            return s.connect_ex(("127.0.0.1", port)) == 0
-    except Exception:
-        return False
-
-
-def _find_server_pids() -> list[int]:
-    """Find all PIDs running uvicorn for this project."""
-    try:
-        result = subprocess.run(
-            ["pgrep", "-f", UVICORN_MATCH],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return [int(pid) for pid in result.stdout.strip().split()]
-    except Exception:
-        pass
-    return []
-
-
-def _kill_processes(pids: list[int], force: bool = False) -> None:
-    """Kill a list of PIDs, optionally with SIGKILL."""
-    sig = signal.SIGKILL if force else signal.SIGTERM
-    for pid in pids:
-        try:
-            os.kill(pid, sig)
-            logger.info("Sent %s to PID %d", "SIGKILL" if force else "SIGTERM", pid)
-        except ProcessLookupError:
-            pass  # Already dead
-        except PermissionError:
-            logger.warning("No permission to kill PID %d", pid)
-        except Exception as e:
-            logger.warning("Failed to kill PID %d: %s", pid, e)
-
-
-def _free_port(port: int = 8000) -> None:
-    """Force-free a TCP port using fuser -k."""
-    try:
-        subprocess.run(
-            ["fuser", "-k", f"{port}/tcp"],
-            capture_output=True, timeout=5,
-        )
-        logger.info("Freed port %d via fuser -k", port)
-    except FileNotFoundError:
-        logger.warning("fuser not available, skipping port force-free")
-    except Exception as e:
-        logger.warning("Failed to free port %d: %s", port, e)
-
-
-def _wait_port_free(port: int = 8000, timeout: float = 10) -> bool:
-    """Wait until the port is free, or timeout."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if not _is_port_in_use(port):
-            return True
-        time.sleep(0.5)
-    return False
-
-
-def _write_pid(pid: int) -> None:
-    """Write the server PID to a tracking file."""
-    try:
-        PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PID_FILE.write_text(str(pid))
-    except Exception as e:
-        logger.error("Failed to write PID file: %s", e)
-
-
-def _read_pid() -> int | None:
-    """Read the tracked server PID from file."""
-    try:
-        if PID_FILE.exists():
-            return int(PID_FILE.read_text().strip())
-    except (OSError, ValueError):
-        pass
-    return None
-
 
 def _health_check() -> bool:
     """Returns True if the server is healthy."""
@@ -170,42 +77,6 @@ def _wait_for_server(timeout: int = SERVER_STARTUP_TIMEOUT) -> bool:
             return True
         time.sleep(2)
     return False
-
-
-def _start_server() -> subprocess.Popen | None:
-    """Start a new uvicorn server process.
-
-    Returns the Popen object on success, None if port is blocked.
-    """
-    if _is_port_in_use(8000):
-        logger.error("Port 8000 is still in use — cannot start server")
-        return None
-
-    logger.info("Starting uvicorn server...")
-    try:
-        # Redirect stdout/stderr to log files to prevent pipe deadlocks
-        stdout_log = open(SERVER_LOG, "a")
-        stderr_log = open(SERVER_ERR_LOG, "a")
-        proc = subprocess.Popen(
-            [
-                sys.executable, "-m", "uvicorn",
-                "web.server:app",
-                "--host", "0.0.0.0",
-                "--port", "8000",
-                "--log-level", "info",
-                "--no-access-log",
-                "--timeout-graceful-shutdown", "8",
-            ],
-            cwd=PROJECT_ROOT,
-            stdout=stdout_log,
-            stderr=stderr_log,
-        )
-        _write_pid(proc.pid)
-        logger.info("Server started with PID %d", proc.pid)
-        return proc
-    except Exception as e:
-        logger.error("Failed to start server: %s", e)
-        return None
 
 
 # ─── Git + error context ────────────────────────────────────────────────
@@ -298,53 +169,36 @@ def _write_invalidation_marker() -> None:
 # ─── Core restart logic ─────────────────────────────────────────────────
 
 def kill_and_restart() -> bool:
-    """Kill ALL old uvicorn processes, free the port, start a fresh server.
+    """Restart the canonical systemd-managed web service."""
+    service = os.getenv("KAIROS_WEB_SERVICE", "k-chat.service").strip()
+    if not service:
+        logger.error("KAIROS_WEB_SERVICE must not be empty")
+        return False
 
-    Returns True if the new server is healthy, False otherwise.
-    """
-    # ── Step 1: Find all running server PIDs ────────────────────────────
-    old_pids = _find_server_pids()
-    tracked_pid = _read_pid()
-
-    # Include the tracked PID if it's not already in the list
-    if tracked_pid and tracked_pid not in old_pids:
-        try:
-            os.kill(tracked_pid, 0)  # Check if alive
-            old_pids.append(tracked_pid)
-        except OSError:
-            pass  # Already dead
-
-    if old_pids:
-        logger.info("Found %d old server process(es): %s", len(old_pids), old_pids)
-    else:
-        logger.info("No old server processes found (clean restart)")
-
-    # ── Step 2: Kill old processes (SIGTERM first, then SIGKILL) ────────
-    if old_pids:
-        logger.info("Sending SIGTERM to old processes...")
-        _kill_processes(old_pids, force=False)
-        time.sleep(1)
-
-        # Check which ones survived
-        survivors = [pid for pid in old_pids if os.path.exists(f"/proc/{pid}")]
-        if survivors:
-            logger.warning("Survivors after SIGTERM: %s — sending SIGKILL", survivors)
-            _kill_processes(survivors, force=True)
-            time.sleep(1)
-
-    # ── Step 3: Free the port if still occupied ─────────────────────────
-    if _is_port_in_use(8000):
-        logger.warning("Port 8000 still in use after kill — forcing free")
-        _free_port(8000)
-        if not _wait_port_free(8000, timeout=5):
-            logger.error("Port 8000 could not be freed after all attempts")
-            return False
-
-    # ── Step 4: Start new server ────────────────────────────────────────
     for attempt in range(1, MAX_RESTART_RETRIES + 1):
-        proc = _start_server()
-        if proc is None:
-            logger.error("Attempt %d/%d: could not start server", attempt, MAX_RESTART_RETRIES)
+        logger.info(
+            "Restarting systemd user service %s (attempt %d/%d)",
+            service,
+            attempt,
+            MAX_RESTART_RETRIES,
+        )
+        try:
+            result = subprocess.run(
+                ["systemctl", "--user", "restart", service],
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+        except Exception as exc:
+            logger.error("Could not restart %s: %s", service, exc)
+            time.sleep(2)
+            continue
+        if result.returncode != 0:
+            logger.error(
+                "systemctl restart failed for %s: %s",
+                service,
+                result.stderr.strip() or result.stdout.strip(),
+            )
             time.sleep(2)
             continue
 
@@ -352,10 +206,7 @@ def kill_and_restart() -> bool:
             logger.info("Server restarted successfully (attempt %d/%d)", attempt, MAX_RESTART_RETRIES)
             return True
 
-        logger.error("Attempt %d/%d: server started but not healthy — retrying", attempt, MAX_RESTART_RETRIES)
-        # Kill this attempt's process before retry
-        _kill_processes([proc.pid], force=True)
-        _free_port(8000)
+        logger.error("Attempt %d/%d: managed server is not healthy — retrying", attempt, MAX_RESTART_RETRIES)
         time.sleep(2)
 
     return False
@@ -384,9 +235,9 @@ def main() -> None:
     logger.info("  Project root: %s", PROJECT_ROOT)
     logger.info("=" * 50)
 
-    # If the server isn't running yet, start it
-    if not _health_check() and not _is_port_in_use(8000):
-        logger.info("No server detected on startup — starting fresh")
+    # If the server isn't healthy yet, ask its canonical service to start it.
+    if not _health_check():
+        logger.info("No healthy managed server detected on startup")
         if kill_and_restart():
             logger.info("Initial server start successful")
         else:
@@ -472,11 +323,7 @@ def main() -> None:
             logger.exception("Watchdog error: %s", e)
             time.sleep(CHECK_INTERVAL)
 
-    # Cleanup on exit
-    pids = _find_server_pids()
-    if pids:
-        logger.info("Watchdog exiting — killing %d server process(es)", len(pids))
-        _kill_processes(pids, force=True)
+    logger.info("Watchdog exited; managed web service left untouched")
 
 
 if __name__ == "__main__":
