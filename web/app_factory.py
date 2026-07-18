@@ -381,12 +381,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 logger.warning("Composition root: embedding model preload failed (non-fatal): %s", e)
 
             try:
-                importlib.import_module("src.memory.retrieval.reranker").Reranker()._load_model()
+                reranker = importlib.import_module("src.memory.retrieval.reranker").Reranker()
+                await asyncio.to_thread(reranker._load_model)
                 logger.info("Composition root: reranker preloaded ✓")
             except Exception as e:
                 logger.warning("Composition root: reranker preload failed (non-fatal): %s", e)
 
-        asyncio.create_task(_warmup_ml_models())
+        if str(getattr(cfg, "node_role", "")).strip().lower() == "secondary":
+            logger.info("Composition root: ML preload skipped on secondary node")
+        else:
+            asyncio.create_task(_warmup_ml_models())
         # ── End ML preload ──────────────────────────────────────────
 
     configured_peers = getattr(cfg, "peer_urls", "")

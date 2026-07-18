@@ -687,6 +687,10 @@ async def test_ml_preload_runs_as_create_task() -> None:
         "app_factory.py must define _warmup_ml_models as background coroutine."
     assert "asyncio.create_task(_warmup_ml_models())" in content, \
         "app_factory.py must run ML warmup as background task, not blocking startup."
+    assert 'getattr(cfg, "node_role", "")' in content, \
+        "Secondary nodes must be able to skip resource-heavy ML preload."
+    assert "await asyncio.to_thread(reranker._load_model)" in content, \
+        "Reranker preload must not block the event loop."
     # Preload must NOT block the yield (i.e., no await before yield)
     warmup_pos = content.find("_warmup_ml_models")
     yield_pos = content.find("yield")
