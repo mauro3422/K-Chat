@@ -13,9 +13,9 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 
 ## Stack
 
-- **Models:** big-pickle (default), deepseek-v4-flash-free (fallback) — OpenCode Zen API
+- **Models:** deepseek-v4-flash (default), deepseek-v4-flash-free (fallback) — OpenCode Zen API
 - **Chat:** CLI + Web dashboard (FastAPI + TypeScript frontend + Jinja2)
-- **Memory:** SQLite persistent (sessions, messages with reasoning, tool_calls with phases, debug_info)
+- **Memory:** SQLite persistente en dos capas: sesiones/recibos operativos y memoria curada/embeddings
 - **Context:** SOUL.md + MEMORY.md + AGENTS.md + TOOLS.md (auto-created and auto-generated)
 - **Frontend:** TypeScript + Vite build. 80+ TS modules under `web/src_ts/`, served via Jinja2 template (`chat_ts.html`) that loads the Vite bundle from `web/static/dist/assets/app.js`. Lightweight dependency injection (Lego blocks) — each widget, panel, and service is wired in `app.ts` (the composition root). Vendored libs only (marked, purify, htmx); zero JS framework.
 
@@ -59,7 +59,7 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 │   │   ├── loader.py       → Auto-loader (TOOL_MAP, TOOL_DEFINITIONS)
 │   │   ├── runner.py       → Parallel tool execution
 │   │   ├── rules/          → Auto-generated tool rule docs (preserves manual edits below ---)
-│   │   └── 33 tools        → Individual tools
+│   │   └── tool modules    → Individual tools, discovered automatically
 │   ├── constants.py        → Shared policy constants (MAX_TOOL_TURNS, LLM_MAX_RETRIES)
 │   ├── context/
 │   │   ├── builder.py      → System prompt builder
@@ -110,10 +110,13 @@ Kairos can take inspiration from OpenClaw ideas, but with a different priority: 
 
 ## Features
 
-### 33 Tools
+### Auto-registered tools
 - `src/tools/rules/`: Auto-generated markdown docs per tool, preserving manual usage notes below `---` separators.
 
-`analyze_code`, `delegate_to_codex`, `delete_memory`, `dependency_graph`, `edit_file`, `execute_command`, `explore_graph`, `extract_text`, `fetch_url`, `find_dead_code`, `get_tool_history`, `get_widget_code`, `git_operation`, `impact_analysis`, `list_files`, `list_memories`, `manage_memory`, `memory_search`, `move_file`, `read_file`, `read_multiple`, `read_skill`, `recall_memories`, `run_code`, `save_memory`, `save_widget`, `search_conversations`, `search_entities`, `search_files`, `update_widget`, `validate_all`, `web_search`, `write_file`. Auto-registered via `importlib` filesystem scan.
+The filesystem loader discovers tools from their modules, so the count is not
+hard-coded. The registry covers files, code analysis, Git, web access, memory,
+conversation search and widgets. `hydrate_memory_receipt` reloads a validated
+memory receipt on demand without keeping every retrieved embedding hot in context.
 
 ### Streaming with visual phases
 Each interaction is shown in sequenced phases: reasoning → tools → reasoning → tools → final response. Tools are shown as pills with spinner (calling) and checkmark (ok).
@@ -184,8 +187,11 @@ docker run -p 8000:8000 -v ./memory:/app/memory kairos
 ## Tests
 
 ```bash
-# Python (unit + integration)
-python -m pytest tests -v
+# Python incremental (required for the repository)
+python -m pytest --testmon -q
+
+# Focused test while developing a module
+python -m pytest tests/unit/test_memory_receipts.py -q --tb=short
 
 # JS (Vitest)
 npx vitest run

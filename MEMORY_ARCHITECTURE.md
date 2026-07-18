@@ -1,7 +1,7 @@
 # 🧠 K-Chat Memory Architecture — Complete Reference
 
-> **Versión:** 1.0 — Junio 2026
-> **Propósito:** Fuente de verdad única sobre el sistema de memoria de K-Chat. Arquitectura, flujos, herramientas, bugs críticos y roadmap.
+> **Versión:** 1.1 — Julio 2026
+> **Propósito:** Fuente de verdad del estado actual del sistema de memoria de Kairos. Arquitectura, flujos, almacenamiento y decisiones pendientes.
 
 ---
 
@@ -15,9 +15,9 @@ K-Chat pasó de **cero a estado actual en 10 días** (6–16 de junio de 2026). 
 
 | Capa | Tecnología | Propósito |
 |---|---|---|
-| MEMORY.md | Archivo de texto (Markdown) | Fuente de verdad legible, control de versiones |
-| memory.db | SQLite (global syncable) | Memoria estructurada, entidades, grafos |
-| sessions.db | SQLite (local por dispositivo) | Mensajes, vectores, clusters |
+| MEMORY.md | Archivo de texto (Markdown) | Registro curado y legible por humanos |
+| memory.db | SQLite (global sincronizable) | Memoria estructurada, embeddings (`vec_meta`), entidades, relaciones y clusters |
+| sessions.db | SQLite (local por dispositivo) | Sesiones, mensajes, tools, widgets, debug y recibos de memoria |
 
 ### Métricas clave
 
@@ -31,7 +31,7 @@ K-Chat pasó de **cero a estado actual en 10 días** (6–16 de junio de 2026). 
 
 ### Principios de diseño
 
-- **Dual-write**: Cada dato vive en MEMORY.md (texto) y memory.db (estructurado). Eventualmente consistente.
+- **Dual-write curado**: Las memorias guardadas explícitamente viven en MEMORY.md y memory.db. Los datos operativos de sesión permanecen en sessions.db.
 - **Inyección por presupuesto**: No se inyecta todo — se prioriza por relevancia bajo un token budget.
 - **3 señales de retrieval**: Vector (semántico) + Keyword (léxico) + Entity (gráfo). Fusión RRF.
 - **Background todo**: Vectorización, clustering, curación — todo corre post-stream, nunca bloquea al usuario.
@@ -59,7 +59,7 @@ Es la **fuente de texto** del sistema. Se escribe en paralelo con memory.db (dua
 
 ### 2.2 memory.db (Global syncable)
 
-**Path:** `~/dev/K-Chat/memory.db` (configurable via `MEMORY_DB_PATH`)
+**Path por defecto:** `memory/kairos_curated_memory.db` (configurable mediante `MEMORY_DB_PATH`; `KAIROS_MEMORY_DB_PATH` actúa como override de despliegue).
 
 **Tablas:**
 
@@ -118,14 +118,16 @@ CREATE TABLE memory_log (
 );
 ```
 
+El esquema vigente también incluye `vec_meta`, `memory_work_catalog`,
+`topic_clusters`, `entities` y `relations`. Los embeddings canónicos y sus
+metadatos viven en esta base, no en sessions.db.
+
 ---
 
 ### 2.3 sessions.db (Local per-device)
 
-**Path:** Resuelto por `get_db_path()`:
-1. `SESSIONS_DB_PATH` env var
-2. `~/.kchat/sessions.db`
-3. `./sessions.db`
+**Path por defecto:** `memory/kairos_memory.db`, configurable mediante
+`SESSIONS_DB_PATH`.
 
 **Tablas:**
 
@@ -156,48 +158,25 @@ CREATE TABLE messages (
 CREATE INDEX idx_messages_session ON messages(session_id);
 CREATE INDEX idx_messages_created ON messages(created_at);
 
--- Vectores de embeddings
-CREATE TABLE message_vectors (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-    session_id TEXT NOT NULL,
-    vector BLOB NOT NULL,
-    model TEXT NOT NULL,
-    dimensions INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- Punteros hidratables a memoria recuperada
+CREATE TABLE memory_receipts (
+    receipt_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    source_key TEXT NOT NULL,
+    item_idx INTEGER NOT NULL DEFAULT 0,
+    content_hash TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    snippet TEXT NOT NULL DEFAULT '',
+    trigger_query TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    last_used_at TEXT NOT NULL,
+    use_count INTEGER NOT NULL DEFAULT 1,
+    UNIQUE(session_id, source, source_key, item_idx)
 );
 
-CREATE INDEX idx_message_vectors_message ON message_vectors(message_id);
-CREATE INDEX idx_message_vectors_session ON message_vectors(session_id);
-
--- Clusters temáticos
-CREATE TABLE clusters (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    centroid BLOB,
-    keywords TEXT DEFAULT '[]',
-    message_count INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE cluster_members (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    cluster_id INTEGER NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
-    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-    distance REAL,
-    UNIQUE(cluster_id, message_id)
-);
-
-CREATE INDEX idx_cluster_members_cluster ON cluster_members(cluster_id);
-
--- Sesiones eliminadas (isla — ver bug #10)
-CREATE TABLE deleted_sessions (
-    id TEXT PRIMARY KEY,
-    session_data TEXT,
-    deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+CREATE INDEX idx_memory_receipts_session_used
+    ON memory_receipts(session_id, last_used_at DESC);
 ```
 
 ---
@@ -259,6 +238,17 @@ del mismo recuerdo actualiza el recibo existente con el último vector y `conten
 sin duplicar versiones calientes en el contexto. Los embeddings históricos continúan
 en `memory.db`; el recibo es un puntero consultable, no otra copia del contenido.
 
+La hidratación vuelve a resolver el contenido desde su fuente mediante dependencias
+inyectadas y valida `source`, `source_key`, `item_idx` y `content_hash` antes de
+devolverlo. Un fallo al persistir el recibo no descarta un resultado de retrieval
+válido. El presupuesto de hidratación se aplica al contenido real y lo trunca antes
+de formar la respuesta.
+
+**Retención:** los recibos se eliminan en cascada al borrar su sesión. Hoy no existe
+un TTL ni un límite independiente para recibos de una sesión activa. Definir esa
+política requiere decidir si prima antigüedad, cantidad o presupuesto por sesión;
+hasta entonces no se eliminan silenciosamente recibos que aún puedan hidratarse.
+
 ### 3.4 Session Vectorization Flow
 
 ```
@@ -272,14 +262,14 @@ chat_stream → complete → background_tasks
             │
             ├──▶ Noise filter (stop-words + short tokens)
             │
-            ├──▶ Hash dedup (primeros 4000 chars — bug #6)
+            ├──▶ Hash dedup del intercambio
             │
             ├──▶ Entity extraction (lexicon + regex)
             │
-            ├──▶ Embedding generation (sync call — bug #9)
+            ├──▶ Embedding generation
             │
             ├──▶ Store:
-            │       ├──▶ message_vectors (SQLite BLOB)
+            │       ├──▶ vec_meta + memory_work_catalog (memory.db)
             │       ├──▶ entities (si nuevas)
             │       └──▶ relations (si conecta)
             │
@@ -474,10 +464,10 @@ retrieve(query, top_k=5)
 | Aspecto | Detalle |
 |---|---|
 | **Trigger** | `background_tasks.add_task(vectorize_sessions)` post-stream |
-| **Archivo** | `src/scripts/vectorize_sessions.py` |
+| **Archivo** | `src/memory/vectorize_sessions.py` |
 | **Pipeline** | Fetch → Keywords → Noise filter → Hash dedup → Entities → Embedding → Store → Cluster |
 | **Hash dedup** | Solo primeros 4000 chars (bug #6) |
-| **Embedding** | Llamada sincrónica (bug #9) |
+| **Embedding** | FastEmbed ejecutado mediante `asyncio.to_thread()` |
 | **Entity extraction** | Inline, lexicon + regex (~50 entities) |
 
 ### 5.3 Hash Dedup
@@ -486,7 +476,7 @@ retrieve(query, top_k=5)
 
 **Funcionamiento:**
 - Calcula hash MD5 del contenido del mensaje
-- Si el hash ya existe en `message_vectors`, saltea
+- Si el hash ya existe en `memory.db:vec_meta`, saltea
 - Usa solo primeros 4000 caracteres del contenido
 
 **Bug:** Si dos mensajes difieren solo después del char 4000, uno se pierde.
@@ -539,6 +529,11 @@ retrieve(query, top_k=5)
 ---
 
 ## 7. Critical Bugs
+
+> **Archivo histórico:** esta lista conserva hallazgos de la auditoría de junio
+> de 2026 y no representa por sí sola el estado vigente. Antes de actuar sobre un
+> ítem hay que verificarlo contra el código y las pruebas actuales. Las correcciones
+> de recibos de memoria de julio están descritas en la sección 3.3.
 
 ### Bug #1 — RRF min_score=0.15 kills all hybrid results
 
@@ -701,7 +696,7 @@ retrieve(query, top_k=5)
 | `src/retrieval/entity_retriever.py` | Entity graph retrieval |
 | `src/retrieval/entity_search.py` | Entity search query builder |
 | `src/vector/store.py` | VectorStore, init/schema |
-| `src/scripts/vectorize_sessions.py` | Background vectorization |
+| `src/memory/vectorize_sessions.py` | Background vectorization |
 | `src/scripts/curate.py` | Curator LLM orchestration |
 | `src/scripts/gardener.py` | Consolidation gardener |
 | `src/scripts/tracer.py` | Pattern tracer |
@@ -714,14 +709,16 @@ retrieve(query, top_k=5)
 
 | Variable | Default | Descripción |
 |---|---|---|
-| `MEMORY_DB_PATH` | `~/dev/K-Chat/memory.db` | Ruta a memory.db |
-| `SESSIONS_DB_PATH` | `~/.kchat/sessions.db` | Ruta a sessions.db |
-| `OPENAI_API_KEY` | — | API key para LLM |
-| `OPENAI_MODEL` | `gpt-4o` | Modelo por defecto |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | Modelo de embeddings |
-| `EMBEDDING_DIMENSIONS` | `1536` | Dimensiones del vector |
+| `MEMORY_DB_PATH` | `memory/kairos_curated_memory.db` | Ruta a memory.db |
+| `KAIROS_MEMORY_DB_PATH` | — | Override de despliegue para memory.db |
+| `SESSIONS_DB_PATH` | `memory/kairos_memory.db` | Ruta a sessions.db |
+| `OPENCODE_ZEN_API_KEY` | — | API key del proveedor LLM |
+| `LLM_MODE` | `go` | Política de selección de modelo |
+| Modelo LLM efectivo | `deepseek-v4-flash` | Modelo normal; fallback `deepseek-v4-flash-free` |
+| Modelo de embeddings | `kairos/paraphrase-multilingual-MiniLM-L12-v2-cls` | Configuración interna de FastEmbed |
+| `AUTO_RETRIEVAL_ENABLED` | `true` | Activa retrieval automático |
+| `SESSION_MAX_AGE_DAYS` | `90` | Retención de sesiones completas |
 | `LOG_LEVEL` | `INFO` | Nivel de logging |
-| `VECTOR_STORE_PATH` | `~/.kchat/vectors/` | Ruta a índices ANN |
 
 ### 9.3 Tools
 
