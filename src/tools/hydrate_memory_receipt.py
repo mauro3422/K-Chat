@@ -3,15 +3,9 @@
 from __future__ import annotations
 
 import json
-import logging
-import sqlite3
-from pathlib import Path
 from typing import Any
 
-from src.memory.memory_db_path import resolve_memory_db_path
 from src.utils.async_utils import run_in_thread
-
-logger = logging.getLogger(__name__)
 
 DEFINITION: dict[str, Any] = {
     "type": "function",
@@ -45,66 +39,6 @@ DEFINITION: dict[str, Any] = {
         },
     },
 }
-
-
-def _matches_receipt(row: sqlite3.Row, receipt: dict[str, Any]) -> bool:
-    if str(row["source"] or "") != str(receipt.get("source") or ""):
-        return False
-    if str(row["source_key"] or "") != str(receipt.get("source_key") or ""):
-        return False
-    if int(row["exchange_idx"] or 0) != int(receipt.get("item_idx", 0)):
-        return False
-    expected_hash = str(receipt.get("content_hash") or "")
-    return not expected_hash or str(row["content_hash"] or "") == expected_hash
-
-
-def _load_vector_source(receipt: dict[str, Any]) -> dict[str, Any]:
-    path = Path(resolve_memory_db_path()).resolve()
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    try:
-        row = None
-        vec_rowid = receipt.get("vec_rowid")
-        if vec_rowid is not None:
-            row = conn.execute(
-                """
-                SELECT rowid, source, source_key, exchange_idx, text, metadata,
-                       created_at, content_hash
-                FROM vec_meta
-                WHERE rowid=?
-                """,
-                (int(vec_rowid),),
-            ).fetchone()
-            if row is not None and not _matches_receipt(row, receipt):
-                row = None
-        if row is None:
-            content_hash = str(receipt.get("content_hash") or "")
-            hash_clause = " AND content_hash=?" if content_hash else ""
-            parameters: tuple[Any, ...] = (
-                receipt.get("source", ""),
-                receipt.get("source_key", ""),
-                int(receipt.get("item_idx", 0)),
-            )
-            if content_hash:
-                parameters += (content_hash,)
-            row = conn.execute(
-                f"""
-                SELECT rowid, source, source_key, exchange_idx, text, metadata,
-                       created_at, content_hash
-                FROM vec_meta
-                WHERE source=? AND source_key=? AND exchange_idx=?
-                {hash_clause}
-                ORDER BY rowid DESC
-                LIMIT 1
-                """,
-                parameters,
-            ).fetchone()
-        return dict(row) if row else {}
-    except sqlite3.Error:
-        logger.info("Vector source unavailable while hydrating memory receipt", exc_info=True)
-        return {}
-    finally:
-        conn.close()
 
 
 def _message_parts(row: Any) -> tuple[str, str]:
@@ -182,11 +116,19 @@ async def run(**kwargs) -> str:
     session_id = str(kwargs.get("_session_id") or "").strip()
     repos = kwargs.get("_repos")
     receipt_repo = getattr(repos, "memory_receipts", None) if repos is not None else None
+    memory_repos = getattr(repos, "memory", None) if repos is not None else None
+    source_resolver = (
+        getattr(memory_repos, "receipt_source_resolver", None)
+        if memory_repos is not None
+        else None
+    )
 
     if not session_id:
         return "[ERROR] hydrate_memory_receipt requires the active session."
     if receipt_repo is None:
         return "[ERROR] Memory receipt repository is unavailable."
+    if source_resolver is None:
+        return "[ERROR] Memory receipt source resolver is unavailable."
     if not receipt_id and not query:
         return "[ERROR] Provide receipt_id or query."
 
@@ -202,7 +144,7 @@ async def run(**kwargs) -> str:
     if receipt is None:
         return "[ERROR] Receipt not found in the active session."
 
-    vector_source = await run_in_thread(_load_vector_source, receipt)
+    vector_source = await run_in_thread(source_resolver.load_vector_source, receipt)
     source = str(receipt.get("source") or "")
     source_key = str(receipt.get("source_key") or "")
     full_text = str(vector_source.get("text") or receipt.get("excerpt") or "")

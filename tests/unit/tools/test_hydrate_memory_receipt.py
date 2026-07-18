@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from src.memory.retrieval.receipt_source_resolver import MemoryReceiptSourceResolver
 from src.tools.hydrate_memory_receipt import (
     _format_exchange_context,
-    _load_vector_source,
     run,
 )
 
@@ -64,12 +64,9 @@ def test_load_vector_source_rejects_stale_rowid_and_validates_hash(tmp_path):
         "content_hash": "good",
     }
 
-    with patch(
-        "src.tools.hydrate_memory_receipt.resolve_memory_db_path",
-        return_value=str(db_path),
-    ):
-        loaded = _load_vector_source(receipt)
-        missing = _load_vector_source({**receipt, "content_hash": "stale"})
+    resolver = MemoryReceiptSourceResolver(str(db_path))
+    loaded = resolver.load_vector_source(receipt)
+    missing = resolver.load_vector_source({**receipt, "content_hash": "stale"})
 
     assert loaded["rowid"] == 2
     assert loaded["text"] == "correcto"
@@ -78,6 +75,7 @@ def test_load_vector_source_rejects_stale_rowid_and_validates_hash(tmp_path):
 
 @pytest.mark.anyio
 async def test_hydrate_canonical_memory_uses_full_value_and_touches_receipt():
+    load_vector_source = Mock(return_value={"text": "truncated", "metadata": "{}"})
     receipt_repo = SimpleNamespace(
         get=AsyncMock(
             return_value={
@@ -97,6 +95,9 @@ async def test_hydrate_canonical_memory_uses_full_value_and_touches_receipt():
     repos = SimpleNamespace(
         memory_receipts=receipt_repo,
         memory=SimpleNamespace(
+            receipt_source_resolver=SimpleNamespace(
+                load_vector_source=load_vector_source
+            ),
             memory_index=SimpleNamespace(
                 get=AsyncMock(return_value="Contenido canónico completo y detallado.")
             )
@@ -104,18 +105,15 @@ async def test_hydrate_canonical_memory_uses_full_value_and_touches_receipt():
         messages=SimpleNamespace(get_session_messages=AsyncMock(return_value=[])),
     )
 
-    with patch(
-        "src.tools.hydrate_memory_receipt._load_vector_source",
-        return_value={"text": "truncated", "metadata": "{}"},
-    ):
-        output = await run(
-            receipt_id="mr_123",
-            _session_id="current",
-            _repos=repos,
-        )
+    output = await run(
+        receipt_id="mr_123",
+        _session_id="current",
+        _repos=repos,
+    )
 
     assert "Contenido canónico completo y detallado." in output
     assert "originally activated by: workflow" in output
+    load_vector_source.assert_called_once()
     receipt_repo.touch_hydrated.assert_awaited_once_with("current", "mr_123")
 
 
@@ -149,19 +147,23 @@ async def test_hydrate_session_uses_indexed_exchange_window():
     )
     repos = SimpleNamespace(
         memory_receipts=receipt_repo,
+        memory=SimpleNamespace(
+            receipt_source_resolver=SimpleNamespace(
+                load_vector_source=lambda receipt: {
+                    "text": "intercambio vectorizado",
+                    "metadata": "{}",
+                }
+            )
+        ),
         messages=SimpleNamespace(get_session_exchange_window=get_window),
     )
 
-    with patch(
-        "src.tools.hydrate_memory_receipt._load_vector_source",
-        return_value={"text": "intercambio vectorizado", "metadata": "{}"},
-    ):
-        output = await run(
-            receipt_id="mr_long",
-            context_window=1,
-            _session_id="current",
-            _repos=repos,
-        )
+    output = await run(
+        receipt_id="mr_long",
+        context_window=1,
+        _session_id="current",
+        _repos=repos,
+    )
 
     get_window.assert_awaited_once_with("past-session", 505, 1)
     assert "Exchange 505 (anchor)" in output
@@ -191,7 +193,12 @@ async def test_query_returns_candidate_receipts_when_ambiguous():
             ]
         ),
     )
-    repos = SimpleNamespace(memory_receipts=receipt_repo)
+    repos = SimpleNamespace(
+        memory_receipts=receipt_repo,
+        memory=SimpleNamespace(
+            receipt_source_resolver=SimpleNamespace(load_vector_source=lambda receipt: {})
+        ),
+    )
 
     output = await run(query="memoria", _session_id="current", _repos=repos)
 

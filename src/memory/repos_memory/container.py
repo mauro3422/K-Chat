@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from src.memory.repos_memory.processing_catalog_repo import MemoryProcessingCatalogRepository
     from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
     from src.memory.retrieval.hybrid_retriever import HybridRetriever
+    from src.memory.retrieval.receipt_source_resolver import MemoryReceiptSourceResolver
     from src.memory.vector.store import VectorStore
 
 
@@ -53,6 +54,12 @@ def _build_processing_catalog(db_path: str) -> "MemoryProcessingCatalogRepositor
     return MemoryProcessingCatalogRepository(db_path)
 
 
+def _build_receipt_source_resolver(db_path: str) -> "MemoryReceiptSourceResolver":
+    from src.memory.retrieval.receipt_source_resolver import MemoryReceiptSourceResolver
+
+    return MemoryReceiptSourceResolver(db_path)
+
+
 class MemoryRepositories:
     """Container for all memory.db repositories.
 
@@ -71,6 +78,7 @@ class MemoryRepositories:
         hybrid_retriever: "HybridRetriever" | None = None,
         work_catalog: "MemoryWorkCatalogRepository" | None = None,
         processing_catalog: "MemoryProcessingCatalogRepository" | None = None,
+        receipt_source_resolver: "MemoryReceiptSourceResolver" | None = None,
     ) -> None:
         self.memory_index = memory_index or _build_global_memory_index_repository()
         self._db_path = db_path
@@ -79,6 +87,7 @@ class MemoryRepositories:
         self._hybrid_retriever = hybrid_retriever
         self._work_catalog = work_catalog
         self._processing_catalog = processing_catalog
+        self._receipt_source_resolver = receipt_source_resolver
 
     @staticmethod
     def _close_resource(resource: Any) -> None:
@@ -161,6 +170,18 @@ class MemoryRepositories:
     def processing_catalog(self, value: "MemoryProcessingCatalogRepository" | None) -> None:
         self._replace_cached_resource("_processing_catalog", value)
 
+    @property
+    def receipt_source_resolver(self) -> "MemoryReceiptSourceResolver":
+        if self._receipt_source_resolver is None:
+            self._receipt_source_resolver = _build_receipt_source_resolver(
+                self._resolve_db_path()
+            )
+        return self._receipt_source_resolver
+
+    @receipt_source_resolver.setter
+    def receipt_source_resolver(self, value: "MemoryReceiptSourceResolver" | None) -> None:
+        self._replace_cached_resource("_receipt_source_resolver", value)
+
     def close(self) -> None:
         """Close cached resources owned by this repository bundle."""
         for attr_name in (
@@ -169,6 +190,7 @@ class MemoryRepositories:
             "_hybrid_retriever",
             "_work_catalog",
             "_processing_catalog",
+            "_receipt_source_resolver",
         ):
             resource: Any = getattr(self, attr_name, None)
             try:
