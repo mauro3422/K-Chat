@@ -47,6 +47,17 @@ DEFINITION: dict[str, Any] = {
 }
 
 
+def _matches_receipt(row: sqlite3.Row, receipt: dict[str, Any]) -> bool:
+    if str(row["source"] or "") != str(receipt.get("source") or ""):
+        return False
+    if str(row["source_key"] or "") != str(receipt.get("source_key") or ""):
+        return False
+    if int(row["exchange_idx"] or 0) != int(receipt.get("item_idx", 0)):
+        return False
+    expected_hash = str(receipt.get("content_hash") or "")
+    return not expected_hash or str(row["content_hash"] or "") == expected_hash
+
+
 def _load_vector_source(receipt: dict[str, Any]) -> dict[str, Any]:
     path = Path(resolve_memory_db_path()).resolve()
     conn = sqlite3.connect(path)
@@ -64,21 +75,29 @@ def _load_vector_source(receipt: dict[str, Any]) -> dict[str, Any]:
                 """,
                 (int(vec_rowid),),
             ).fetchone()
+            if row is not None and not _matches_receipt(row, receipt):
+                row = None
         if row is None:
+            content_hash = str(receipt.get("content_hash") or "")
+            hash_clause = " AND content_hash=?" if content_hash else ""
+            parameters: tuple[Any, ...] = (
+                receipt.get("source", ""),
+                receipt.get("source_key", ""),
+                int(receipt.get("item_idx", 0)),
+            )
+            if content_hash:
+                parameters += (content_hash,)
             row = conn.execute(
-                """
+                f"""
                 SELECT rowid, source, source_key, exchange_idx, text, metadata,
                        created_at, content_hash
                 FROM vec_meta
                 WHERE source=? AND source_key=? AND exchange_idx=?
+                {hash_clause}
                 ORDER BY rowid DESC
                 LIMIT 1
                 """,
-                (
-                    receipt.get("source", ""),
-                    receipt.get("source_key", ""),
-                    int(receipt.get("item_idx", 0)),
-                ),
+                parameters,
             ).fetchone()
         return dict(row) if row else {}
     except sqlite3.Error:

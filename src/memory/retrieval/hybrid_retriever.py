@@ -315,10 +315,7 @@ class HybridRetriever:
 
         # Apply token budget if requested
         if apply_budget:
-            dicts = [r.to_dict() for r in results]
-            selected_dicts = select_by_budget(dicts, self._token_budget)
-            selected_ids = {d["rowid"] for d in selected_dicts}
-            results = [r for r in results if r.rowid in selected_ids]
+            results = self._apply_token_budget(results)
 
         # Log results for debugging quality
         if results:
@@ -332,6 +329,23 @@ class HybridRetriever:
 
         track_retrieval(self._db_path, query, len(results), "hybrid", source_filter)
         return results
+
+    def _apply_token_budget(self, results: list[HybridResult]) -> list[HybridResult]:
+        """Select results and propagate the budgeted text into returned objects."""
+
+        selected_dicts = select_by_budget(
+            [result.to_dict() for result in results],
+            self._token_budget,
+        )
+        selected_by_id = {item["rowid"]: item for item in selected_dicts}
+        selected_results: list[HybridResult] = []
+        for result in results:
+            budgeted = selected_by_id.get(result.rowid)
+            if budgeted is None:
+                continue
+            result.text = str(budgeted.get("text", result.text))
+            selected_results.append(result)
+        return selected_results
 
     def _apply_source_layer_policy(
         self,

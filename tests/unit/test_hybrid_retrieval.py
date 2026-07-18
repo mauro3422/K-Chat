@@ -15,6 +15,7 @@ from src.memory.retrieval.fusion import (
 )
 from src.memory.vector.store import compute_relevance
 from src.memory.retrieval.hybrid_retriever import HybridRetriever, HybridResult, SourceLayerPolicy
+from src.memory.retrieval.token_budget import TokenBudgetConfig
 
 
 class TestFusionRRF:
@@ -214,6 +215,27 @@ class TestSourceLayerPolicy:
 
         assert results[0].fusion_score == 0.9
         assert results[0].rank == 1
+
+    def test_token_budget_truncation_reaches_returned_results(self):
+        retriever = HybridRetriever(
+            db_path=":memory:",
+            token_budget=TokenBudgetConfig(
+                max_tokens=100,
+                max_results=5,
+                truncate_to_chars=10,
+            ),
+        )
+        result = HybridResult(
+            rowid=1,
+            text="contenido demasiado largo",
+            source="memory",
+            fusion_score=0.9,
+        )
+
+        selected = retriever._apply_token_budget([result])
+
+        assert selected == [result]
+        assert selected[0].text == "contenido "
 
     def test_hybrid_retriever_loads_approved_source_policy_by_default(self, tmp_path, monkeypatch):
         path = tmp_path / "memory" / "policies" / "retrieval_weights.json"

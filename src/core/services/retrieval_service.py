@@ -124,7 +124,14 @@ class RetrievalService:
                         build_memory_receipt(session_id, result, message_user[:1000])
                         for result in results
                     ]
-                    await self._receipt_repo.upsert_many(session_id, receipts)
+                    try:
+                        await self._receipt_repo.upsert_many(session_id, receipts)
+                    except Exception:
+                        logger.info(
+                            "Memory receipt persistence unavailable (non-fatal)",
+                            exc_info=True,
+                        )
+                        receipts = []
 
                 receipt_by_rowid = {
                     receipt.get("vec_rowid"): receipt for receipt in receipts

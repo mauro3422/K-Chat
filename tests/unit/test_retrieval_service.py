@@ -270,6 +270,44 @@ class TestRetrieve:
         assert "[mr_old]" in block
         receipt_repo.upsert_many.assert_awaited_once()
 
+    @pytest.mark.anyio
+    async def test_receipt_persistence_failure_keeps_retrieved_memory(self):
+        current = MagicMock(
+            rowid=8,
+            source="memory",
+            source_key="user:workflow",
+            item_idx=0,
+            content_hash="hash",
+            text="Contenido recuperado correctamente",
+        )
+        current.to_dict.return_value = {
+            "rowid": 8,
+            "text": current.text,
+            "source": current.source,
+            "source_key": current.source_key,
+            "score": 0.8,
+        }
+        retriever = MagicMock(
+            search=AsyncMock(return_value=[current]),
+            was_reranker_degraded=False,
+        )
+        receipt_repo = SimpleNamespace(
+            upsert_many=AsyncMock(side_effect=RuntimeError("database locked")),
+            list_recent=AsyncMock(return_value=[]),
+            count=AsyncMock(return_value=0),
+        )
+        service = RetrievalService(
+            retrieval_service=retriever,
+            receipt_repo=receipt_repo,
+        )
+
+        block, degraded = await service.retrieve("tema", session_id="current")
+
+        assert degraded is False
+        assert block is not None
+        assert "Contenido recuperado correctamente" in block
+        assert "[receipt:" not in block
+
 
 class TestRetrieveIfAllowed:
     """Unit tests for retrieve_if_allowed() — config + throttle gates."""

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import sqlite3
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.tools.hydrate_memory_receipt import _format_exchange_context, run
+from src.tools.hydrate_memory_receipt import (
+    _format_exchange_context,
+    _load_vector_source,
+    run,
+)
 
 
 def test_format_exchange_context_anchors_requested_exchange():
@@ -24,6 +29,51 @@ def test_format_exchange_context_anchors_requested_exchange():
     assert "segunda pregunta" in output
     assert "primera respuesta" in output
     assert "tercera respuesta" in output
+
+
+def test_load_vector_source_rejects_stale_rowid_and_validates_hash(tmp_path):
+    db_path = tmp_path / "memory.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE vec_meta (
+            rowid INTEGER PRIMARY KEY,
+            source TEXT,
+            source_key TEXT,
+            exchange_idx INTEGER,
+            text TEXT,
+            metadata TEXT,
+            created_at TEXT,
+            content_hash TEXT
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO vec_meta VALUES (1, 'session', 'wrong', 0, 'incorrecto', '{}', '', 'bad')"
+    )
+    conn.execute(
+        "INSERT INTO vec_meta VALUES (2, 'session', 'expected', 3, 'correcto', '{}', '', 'good')"
+    )
+    conn.commit()
+    conn.close()
+    receipt = {
+        "vec_rowid": 1,
+        "source": "session",
+        "source_key": "expected",
+        "item_idx": 3,
+        "content_hash": "good",
+    }
+
+    with patch(
+        "src.tools.hydrate_memory_receipt.resolve_memory_db_path",
+        return_value=str(db_path),
+    ):
+        loaded = _load_vector_source(receipt)
+        missing = _load_vector_source({**receipt, "content_hash": "stale"})
+
+    assert loaded["rowid"] == 2
+    assert loaded["text"] == "correcto"
+    assert missing == {}
 
 
 @pytest.mark.anyio
