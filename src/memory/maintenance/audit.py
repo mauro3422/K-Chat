@@ -342,17 +342,41 @@ def _semantic_quality_flags(key: str, value: str) -> tuple[float, set[str]]:
     flags: set[str] = set()
     score = 1.0
 
-    if len(unique_tokens) < 5 or len(text) < 40:
+    is_short_user_fact = key.startswith("user:") and len(unique_tokens) >= 3 and len(text) >= 20
+    if not is_short_user_fact and (len(unique_tokens) < 4 or len(text) < 20):
         flags.add("low_signal")
         score -= 0.35
-    if re.search(r"\b(test|smoke|probe|dummy|lorem|asdf|hola|ok)\b", f"{key} {normalized}"):
+
+    key_lower = key.lower()
+    probe_namespace = key_lower.split(":", 1)[0] in {
+        "test",
+        "stress-test",
+        "lan_field_smoke",
+        "lan_failover_drill",
+    }
+    explicit_probe_key = (
+        probe_namespace
+        or key_lower.startswith("checkpoint:stress-test")
+        or key_lower.startswith("checkpoint:test-")
+        or key_lower.startswith("estado:stress-test")
+        or key_lower.startswith("user:horario-stress-test")
+        or key_lower.startswith("user:horario-test-estres")
+        or key_lower.startswith("user:prueba-estres")
+    )
+    short_probe_value = len(text) < 120 and re.search(
+        r"\b(smoke probe|test probe|dummy|lorem|asdf)\b",
+        normalized,
+    )
+    if explicit_probe_key or short_probe_value:
         flags.add("probe")
         score -= 0.3
     vague_patterns = [
         r"\b(cosa|algo|varios|pendiente|misc|general|recordar esto)\b",
         r"\b(needs?|maybe|probably|quizas|tal vez)\b",
     ]
-    if any(re.search(pattern, normalized) for pattern in vague_patterns):
+    if (len(text) < 160 and len(unique_tokens) < 20) and any(
+        re.search(pattern, normalized) for pattern in vague_patterns
+    ):
         flags.add("vague")
         score -= 0.2
     if len(unique_tokens) >= 12 and ":" in key:

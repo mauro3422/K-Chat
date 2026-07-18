@@ -331,6 +331,63 @@ def test_memory_audit_reports_quality_warning_without_blocking_integrity(tmp_pat
     assert report["ok"] is True
 
 
+def test_memory_audit_does_not_flag_detailed_technical_history_as_probe_or_vague(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+
+    value = (
+        "2026-07-18 02:00 | Se completaron 28 tests focalizados y quedó pendiente "
+        "una mejora opcional. La implementación conserva hashes, catálogo, vectores "
+        "y trazabilidad entre ambos nodos sin inconsistencias."
+    )
+    conn = sqlite3.connect(memory_db)
+    conn.execute(
+        "INSERT INTO memory_index (key, value, updated_at) VALUES (?, ?, ?)",
+        ("fix:memory-catalog", value, "2026-07-18T02:00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    quality = run_audit(
+        sessions_db=str(sessions_db),
+        memory_db=str(memory_db),
+        root=str(tmp_path),
+    )["curated_memory_quality"]
+
+    assert quality["probe"] == 0
+    assert quality["vague"] == 0
+    assert quality["low_signal"] == 0
+
+
+def test_memory_audit_accepts_short_specific_user_fact(tmp_path):
+    sessions_db = tmp_path / "sessions.db"
+    memory_db = tmp_path / "memory.db"
+    _init_sessions_db(sessions_db)
+    _init_memory_db(memory_db)
+
+    conn = sqlite3.connect(memory_db)
+    conn.execute(
+        "INSERT INTO memory_index (key, value, updated_at) VALUES (?, ?, ?)",
+        (
+            "user:ubicacion",
+            "2026-07-18 02:00 | Tucumán, Argentina (capital).",
+            "2026-07-18T02:00:00",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    quality = run_audit(
+        sessions_db=str(sessions_db),
+        memory_db=str(memory_db),
+        root=str(tmp_path),
+    )["curated_memory_quality"]
+
+    assert quality["low_signal"] == 0
+
+
 def test_memory_audit_reports_uncataloged_memory_vectors(tmp_path):
     sessions_db = tmp_path / "sessions.db"
     memory_db = tmp_path / "memory.db"
