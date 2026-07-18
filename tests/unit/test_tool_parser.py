@@ -33,7 +33,17 @@ async def test_parse_tool_call_corrupt_json():
     assert name == "web_search"
     assert args == {}
     assert error is not None
-    assert "Missing required parameters" in error
+    assert "valid JSON object" in error
+
+
+@pytest.mark.parametrize("arguments", ["null", "[]", '"query"'])
+def test_parse_tool_call_rejects_non_object_json(arguments):
+    tc = _make_tc("web_search", arguments)
+    name, args, error = _parse_tool_call(tc, TOOL_MAP)
+
+    assert name == "web_search"
+    assert args == {}
+    assert error == "[ERROR in web_search]: Tool arguments must be a JSON object."
 
 
 @pytest.mark.anyio

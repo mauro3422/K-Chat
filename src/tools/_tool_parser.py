@@ -14,7 +14,16 @@ def _parse_tool_call(tc: Any, tool_map: dict[str, Any]) -> tuple[str, dict[str, 
         args = json.loads(raw_args) if raw_args else {}
     except (json.JSONDecodeError, TypeError) as e:
         logger.warning("tool_runner: invalid JSON in tool_call '%s' (%s): repr=%r error=%s", name, tc.id, raw_args, e)
-        args = {}
+        return name, {}, f"[ERROR in {name}]: Tool arguments must be a valid JSON object."
+
+    if not isinstance(args, dict):
+        logger.warning(
+            "tool_runner: non-object JSON arguments in tool_call '%s' (%s): repr=%r",
+            name,
+            tc.id,
+            raw_args,
+        )
+        return name, {}, f"[ERROR in {name}]: Tool arguments must be a JSON object."
 
     error = None
     if not name or name.startswith("$") or name not in tool_map:
