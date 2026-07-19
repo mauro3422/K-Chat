@@ -27,6 +27,7 @@ other parts of the system.
 | Model metadata catalog | `web/services/model_catalog.py`, `~/.local/share/opencode-delegate/model_registry.json` (or `KAIROS_MODEL_REGISTRY`) | `web/routers/pages.py`, `web/templates/chat.html` | Model selector used to show raw ids only; richer capabilities were not visible | Cached metadata helper with graceful fallback to ids |
 | Search backend bootstrap | `dependencies/manage.py`, `web/app_factory.py` | `src.tools.web_search`, app startup | SearXNG auto-start used to install dependencies implicitly on boot | Explicit install flag + graceful startup error |
 | API modules | `src/api/*` | `web/routers/*`, `web/services/*`, CLI | Domain modules are the source of truth; the package marker is empty | Split by domain contracts, not by file growth |
+| Health and diagnostics snapshots | `web/services/health_snapshot.py`, `web/services/diagnostics_snapshot.py`, `web/routers/health.py`, `web/routers/diagnostics.py` | `HealthOverviewPanel`, diagnostics page, LAN operators | Consumers can confuse the small `/health` view with the richer diagnostics envelope | Stable JSON shapes with explicit degraded behavior and contract tests |
 | Widget rendering/state | `web/src_ts/streaming/ContentHandler.ts`, `web/services/message_renderer.py`, `web/services/widget_contract.py`, `web/static/modules/widgets/contract.js`, `src.memory.repos.widget_state_repository` | browser, DB, tool outputs | Render state, widget code, and widget versions were split across Python and JS with no shared schema | Formal widget contract with version/state fields |
 | Retry / abort / timeout | `web/src_ts/core/RetryHandler.ts`, `web/src_ts/streaming/StreamOrchestrator.ts`, `web/services/chat_stream.py` | browser stream handling, server stream cleanup | Retry state used to be a singleton; now it is held by `RetryController` instances per stream | One stream lifecycle policy and isolated retry state |
 | Frontend module state | `web/src_ts/*` and the small transition surface in `web/static/*` | browser entry points, tests | Several modules rely on globals on `window` for transition support | Reduce globals to wrappers only |
@@ -204,6 +205,31 @@ do because many modules depend on them.
 
 **Current source of truth**
 - `src.api.*` domain modules are the source of truth; `src.api.__init__` is a package marker only.
+
+### 5b. Health and Diagnostics Snapshots
+
+**Shape today**
+- `GET /live` is the cheap liveness probe. It returns only `status`, `node_id`, and `role`; it is not a readiness or cluster-health signal.
+- `GET /health` returns the node-health view: `status`, `checks`, `coordination`, `memory`, `sync`, and `failover`. Its HTTP status is `200` only when the checks are healthy (with the testing-only database exception); otherwise it is `503` and its body has `status: "degraded"`.
+- `GET /api/diagnostics` returns the unified envelope. It always adds `ok: true` and contains `node`, `bridge`, `cluster`, `peer_memory`, `memory`, and the `/health`-compatible object under `health`.
+- `GET /api/diagnostics/peer` proxies only configured peers. Missing bridge, unconfigured peer, and upstream failure are reported as `503`, `404`, and `502` respectively with `ok: false`.
+
+**What must stay true**
+- `/health` and `diagnostics.health` must expose the same health field names and semantics. The diagnostics response may add context, but must not rename or reinterpret the nested health data.
+- A degraded health response is still a usable JSON snapshot. Frontend consumers must parse its body before deciding how to render it.
+- Snapshot builders must tolerate unavailable coordinators, bridges, queues, leases, and failover state. Their fallback payloads must preserve the documented keys instead of failing the endpoint.
+- Timestamps in `sync`, `memory.freshness`, and `failover` must be finite JSON numbers. Invalid, infinite, or boolean values are represented as `0.0`.
+- `key_pattern` narrows memory diagnostics only; it must be forwarded to peer-memory requests and must not alter cluster membership or health-check semantics.
+
+**Frontend consumption**
+- `HealthOverviewPanel` obtains `/health` through `ApiClient.health()`. It consumes `checks.database`, `checks.llm_provider`, coordination identity and cluster counts, memory freshness and queue size, plus failover state.
+- Labels from a snapshot are untrusted display data. The panel must escape them before assigning `innerHTML`, including fields from a `503` response.
+- The diagnostics page consumes the larger `/api/diagnostics` envelope for peer and memory comparisons. It should not use that endpoint as a substitute for the low-cost `/live` probe.
+
+**Current source of truth and tests**
+- Snapshot normalization and fallback defaults live in `web/services/health_snapshot.py`; unified composition lives in `web/services/diagnostics_snapshot.py`.
+- Router status behavior lives in `web/routers/health.py` and `web/routers/diagnostics.py`.
+- Contract coverage is in `tests/unit/test_health_snapshot.py`, `tests/unit/test_health_router.py`, `tests/unit/test_diagnostics_router.py`, and `web/src_ts/__tests__/health-overview-panel.test.ts`.
 
 ### 6. Widgets
 
