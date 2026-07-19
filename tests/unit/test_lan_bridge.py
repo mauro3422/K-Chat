@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from pathlib import Path
@@ -112,6 +113,22 @@ class _FakeClient:
     async def get(self, url: str, params: dict | None = None, headers: dict | None = None):
         self.calls.append((url, params or {}))
         return self.responses[url]
+
+
+class _ConcurrentClient(_FakeClient):
+    def __init__(self, responses: dict[str, _FakeResponse]) -> None:
+        super().__init__(responses)
+        self.active_requests = 0
+        self.max_active_requests = 0
+
+    async def get(self, url: str, params: dict | None = None, headers: dict | None = None):
+        self.active_requests += 1
+        self.max_active_requests = max(self.max_active_requests, self.active_requests)
+        try:
+            await asyncio.sleep(0.01)
+            return await super().get(url, params=params, headers=headers)
+        finally:
+            self.active_requests -= 1
 
 
 class _FailThenSuccessClient:
@@ -339,6 +356,42 @@ async def test_request_memory_snapshot_gets_peer_diagnostics() -> None:
     assert result["snapshot"]["queue_path"] == "/tmp/peer-queue.json"
     assert fake_client.calls[0][0] == "http://peer-a:8000/api/memory/diagnostics"
     assert fake_client.calls[0][1]["key_pattern"] == "user:*"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("method_name", "path", "result_key"),
+    [
+        ("request_peer_memory_snapshots", "/api/memory/diagnostics", "snapshots"),
+        ("request_peer_states", "/api/node/state", "states"),
+    ],
+)
+async def test_peer_snapshot_requests_run_concurrently_and_preserve_peer_order(
+    method_name: str,
+    path: str,
+    result_key: str,
+) -> None:
+    peers = "http://peer-a:8000, http://peer-b:8000"
+    cfg = _config(peers)
+    responses = {
+        f"http://peer-a:8000{path}": _FakeResponse({"node_id": "peer-a"}),
+        f"http://peer-b:8000{path}": _FakeResponse({"node_id": "peer-b"}),
+    }
+    client = _ConcurrentClient(responses)
+    bridge = NodeLanBridge(
+        cfg,
+        NodeCoordinator(cfg),
+        client_factory=lambda: client,
+        request_signer=_request_signer(),
+    )
+
+    result = await getattr(bridge, method_name)()
+
+    assert client.max_active_requests == 2
+    assert [item["peer_url"] for item in result[result_key]] == [
+        "http://peer-a:8000",
+        "http://peer-b:8000",
+    ]
 
 
 @pytest.mark.anyio

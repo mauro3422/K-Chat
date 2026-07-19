@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -324,18 +325,21 @@ class NodeLanBridge:
 
         result: dict[str, Any] = {"ok": True, "peers": self.peer_urls, "snapshots": [], "errors": []}
         async with self._client_factory() as client:
-            for peer in peers:
-                try:
-                    response = await self._request_with_retry(client, "get", f"{peer}/api/memory/diagnostics", params={"key_pattern": key_pattern})
-                    data = self._response_json(response)
-                    if not isinstance(data, dict):
-                        result["errors"].append({"peer": peer, "error": "invalid response"})
-                        continue
-                    enriched = dict(data)
-                    enriched.setdefault("peer_url", peer)
-                    result["snapshots"].append(enriched)
-                except Exception as exc:
-                    result["errors"].append({"peer": peer, "error": str(exc)})
+            responses = await self._request_all_peers(
+                client,
+                peers,
+                "/api/memory/diagnostics",
+                params={"key_pattern": key_pattern},
+            )
+        for peer, data, error in responses:
+            if error is not None:
+                result["errors"].append({"peer": peer, "error": error})
+            elif data is None:
+                result["errors"].append({"peer": peer, "error": "invalid response"})
+            else:
+                enriched = dict(data)
+                enriched.setdefault("peer_url", peer)
+                result["snapshots"].append(enriched)
         return result
 
     async def request_session_directory(self, *, limit: int = 50) -> dict[str, Any]:
@@ -391,20 +395,38 @@ class NodeLanBridge:
 
         result: dict[str, Any] = {"ok": True, "peers": self.peer_urls, "states": [], "errors": []}
         async with self._client_factory() as client:
-            for peer in peers:
-                try:
-                    response = await self._request_with_retry(client, "get", f"{peer}/api/node/state")
-                    data = self._response_json(response)
-                    if not isinstance(data, dict):
-                        result["errors"].append({"peer": peer, "error": "invalid response"})
-                        continue
-                    enriched = dict(data)
-                    enriched.setdefault("source_url", peer)
-                    enriched.setdefault("peer_url", peer)
-                    result["states"].append(enriched)
-                except Exception as exc:
-                    result["errors"].append({"peer": peer, "error": str(exc)})
+            responses = await self._request_all_peers(client, peers, "/api/node/state")
+        for peer, data, error in responses:
+            if error is not None:
+                result["errors"].append({"peer": peer, "error": error})
+            elif data is None:
+                result["errors"].append({"peer": peer, "error": "invalid response"})
+            else:
+                enriched = dict(data)
+                enriched.setdefault("source_url", peer)
+                enriched.setdefault("peer_url", peer)
+                result["states"].append(enriched)
         return result
+
+    async def _request_all_peers(
+        self,
+        client: Any,
+        peers: list[str],
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> list[tuple[str, dict[str, Any] | None, str | None]]:
+        """Request one endpoint from every peer concurrently, preserving peer order."""
+
+        async def _request_peer(peer: str) -> tuple[str, dict[str, Any] | None, str | None]:
+            try:
+                response = await self._request_with_retry(client, "get", f"{peer}{path}", params=params)
+                data = self._response_json(response)
+                return peer, data if isinstance(data, dict) else None, None
+            except Exception as exc:
+                return peer, None, str(exc)
+
+        return await asyncio.gather(*(_request_peer(peer) for peer in peers))
 
     async def replay_pending_memory_writes(self) -> list[dict[str, str]]:
         """Replay queued writes against the first reachable primary peer."""
