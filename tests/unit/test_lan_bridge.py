@@ -395,6 +395,33 @@ async def test_peer_snapshot_requests_run_concurrently_and_preserve_peer_order(
 
 
 @pytest.mark.anyio
+async def test_peer_snapshot_requests_respect_configured_concurrency_limit() -> None:
+    peers = "http://peer-a:8000, http://peer-b:8000, http://peer-c:8000"
+    cfg = _config(peers)
+    cfg.lan_snapshot_max_concurrency = 2
+    responses = {
+        f"http://peer-{peer}:8000/api/node/state": _FakeResponse({"node_id": f"peer-{peer}"})
+        for peer in ("a", "b", "c")
+    }
+    client = _ConcurrentClient(responses)
+    bridge = NodeLanBridge(
+        cfg,
+        NodeCoordinator(cfg),
+        client_factory=lambda: client,
+        request_signer=_request_signer(),
+    )
+
+    result = await bridge.request_peer_states()
+
+    assert client.max_active_requests == 2
+    assert [item["peer_url"] for item in result["states"]] == [
+        "http://peer-a:8000",
+        "http://peer-b:8000",
+        "http://peer-c:8000",
+    ]
+
+
+@pytest.mark.anyio
 async def test_request_session_directory_marks_peer_rows_as_remote() -> None:
     cfg = SimpleNamespace(
         host="127.0.0.1",

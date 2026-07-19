@@ -86,6 +86,7 @@ class TestLoadConfig:
         monkeypatch.setenv("KAIROS_LAN_AUTH_NONCE_CAPACITY", "2048")
         monkeypatch.setenv("KAIROS_LAN_AUTH_MAX_BODY_BYTES", "1048576")
         monkeypatch.setenv("KAIROS_LAN_AUTH_ALLOW_LOOPBACK", "true")
+        monkeypatch.setenv("KAIROS_LAN_SNAPSHOT_MAX_CONCURRENCY", "2")
 
         cfg = load_config()
 
@@ -95,6 +96,7 @@ class TestLoadConfig:
         assert cfg.lan_auth_nonce_capacity == 2048
         assert cfg.lan_auth_max_body_bytes == 1048576
         assert cfg.lan_auth_allow_loopback is True
+        assert cfg.lan_snapshot_max_concurrency == 2
 
     @pytest.mark.anyio
     async def test_env_fallback_key(self, monkeypatch):

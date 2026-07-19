@@ -417,10 +417,13 @@ class NodeLanBridge:
         params: dict[str, Any] | None = None,
     ) -> list[tuple[str, dict[str, Any] | None, str | None]]:
         """Request one endpoint from every peer concurrently, preserving peer order."""
+        concurrency = max(1, int(getattr(self._config, "lan_snapshot_max_concurrency", 4)))
+        semaphore = asyncio.Semaphore(concurrency)
 
         async def _request_peer(peer: str) -> tuple[str, dict[str, Any] | None, str | None]:
             try:
-                response = await self._request_with_retry(client, "get", f"{peer}{path}", params=params)
+                async with semaphore:
+                    response = await self._request_with_retry(client, "get", f"{peer}{path}", params=params)
                 data = self._response_json(response)
                 return peer, data if isinstance(data, dict) else None, None
             except Exception as exc:
