@@ -180,6 +180,7 @@ def learn_from_text(text: str) -> None:
                     _LEARNED_COUNT_SINCE_SAVE += 1
                     if _LEARNED_COUNT_SINCE_SAVE >= 10:
                         snapshot_to_save = _snapshot_learned_entities()
+                        _LEARNED_COUNT_SINCE_SAVE = 0
 
     if snapshot_to_save is not None:
         _persist_learned_entities(snapshot_to_save)

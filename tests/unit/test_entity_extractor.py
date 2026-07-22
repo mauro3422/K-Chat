@@ -47,3 +47,21 @@ def test_learn_from_text_persists_tenth_entity_without_deadlock(tmp_path, monkey
     assert persisted["freq"] == {
         f"novelentity{index}": 3 for index in range(10)
     }
+
+
+def test_learn_from_text_batches_persistence_after_tenth_entity(monkeypatch):
+    monkeypatch.setattr(extractor, "_LEARNED_ENTITIES", defaultdict(set))
+    monkeypatch.setattr(extractor, "_CANDIDATE_FREQ", {})
+    monkeypatch.setattr(extractor, "_LEARNED_COUNT_SINCE_SAVE", 0)
+    persisted: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        extractor,
+        "_persist_learned_entities",
+        lambda data, filepath=None: persisted.append(data),
+    )
+
+    for index in range(11):
+        entity = f"BatchEntity{index}"
+        extractor.learn_from_text(f"{entity} {entity} {entity}")
+
+    assert len(persisted) == 1
