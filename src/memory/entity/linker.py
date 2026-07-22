@@ -11,7 +11,7 @@ import re
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from src.memory.entity.extractor import canonical_name
@@ -121,7 +121,7 @@ class EntityLinker:
           - If new: create relation with type "co_occurrence"
         """
         if not timestamp:
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = datetime.now(timezone.utc).isoformat()
 
         linked: list[tuple[str, str]] = []
         for entity_type, name, _score in entities:
@@ -240,6 +240,13 @@ async def flush_entities_to_db(
                     """
                     INSERT INTO entities (id, name, normalized_name, entity_type, metadata, first_seen, last_seen, mention_count, origin_node_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name             = excluded.name,
+                        normalized_name  = excluded.normalized_name,
+                        last_seen        = excluded.last_seen,
+                        mention_count    = excluded.mention_count,
+                        metadata         = excluded.metadata,
+                        origin_node_id   = excluded.origin_node_id
                     ON CONFLICT(normalized_name, entity_type) DO UPDATE SET
                         last_seen       = excluded.last_seen,
                         mention_count   = excluded.mention_count,
@@ -263,6 +270,12 @@ async def flush_entities_to_db(
                     """
                     INSERT INTO entities (id, name, normalized_name, entity_type, metadata, first_seen, last_seen, mention_count)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name            = excluded.name,
+                        normalized_name = excluded.normalized_name,
+                        last_seen       = excluded.last_seen,
+                        mention_count   = excluded.mention_count,
+                        metadata        = excluded.metadata
                     ON CONFLICT(normalized_name, entity_type) DO UPDATE SET
                         last_seen     = excluded.last_seen,
                         mention_count = excluded.mention_count,

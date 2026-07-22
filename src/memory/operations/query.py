@@ -91,9 +91,21 @@ async def _memory_stats(repos: Any = None) -> str:
         try:
             cluster_count = conn.execute("SELECT COUNT(*) FROM topic_clusters").fetchone()[0]
             rel_count = conn.execute("SELECT COUNT(*) FROM topic_relations").fetchone()[0]
+            catalog_statuses = {
+                str(row[0]): int(row[1])
+                for row in conn.execute(
+                    "SELECT status, COUNT(*) FROM memory_work_catalog GROUP BY status"
+                ).fetchall()
+            }
         except sqlite3.OperationalError:
             cluster_count = 0
             rel_count = 0
+            catalog_statuses = {}
+
+    pending_work = catalog_statuses.get("pending", 0)
+    catalog_summary = ", ".join(
+        f"{status}={count}" for status, count in sorted(catalog_statuses.items())
+    ) or "no disponible"
 
     lines = [
         "MEMORY SYSTEM STATS",
@@ -103,6 +115,7 @@ async def _memory_stats(repos: Any = None) -> str:
         f"Memory DB: {mem_count} entradas",
         f"Vector Store: {vec_total} total ({vec_mem} memoria, {vec_ses} sesiones)",
         f"Clusters: {cluster_count} | Relaciones: {rel_count}",
+        f"Work catalog: pendientes={pending_work} | {catalog_summary}",
         "",
         "Comandos: stats | reindex | reindex_sessions | clusters | topics",
         "         compare | repair | sync | find | export",

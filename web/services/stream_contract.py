@@ -5,7 +5,16 @@ from __future__ import annotations
 import json
 from typing import Any
 
-STREAM_EVENT_TYPES = frozenset({"heartbeat", "content", "reasoning", "tool_call", "error", "memory", "notification"})
+STREAM_EVENT_TYPES = frozenset({
+    "heartbeat",
+    "content",
+    "reasoning",
+    "tool_call",
+    "error",
+    "memory",
+    "notification",
+    "retry",
+})
 
 
 def build_stream_event(event_type: str, data: Any) -> dict[str, Any]:

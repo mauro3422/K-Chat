@@ -56,7 +56,15 @@ describe('StreamOrchestrator retry prompt', () => {
     retryController.count = 1;
 
     const orchestrator = makeOrchestrator(retryController);
-    const handleChatSend = vi.fn(async () => {});
+    const handleChatSend = vi.fn(async (text: string) => {
+      expect(text).toBe('Mensaje original');
+      expect((orchestrator as any)._retryRequest).toEqual({
+        resume: true,
+        errorType: 'timeout',
+        errorMessage: 'La respuesta tardó demasiado',
+        retryCount: 2,
+      });
+    });
     const abort = vi.fn(() => {
       retryController.resetRetryCount();
     });
@@ -71,17 +79,21 @@ describe('StreamOrchestrator retry prompt', () => {
 
     expect(abort).toHaveBeenCalledOnce();
     expect(handleChatSend).toHaveBeenCalledOnce();
-    const retryPrompt = ((handleChatSend.mock.calls[0] as unknown) as [string, string | undefined, number | undefined])[0];
-    expect(retryPrompt).toContain('Retry attempt 2/3');
-    expect(retryPrompt).toContain('timeout');
-    expect(retryPrompt).toContain('Mensaje original');
   });
 
   it('falls back to the first retry attempt when the counter has been cleared', async () => {
     const retryController = new RetryController();
 
     const orchestrator = makeOrchestrator(retryController);
-    const handleChatSend = vi.fn(async () => {});
+    const handleChatSend = vi.fn(async (text: string) => {
+      expect(text).toBe('Mensaje original');
+      expect((orchestrator as any)._retryRequest).toEqual({
+        resume: true,
+        errorType: 'rate_limit',
+        errorMessage: 'límite alcanzado',
+        retryCount: 1,
+      });
+    });
 
     (orchestrator as any).handleChatSend = handleChatSend;
     (orchestrator as any)._lastError = { type: 'rate_limit', message: 'límite alcanzado' };
@@ -91,8 +103,40 @@ describe('StreamOrchestrator retry prompt', () => {
 
     await orchestrator.handleRetry('Mensaje original', 'gpt-4');
 
-    const retryPrompt = ((handleChatSend.mock.calls[0] as unknown) as [string, string | undefined, number | undefined])[0];
-    expect(retryPrompt).toContain('Retry attempt 1/3');
-    expect(retryPrompt).toContain('rate_limit');
+  });
+
+  it('reuses the preserved bubble and keeps prior phases after the retry delay', async () => {
+    const retryController = new RetryController();
+    const orchestrator = makeOrchestrator(retryController);
+    const assistantEl = document.createElement('article');
+    const priorPhase = document.createElement('div');
+    priorPhase.className = 'msg-body';
+    priorPhase.dataset.phase = '3';
+    priorPhase.textContent = 'Trabajo ya completado';
+    assistantEl.appendChild(priorPhase);
+    retryController.showRetryCheckpoint({
+      assistantEl,
+      attempt: 1,
+      reason: 'provider desconectado',
+      state: 'waiting',
+    });
+
+    (orchestrator as any)._lastError = {
+      type: 'network',
+      message: 'provider desconectado',
+    };
+    (orchestrator as any)._retryBubbleEl = assistantEl;
+    (orchestrator as any).lastAssistantMsgEl = null;
+    (orchestrator as any).abort = vi.fn();
+    (orchestrator as any).handleChatSend = vi.fn(async () => {
+      expect((orchestrator as any).lastAssistantMsgEl).toBe(assistantEl);
+      expect(assistantEl.querySelector('[data-phase="3"]')?.textContent)
+        .toBe('Trabajo ya completado');
+      expect(assistantEl.querySelector('.retry-checkpoint--active')).not.toBeNull();
+    });
+
+    await orchestrator.handleRetry('Mensaje original', 'gpt-4', 1);
+
+    expect((orchestrator as any).handleChatSend).toHaveBeenCalledOnce();
   });
 });

@@ -53,6 +53,7 @@ def _make_mock_repos():
     repos = MagicMock()
     repos.sessions.ensure = AsyncMock()
     repos.messages.save_record = AsyncMock()
+    repos.stream_checkpoints = None
     return repos
 
 
@@ -108,6 +109,60 @@ async def test_chat_success(mock_build_gen, mock_rebuild, mock_get_repos, mock_d
         is request.app.state.session_artifact_coordinator
     )
     mock_default.assert_not_called()  # model was provided
+
+
+@patch("web.routers.chat.get_default_model", return_value="fallback-model")
+@patch("web.routers.chat.get_repos")
+@patch("web.routers.chat.rebuild_history", new_callable=AsyncMock)
+@patch("web.routers.chat.build_stream_generator")
+@pytest.mark.anyio
+async def test_chat_resume_uses_checkpoint_without_new_user_message(
+    mock_build_gen,
+    mock_rebuild,
+    mock_get_repos,
+    mock_default,
+):
+    repos = _make_mock_repos()
+    repos.stream_checkpoints = MagicMock()
+    repos.stream_checkpoints.get = AsyncMock(return_value={
+        "original_message": "pedido original",
+        "history_json": json.dumps([
+            {"role": "user", "content": "pedido original"},
+            {"role": "tool", "content": "resultado confirmado", "tool_call_id": "c1"},
+        ]),
+        "partial_content": "avance",
+        "partial_reasoning": "análisis",
+        "error_type": "network",
+        "error_message": "connection lost",
+        "retry_count": 1,
+    })
+    mock_get_repos.return_value = repos
+    request = _make_request()
+
+    async def fake_gen():
+        yield '{"t":"content","d":"continuación"}\n'
+
+    mock_build_gen.return_value = fake_gen
+    result = await chat(
+        "s1",
+        request,
+        BackgroundTasks(),
+        message="pedido original",
+        resume=True,
+        retry_error_type="network",
+        retry_error_message="connection lost",
+        retry_count=2,
+        model="my-model",
+        files=[],
+    )
+
+    assert isinstance(result, StreamingResponse)
+    repos.messages.save_record.assert_not_called()
+    mock_rebuild.assert_not_called()
+    call = mock_build_gen.call_args
+    assert "Continue from the last confirmed checkpoint" in call.args[1]
+    assert call.args[2][-1]["content"] == "avance"
+    assert call.kwargs["deps"].original_message == "pedido original"
 
 
 @patch("web.routers.chat.get_default_model", return_value="fallback-model")

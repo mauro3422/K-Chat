@@ -43,10 +43,12 @@ describe('MemoryStatusPanel', () => {
   it('refreshes from api client', async () => {
     const memoryDiagnostics = vi.fn().mockResolvedValue({
       json: async () => ({
-        queue_size: 0,
-        queue_path: '',
-        memory: { revision: 0, sync: 0, is_fresh: true },
-        compare_summary: { severity: 'clean', actions: [], counts: {}, has_conflicts: false },
+        memory: {
+          queue_size: 0,
+          queue_path: '',
+          memory: { revision: 0, sync: 0, is_fresh: true },
+          compare_summary: { severity: 'clean', actions: [], counts: {}, has_conflicts: false },
+        },
       }),
     });
     const apiClient = {

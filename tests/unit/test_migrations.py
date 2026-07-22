@@ -20,6 +20,7 @@ from src.memory.migrations import (
     _migration_019_memory_index_weight,
     _migration_022_add_session_favorite,
     _migration_026_memory_receipts,
+    _migration_027_stream_checkpoints,
     MIGRATIONS,
 )
 from src.memory.sqlite_engine import SQLiteEngine
@@ -254,4 +255,5 @@ class TestMigrationRegistry:
 
     @pytest.mark.anyio
     async def test_migration_count(self):
-        assert len(MIGRATIONS) == 26
+        assert len(MIGRATIONS) == 27
+        assert MIGRATIONS[-1] is _migration_027_stream_checkpoints

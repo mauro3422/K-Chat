@@ -58,6 +58,7 @@ class HybridResult:
             "item_idx": self.item_idx,
             "content_hash": self.content_hash,
             "score": self.fusion_score,
+            "relevance_score": self.relevance_score,
             "entities": self.entities,
         }
 
@@ -261,6 +262,7 @@ class HybridRetriever:
                 source_key=hd["source_key"],
                 item_idx=hd.get("item_idx", 0),
                 content_hash=hd.get("content_hash", ""),
+                relevance_score=float(hd.get("relevance_score", 0.5)),
                 vector_score=vec_dict.get(rowid, 0.0),
                 keyword_score=kw_dict.get(rowid, 0.0),
                 entity_score=ent_dict.get(rowid, 0.0),
@@ -279,6 +281,19 @@ class HybridRetriever:
                 score_map = {d["rowid"]: d["score"] for d in reranked_dicts}
                 for r in results:
                     r.fusion_score = score_map.get(r.rowid, r.fusion_score)
+                reranker_scores = [
+                    float(item["reranker_score"])
+                    for item in reranked_dicts
+                    if "reranker_score" in item
+                ]
+                best_reranker_score = max(reranker_scores, default=0.0)
+                if best_reranker_score >= 0.05:
+                    cutoff = max(0.05, best_reranker_score * 0.10)
+                    results = [
+                        result
+                        for result in results
+                        if float(score_map.get(result.rowid, 0.0)) >= cutoff
+                    ]
                 results.sort(key=lambda x: x.fusion_score, reverse=True)
             except Exception as e:
                 logger.warning("Reranker failed (non-fatal), using original results: %s", e)
@@ -303,7 +318,7 @@ class HybridRetriever:
                         max_pr = max(graph.pagerank(ent) for ent in mentioned_entities)
                         max_auth = max(graph.authority_score(ent) for ent in mentioned_entities)
                         boost = (0.15 * max_pr) + (0.10 * max_auth)
-                        r.fusion_score += boost
+                        r.fusion_score = min(1.0, r.fusion_score + boost)
 
                 results.sort(key=lambda x: x.fusion_score, reverse=True)
                 for r_rank, r in enumerate(results, 1):

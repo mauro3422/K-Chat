@@ -4,17 +4,22 @@ import logging
 import math
 import sqlite3
 import json
+import hashlib
 from typing import Any
 
 from src.memory.analysis.corpus import STOP
+from src.memory.keywords.extractor import STOPWORDS as KEYWORD_STOPWORDS
 from src.memory.memory_db_path import resolve_memory_db_path
 
 logger = logging.getLogger(__name__)
 
 
-SPANISH_STOPWORDS = {
+SPANISH_STOPWORDS = set(KEYWORD_STOPWORDS) | {
     "para", "como", "con", "los", "las", "este", "esta", "estos", "estas", "una", "uno",
-    "unos", "unas", "del", "al", "por", "que", "hacer", "sistema", "usar", "hablemos", "como"
+    "unos", "unas", "del", "al", "por", "que", "hacer", "sistema", "usar", "hablemos", "como",
+    "tenga", "tengas", "tengan", "tenía", "tenia", "quiere", "quiero", "quieres",
+    "queremos", "pueden", "podemos", "ningún", "ningun", "ninguna", "quién", "quien",
+    "vuelve", "volver", "guarda", "mundo", "loco",
 }
 
 
@@ -102,6 +107,7 @@ def calculate_pmi_for_session(
     word_idf: dict[str, float] | None = None,
     max_idf: float = 2.0,
     stem_map: dict[str, str] | None = None,
+    allowed_terms: set[str] | None = None,
     # Legacy params — kept for API compat, ignored
     global_df: dict[str, int] | None = None,
     total_sessions: int = 1,
@@ -151,6 +157,8 @@ def calculate_pmi_for_session(
                     stem = effective_map.get(t, t)
                 else:
                     stem = stem_spanish(t)
+                if allowed_terms is not None and stem not in allowed_terms:
+                    continue
                 tokens.append(stem)
 
         if tokens:
@@ -205,12 +213,12 @@ def calculate_pmi_for_session(
 
             proposed_relations.append((a, b, weight))
 
-    # Debug log
-    with open("/tmp/pmi_debug.log", "a") as f:
-        f.write(
-            f"Tokens: {sum(len(w) for w in session_windows)}, "
-            f"Windows: {total_windows}, Relations: {len(proposed_relations)}\n"
-        )
+    logger.debug(
+        "PMI tokens=%s windows=%s relations=%s",
+        sum(len(window) for window in session_windows),
+        total_windows,
+        len(proposed_relations),
+    )
 
     return proposed_relations, candidate_pairs
 
@@ -232,35 +240,101 @@ def persist_pmi_relations(db_path: str, relations: list[tuple[str, str, float]])
     try:
         import datetime
         now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        entity_columns = {
+            str(row[1]) for row in cursor.execute("PRAGMA table_info(entities)").fetchall()
+        }
+        has_normalized_name = "normalized_name" in entity_columns
+        has_curated_relations = cursor.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='memory_curated_relations'"""
+        ).fetchone() is not None
         for a, b, weight in relations:
+            if has_curated_relations:
+                protected_anchor = False
+                for term in (a, b):
+                    typed_row = cursor.execute(
+                        """SELECT id, entity_type FROM entities
+                           WHERE lower(name) = lower(?)
+                           ORDER BY CASE WHEN entity_type = 'concept' THEN 1 ELSE 0 END,
+                                    mention_count DESC
+                           LIMIT 1""",
+                        (term,),
+                    ).fetchone()
+                    if (
+                        typed_row
+                        and str(typed_row[1]).casefold() != "concept"
+                        and cursor.execute(
+                            """SELECT 1 FROM memory_curated_relations
+                               WHERE source_id = ? OR target_id = ?
+                               LIMIT 1""",
+                            (typed_row[0], typed_row[0]),
+                        ).fetchone()
+                    ):
+                        protected_anchor = True
+                        break
+                if protected_anchor:
+                    continue
+
             # 1. Ensure entities exist in entities table
-            cursor.execute("SELECT id FROM entities WHERE name = ?", (a,))
+            cursor.execute(
+                """SELECT id FROM entities
+                   WHERE lower(name) = lower(?)
+                   ORDER BY CASE WHEN entity_type = 'concept' THEN 1 ELSE 0 END,
+                            mention_count DESC
+                   LIMIT 1""",
+                (a,),
+            )
             row_a = cursor.fetchone()
             if not row_a:
-                id_a = f"pmi_{a}"
+                id_a = _concept_entity_id(a)
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO entities (id, name, entity_type, first_seen, last_seen)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO entities (
+                        id, name, entity_type, first_seen, last_seen, mention_count
+                    )
+                    VALUES (?, ?, ?, ?, ?, 1)
                     """,
                     (id_a, a, "concept", now_str, now_str)
                 )
             else:
                 id_a = row_a[0]
+            if has_normalized_name:
+                cursor.execute(
+                    """UPDATE OR IGNORE entities
+                       SET normalized_name = lower(name)
+                       WHERE id = ? AND (normalized_name IS NULL OR normalized_name = '')""",
+                    (id_a,),
+                )
 
-            cursor.execute("SELECT id FROM entities WHERE name = ?", (b,))
+            cursor.execute(
+                """SELECT id FROM entities
+                   WHERE lower(name) = lower(?)
+                   ORDER BY CASE WHEN entity_type = 'concept' THEN 1 ELSE 0 END,
+                            mention_count DESC
+                   LIMIT 1""",
+                (b,),
+            )
             row_b = cursor.fetchone()
             if not row_b:
-                id_b = f"pmi_{b}"
+                id_b = _concept_entity_id(b)
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO entities (id, name, entity_type, first_seen, last_seen)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO entities (
+                        id, name, entity_type, first_seen, last_seen, mention_count
+                    )
+                    VALUES (?, ?, ?, ?, ?, 1)
                     """,
                     (id_b, b, "concept", now_str, now_str)
                 )
             else:
                 id_b = row_b[0]
+            if has_normalized_name:
+                cursor.execute(
+                    """UPDATE OR IGNORE entities
+                       SET normalized_name = lower(name)
+                       WHERE id = ? AND (normalized_name IS NULL OR normalized_name = '')""",
+                    (id_b,),
+                )
 
             # 2. Insert or update relation (undirected, so sort IDs to avoid duplicates)
             src_id, tgt_id = sorted([id_a, id_b])
@@ -295,6 +369,17 @@ def persist_pmi_relations(db_path: str, relations: list[tuple[str, str, float]])
                     (src_id, tgt_id, relation_type, weight, now_str, now_str),
                 )
             written += 1
+        cursor.execute(
+            """UPDATE entities
+               SET mention_count = MAX(
+                   1,
+                   (
+                       SELECT COUNT(*) FROM entity_relations er
+                       WHERE er.source_id = entities.id OR er.target_id = entities.id
+                   )
+               )
+               WHERE id LIKE 'entity:concept:%'"""
+        )
         conn.commit()
     except Exception as exc:
         logger.error("Failed to persist PMI relations: %s", exc)
@@ -303,3 +388,8 @@ def persist_pmi_relations(db_path: str, relations: list[tuple[str, str, float]])
         conn.close()
 
     return written
+
+
+def _concept_entity_id(name: str) -> str:
+    digest = hashlib.sha256(name.strip().casefold().encode("utf-8")).hexdigest()[:24]
+    return f"entity:concept:{digest}"

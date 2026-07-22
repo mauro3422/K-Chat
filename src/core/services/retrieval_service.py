@@ -27,6 +27,7 @@ class RetrievalService:
     RETRIEVAL_INTERVAL = 1  # inject on every user message
     MAX_SESSIONS = 1000
     MAX_CACHE_SIZE = 50  # LRU cache for retrieval results
+    MAX_LEDGER_RECEIPTS = 8
 
     def __init__(
         self,
@@ -185,7 +186,7 @@ class RetrievalService:
         try:
             recent = await self._receipt_repo.list_recent(
                 session_id,
-                limit=20,
+                limit=self.MAX_LEDGER_RECEIPTS,
                 exclude_ids=exclude_ids,
             )
             total = await self._receipt_repo.count(session_id)

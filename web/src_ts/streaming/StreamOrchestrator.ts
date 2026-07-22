@@ -16,6 +16,7 @@ import { getLogger } from '../core/infra/LoggerFactory';
 import { ILogger } from '../core/infra/Logger';
 import { C } from '../core/infra/DomContracts';
 import { IEventBus } from '../types/events';
+import type { RetryRequest } from '../types/api';
 
 export { type StreamHandlerContext } from './ContentHandler';
 
@@ -29,7 +30,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   private _streamGuard = false;
   private _lastStartMs = 0;
   private _streamTimeout: number | null = null;
-  private readonly STREAM_TIMEOUT_MS = 120000;
+  private readonly STREAM_TIMEOUT_MS = 300000;
   private _pendingTimeout = false;
   private _hasReasoning = false;
   private _hasToolCalls = false;
@@ -44,7 +45,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   private contentHandler: ContentHandler | null = null;
   private _isRetry = false;
   private _lastError: { type: string; message: string } | null = null;
+  private _retryRequest: RetryRequest | undefined;
   private _savedErrorEl: HTMLElement | null = null;
+  private _retryBubbleEl: HTMLElement | null = null;
   private _retryOnCooldownExpiry: boolean = false;
   private _rlTickHandler: ((data: { remainingSec: number }) => void) | null = null;
   private _rlExpiryHandler: (() => void) | null = null;
@@ -175,6 +178,28 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       this._resetTimeout();
     });
     dispatcher.on('memory', () => this._resetTimeout());
+    dispatcher.on('retry', (data) => {
+      let retryData: {
+        attempt?: number;
+        max_retries?: number;
+        error_message?: string;
+        error_type?: string;
+      } = {};
+      try {
+        retryData = JSON.parse(data);
+      } catch {
+        retryData.error_message = data;
+      }
+      this.retryController?.showRetryCheckpoint({
+        assistantEl,
+        attempt: retryData.attempt ?? 1,
+        maxRetries: retryData.max_retries,
+        reason: retryData.error_message || retryData.error_type || 'El stream se interrumpió',
+        state: 'active',
+      });
+      ctx.phaseIndex = this._nextPhaseIndex(assistantEl);
+      this._resetTimeout();
+    });
     dispatcher.on('notification', (data) => {
       try {
         const parsed = JSON.parse(data);
@@ -211,6 +236,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     });
 
     const ctx = this.contentHandler.createContext(assistantEl);
+    if (this._isRetry) {
+      ctx.phaseIndex = this._nextPhaseIndex(assistantEl);
+    }
     this.activeContext = ctx;
     this.lastAssistantMsgEl = assistantEl;
 
@@ -235,6 +263,8 @@ export class StreamOrchestrator implements IStreamOrchestrator {
           signal: abortController.signal,
           dispatcher: dispatcher,
           context: ctx,
+          retry: this._retryRequest,
+          onChunk: () => this._resetTimeout(),
           onFirstToken: () => {
             this.debug?.logUI('first_token', 'received');
             if (this.lastAssistantMsgEl) {
@@ -340,7 +370,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       const body = this.lastAssistantMsgEl.querySelector('.' + C.MSG_BODY);
       const hasContent = body && body.textContent && body.textContent.trim().length > 0;
       const hasReasoning = this.lastAssistantMsgEl.querySelector('.' + C.REASONING);
-      if (!hasContent && !hasReasoning) {
+      const hasToolCalls = this.lastAssistantMsgEl.querySelector('.' + C.TOOL_CALLS);
+      const hasRetryCheckpoint = this.lastAssistantMsgEl.querySelector('.' + C.RETRY_CHECKPOINT);
+      if (!hasContent && !hasReasoning && !hasToolCalls && !hasRetryCheckpoint) {
         this.lastAssistantMsgEl.remove();
       }
       this.lastAssistantMsgEl.classList.remove('streaming', 'live-msg');
@@ -359,29 +391,32 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     const attempt = retryAttempt ?? Math.max(this.retryController?.count ?? 0, 1);
 
     // Save reference BEFORE abort() clears it
-    const existingRetryEl = this._lastError ? this.lastAssistantMsgEl : null;
+    const existingRetryEl = this._lastError
+      ? (this.lastAssistantMsgEl || this._retryBubbleEl)
+      : null;
+    this._retryBubbleEl = null;
 
     this.abort();
     this.chatForm.setStreamingState(false);
     this.ndjsonClient?.abort();
     this._isRetry = true;
 
-    // Inject retry context so the model knows this is a retry
-    let retryText = text;
     if (this._lastError) {
       const err = this._lastError;
-      const max = this.retryController?.maxRetries ?? 3;
-      retryText = `[SYSTEM: Retry attempt ${Math.min(attempt, max)}/${max}. Previous attempt failed with error: ${err.type} — ${err.message}. This is a retry of the same user message, do NOT assume any prior assistant response exists.]\n\n${text}`;
+      this._retryRequest = {
+        resume: true,
+        errorType: err.type,
+        errorMessage: err.message,
+        retryCount: attempt,
+      };
       this._lastError = null; // consume
+    } else {
+      this._retryRequest = { resume: true, retryCount: attempt };
     }
 
-    // Reuse the existing errored bubble instead of creating a new one
+    // Reuse the existing errored bubble and preserve every completed phase.
     if (existingRetryEl) {
-      // Clear the error card / retry indicator and reset for streaming
-      const bodyEl = existingRetryEl.querySelector('.' + C.MSG_BODY);
-      if (bodyEl) {
-        bodyEl.innerHTML = '';
-      }
+      this.retryController?.markRetryStarted(existingRetryEl, attempt);
       // Restore as live streaming element (may have been stripped by _finalizeStream)
       existingRetryEl.classList.add(C.LIVE_MSG);
       existingRetryEl.classList.remove('streaming');
@@ -391,11 +426,12 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     }
 
     try {
-      await this.handleChatSend(retryText, undefined, model || (this.currentModel ?? undefined));
+      await this.handleChatSend(text, undefined, model || (this.currentModel ?? undefined));
     } catch {
       this._finalizeStream();
     }
     this._isRetry = false;
+    this._retryRequest = undefined;
   }
 
   private _relabelReasoning(assistantEl: HTMLElement): void {
@@ -408,11 +444,16 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
   private _startTimeout(): void {
     this._clearTimeout();
+    const timeoutMs = this.retryController?.getStreamTimeout()
+      ?? this.STREAM_TIMEOUT_MS;
     this._streamTimeout = window.setTimeout(() => {
-      this.debug?.logUI('stream_timeout', 'idle timeout reached (120s)');
+      this.debug?.logUI(
+        'stream_timeout',
+        `idle timeout reached (${timeoutMs / 1000}s)`,
+      );
       if (this.abortStreamFn) this.abortStreamFn();
       this._handleStreamError('timeout', 'La respuesta tardó demasiado');
-    }, this.STREAM_TIMEOUT_MS);
+    }, timeoutMs);
   }
 
   private _resetTimeout(): void {
@@ -506,6 +547,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     if (this.retryController?.shouldRetry(false) && this.currentUserText) {
       const text = this.currentUserText;
       this._lastError = { type, message };
+      this._retryBubbleEl = this.lastAssistantMsgEl;
       this.debug?.logUI('stream_error_retry', `${type}: ${message} — attempt ${this.retryController.count + 1}/${this.retryController.maxRetries}`);
       this.retryController.scheduleRetry({
         assistantEl: this.lastAssistantMsgEl!,
@@ -528,11 +570,23 @@ export class StreamOrchestrator implements IStreamOrchestrator {
   }
 
   private _handleSuccessfulStream(): void {
+    if (this.lastAssistantMsgEl) {
+      this.retryController?.markRetryCompleted(this.lastAssistantMsgEl);
+    }
     this.retryController?.resetRetryCount();
     this.debug?.logUI('stream_complete', 'content received, retries reset');
     this.eventBus?.emit('sessions:updated', { sessions: this.sessionStore.sessions, activeId: this.sessionStore.activeSessionId });
     this.debug?.refresh();
     this._finalizeStream();
+  }
+
+  private _nextPhaseIndex(assistantEl: HTMLElement): number {
+    let maxPhase = -1;
+    assistantEl.querySelectorAll<HTMLElement>('[data-phase]').forEach((el) => {
+      const phase = Number.parseInt(el.dataset.phase || '', 10);
+      if (Number.isFinite(phase)) maxPhase = Math.max(maxPhase, phase);
+    });
+    return maxPhase + 1;
   }
 
   private _markCallingPillsError(): void {
@@ -635,6 +689,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     } else if (this.retryController?.shouldRetry(false) && this.currentUserText) {
       const retryText = this.currentUserText;
       this._lastError = { type: 'empty_response', message: 'model returned no content' };
+      this._retryBubbleEl = assistantEl;
       this.debug?.logUI('stream_retry', `empty response — attempt ${this.retryController.count + 1}/${this.retryController.maxRetries}`);
       this.retryController.scheduleRetry({
         assistantEl,

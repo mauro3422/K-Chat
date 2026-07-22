@@ -47,7 +47,7 @@ describe('RetryController contract', () => {
     expect(rc.count).toBe(1);
   });
 
-  it('scheduleRetry removes reasoning and tool-calls from assistantEl', () => {
+  it('scheduleRetry preserves completed reasoning and tool calls', () => {
     const rc = new RetryController();
     const assistantEl = document.createElement('div');
     const reasoning = document.createElement('div');
@@ -60,8 +60,46 @@ describe('RetryController contract', () => {
 
     rc.scheduleRetry({ assistantEl, userText: 'hello', reason: 'error', onRetry });
 
-    expect(assistantEl.querySelector('.reasoning')).toBeNull();
-    expect(assistantEl.querySelector('.tool-calls')).toBeNull();
+    expect(assistantEl.querySelector('.reasoning')).toBe(reasoning);
+    expect(assistantEl.querySelector('.tool-calls')).toBe(toolCalls);
+  });
+
+  it('renders the retry boundary with error and attempt metadata', () => {
+    const rc = new RetryController();
+    const assistantEl = document.createElement('div');
+
+    rc.showRetryCheckpoint({
+      assistantEl,
+      attempt: 2,
+      maxRetries: 3,
+      reason: 'provider disconnected',
+      state: 'active',
+    });
+
+    const card = assistantEl.querySelector('.retry-checkpoint');
+    expect(card?.textContent).toContain('Reanudación desde checkpoint');
+    expect(card?.textContent).toContain('Intento 2/3');
+    expect(card?.textContent).toContain('provider disconnected');
+    expect(card?.classList.contains('retry-checkpoint--active')).toBe(true);
+  });
+
+  it('marks the active retry as completed without removing prior phases', () => {
+    const rc = new RetryController();
+    const assistantEl = document.createElement('div');
+    const phase = document.createElement('div');
+    phase.dataset.phase = '4';
+    assistantEl.appendChild(phase);
+    rc.showRetryCheckpoint({
+      assistantEl,
+      attempt: 1,
+      reason: 'network',
+      state: 'active',
+    });
+
+    rc.markRetryCompleted(assistantEl);
+
+    expect(assistantEl.querySelector('[data-phase="4"]')).toBe(phase);
+    expect(assistantEl.querySelector('.retry-checkpoint--completed')).not.toBeNull();
   });
 
   it('scheduleRetry calls onRetry after delay', () => {
@@ -77,9 +115,9 @@ describe('RetryController contract', () => {
     expect(onRetry).toHaveBeenCalledWith(1);
   });
 
-  it('getStreamTimeout returns default 120000', () => {
+  it('getStreamTimeout returns default 300000', () => {
     const rc = new RetryController();
-    expect(rc.getStreamTimeout()).toBe(120000);
+    expect(rc.getStreamTimeout()).toBe(300000);
   });
 
   it('getStreamTimeout uses custom timeout if set', () => {

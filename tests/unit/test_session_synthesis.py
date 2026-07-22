@@ -5,12 +5,17 @@ from datetime import date
 import pytest
 
 from src.memory.repos_memory.work_catalog_repo import MemoryWorkCatalogRepository
-from src.memory.synthesis.daily import generate_daily_synthesis
+from src.memory.synthesis.daily import (
+    generate_daily_synthesis,
+    get_session_stats,
+    get_sessions_for_date,
+)
 from src.memory.synthesis.session import (
     candidates_from_session_summary_artifact,
     discover_session_summary_artifacts,
     generate_session_summaries,
     generate_session_summary_candidates,
+    get_session_messages_for_summary,
     get_sessions_for_summary_date,
     _is_test_session_id,
     load_session_summary_previews,
@@ -135,6 +140,15 @@ def _create_session_db_with_channel_columns(db_path: str) -> None:
                 ("tg-2", "Telegram legacy", "2026-07-02T11:00:00", "", "", "", 123),
             ],
         )
+        conn.executemany(
+            "INSERT INTO messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+            [
+                ("web-1", "system", "Channel activity.", "2026-07-02T08:00:01"),
+                ("tg-1", "system", "Channel activity.", "2026-07-02T09:00:01"),
+                ("cli-1", "system", "Channel activity.", "2026-07-02T10:00:01"),
+                ("tg-2", "system", "Channel activity.", "2026-07-02T11:00:01"),
+            ],
+        )
         conn.commit()
     finally:
         conn.close()
@@ -226,6 +240,51 @@ async def test_get_sessions_for_summary_date_prefers_explicit_channel_metadata(t
         "cli-1": "cli",
         "tg-2": "telegram",
     }
+
+
+@pytest.mark.anyio
+async def test_daily_queries_use_message_activity_date_for_long_lived_session(tmp_path):
+    db_path = str(tmp_path / "sessions.db")
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, name TEXT, created_at TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, created_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO sessions VALUES ('s1', 'Long lived', '2026-07-02T08:00:00')"
+        )
+        conn.executemany(
+            "INSERT INTO messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+            [
+                ("s1", "user", "Mensaje del día inicial.", "2026-07-02T08:01:00"),
+                ("s1", "assistant", "Respuesta inicial.", "2026-07-02T08:02:00"),
+                ("s1", "user", "Actividad de otro día.", "2026-07-18T09:01:00"),
+                ("s1", "assistant", "Respuesta del otro día.", "2026-07-18T09:02:00"),
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    daily_sessions = await get_sessions_for_date(db_path, "2026-07-18")
+    summary_sessions = await get_sessions_for_summary_date(db_path, "2026-07-18")
+    stats = await get_session_stats(db_path, "s1", "2026-07-18")
+    messages = await get_session_messages_for_summary(
+        db_path,
+        "s1",
+        date_str="2026-07-18",
+    )
+
+    assert [item["session_id"] for item in daily_sessions] == ["s1"]
+    assert [item["session_id"] for item in summary_sessions] == ["s1"]
+    assert stats["message_count"] == 2
+    assert [item["content"] for item in messages] == [
+        "Actividad de otro día.",
+        "Respuesta del otro día.",
+    ]
 
 
 @pytest.mark.anyio

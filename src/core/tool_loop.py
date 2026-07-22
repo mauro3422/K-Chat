@@ -148,6 +148,15 @@ def _set_debug(ctx: _ToolLoopContext, reasoning: str) -> None:
         ctx.debug.reasoning = reasoning
 
 
+def _checkpoint_event(
+    ctx: _ToolLoopContext, kind: str,
+) -> tuple[str, dict[str, str]] | None:
+    """Return checkpoint control events only for tagged stream consumers."""
+    if ctx.tagged:
+        return ("checkpoint", {"kind": kind})
+    return None
+
+
 # â”€â”€ tool execution (shared) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
@@ -173,6 +182,9 @@ async def _execute_tools(
 
     _append_phase(ctx.phases_output, reasoning, list(phase_tool_ids), content or "")
     phase_tool_ids.clear()
+    checkpoint = _checkpoint_event(ctx, "tool_phase")
+    if checkpoint is not None:
+        yield checkpoint
 
 
 # â”€â”€ core streaming loop (internal, unifies yielÔ mechanism) â”€â”€â”€â”€â”€â”€
@@ -228,6 +240,9 @@ async def _run_tool_loop(
             logger.warning("Duplicate content detected (turn %d), breaking tool loop", turn)
             if phase_reasoning or curr_content:
                 _append_phase(ctx.phases_output, phase_reasoning, [], curr_content)
+                checkpoint = _checkpoint_event(ctx, "final_phase")
+                if checkpoint is not None:
+                    yield checkpoint
             break
 
         prev_content = curr_content
@@ -245,6 +260,9 @@ async def _run_tool_loop(
         final_content = "".join(t[1] for t in accumulated if t[0] == "content") or ""
         if phase_reasoning or final_content:
             _append_phase(ctx.phases_output, phase_reasoning, [], final_content)
+            checkpoint = _checkpoint_event(ctx, "final_phase")
+            if checkpoint is not None:
+                yield checkpoint
         break
 
     _set_debug(ctx, "".join(total_reasoning))

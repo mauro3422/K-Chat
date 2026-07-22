@@ -269,6 +269,8 @@ class TestRetrieve:
         assert "[receipt:mr_" in block
         assert "[mr_old]" in block
         receipt_repo.upsert_many.assert_awaited_once()
+        receipt_repo.list_recent.assert_awaited_once()
+        assert receipt_repo.list_recent.await_args.kwargs["limit"] == 8
 
     @pytest.mark.anyio
     async def test_receipt_persistence_failure_keeps_retrieved_memory(self):

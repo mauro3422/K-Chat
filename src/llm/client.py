@@ -331,7 +331,17 @@ async def chat_stream(
             ):
                 yield item
         except Exception as e:
-            if retried_after_read_error or stats.has_content or stats.has_reasoning:
+            if stats.has_content or stats.has_reasoning:
+                _mark_and_refresh(
+                    model,
+                    refresh=not is_rate_limit_error(e),
+                    error=e,
+                    breaker=breaker,
+                    rate_store=rate_store,
+                    registry=registry,
+                )
+                raise
+            if retried_after_read_error:
                 raise
             retried_after_read_error = True
             next_model = _mark_and_refresh(

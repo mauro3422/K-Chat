@@ -124,7 +124,7 @@ async def chat_stream(
     if model is None:
         model = _deps.llm_service.get_default_model()
 
-    if _deps.phases_output is not None:
+    if _deps.phases_output is not None and not _deps.is_continuation:
         _deps.phases_output[:] = []
 
     if _deps.debug is not None:
@@ -138,7 +138,9 @@ async def chat_stream(
     # ── Auto-retrieve memories from last user message ────────────────
     memory_block = None
     reranker_degraded = False
-    if _deps.retrieval_service is not None:
+    if _deps.is_continuation:
+        memory_block, reranker_degraded = None, False
+    elif _deps.retrieval_service is not None:
         memory_block, reranker_degraded = await _deps.retrieval_service.retrieve_if_allowed(
             message_user=message_user,
             session_id=_deps.session_id,
@@ -205,6 +207,7 @@ async def chat_stream(
     # Emit auto-retrieved memories as a stream event (for frontend display)
     if memory_block and _deps.streaming:
         yield ("memory", memory_block)
+        yield ("checkpoint", {"kind": "memory"})
 
     # Emit notification if reranker was degraded
     if reranker_degraded and _deps.streaming:

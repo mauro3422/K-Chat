@@ -225,9 +225,10 @@ class TestFormatMemoriesForPrompt:
         assert len(output) > 200
         assert long in output
 
-    def test_format_includes_relevance_score(self, a_result):
+    def test_format_hides_internal_quality_score(self, a_result):
         output = format_memories_for_prompt([a_result])
-        assert "rel:" in output
+        assert "quality:" not in output
+        assert "rel:" not in output
 
     def test_format_includes_receipt_handle_when_present(self):
         output = format_memories_for_prompt(
@@ -244,10 +245,10 @@ class TestFormatMemoriesForPrompt:
 
         assert "[receipt:mr_123]" in output
 
-    def test_relevance_score_default_formatting(self):
+    def test_relevance_score_is_not_exposed_in_prompt(self):
         results = [{"text": "x", "score": 0.5, "source": "m", "source_key": "k"}]
         output = format_memories_for_prompt(results)
-        assert "rel:0.50" in output
+        assert "[50%]" in output
 
 
 # ===================================================================
@@ -306,7 +307,7 @@ class TestEdgeCases:
         assert selected[0]["_combined_score"] == pytest.approx(0.3)
         output = format_memories_for_prompt(selected)
         assert "0%" in output
-        assert "rel:1.00" in output
+        assert "quality:" not in output
 
     def test_very_large_number_of_results(self):
         results = [{"text": "x", "score": 0.5, "source": "m", "source_key": f"k{i}"} for i in range(1000)]

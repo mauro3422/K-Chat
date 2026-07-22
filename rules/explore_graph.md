@@ -5,4 +5,4 @@
 | Parámetro | Tipo | Requerido | Default | Descripción |
 |---|---|---|---|---|
 | `depth` | integer | No | 2 | How many levels deep to explore (default: 2, max: 5). |
-| `entity_id` | string | Sí |  | Entity ID to start exploration from. |
+| `entity_id` | string | Sí |  | Entity ID or entity name to start exploration from. |

@@ -5,6 +5,7 @@ import { IWidgetContainerRenderer } from '../types/widget-renderer';
 import { C } from '../core/infra/DomContracts';
 import { getLogger } from '../core/infra/LoggerFactory';
 import { ILogger } from '../core/infra/Logger';
+import { createRetryCheckpointElement } from '../core/ui/RetryHandler';
 import type { MessageData } from '../types/messages';
 
 /**
@@ -156,6 +157,15 @@ export class MessageView implements IMessageView {
       const hasAnyContent = phases.some((p) => p.content);
 
       phases.forEach((phase, idx) => {
+        if (phase.retry) {
+          el.appendChild(createRetryCheckpointElement({
+            attempt: phase.retry.attempt,
+            maxRetries: phase.retry.max_retries,
+            reason: phase.retry.error_message || phase.retry.error_type || 'El stream se interrumpió',
+            state: phase.retry.status || 'completed',
+          }));
+        }
+
         // Memory block (collapsed in history — expanded during live streaming)
         if (phase.memory) {
           const details = document.createElement('details');

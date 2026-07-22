@@ -126,6 +126,8 @@ class EntityRepository:
         """INSERT OR UPDATE a relation."""
         async with self._connection() as conn:
             try:
+                await _ensure_relation_node(conn, source_id, timestamp)
+                await _ensure_relation_node(conn, target_id, timestamp)
                 await conn.execute(
                     """INSERT INTO entity_relations (source_id, target_id, relation_type, weight, first_seen, last_seen)
                        VALUES (?, ?, ?, ?, ?, ?)
@@ -288,30 +290,67 @@ class EntityRepository:
         entity_id: str,
         depth: int = 2,
     ) -> list[dict[str, Any]]:
-        """CTE recursive traversal from an entity (bidirectional).
+        """Cycle-safe breadth-first traversal from an entity (bidirectional).
 
         Returns list of dicts with entity and relation info at each depth.
         """
         async with self._connection() as conn:
             cursor = await conn.execute(
-                """WITH RECURSIVE chain AS (
-                    SELECT source_id, target_id, relation_type, 1 AS depth
-                    FROM entity_relations WHERE source_id = ? OR target_id = ?
+                """WITH RECURSIVE walk AS (
+                    SELECT
+                        CASE WHEN source_id = ? THEN target_id ELSE source_id END AS node_id,
+                        source_id,
+                        target_id,
+                        relation_type,
+                        weight,
+                        1 AS depth,
+                        '|' || ? || '|' ||
+                        CASE WHEN source_id = ? THEN target_id ELSE source_id END || '|' AS path
+                    FROM entity_relations
+                    WHERE source_id = ? OR target_id = ?
                     UNION ALL
-                    SELECT r.source_id, r.target_id, r.relation_type, c.depth + 1
+                    SELECT
+                        CASE WHEN r.source_id = w.node_id THEN r.target_id ELSE r.source_id END,
+                        r.source_id,
+                        r.target_id,
+                        r.relation_type,
+                        r.weight,
+                        w.depth + 1,
+                        w.path ||
+                        CASE WHEN r.source_id = w.node_id THEN r.target_id ELSE r.source_id END || '|'
                     FROM entity_relations r
-                    JOIN chain c ON (r.source_id = c.target_id OR r.target_id = c.source_id)
-                    WHERE c.depth < ?
+                    JOIN walk w ON r.source_id = w.node_id OR r.target_id = w.node_id
+                    WHERE w.depth < ?
+                      AND instr(
+                          w.path,
+                          '|' ||
+                          CASE WHEN r.source_id = w.node_id THEN r.target_id ELSE r.source_id END ||
+                          '|'
+                      ) = 0
                 )
-                SELECT DISTINCT e.id, e.name, e.entity_type, c.relation_type, c.depth
-                FROM chain c
-                JOIN entities e ON e.id IN (c.source_id, c.target_id)
-                WHERE e.id != ?
-                ORDER BY c.depth""",
-                (entity_id, entity_id, depth, entity_id),
+                SELECT e.id, e.name, e.entity_type, w.relation_type,
+                       w.weight, w.depth, w.source_id, w.target_id
+                FROM walk w
+                JOIN entities e ON e.id = w.node_id
+                ORDER BY w.depth, w.weight DESC""",
+                (
+                    entity_id,
+                    entity_id,
+                    entity_id,
+                    entity_id,
+                    entity_id,
+                    depth,
+                ),
             )
             rows = await cursor.fetchall()
-        result = [dict(row) for row in rows]
+        result: list[dict[str, Any]] = []
+        seen_entities: set[str] = set()
+        for row in rows:
+            item = dict(row)
+            if item["id"] in seen_entities:
+                continue
+            seen_entities.add(item["id"])
+            result.append(item)
         if not result:
             return await self._explore_raw_relations(entity_id, depth=depth)
         return result
@@ -416,6 +455,24 @@ def _node_type(node_id: str) -> str:
 
 def _node_label(node_id: str) -> str:
     return node_id.split(":", 1)[1] if ":" in node_id else node_id
+
+
+async def _ensure_relation_node(conn: Any, node_id: str, timestamp: str) -> None:
+    """Materialize a lightweight graph node required by relation foreign keys."""
+
+    await conn.execute(
+        """INSERT OR IGNORE INTO entities (
+               id, name, entity_type, metadata,
+               first_seen, last_seen, mention_count
+           ) VALUES (?, ?, ?, '{}', ?, ?, 1)""",
+        (
+            node_id,
+            _node_label(node_id),
+            _node_type(node_id),
+            timestamp,
+            timestamp,
+        ),
+    )
 
 
 def _decode_curated_relation(row: dict[str, Any]) -> dict[str, Any]:

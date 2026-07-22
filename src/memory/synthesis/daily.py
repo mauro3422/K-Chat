@@ -26,31 +26,46 @@ def _project_root() -> Path:
 
 
 async def get_sessions_for_date(db_path: str, date_str: str) -> list[dict[str, Any]]:
-    """Return sessions created on a given date (YYYY-MM-DD)."""
+    """Return sessions with message activity on a given date (YYYY-MM-DD)."""
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT session_id, name, created_at FROM sessions "
-            "WHERE date(created_at) = ? ORDER BY created_at",
+            "SELECT s.session_id, s.name, s.created_at, "
+            "MIN(m.created_at) AS activity_started_at, "
+            "MAX(m.created_at) AS activity_ended_at "
+            "FROM sessions s "
+            "JOIN messages m ON m.session_id = s.session_id "
+            "WHERE date(m.created_at) = ? "
+            "GROUP BY s.session_id, s.name, s.created_at "
+            "ORDER BY activity_started_at",
             (date_str,),
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 
 
-async def get_session_stats(db_path: str, session_id: str) -> dict[str, Any]:
+async def get_session_stats(
+    db_path: str,
+    session_id: str,
+    date_str: str | None = None,
+) -> dict[str, Any]:
     """Return stats for a session.
 
     Returns dict with message_count, first_message_time, last_message_time, duration.
     """
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
+        where = "WHERE session_id = ?"
+        params: tuple[str, ...] = (session_id,)
+        if date_str:
+            where += " AND date(created_at) = ?"
+            params = (session_id, date_str)
         cursor = await db.execute(
             "SELECT COUNT(*) as message_count, "
             "MIN(created_at) as first_message_time, "
             "MAX(created_at) as last_message_time "
-            "FROM messages WHERE session_id = ?",
-            (session_id,),
+            f"FROM messages {where}",
+            params,
         )
         row = await cursor.fetchone()
         result = dict(row) if row else {
@@ -65,6 +80,18 @@ async def get_session_stats(db_path: str, session_id: str) -> dict[str, Any]:
         else:
             result["duration"] = ""
         return result
+
+
+async def _get_message_activity_count(db_path: str, date_str: str) -> int:
+    """Independent activity counter used to detect synthesis selection drift."""
+
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM messages WHERE date(created_at) = ?",
+            (date_str,),
+        )
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
 
 
 def _parse_dt(s: str) -> datetime | None:
@@ -175,16 +202,18 @@ async def generate_daily_synthesis(
     logger.info("Generating daily synthesis for %s", date_str)
 
     sessions = await get_sessions_for_date(db_path, date_str)
+    recorded_activity_messages = await _get_message_activity_count(db_path, date_str)
     session_summary_previews = load_session_summary_previews(
         [str(session.get("session_id", "")) for session in sessions],
         root=project_root,
+        target=target_date,
     )
 
     session_stats: list[dict[str, Any]] = []
     total_messages = 0
     session_count_with_msgs = 0
     for s in sessions:
-        stats = await get_session_stats(db_path, s["session_id"])
+        stats = await get_session_stats(db_path, s["session_id"], date_str)
         if stats["message_count"] > 0:
             session_count_with_msgs += 1
         topics = await _get_session_topics(mem_db, s["session_id"])
@@ -195,6 +224,12 @@ async def generate_daily_synthesis(
     memory_entries = await _get_new_memory_entries(mem_db, date_str)
     entities = await _get_new_entities(mem_db, date_str)
     clusters = await _get_new_clusters(mem_db, date_str)
+    quality_warnings: list[str] = []
+    if recorded_activity_messages != total_messages:
+        quality_warnings.append(
+            "message_selection_mismatch: "
+            f"database={recorded_activity_messages}, synthesis={total_messages}"
+        )
 
     lines: list[str] = [
         f"# Daily Synthesis — {date_str}",
@@ -286,6 +321,18 @@ async def generate_daily_synthesis(
             "- Operational counters above are retained for diagnostics only.",
             "",
         ])
+    if quality_warnings:
+        lines.extend([
+            "## Data Quality Warning",
+            "",
+            *[f"- {warning}" for warning in quality_warnings],
+            "",
+        ])
+        logger.error(
+            "Daily synthesis data-quality warning for %s: %s",
+            date_str,
+            "; ".join(quality_warnings),
+        )
 
     report_path = str(memory_paths.daily_path(target=target_date, root=project_root))
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
@@ -327,6 +374,8 @@ async def generate_daily_synthesis(
             "entities": len(entities),
             "clusters": len(clusters),
             "session_summaries": len(session_summary_previews),
+            "recorded_activity_messages": recorded_activity_messages,
+            "quality_warnings": quality_warnings,
         },
     )
 

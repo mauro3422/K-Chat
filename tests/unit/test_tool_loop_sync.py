@@ -54,6 +54,7 @@ async def test_sync_no_tool_calls_tagged():
     types = [t[0] for t in tokens]
     assert "reasoning" in types
     assert "content" in types
+    assert ("checkpoint", {"kind": "final_phase"}) in tokens
 
     reasoning_tokens = [t[1] for t in tokens if t[0] == "reasoning"]
     assert any("I am thinking..." in r for r in reasoning_tokens)

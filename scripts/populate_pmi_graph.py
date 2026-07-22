@@ -13,7 +13,14 @@ import sqlite3
 import math
 import time
 import random
+import sys
 from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.memory.db_path import resolve_db_path
 from src.memory.memory_db_path import resolve_memory_db_path
 from src.memory.analysis.pmi_relations import (
     calculate_pmi_for_session,
@@ -177,38 +184,66 @@ def prune_noise_hubs(
 
 # ── Main Pipeline ────────────────────────────────────────────────────────────
 
-def run():
+def _backup_database(db_path: str, backup_root: str | None = None) -> str:
+    source = Path(db_path)
+    root = Path(backup_root) if backup_root else source.parent / "backups"
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / f"{source.stem}.before-pmi-{datetime.now():%Y%m%d-%H%M%S}.db"
+    with sqlite3.connect(source) as src, sqlite3.connect(target) as dst:
+        src.backup(dst)
+    return str(target)
+
+
+def _replace_generated_graph(db_path: str) -> tuple[int, int]:
+    """Remove only generated PMI data while preserving curated graph nodes."""
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        removed_relations = conn.execute(
+            "DELETE FROM entity_relations WHERE relation_type = 'co_occurrence'"
+        ).rowcount
+        removed_entities = conn.execute(
+            """DELETE FROM entities
+               WHERE entity_type = 'concept'
+                 AND (id LIKE 'pmi_%' OR id LIKE 'entity:concept:%')
+                 AND NOT EXISTS (
+                    SELECT 1 FROM entity_mentions em WHERE em.entity_id = entities.id
+                 )
+                 AND NOT EXISTS (
+                    SELECT 1 FROM entity_relations er
+                    WHERE er.source_id = entities.id OR er.target_id = entities.id
+                 )
+                 AND NOT EXISTS (
+                    SELECT 1 FROM memory_curated_relations mcr
+                    WHERE mcr.source_id = entities.id OR mcr.target_id = entities.id
+                 )"""
+        ).rowcount
+        conn.commit()
+        return removed_entities, removed_relations
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def run(*, apply: bool = False, backup_root: str | None = None):
     t0 = time.time()
     db_path = resolve_memory_db_path()
 
-    MIN_OCCURRENCES = 3
+    MIN_OCCURRENCES = 10
+    MIN_SESSION_FREQUENCY = 3
     DF_MAX_RATIO = 0.35
     CC_THRESHOLD = 0.04
     PC_THRESHOLD = 0.70
     DEGREE_THRESHOLD = 40
 
     # ═══════════════════════════════════════════════════════════════════
-    # 1. CLEAR
-    # ═══════════════════════════════════════════════════════════════════
-    print("🧹 Clearing curated DB...")
-    conn = sqlite3.connect(db_path)
-    conn.execute("DELETE FROM entity_relations")
-    conn.execute("DELETE FROM entity_mentions")
-    conn.execute("DELETE FROM entities")
-    conn.execute("DELETE FROM concept_canonical")
-    try:
-        conn.execute("DELETE FROM vec_concepts")
-    except Exception:
-        pass
-    conn.commit()
-    conn.close()
-    print("   DB cleared.")
-
-    # ═══════════════════════════════════════════════════════════════════
     # 2. LOAD MESSAGES
     # ═══════════════════════════════════════════════════════════════════
     print("\n📂 Loading messages...")
-    conn_sess = sqlite3.connect("memory/kairos_memory.db")
+    conn_sess = sqlite3.connect(resolve_db_path())
     cursor = conn_sess.cursor()
     cursor.execute(
         "SELECT session_id, content FROM messages WHERE role IN ('user', 'assistant')"
@@ -302,7 +337,7 @@ def run():
 
     for stem, df_val in stem_df.items():
         occ = stem_occurrences.get(stem, 0)
-        if occ < MIN_OCCURRENCES:
+        if occ < MIN_OCCURRENCES or df_val < MIN_SESSION_FREQUENCY:
             blocked_rare += 1
             continue
         if df_val > max_df:
@@ -331,11 +366,12 @@ def run():
     for idx, (sid, msgs) in enumerate(active_sessions.items(), 1):
         rels, pairs = calculate_pmi_for_session(
             msgs,
-            min_cooccurrences=1,
+            min_cooccurrences=2,
             pmi_threshold=1.0,
             word_idf=node_idf,
             max_idf=max_node_idf,
             stem_map=stem_map,
+            allowed_terms=survivors,
         )
         total_relations.extend(rels)
         for pair in pairs:
@@ -423,10 +459,23 @@ def run():
     # ═══════════════════════════════════════════════════════════════════
     # 9. PERSIST
     # ═══════════════════════════════════════════════════════════════════
-    if total_relations:
-        print("\n💾 Persisting...")
+    if total_relations and apply:
+        backup_path = _backup_database(db_path, backup_root)
+        removed_entities, removed_relations = _replace_generated_graph(db_path)
+        print(f"\nBackup: {backup_path}")
+        print(
+            f"Removed {removed_entities} generated entities and "
+            f"{removed_relations} generated relations."
+        )
+        print("\nPersisting...")
         written = persist_pmi_relations(db_path, total_relations)
         print(f"   {written} relations written.")
+    elif total_relations:
+        print(
+            f"\n[DRY RUN] Would replace generated PMI data with "
+            f"{len(total_relations)} proposed relations."
+        )
+        return
     else:
         print("\n⚠️  No relations!")
         return
@@ -548,10 +597,15 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     import os
 
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description="Populate PMI knowledge graph from chat history")
     parser.add_argument("--db", default=None, help="Path to kairos_memory.db (default: auto-detect)")
     parser.add_argument("--curated-db", default=None, help="Path to curated memory DB (default: auto-detect)")
     parser.add_argument("--quiet", action="store_true", help="Suppress benchmark output")
+    parser.add_argument("--apply", action="store_true", help="Back up and replace generated PMI data.")
+    parser.add_argument("--backup-root", default=None, help="Directory for the mandatory SQLite backup.")
     args = parser.parse_args(argv)
 
     if args.db:
@@ -559,7 +613,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.curated_db:
         os.environ["KAIROS_MEMORY_DB_PATH"] = args.curated_db
 
-    run()
+    run(apply=args.apply, backup_root=args.backup_root)
     return 0
 
 

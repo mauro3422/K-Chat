@@ -27,6 +27,10 @@ async def test_daily_synthesis_keeps_topic_clusters_with_activity(tmp_path):
             "src.memory.synthesis.daily.get_session_stats",
             new=AsyncMock(return_value={"message_count": 1, "first_message_time": "", "last_message_time": "", "duration": ""}),
         ),
+        patch(
+            "src.memory.synthesis.daily._get_message_activity_count",
+            new=AsyncMock(return_value=1),
+        ),
         patch("src.memory.synthesis.daily._get_session_topics", new=AsyncMock(return_value=[])),
         patch("src.memory.synthesis.daily._get_new_embeddings_count", new=AsyncMock(return_value=0)),
         patch("src.memory.synthesis.daily._get_new_memory_entries", new=AsyncMock(return_value=[])),

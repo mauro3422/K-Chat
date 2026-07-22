@@ -52,4 +52,23 @@ describe('session auto-rename propagation', () => {
     expect(store.sessions[0].name).toBe('Título inteligente');
     expect(apiClient.renameSession).not.toHaveBeenCalled();
   });
+
+  it('routes the newest session when a fresh browser cookie has no match', async () => {
+    const apiClient = {
+      getSessions: vi.fn(async () => new Response(JSON.stringify([{
+        id: 'remote-session',
+        name: 'Chat remoto',
+        count: 1,
+        last_str: '2026-07-19',
+        source_url: 'http://peer-a:8000',
+        source_mode: 'peer',
+      }]))),
+    };
+    const store = new SessionStore(apiClient as never);
+    const selectSession = vi.spyOn(store, 'selectSession').mockResolvedValue();
+
+    await store.init(new TypedEventBus(), 'cookie-not-found');
+
+    expect(selectSession).toHaveBeenCalledWith('remote-session');
+  });
 });

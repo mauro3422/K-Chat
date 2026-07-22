@@ -58,7 +58,12 @@ export class LanStatusPanel {
     if (!this.panelEl) return;
     try {
       const resp = await this.apiClient.syncStatus();
-      const data = await resp.json() as LanSyncStatus;
+      const raw = await resp.json() as LanSyncStatus & {
+        health?: { sync?: LanSyncStatus['sync'] };
+      };
+      const data: LanSyncStatus = raw.health
+        ? { ...raw, sync: raw.health.sync || raw.sync }
+        : raw;
       this.render(data);
     } catch (err) {
       this.logger.warn('lan_status_refresh_failed', err);

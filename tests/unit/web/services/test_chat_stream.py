@@ -8,8 +8,8 @@ interruption save in finally block.
 
 from __future__ import annotations
 
+import asyncio
 import json
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -37,6 +37,21 @@ def _make_stream(values: list[tuple]) -> callable:
         for item in values:
             yield item
     return _inner
+
+
+def _make_clock(values: list[float]) -> callable:
+    iterator = iter(values)
+    current = values[-1]
+
+    def _clock() -> float:
+        nonlocal current
+        try:
+            current = next(iterator)
+        except StopIteration:
+            pass
+        return current
+
+    return _clock
 
 
 # ---------------------------------------------------------------------------
@@ -71,8 +86,11 @@ def background_tasks():
 def orch_deps(background_tasks):
     """Mock OrchestratorDeps with all services mocked."""
     from unittest.mock import MagicMock
+    repos = MagicMock()
+    repos.stream_checkpoints.save = AsyncMock()
+    repos.stream_checkpoints.clear = AsyncMock()
     deps = OrchestratorDeps(
-        repos=MagicMock(),
+        repos=repos,
         history_service=MagicMock(),
         telemetry_service=MagicMock(),
         llm_service=MagicMock(),
@@ -184,10 +202,11 @@ class TestToolCalls:
         assert events[2] == {"t": "content", "d": "results are in"}
 
     async def test_tool_call_resets_state(self, deps, background_tasks, orch_deps):
-        """Content before tool_call is discarded from state after tool_call."""
+        """The segment closes only after the tool phase is durably complete."""
         deps.chat_stream_fn = _make_stream([
             ("content", "old content "),
             ("tool_call", {"name": "t"}),
+            ("checkpoint", {"kind": "tool_phase"}),
             ("content", "new content"),
         ])
 
@@ -206,6 +225,9 @@ class TestToolCalls:
         saved_content = args[1]
         assert "new content" in saved_content
         assert "old content" not in saved_content
+        checkpoint = orch_deps.repos.stream_checkpoints.save
+        assert checkpoint.await_count >= 1
+        assert checkpoint.call_args_list[0].kwargs["checkpoint_kind"] == "tool_phase"
 
 
 # ---------------------------------------------------------------------------
@@ -367,8 +389,11 @@ class TestLoopRecovery:
         )
         events = _parse_events([line async for line in gen()])
 
-        assert len(events) == 1
-        assert events[0] == {"t": "content", "d": "recovered text"}
+        assert len(events) == 2
+        assert events[0]["t"] == "retry"
+        assert events[0]["d"]["attempt"] == 1
+        assert events[0]["d"]["error_type"] == "loop_detected"
+        assert events[1] == {"t": "content", "d": "recovered text"}
 
     async def test_recovery_receives_context(self, deps, background_tasks, orch_deps):
         deps.loop_detector.check.return_value = "Loop detectado"
@@ -417,8 +442,9 @@ class TestLoopRecoveryFailure:
         )
         events = _parse_events([line async for line in gen()])
 
-        assert events[0]["t"] == "error"
-        assert events[0]["d"]["type"] == "loop_detected"
+        assert events[0]["t"] == "retry"
+        assert events[1]["t"] == "error"
+        assert events[1]["d"]["type"] == "loop_detected"
 
     async def test_error_when_recovery_raises(self, deps, background_tasks, orch_deps):
         deps.loop_detector.check.return_value = "Loop detectado"
@@ -438,8 +464,9 @@ class TestLoopRecoveryFailure:
         )
         events = _parse_events([line async for line in gen()])
 
-        assert events[0]["t"] == "error"
-        assert events[0]["d"]["type"] == "loop_detected"
+        assert events[0]["t"] == "retry"
+        assert events[1]["t"] == "error"
+        assert events[1]["d"]["type"] == "loop_detected"
 
     async def test_recovery_not_attempted_when_cannot_retry(self, deps, background_tasks, orch_deps):
         deps.loop_detector.check.return_value = "Loop detectado"
@@ -570,9 +597,11 @@ class TestStreamError:
         )
         events = _parse_events([line async for line in gen()])
 
-        assert len(events) == 2
+        assert len(events) == 3
         assert events[0] == {"t": "content", "d": "partial "}
-        assert events[1] == {"t": "content", "d": "recovered text"}
+        assert events[1]["t"] == "retry"
+        assert events[1]["d"]["error_type"] == "network"
+        assert events[2] == {"t": "content", "d": "recovered text"}
 
     async def test_error_is_emitted_when_exception_recovery_is_empty(self, deps, background_tasks, orch_deps):
         """A recovery that produces no events must not hide the original failure."""
@@ -593,8 +622,9 @@ class TestStreamError:
         events = _parse_events([line async for line in gen()])
 
         assert events[0] == {"t": "content", "d": "partial "}
-        assert events[1]["t"] == "error"
-        assert events[1]["d"]["type"] == "network"
+        assert events[1]["t"] == "retry"
+        assert events[2]["t"] == "error"
+        assert events[2]["d"]["type"] == "network"
 
     async def test_retry_not_attempted_without_output(self, deps, background_tasks, orch_deps):
         """If the error happens before any content, retry is skipped."""
@@ -633,13 +663,13 @@ class TestPeriodicSave:
         # On the 4th tick, 150 - 100 = 50 > 30 → periodic save fires.
         time_values = [100.0, 100.0, 100.0, 100.0, 150.0]
 
-        with patch.object(time, "monotonic", side_effect=time_values):
-            gen = build_stream_generator(
-                session_id="s1", message="hi", history=[], model="gpt4",
-                background_tasks=background_tasks, deps=deps,
-                orchestrator_deps=orch_deps,
-            )
-            _ = [line async for line in gen()]
+        deps.clock = _make_clock(time_values)
+        gen = build_stream_generator(
+            session_id="s1", message="hi", history=[], model="gpt4",
+            background_tasks=background_tasks, deps=deps,
+            orchestrator_deps=orch_deps,
+        )
+        _ = [line async for line in gen()]
 
         # With no new tokens after the autosave, the final pass should skip.
         assert deps.save_fn.await_count == 1
@@ -651,15 +681,15 @@ class TestPeriodicSave:
         ])
 
         # All ticks within 30s of each other → no periodic save
-        time_values = [100.0, 100.0, 120.0]
+        time_values = [100.0, 100.0, 105.0]
 
-        with patch.object(time, "monotonic", side_effect=time_values):
-            gen = build_stream_generator(
-                session_id="s1", message="hi", history=[], model="gpt4",
-                background_tasks=background_tasks, deps=deps,
-                orchestrator_deps=orch_deps,
-            )
-            _ = [line async for line in gen()]
+        deps.clock = _make_clock(time_values)
+        gen = build_stream_generator(
+            session_id="s1", message="hi", history=[], model="gpt4",
+            background_tasks=background_tasks, deps=deps,
+            orchestrator_deps=orch_deps,
+        )
+        _ = [line async for line in gen()]
 
         # Only the final save should have been called
         assert deps.save_fn.await_count == 1
@@ -672,13 +702,13 @@ class TestPeriodicSave:
 
         time_values = [100.0, 200.0]
 
-        with patch.object(time, "monotonic", side_effect=time_values):
-            gen = build_stream_generator(
-                session_id="s1", message="hi", history=[], model="gpt4",
-                background_tasks=background_tasks, deps=deps,
-                orchestrator_deps=orch_deps,
-            )
-            _ = [line async for line in gen()]
+        deps.clock = _make_clock(time_values)
+        gen = build_stream_generator(
+            session_id="s1", message="hi", history=[], model="gpt4",
+            background_tasks=background_tasks, deps=deps,
+            orchestrator_deps=orch_deps,
+        )
+        _ = [line async for line in gen()]
 
         # No content → empty_response error, save_fn never called
         assert deps.save_fn.await_count == 0
@@ -708,6 +738,28 @@ class TestFinalSave:
         assert args[0] == "s1"
         assert args[1] == "done"
 
+    async def test_emits_heartbeat_while_source_is_busy(
+        self, deps, background_tasks, orch_deps,
+    ):
+        async def slow_stream(*args, **kwargs):
+            await asyncio.sleep(0.035)
+            yield ("content", "done")
+
+        deps.chat_stream_fn = slow_stream
+        with (
+            patch("web.services.chat_stream.HEARTBEAT_INTERVAL", 0.01),
+            patch("web.services.chat_stream.MAX_STREAM_SILENCE", 1.0),
+        ):
+            gen = build_stream_generator(
+                session_id="s1", message="hi", history=[], model="gpt4",
+                background_tasks=background_tasks, deps=deps,
+                orchestrator_deps=orch_deps,
+            )
+            events = _parse_events([line async for line in gen()])
+
+        assert sum(event["t"] == "heartbeat" for event in events) >= 2
+        assert events[-1] == {"t": "content", "d": "done"}
+
     async def test_rename_scheduled_after_save(self, deps, background_tasks, orch_deps):
         deps.chat_stream_fn = _make_stream([("content", "done")])
         deps.rename_fn = MagicMock()
@@ -726,6 +778,34 @@ class TestFinalSave:
             if call[0][0] == deps.rename_fn
         ]
         assert len(rename_calls) >= 1
+
+    async def test_resume_keeps_initial_phases_and_completes_retry_marker(
+        self, deps, background_tasks, orch_deps,
+    ):
+        deps.initial_phases = [
+            {"content": "fase anterior"},
+            {
+                "retry": {
+                    "attempt": 1,
+                    "max_retries": 2,
+                    "error_type": "network",
+                    "status": "active",
+                },
+            },
+        ]
+        deps.chat_stream_fn = _make_stream([("content", "continuación")])
+
+        gen = build_stream_generator(
+            session_id="s1", message="resume", history=[], model="gpt4",
+            background_tasks=background_tasks, deps=deps,
+            orchestrator_deps=orch_deps,
+        )
+        async for _ in gen():
+            pass
+
+        phases = deps.save_fn.call_args.args[3]
+        assert phases[0] == {"content": "fase anterior"}
+        assert phases[1]["retry"]["status"] == "completed"
 
     async def test_final_save_not_called_on_empty(self, deps, background_tasks, orch_deps):
         """No final save when the stream is empty."""
@@ -747,7 +827,7 @@ class TestFinalSave:
 # ---------------------------------------------------------------------------
 
 class TestInterruptionSave:
-    """Verify partial content is saved in finally when stream is interrupted."""
+    """Verify interrupted tails stay in checkpoints, not message history."""
 
     async def test_saves_partial_on_exception(self, deps, background_tasks, orch_deps):
         deps.retry_handler = None
@@ -767,10 +847,11 @@ class TestInterruptionSave:
         async for _ in gen():
             pass
 
-        assert deps.save_fn.await_count >= 1
-        args, _ = deps.save_fn.call_args
-        assert args[0] == "s1"
-        assert "partial data" in args[1]
+        assert deps.save_fn.await_count == 0
+        checkpoint = orch_deps.repos.stream_checkpoints.save
+        assert checkpoint.await_count >= 1
+        assert checkpoint.call_args.kwargs["partial_content"] == "partial data "
+        assert checkpoint.call_args.kwargs["status"] == "interrupted"
 
     async def test_saves_dirty_tail_after_periodic_save(self, deps, background_tasks, orch_deps):
         """If a periodic save happened and more tokens arrived, the tail is saved on interruption."""
@@ -786,19 +867,19 @@ class TestInterruptionSave:
 
         time_values = [100.0, 100.0, 100.0, 150.0, 160.0, 170.0, 180.0, 190.0]
 
-        with patch.object(time, "monotonic", side_effect=time_values):
-            gen = build_stream_generator(
-                session_id="s1", message="hi", history=[], model="gpt4",
-                background_tasks=background_tasks, deps=deps,
-                orchestrator_deps=orch_deps,
-            )
-            async for _ in gen():
-                pass
+        deps.clock = _make_clock(time_values)
+        gen = build_stream_generator(
+            session_id="s1", message="hi", history=[], model="gpt4",
+            background_tasks=background_tasks, deps=deps,
+            orchestrator_deps=orch_deps,
+        )
+        async for _ in gen():
+            pass
 
-        assert deps.save_fn.await_count >= 2
-        args, _ = deps.save_fn.call_args
-        assert args[0] == "s1"
-        assert args[1].endswith("e")
+        assert deps.save_fn.await_count == 0
+        checkpoint = orch_deps.repos.stream_checkpoints.save
+        assert checkpoint.await_count >= 2
+        assert checkpoint.call_args.kwargs["partial_content"].endswith("e")
 
     async def test_not_saved_when_no_output(self, deps, background_tasks, orch_deps):
         """If the stream produced nothing, finally does not save."""
@@ -824,14 +905,14 @@ class TestInterruptionSave:
 
         time_values = [100.0, 150.0]
 
-        with patch.object(time, "monotonic", side_effect=time_values):
-            gen = build_stream_generator(
-                session_id="s1", message="hi", history=[], model="gpt4",
-                background_tasks=background_tasks, deps=deps,
-                orchestrator_deps=orch_deps,
-            )
-            async for _ in gen():
-                pass
+        deps.clock = _make_clock(time_values)
+        gen = build_stream_generator(
+            session_id="s1", message="hi", history=[], model="gpt4",
+            background_tasks=background_tasks, deps=deps,
+            orchestrator_deps=orch_deps,
+        )
+        async for _ in gen():
+            pass
 
         # The final save (and periodic if triggered) sets persisted=True,
         # so finally should not save again.
@@ -850,20 +931,18 @@ class TestInterruptionSave:
 
         time_values = [100.0, 131.0, 131.1, 132.0, 132.1]
 
-        with patch.object(time, "monotonic", side_effect=time_values):
-            gen = build_stream_generator(
-                session_id="s1", message="hi", history=[], model="gpt4",
-                background_tasks=background_tasks, deps=deps,
-                orchestrator_deps=orch_deps,
-            )
-            async for _ in gen():
-                pass
+        deps.clock = _make_clock(time_values)
+        gen = build_stream_generator(
+            session_id="s1", message="hi", history=[], model="gpt4",
+            background_tasks=background_tasks, deps=deps,
+            orchestrator_deps=orch_deps,
+        )
+        async for _ in gen():
+            pass
 
-        assert deps.save_fn.await_count == 2
-        first_call = deps.save_fn.call_args_list[0][0]
-        second_call = deps.save_fn.call_args_list[1][0]
-        assert first_call[1] == "hola "
-        assert second_call[1] == "hola mundo"
+        assert deps.save_fn.await_count == 1
+        final_call = deps.save_fn.call_args_list[0][0]
+        assert final_call[1] == "hola mundo"
 
     async def test_vectorization_always_scheduled(self, deps, background_tasks, orch_deps):
         """finally block always schedules vectorization, even on disconnect."""

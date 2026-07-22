@@ -15,6 +15,10 @@ def _dedup_phases(phases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     result = [phases[0]]
     for phase in phases[1:]:
         prev = result[-1]
+        if phase.get("retry") or prev.get("retry"):
+            if phase != prev:
+                result.append(phase)
+            continue
         if phase.get("content") != prev.get("content") or phase.get("reasoning") != prev.get("reasoning"):
             result.append(phase)
     return result

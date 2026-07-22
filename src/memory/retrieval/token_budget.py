@@ -108,9 +108,8 @@ def format_memories_for_prompt(
             ent_names = [e if isinstance(e, str) else e.get("name", "") for e in entities[:3]]
             ent_str = f" [entidades: {', '.join(ent_names)}]"
         
-        rel_score = r.get("relevance_score", 0.5)
         receipt_ref = f" [receipt:{receipt_id}]" if receipt_id else ""
-        lines.append(f"{i}. [{score_pct}%|rel:{rel_score:.2f}] {key}{ent_str}{receipt_ref}")
+        lines.append(f"{i}. [{score_pct}%] {key}{ent_str}{receipt_ref}")
         lines.append(f"   {text}")
         lines.append("")
     

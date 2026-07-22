@@ -59,6 +59,7 @@ def detect_relations(clusters: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 if pair in seen_pairs:
                     continue
                 seen_pairs.add(pair)
+                a, b = pair
 
                 shared = cluster_keywords[a] & cluster_keywords[b]
                 n_shared = len(shared)

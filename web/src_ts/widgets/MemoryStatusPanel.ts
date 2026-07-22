@@ -43,7 +43,13 @@ export class MemoryStatusPanel {
     if (!this.panelEl) return;
     try {
       const resp = await this.apiClient.memoryDiagnostics();
-      const data = await resp.json() as MemoryDiagnostics;
+      const raw = await resp.json() as MemoryDiagnostics & { memory?: MemoryDiagnostics | MemoryDiagnostics['memory'] };
+      // /api/diagnostics wraps the previous memory payload under `memory`.
+      // Keep accepting the old flat shape so the component remains reusable.
+      const nested = raw.memory;
+      const data = nested && 'queue_size' in nested
+        ? nested as MemoryDiagnostics
+        : raw;
       this.render(data);
     } catch (err) {
       this.logger.warn('memory_status_refresh_failed', err);

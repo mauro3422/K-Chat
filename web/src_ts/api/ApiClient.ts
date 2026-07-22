@@ -1,4 +1,4 @@
-import { IChatApi, ISessionApi, IWidgetApi, IDebugApi, IApiClient, ClientLogEntry } from '../types/api';
+import { IChatApi, ISessionApi, IWidgetApi, IDebugApi, IApiClient, ClientLogEntry, RetryRequest } from '../types/api';
 
 export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
   private baseUrl: string;
@@ -7,9 +7,10 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     this.baseUrl = baseUrl;
   }
 
-  chatStream(sessionId: string, message: string, model: string, controller: AbortController): Promise<Response> {
+  chatStream(sessionId: string, message: string, model: string, controller: AbortController, retry?: RetryRequest): Promise<Response> {
     const formData = new FormData();
     formData.append('message', message);
+    this.appendRetry(formData, retry);
     return fetch(`${this.baseUrl}/chat/${sessionId}?model=${encodeURIComponent(model)}`, {
       method: 'POST',
       body: formData,
@@ -17,9 +18,10 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     });
   }
 
-  chatStreamWithFiles(sessionId: string, message: string, model: string, controller: AbortController, files: File[]): Promise<Response> {
+  chatStreamWithFiles(sessionId: string, message: string, model: string, controller: AbortController, files: File[], retry?: RetryRequest): Promise<Response> {
     const formData = new FormData();
     formData.append('message', message);
+    this.appendRetry(formData, retry);
     for (let i = 0; i < files.length; i++) {
       formData.append('files', files[i]);
     }
@@ -88,6 +90,14 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
     });
   }
 
+  private appendRetry(formData: FormData, retry?: RetryRequest): void {
+    if (!retry?.resume) return;
+    formData.append('resume', 'true');
+    formData.append('retry_error_type', retry.errorType || 'unknown');
+    formData.append('retry_error_message', retry.errorMessage || '');
+    formData.append('retry_count', String(retry.retryCount || 1));
+  }
+
   saveWidgetState(sessionId: string, widgetId: string, state: string): Promise<Response> {
     return fetch(`${this.baseUrl}/sessions/${sessionId}/widgets/${widgetId}/state`, {
       method: 'POST',
@@ -133,12 +143,16 @@ export class ApiClient implements IChatApi, ISessionApi, IWidgetApi, IDebugApi {
   }
 
   syncStatus(): Promise<Response> {
-    return fetch(`${this.baseUrl}/api/node/sync/status`, { cache: 'no-store' });
+    // Browser-safe aggregate. The direct node endpoint is reserved for
+    // signed node-to-node traffic and correctly rejects browser requests.
+    return fetch(`${this.baseUrl}/api/diagnostics`, { cache: 'no-store' });
   }
 
   memoryDiagnostics(keyPattern: string = ''): Promise<Response> {
     const query = keyPattern ? `?key_pattern=${encodeURIComponent(keyPattern)}` : '';
-    return fetch(`${this.baseUrl}/api/memory/diagnostics${query}`, { cache: 'no-store' });
+    // Use the same-origin diagnostics facade; it signs peer requests on the
+    // server without exposing the LAN shared secret to the browser.
+    return fetch(`${this.baseUrl}/api/diagnostics${query}`, { cache: 'no-store' });
   }
 
   sendClientLogs(entries: ClientLogEntry[]): Promise<Response> {

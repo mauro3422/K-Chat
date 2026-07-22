@@ -104,6 +104,12 @@ export class SessionStore implements ISessionStore {
     // Prefer initialSessionId from DOM (page refresh / direct URL) over data[0].id
     if (this._initialSessionId && this._sessions.some(s => s.id === this._initialSessionId)) {
       await this.selectSession(this._initialSessionId);
+    } else if (this._activeSessionId) {
+      // A fresh browser has no matching session cookie. loadSessions selects
+      // the newest federated entry; run it through selectSession so a session
+      // owned by the other node redirects to its real message store instead
+      // of leaving an intentionally unloaded, apparently empty chat.
+      await this.selectSession(this._activeSessionId);
     }
     this._syncMasterLink(this._activeSessionId || this._initialSessionId || '');
   }

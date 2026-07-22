@@ -181,6 +181,16 @@ class TestComputeRelevance:
 
 
 class TestSourceLayerPolicy:
+    def test_result_dict_preserves_relevance_score(self):
+        result = HybridResult(
+            rowid=1,
+            text="memoria",
+            relevance_score=0.355,
+            fusion_score=0.8,
+        )
+
+        assert result.to_dict()["relevance_score"] == pytest.approx(0.355)
+
     def test_policy_weights_mixed_layers_and_reranks(self):
         retriever = HybridRetriever(
             db_path=":memory:",

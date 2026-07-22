@@ -485,6 +485,32 @@ async def _migration_026_memory_receipts(conn: Any, engine: Any) -> None:
     """)
 
 
+async def _migration_027_stream_checkpoints(conn: Any, engine: Any) -> None:
+    """Persist one replaceable recovery checkpoint per active session."""
+
+    await engine.execute(conn, """
+        CREATE TABLE IF NOT EXISTS stream_checkpoints (
+            session_id TEXT PRIMARY KEY REFERENCES sessions(session_id) ON DELETE CASCADE,
+            original_message TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            history_json TEXT NOT NULL DEFAULT '[]',
+            phases_json TEXT NOT NULL DEFAULT '[]',
+            partial_content TEXT NOT NULL DEFAULT '',
+            partial_reasoning TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'open',
+            checkpoint_kind TEXT NOT NULL DEFAULT '',
+            error_type TEXT NOT NULL DEFAULT '',
+            error_message TEXT NOT NULL DEFAULT '',
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    await engine.execute(conn, """
+        CREATE INDEX IF NOT EXISTS idx_stream_checkpoints_status_updated
+        ON stream_checkpoints (status, updated_at DESC)
+    """)
+
+
 MIGRATIONS = (
     _migration_001_initial_schema,
     _migration_002_add_reasoning,
@@ -512,4 +538,5 @@ MIGRATIONS = (
     _migration_024_restore_session_memory_index,
     _migration_025_sessions_origin_node_id,
     _migration_026_memory_receipts,
+    _migration_027_stream_checkpoints,
 )

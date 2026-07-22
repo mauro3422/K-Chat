@@ -1,8 +1,9 @@
-import logging
 import asyncio
-import time
 import importlib
-from collections.abc import Callable, AsyncGenerator
+import json
+import logging
+import time
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
 from fastapi import BackgroundTasks
@@ -10,22 +11,78 @@ from fastapi import BackgroundTasks
 from src.api.background import auto_rename_session
 from src.api.orchestrator import OrchestratorDeps, chat_stream
 from src.api.repos import DebugInfo
+from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.loop_detector import LoopDetector
 from web.services.message_persister import save_assistant_message
-from web.services.stream_error_classifier import classify_error
-from web.services.stream_retry_handler import StreamRetryHandler
-from web.services.stream_contract import serialize_stream_event
-from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.protocols import (
     MessagePersisterProtocol,
     SessionArtifactCoordinatorProtocol,
     StreamGeneratorProtocol,
 )
+from web.services.stream_contract import serialize_stream_event
+from web.services.stream_error_classifier import classify_error
+from web.services.stream_retry_handler import StreamRetryHandler
 from web.services.stream_state import StreamState
 
 logger = logging.getLogger(__name__)
 
 HEARTBEAT_INTERVAL = 20
+MAX_STREAM_SILENCE = 15 * 60
+
+
+async def _with_stream_heartbeats(
+    source: AsyncGenerator[tuple[str, Any], None],
+) -> AsyncGenerator[tuple[str, Any], None]:
+    """Keep HTTP streams alive while the model or a tool is still working."""
+    iterator = source.__aiter__()
+    pending: asyncio.Task[Any] | None = None
+    silent_for = 0.0
+    try:
+        pending = asyncio.create_task(iterator.__anext__())
+        while True:
+            done, _ = await asyncio.wait(
+                {pending},
+                timeout=HEARTBEAT_INTERVAL,
+            )
+            if not done:
+                silent_for += HEARTBEAT_INTERVAL
+                if silent_for >= MAX_STREAM_SILENCE:
+                    raise TimeoutError(
+                        "Stream produced no model or tool events for "
+                        f"{int(silent_for)} seconds"
+                    )
+                yield "heartbeat", ""
+                continue
+
+            try:
+                event = pending.result()
+            except StopAsyncIteration:
+                return
+            silent_for = 0.0
+            yield event
+            pending = asyncio.create_task(iterator.__anext__())
+    finally:
+        if pending is not None and not pending.done():
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+        close = getattr(iterator, "aclose", None)
+        if callable(close):
+            await close()
+
+
+def _history_json(history: list[Any]) -> str:
+    items: list[dict[str, Any]] = []
+    for message in history:
+        if isinstance(message, dict):
+            items.append(dict(message))
+        elif callable(getattr(message, "as_llm_message", None)):
+            items.append(message.as_llm_message())
+        else:
+            items.append({
+                "role": getattr(message, "role", ""),
+                "content": getattr(message, "content", None),
+            })
+    return json.dumps(items, ensure_ascii=False)
 
 
 def build_stream_generator(
@@ -42,7 +99,7 @@ def build_stream_generator(
     deps: StreamGeneratorDeps | None = None,
     orchestrator_deps: OrchestratorDeps | None = None,
 ) -> StreamGeneratorProtocol:
-    """Builds the NDJSON generator for the chat stream."""
+    """Build the NDJSON generator and durable recovery checkpoints."""
     _deps = deps or StreamGeneratorDeps(
         chat_stream_fn=chat_stream_fn,
         loop_detector=loop_detector,
@@ -53,178 +110,352 @@ def build_stream_generator(
     _chat_stream = _deps.chat_stream_fn or chat_stream
 
     async def generate() -> AsyncGenerator[str, None]:
-        debug_info = DebugInfo()
-        phases_output = []
-        state = StreamState(save_interval=30)
-        state.last_persisted_at = time.monotonic()
-
-        logger.info("Starting chat for session %s with model %s", session_id, model)
-
-        async def _save_with_retry(desc: str = "") -> bool:
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                try:
-                    await _save(session_id, state.full_content, state.full_reasoning, phases_output, debug_info, model)
-                    saved_at = now
-                    state.mark_persisted(saved_at)
-                    logger.info("Save OK%s: %d chars", f" ({desc})" if desc else "", len(state.full_content))
-                    return True
-                except Exception as e:
-                    logger.warning("Save failed%s (attempt %d/%d): %s", f" ({desc})" if desc else "", attempt + 1, max_attempts, e)
-                    if attempt < max_attempts - 1:
-                        await asyncio.sleep(1.0 * (2 ** attempt))
-            return False
-
-        detector = _deps.loop_detector or LoopDetector()
-        _save = _deps.save_fn or save_assistant_message
-        _rename = _deps.rename_fn or auto_rename_session
-
-        # Prepare orchestrator dependencies (injected from composition root)
         if orchestrator_deps is None:
             raise ValueError(
                 "orchestrator_deps is required. Pass OrchestratorDeps from "
                 "the composition root (request.app.state)."
             )
-        _orch_deps = orchestrator_deps
-        _orch_deps.debug = debug_info
-        _orch_deps.phases_output = phases_output
+
+        debug_info = DebugInfo()
+        phases_output: list[dict[str, Any]] = [
+            dict(phase) for phase in _deps.initial_phases
+        ]
+        clock = _deps.clock or time.monotonic
+        state = StreamState(
+            save_interval=10,
+            last_persisted_at=clock(),
+        )
+        detector = _deps.loop_detector or LoopDetector()
+        save_message = _deps.save_fn or save_assistant_message
+        rename_session = _deps.rename_fn or auto_rename_session
+        orch_deps = orchestrator_deps
+        orch_deps.debug = debug_info
+        orch_deps.phases_output = phases_output
+        checkpoint_repo = getattr(orch_deps.repos, "stream_checkpoints", None)
+        completed = False
+        last_error_type = _deps.retry_error_type
+        last_error_message = _deps.retry_error_message
+
+        logger.info("Starting chat for session %s with model %s", session_id, model)
+
+        async def save_final(description: str) -> bool:
+            retry_marker = next(
+                (phase["retry"] for phase in reversed(phases_output)
+                 if isinstance(phase.get("retry"), dict)),
+                None,
+            )
+            previous_retry_status = None
+            if retry_marker is not None:
+                previous_retry_status = retry_marker.get("status")
+                retry_marker["status"] = "completed"
+            for attempt in range(3):
+                try:
+                    await save_message(
+                        session_id,
+                        state.full_content,
+                        state.full_reasoning,
+                        phases_output,
+                        debug_info,
+                        model,
+                    )
+                    state.mark_persisted(clock())
+                    logger.info(
+                        "Final save OK (%s): %d chars",
+                        description,
+                        len(state.full_content),
+                    )
+                    return True
+                except Exception as exc:
+                    logger.warning(
+                        "Final save failed (%s) (attempt %d/3): %s",
+                        description,
+                        attempt + 1,
+                        exc,
+                    )
+                    if attempt < 2:
+                        await asyncio.sleep(1.0 * (2 ** attempt))
+            if retry_marker is not None:
+                retry_marker["status"] = previous_retry_status or "active"
+            return False
+
+        async def save_checkpoint(
+            kind: str,
+            *,
+            status: str = "open",
+            error_type: str = "",
+            error_message: str = "",
+        ) -> None:
+            if checkpoint_repo is None:
+                return
+            try:
+                await checkpoint_repo.save(
+                    session_id,
+                    original_message=_deps.original_message or message,
+                    model=model,
+                    history_json=_history_json(history),
+                    phases_json=json.dumps(phases_output, ensure_ascii=False),
+                    partial_content=state.full_content,
+                    partial_reasoning=state.full_reasoning,
+                    status=status,
+                    checkpoint_kind=kind,
+                    error_type=error_type,
+                    error_message=error_message,
+                    retry_count=_deps.retry_count,
+                )
+                state.last_persisted_at = clock()
+            except Exception:
+                logger.exception(
+                    "Checkpoint save failed for %s (%s)",
+                    session_id,
+                    kind,
+                )
+
+        async def clear_checkpoint() -> None:
+            if checkpoint_repo is None:
+                return
+            try:
+                await checkpoint_repo.clear(session_id)
+            except Exception:
+                logger.exception("Checkpoint clear failed for %s", session_id)
+
+        async def recovery_events(
+            error_type: str,
+            error_message: str,
+            *,
+            allow_empty: bool = False,
+        ) -> AsyncGenerator[tuple[str, Any], None]:
+            if (
+                _deps.retry_handler is None
+                or not _deps.retry_handler.can_retry
+                or (not allow_empty and not state.has_progress())
+            ):
+                return
+            retry_count = getattr(_deps.retry_handler, "retry_count", 0)
+            max_retries = getattr(_deps.retry_handler, "max_retries", 2)
+            if not isinstance(retry_count, int):
+                retry_count = 0
+            if not isinstance(max_retries, int):
+                max_retries = 2
+            retry_data = {
+                "attempt": retry_count + 1,
+                "max_retries": max_retries,
+                "error_type": error_type,
+                "error_message": error_message,
+                "checkpoint_kind": "last_confirmed",
+                "status": "active",
+            }
+            phases_output.append({"retry": dict(retry_data)})
+            yield "retry", retry_data
+            recovery_source = _deps.retry_handler.attempt_recovery(
+                history,
+                state.full_content,
+                state.full_reasoning,
+                model,
+                session_id,
+                stream_fn=_chat_stream,
+                orchestrator_deps=orch_deps,
+                error_type=error_type,
+                error_message=error_message,
+            )
+            async for recovery_type, recovery_token in _with_stream_heartbeats(
+                recovery_source,
+            ):
+                yield recovery_type, recovery_token
+
+        async def consume_event(
+            event_type: str,
+            token: Any,
+        ) -> AsyncGenerator[str, None]:
+            if event_type == "checkpoint":
+                kind = token.get("kind", "phase") if isinstance(token, dict) else "phase"
+                await save_checkpoint(kind)
+                if kind == "tool_phase":
+                    state.close_phase()
+                return
+            if event_type == "heartbeat":
+                yield serialize_stream_event("heartbeat", "")
+                return
+            if event_type != "tool_call":
+                state.append(event_type, token)
+            yield serialize_stream_event(event_type, token)
 
         try:
-            async for tipo, token in _chat_stream(message, history, model, deps=_orch_deps):
-                now = time.monotonic()
-
-                if tipo == "heartbeat":
-                    yield serialize_stream_event("heartbeat", "")
-                    continue
-
-                # 🛑 Cuando se ejecutan tools, el contenido del turno actual
-                # YA fue guardado por _save_assistant_tool_calls en tool_loop.
-                # Reseteamos buffers para evitar acumulación entre turns
-                # (bug: mensajes concatenados en la DB).
-                if tipo == "tool_call":
-                    state.reset_on_tool_call()
-                    yield serialize_stream_event(tipo, token)
-                    continue
-                if tipo == "content":
+            recovered_from_loop = False
+            source = _chat_stream(
+                message,
+                history,
+                model,
+                deps=orch_deps,
+            )
+            async for event_type, token in _with_stream_heartbeats(source):
+                if event_type == "content":
                     loop_error = detector.check(token)
                     if loop_error:
-                        logger.warning("Loop detected for %s: %s", session_id, loop_error)
-
-                        recovered = False
-                        if _deps.retry_handler is not None and _deps.retry_handler.can_retry:
-                            logger.info(
-                                "Transparent recovery (attempt %d/%d) for %s",
-                                _deps.retry_handler.retry_count + 1,
-                                _deps.retry_handler.max_retries,
+                        last_error_type = "loop_detected"
+                        last_error_message = loop_error
+                        await save_checkpoint(
+                            "loop_detected",
+                            status="interrupted",
+                            error_type=last_error_type,
+                            error_message=last_error_message,
+                        )
+                        try:
+                            async for recovery_type, recovery_token in recovery_events(
+                                last_error_type,
+                                last_error_message,
+                                allow_empty=True,
+                            ):
+                                async for line in consume_event(recovery_type, recovery_token):
+                                    yield line
+                                if recovery_type != "retry":
+                                    recovered_from_loop = True
+                        except Exception:
+                            logger.exception(
+                                "Loop recovery failed for %s",
                                 session_id,
                             )
-                            try:
-                                async for rtipo, rtoken in _deps.retry_handler.attempt_recovery(
-                                    history, state.full_content, state.full_reasoning,
-                                    model, session_id,
-                                ):
-                                    state.append(rtipo, rtoken)
-                                    yield serialize_stream_event(rtipo, rtoken)
-                                    recovered = True
-                            except Exception as e:
-                                logger.error("Recovery failed for %s: %s", session_id, e)
+                        if not recovered_from_loop:
+                            yield serialize_stream_event(
+                                "error",
+                                {
+                                    "type": last_error_type,
+                                    "message": last_error_message,
+                                },
+                            )
+                        break
 
-                        if not recovered:
-                            yield serialize_stream_event("error", {"type": "loop_detected", "message": loop_error})
+                async for line in consume_event(event_type, token):
+                    yield line
 
-                        break  # Exit main stream regardless of recovery outcome
-
-                state.append(tipo, token)
-
-                yield serialize_stream_event(tipo, token)
-
-                if state.should_persist(now):
-                    await _save_with_retry("periodic")
+                if state.should_persist(clock()):
+                    await save_checkpoint("periodic")
 
             if not state.has_output():
-                logger.warning("Empty response for session %s with model %s", session_id, model)
-                yield serialize_stream_event("error", {"type": "empty_response", "message": "The model did not generate any content"})
+                last_error_type = "empty_response"
+                last_error_message = "The model did not generate any content"
+                await save_checkpoint(
+                    "empty_response",
+                    status="interrupted",
+                    error_type=last_error_type,
+                    error_message=last_error_message,
+                )
+                yield serialize_stream_event(
+                    "error",
+                    {"type": last_error_type, "message": last_error_message},
+                )
                 return
 
-            logger.info("Chat completed for session %s: %d chars content, %d chars reasoning", session_id, len(state.full_content), len(state.full_reasoning))
-
-            if state.dirty:
-                await _save_with_retry("final")
-            background_tasks.add_task(_rename, session_id, message, model)
+            saved = not state.dirty or await save_final("final")
+            if saved:
+                await clear_checkpoint()
+                completed = True
+                background_tasks.add_task(
+                    rename_session,
+                    session_id,
+                    _deps.original_message or message,
+                    model,
+                )
 
         except GeneratorExit:
             logger.info("Client disconnected for %s", session_id)
             return
-        except Exception as e:
-            error_type, error_msg = classify_error(e)
-            logger.error("Stream error for %s: [%s] %s — %s: %s", session_id, error_type, error_msg, type(e).__name__, e)
-            if _deps.retry_handler is not None and _deps.retry_handler.can_retry and state.has_output():
-                try:
-                    recovered = False
-                    async for rtipo, rtoken in _deps.retry_handler.attempt_recovery(
-                        history, state.full_content, state.full_reasoning, model, session_id,
-                    ):
-                        state.append(rtipo, rtoken)
-                        yield serialize_stream_event(rtipo, rtoken)
+        except Exception as exc:
+            last_error_type, last_error_message = classify_error(exc)
+            logger.error(
+                "Stream error for %s: [%s] %s - %s: %s",
+                session_id,
+                last_error_type,
+                last_error_message,
+                type(exc).__name__,
+                exc,
+            )
+            await save_checkpoint(
+                "stream_error",
+                status="interrupted",
+                error_type=last_error_type,
+                error_message=last_error_message,
+            )
+
+            recovered = False
+            try:
+                async for recovery_type, recovery_token in recovery_events(
+                    last_error_type,
+                    last_error_message,
+                ):
+                    async for line in consume_event(recovery_type, recovery_token):
+                        yield line
+                    if recovery_type != "retry":
                         recovered = True
-                    if recovered:
-                        return
-                except Exception as recover_err:
-                    logger.error("Recovery also failed for %s: %s", session_id, recover_err)
-            yield serialize_stream_event("error", {"type": error_type, "message": error_msg})
+            except Exception:
+                logger.exception("Recovery also failed for %s", session_id)
+
+            if recovered and state.has_output():
+                saved = not state.dirty or await save_final("recovered")
+                if saved:
+                    await clear_checkpoint()
+                    completed = True
+                return
+
+            yield serialize_stream_event(
+                "error",
+                {"type": last_error_type, "message": last_error_message},
+            )
             return
         finally:
-            # Always enqueue background vectorization (even on disconnect)
             background_tasks.add_task(
                 _vectorize_session,
                 session_id,
-                _orch_deps,
+                orch_deps,
                 _deps.session_artifact_coordinator,
             )
+            if not completed:
+                await save_checkpoint(
+                    "interruption",
+                    status="interrupted",
+                    error_type=last_error_type,
+                    error_message=last_error_message,
+                )
 
-            if state.dirty and state.has_output():
-                logger.info("Saving partial message for session %s after stream interruption", session_id)
-                if not await _save_with_retry("interruption"):
-                    logger.warning("Could not save partial message for session %s", session_id)
     return generate
 
 
 async def _run_vectorization_pipeline(session_id: str, repos: Any) -> None:
     """Run the vectorization pipeline after coordination and existence checks."""
-    _vs = importlib.import_module("src.memory.vectorize_sessions").vectorize_session
+    vectorize = importlib.import_module(
+        "src.memory.vectorize_sessions"
+    ).vectorize_session
     heuristic_mod = importlib.import_module("src.memory.clustering.heuristic")
     relations_mod = importlib.import_module("src.memory.clustering.relations")
     linker_mod = importlib.import_module("src.memory.entity.linker")
     resolve_memory_db_path = importlib.import_module(
         "src.memory.memory_db_path"
     ).resolve_memory_db_path
-    HeuristicClusterer = heuristic_mod.HeuristicClusterer
-    flush_clusters_to_db = heuristic_mod.flush_clusters_to_db
-    detect_relations = relations_mod.detect_relations
-    flush_relations_to_db = relations_mod.flush_relations_to_db
-    EntityLinker = linker_mod.EntityLinker
-    flush_entities_to_db = linker_mod.flush_entities_to_db
-    flush_entity_relations_to_db = linker_mod.flush_relations_to_db
-    flush_entity_mentions_to_db = linker_mod.flush_entity_mentions_to_db
+    clusterer = heuristic_mod.HeuristicClusterer()
+    linker = linker_mod.EntityLinker()
     db_path = resolve_memory_db_path()
-    clusterer = HeuristicClusterer()
-    linker = EntityLinker()
 
-    count, noise, mappings, _ = await _vs(
-        session_id, clusterer=clusterer, repos=repos, linker=linker,
+    count, noise, mappings, _ = await vectorize(
+        session_id,
+        clusterer=clusterer,
+        repos=repos,
+        linker=linker,
     )
     if count <= 0:
         return
 
-    await flush_clusters_to_db(clusterer, db_path, mappings=mappings)
-    cluster_dicts = [c.as_dict for c in clusterer.clusters.values()]
-    relations = detect_relations(cluster_dicts)
+    await heuristic_mod.flush_clusters_to_db(
+        clusterer,
+        db_path,
+        mappings=mappings,
+    )
+    cluster_dicts = [cluster.as_dict for cluster in clusterer.clusters.values()]
+    relations = relations_mod.detect_relations(cluster_dicts)
     if relations:
-        await flush_relations_to_db(relations, db_path)
+        await relations_mod.flush_relations_to_db(relations, db_path)
 
-    await flush_entities_to_db(linker, db_path)
-    await flush_entity_relations_to_db(linker, db_path)
-    await flush_entity_mentions_to_db(linker, db_path)
+    await linker_mod.flush_entities_to_db(linker, db_path)
+    await linker_mod.flush_relations_to_db(linker, db_path)
+    await linker_mod.flush_entity_mentions_to_db(linker, db_path)
 
     logger.info(
         "Vectorized session %s: %d exchanges (%d noise, %d clusters, %d entities)",

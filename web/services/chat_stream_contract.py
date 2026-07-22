@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections.abc import Callable, Generator
 from typing import Any
 
@@ -24,3 +24,9 @@ class StreamGeneratorDeps:
     save_fn: MessagePersisterProtocol | None = None
     rename_fn: Callable | None = None
     session_artifact_coordinator: SessionArtifactCoordinatorProtocol | None = None
+    original_message: str = ""
+    retry_error_type: str = ""
+    retry_error_message: str = ""
+    retry_count: int = 0
+    initial_phases: list[dict[str, Any]] = field(default_factory=list)
+    clock: Callable[[], float] | None = None

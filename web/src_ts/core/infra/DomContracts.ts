@@ -25,6 +25,7 @@ export const C = {
   ERROR_DETAIL: 'error-detail',
   ERROR_HINT: 'error-hint',
   RETRY_BTN: 'error-retry-btn',
+  RETRY_CHECKPOINT: 'retry-checkpoint',
 
   // Widgets
   WIDGET_CONTAINER: 'interactive-widget-container',

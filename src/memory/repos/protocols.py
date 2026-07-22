@@ -129,3 +129,28 @@ class MemoryReceiptRepositoryProtocol(Protocol):
     async def touch_hydrated(self, session_id: str, receipt_id: str) -> None: ...
 
     async def delete_by_session(self, session_id: str, cursor: Any = None) -> None: ...
+
+
+class StreamCheckpointRepositoryProtocol(Protocol):
+    async def save(
+        self,
+        session_id: str,
+        *,
+        original_message: str,
+        model: str,
+        history_json: str,
+        phases_json: str,
+        partial_content: str = "",
+        partial_reasoning: str = "",
+        status: str = "open",
+        checkpoint_kind: str = "",
+        error_type: str = "",
+        error_message: str = "",
+        retry_count: int = 0,
+    ) -> None: ...
+
+    async def get(self, session_id: str) -> dict[str, Any] | None: ...
+
+    async def clear(self, session_id: str) -> None: ...
+
+    async def delete_by_session(self, session_id: str, cursor: Any = None) -> None: ...

@@ -1,6 +1,9 @@
 import pytest
 from unittest.mock import AsyncMock
-from web.services.stream_retry_handler import StreamRetryHandler, CONTINUATION_INSTRUCTION
+from web.services.stream_retry_handler import (
+    StreamRetryHandler,
+    build_continuation_instruction,
+)
 
 
 @pytest.mark.anyio
@@ -24,7 +27,7 @@ async def test_zero_max_retries():
 
 
 @pytest.mark.anyio
-async def test_build_messages_adds_assistant_and_continuation():
+async def test_build_messages_adds_partial_assistant():
     h = StreamRetryHandler()
     history = [
         {"role": "system", "content": "You are a helpful assistant."},
@@ -33,12 +36,11 @@ async def test_build_messages_adds_assistant_and_continuation():
     messages = h.build_messages(history, partial_content="Roses are red",
                                  partial_reasoning="")
 
-    assert len(messages) == 4
+    assert len(messages) == 3
     assert messages[0] == history[0]
     assert messages[1] == history[1]
     assert messages[2]["role"] == "assistant"
     assert "Roses are red" in messages[2]["content"]
-    assert messages[3]["role"] == "user"
 
 
 @pytest.mark.anyio
@@ -49,21 +51,19 @@ async def test_build_messages_combines_reasoning_and_content():
                                  partial_content="Final answer.",
                                  partial_reasoning="Thinking step 1")
 
-    assert len(messages) == 3
+    assert len(messages) == 2
     asst_msg = messages[1]
     assert asst_msg["role"] == "assistant"
-    assert "Thinking step 1" in asst_msg["content"]
-    assert "Final answer." in asst_msg["content"]
+    assert asst_msg["reasoning_content"] == "Thinking step 1"
+    assert asst_msg["content"] == "Final answer."
 
 
 @pytest.mark.anyio
-async def test_build_messages_appends_continuation_instruction():
-    h = StreamRetryHandler()
-    messages = h.build_messages([], partial_content="Hello",
-                                 partial_reasoning="")
-    last = messages[-1]
-    assert last["role"] == "user"
-    assert last["content"] == CONTINUATION_INSTRUCTION
+async def test_continuation_instruction_reports_error_and_allows_tools():
+    instruction = build_continuation_instruction("network", "connection lost")
+    assert "network" in instruction
+    assert "connection lost" in instruction
+    assert "may use tools" in instruction
 
 
 @pytest.mark.anyio

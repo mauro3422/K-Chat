@@ -146,6 +146,30 @@ describe('MessageView DOM contract', () => {
       const ts = el!.querySelector('.' + C.MSG_TS);
       expect(ts).toBeNull();
     });
+
+    it('restores retry checkpoint cards from persisted phases', () => {
+      const el = messageView.appendMessage({
+        role: 'assistant',
+        content: 'terminado',
+        phases: [
+          { content: 'fase previa' },
+          {
+            retry: {
+              attempt: 1,
+              max_retries: 2,
+              error_type: 'network',
+              error_message: 'provider desconectado',
+              status: 'completed',
+            },
+          },
+          { content: 'fase recuperada' },
+        ],
+      });
+
+      const card = el!.querySelector('.retry-checkpoint--completed');
+      expect(card?.textContent).toContain('Intento 1/2');
+      expect(card?.textContent).toContain('provider desconectado');
+    });
   });
 
   describe('clearContainer()', () => {

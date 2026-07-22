@@ -7,6 +7,7 @@ export const STREAM_EVENT_TYPES = {
   ERROR: 'error',
   MEMORY: 'memory',
   NOTIFICATION: 'notification',
+  RETRY: 'retry',
 } as const;
 
 export type StreamEventType = (typeof STREAM_EVENT_TYPES)[keyof typeof STREAM_EVENT_TYPES];

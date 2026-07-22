@@ -4,6 +4,7 @@ import { StreamEvent, StreamEventType, STREAM_EVENT_TYPES } from '../types/strea
 import { IEventBus } from '../types/events';
 import { getLogger } from '../core/infra/LoggerFactory';
 import { ILogger } from '../core/infra/Logger';
+import type { RetryRequest } from '../types/api';
 
 /** Pre-built set of valid stream event types — avoid `new Set()` on every parse */
 const VALID_EVENT_TYPES = new Set(Object.values(STREAM_EVENT_TYPES));
@@ -18,6 +19,7 @@ export interface StreamParams {
   onFirstToken?: () => void;
   onChunk?: () => void;
   files?: File[];
+  retry?: RetryRequest;
 }
 
 export interface INDJSONStreamClient {
@@ -106,15 +108,15 @@ export class NDJSONStreamClient implements INDJSONStreamClient {
   }
 
   private async executeStream(params: StreamParams): Promise<void> {
-    const { sessionId, message, model, dispatcher, context, onFirstToken, onChunk, files } = params;
+    const { sessionId, message, model, dispatcher, context, onFirstToken, onChunk, files, retry } = params;
     const controller = this.controller!;
 
     let resp: Response;
     try {
       if (files && files.length > 0) {
-        resp = await this.apiClient.chatStreamWithFiles(sessionId, message, model || '', controller, files);
+        resp = await this.apiClient.chatStreamWithFiles(sessionId, message, model || '', controller, files, retry);
       } else {
-        resp = await this.apiClient.chatStream(sessionId, message, model || '', controller);
+        resp = await this.apiClient.chatStream(sessionId, message, model || '', controller, retry);
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;

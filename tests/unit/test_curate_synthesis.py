@@ -159,8 +159,16 @@ async def test_curate_sessions_skips_unchanged_cataloged_session(tmp_path):
     conn = sqlite3.connect(sessions_db)
     conn.execute("CREATE TABLE sessions (session_id TEXT PRIMARY KEY, name TEXT, created_at TEXT)")
     conn.execute(
+        "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, created_at TEXT)"
+    )
+    now = datetime.now().isoformat()
+    conn.execute(
         "INSERT INTO sessions (session_id, name, created_at) VALUES (?, ?, ?)",
-        ("s1", "Test", datetime.now().isoformat()),
+        ("s1", "Test", now),
+    )
+    conn.execute(
+        "INSERT INTO messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+        ("s1", "user", "Actividad reciente.", now),
     )
     conn.commit()
     conn.close()
@@ -208,12 +216,22 @@ async def test_curate_sessions_injects_relevant_and_provisional_context(tmp_path
     memory_db = tmp_path / "memory.db"
     with sqlite3.connect(sessions_db) as conn:
         conn.execute("CREATE TABLE sessions (session_id TEXT PRIMARY KEY, name TEXT, created_at TEXT)")
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, created_at TEXT)"
+        )
         now = datetime.now()
         conn.executemany(
             "INSERT INTO sessions (session_id, name, created_at) VALUES (?, ?, ?)",
             [
                 ("s1", "First", (now - timedelta(hours=2)).isoformat()),
                 ("s2", "Second", (now - timedelta(hours=1)).isoformat()),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO messages (session_id, role, content, created_at) VALUES (?, 'user', ?, ?)",
+            [
+                ("s1", "First activity", (now - timedelta(hours=2)).isoformat()),
+                ("s2", "Second activity", (now - timedelta(hours=1)).isoformat()),
             ],
         )
     with sqlite3.connect(memory_db) as conn:

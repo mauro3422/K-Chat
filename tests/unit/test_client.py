@@ -86,6 +86,21 @@ class _AsyncErrorIterator:
         raise Exception("Model big-pickle is not supported")
 
 
+class _AsyncPartialThenErrorIterator:
+    def __init__(self, item):
+        self._item = item
+        self._yielded = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._yielded:
+            self._yielded = True
+            return self._item
+        raise Exception("connection lost mid-stream")
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -621,6 +636,38 @@ class TestChatStream:
         assert results == ["Recovered"]
         assert mock_api_call._api_call.call_count == 2
         mock_failover.assert_called_once_with("big-pickle", refresh=True, error=ANY, breaker=None, rate_store=None, registry=None)
+
+    @pytest.mark.anyio
+    async def test_midstream_failure_marks_model_before_checkpoint_recovery(
+        self,
+        mock_models,
+        mock_policy,
+        mock_api_call,
+        mock_retry,
+        mock_failover,
+    ):
+        mock_models.is_model_failed.return_value = False
+        mock_retry.return_value = False
+        mock_failover.return_value = "backup"
+        chunk = _make_chunk(_make_delta(content="partial"))
+        mock_api_call._api_call.return_value = _AsyncPartialThenErrorIterator(chunk)
+
+        gen = chat_stream(
+            [{"role": "user", "content": "Hi"}],
+            model="unstable-model",
+        )
+        assert await gen.__anext__() == "partial"
+        with pytest.raises(Exception, match="connection lost mid-stream"):
+            await gen.__anext__()
+
+        mock_failover.assert_called_once_with(
+            "unstable-model",
+            refresh=True,
+            error=ANY,
+            breaker=None,
+            rate_store=None,
+            registry=None,
+        )
 
     @pytest.mark.anyio
     async def test_updates_debug(self, mock_models, mock_policy, mock_api_call):

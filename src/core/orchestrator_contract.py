@@ -69,6 +69,7 @@ class RequestStateDeps:
     debug: DebugInfo | None = None
     phases_output: list[dict[str, Any]] = field(default_factory=list)
     background_tasks: Any | None = None
+    is_continuation: bool = False
 
 
 # ── Field → sub-group mapping (used by OrchestratorDeps delegation) ────────
@@ -92,6 +93,7 @@ _FIELD_MAP: dict[str, str] = {
     "debug": "state",
     "phases_output": "state",
     "background_tasks": "state",
+    "is_continuation": "state",
 }
 
 

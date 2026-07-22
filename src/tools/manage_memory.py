@@ -32,6 +32,14 @@ from src.memory.operations.query import (
     _show_topics,
 )
 from src.memory.operations.archive import _archive
+from src.memory.operations.quality import (
+    _backfill_historical_tool_calls,
+    _cleanup_empty_sessions,
+    _prune_indirect_cooccurrence,
+    _prune_entities,
+    _quality_stats,
+    _rebuild_topic_relations,
+)
 from src.tools.save_memory import run as _save_run
 
 DEFINITION: dict[str, Any] = {
@@ -50,6 +58,12 @@ DEFINITION: dict[str, Any] = {
                        "Use 'sync' to sync memory.db from MEMORY.md. "
                        "Use 'archive' to archive entries (prefix key with _archived:). "
                        "Use 'find' to search in MEMORY.md. "
+                       "Use 'quality_stats' to audit graph/session hygiene. "
+                       "Use 'prune_entities' to remove generated low-signal leaves. "
+                       "Use 'cleanup_empty_sessions' to remove unused sessions. "
+                       "Use 'backfill_tool_calls' to recover historical tool metadata. "
+                       "Use 'prune_indirect_cooccurrence' to clean PMI noise around a semantic entity. "
+                       "Use 'rebuild_topic_relations' to regenerate cluster relations. "
                        "Use 'export' to export as JSON.",
         "parameters": {
             "type": "object",
@@ -59,12 +73,20 @@ DEFINITION: dict[str, Any] = {
                     "enum": ["reindex", "reindex_sessions", "reindex_session",
                              "clusters", "topics", "stats",
                              "compare", "repair", "sync", "archive",
-                             "find", "export"],
+                             "find", "export", "quality_stats",
+                             "prune_entities", "cleanup_empty_sessions",
+                             "rebuild_topic_relations", "backfill_tool_calls",
+                             "prune_indirect_cooccurrence"],
                     "description": "Operation to perform."
                 },
                 "session_id": {
                     "type": "string",
                     "description": "Session ID for reindex_session (optional)."
+                },
+                "entity_id": {
+                    "type": "string",
+                    "description": "Entity ID or exact name for graph cleanup operations.",
+                    "default": ""
                 },
                 "dry_run": {
                     "type": "boolean",
@@ -102,6 +124,7 @@ DEFINITION: dict[str, Any] = {
 async def run(**kwargs) -> str:
     operation = kwargs.get("operation", "")
     session_id = kwargs.get("session_id", "")
+    entity_id = kwargs.get("entity_id", "")
     dry_run = kwargs.get("dry_run", False)
     confirm = kwargs.get("confirm", False)
     key_pattern = kwargs.get("key_pattern", "")
@@ -140,6 +163,39 @@ async def run(**kwargs) -> str:
             confirm=confirm,
             repos=_repos,
             save_memory_fn=lambda k, v: _save_run(key=k, value=v, _repos=_repos),
+        )
+    elif operation == "quality_stats":
+        return await _quality_stats(repos=_repos)
+    elif operation == "prune_entities":
+        return await _prune_entities(
+            dry_run=dry_run,
+            confirm=confirm,
+            repos=_repos,
+        )
+    elif operation == "cleanup_empty_sessions":
+        return await _cleanup_empty_sessions(
+            dry_run=dry_run,
+            confirm=confirm,
+            repos=_repos,
+        )
+    elif operation == "rebuild_topic_relations":
+        return await _rebuild_topic_relations(
+            dry_run=dry_run,
+            confirm=confirm,
+            repos=_repos,
+        )
+    elif operation == "backfill_tool_calls":
+        return await _backfill_historical_tool_calls(
+            dry_run=dry_run,
+            confirm=confirm,
+            repos=_repos,
+        )
+    elif operation == "prune_indirect_cooccurrence":
+        return await _prune_indirect_cooccurrence(
+            entity_id=entity_id,
+            dry_run=dry_run,
+            confirm=confirm,
+            repos=_repos,
         )
     elif operation == "export":
         return await _export(fmt=fmt, repos=_repos)

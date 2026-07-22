@@ -20,6 +20,7 @@ class TestExploreGraphRun:
     @pytest.mark.anyio
     async def test_happy_path(self):
         mock_repo = AsyncMock()
+        mock_repo.get_entity.return_value = {"id": "e1", "name": "Root"}
         mock_repo.explore_graph.return_value = [
             {"id": "e2", "name": "FastAPI", "entity_type": "tecnologia", "relation_type": "usa", "depth": 1},
             {"id": "e3", "name": "Python", "entity_type": "lenguaje", "relation_type": "co_occurrence", "depth": 2},
@@ -31,8 +32,51 @@ class TestExploreGraphRun:
 
         mock_repo.explore_graph.assert_awaited_once_with("e1", depth=2)
         assert "FastAPI" in result
-        assert "Python" in result
+        assert "Python" not in result
+        assert "conexiones estadísticas" in result
         assert "Graph Explorer" in result
+
+    @pytest.mark.anyio
+    async def test_resolves_exact_entity_name_before_exploring(self):
+        mock_repo = AsyncMock()
+        mock_repo.get_entity.return_value = None
+        mock_repo.search_entities.return_value = [
+            {"id": "uuid-kchat", "name": "K-Chat", "entity_type": "proyecto"}
+        ]
+        mock_repo.explore_graph.return_value = [
+            {
+                "id": "sqlite",
+                "name": "SQLite",
+                "entity_type": "tecnologia",
+                "relation_type": "USA",
+                "depth": 1,
+            }
+        ]
+        _repos = MagicMock()
+        _repos.memory.entity_graph = mock_repo
+
+        result = await run(entity_id="K-Chat", _repos=_repos)
+
+        mock_repo.search_entities.assert_awaited_once_with("K-Chat", limit=6)
+        mock_repo.explore_graph.assert_awaited_once_with("uuid-kchat", depth=2)
+        assert "SQLite" in result
+
+    @pytest.mark.anyio
+    async def test_ambiguous_entity_name_returns_candidate_ids(self):
+        mock_repo = AsyncMock()
+        mock_repo.get_entity.return_value = None
+        mock_repo.search_entities.return_value = [
+            {"id": "e1", "name": "Kairos Core", "entity_type": "proyecto"},
+            {"id": "e2", "name": "Kairos Web", "entity_type": "proyecto"},
+        ]
+        _repos = MagicMock()
+        _repos.memory.entity_graph = mock_repo
+
+        result = await run(entity_id="Kairos", _repos=_repos)
+
+        assert "Nombre ambiguo" in result
+        assert "e1" in result and "e2" in result
+        mock_repo.explore_graph.assert_not_awaited()
 
     @pytest.mark.anyio
     async def test_empty_entity_id_returns_error(self):
@@ -59,6 +103,7 @@ class TestExploreGraphRun:
         mock_repo = AsyncMock()
         mock_repo.explore_graph.return_value = []
         mock_repo.get_entity.return_value = None
+        mock_repo.search_entities.return_value = []
         _repos = MagicMock()
         _repos.memory.entity_graph = mock_repo
 
@@ -72,6 +117,7 @@ class TestExploreGraphRun:
         mock_repo = AsyncMock()
         mock_repo.explore_graph.return_value = []
         mock_repo.get_entity.return_value = None
+        mock_repo.search_entities.return_value = []
         _repos = MagicMock()
         _repos.memory.entity_graph = mock_repo
 
@@ -82,6 +128,7 @@ class TestExploreGraphRun:
     @pytest.mark.anyio
     async def test_error_from_repo_returns_error_message(self):
         mock_repo = AsyncMock()
+        mock_repo.get_entity.return_value = {"id": "root", "name": "Root"}
         mock_repo.explore_graph.side_effect = RuntimeError("graph crashed")
         _repos = MagicMock()
         _repos.memory.entity_graph = mock_repo

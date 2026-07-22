@@ -120,6 +120,21 @@ _SESSIONS_SCHEMA_STATEMENTS = [
         last_hydrated_at TEXT NOT NULL DEFAULT '',
         UNIQUE(session_id, source, source_key, item_idx)
     )""",
+    """CREATE TABLE IF NOT EXISTS stream_checkpoints (
+        session_id TEXT PRIMARY KEY REFERENCES sessions(session_id) ON DELETE CASCADE,
+        original_message TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        history_json TEXT NOT NULL DEFAULT '[]',
+        phases_json TEXT NOT NULL DEFAULT '[]',
+        partial_content TEXT NOT NULL DEFAULT '',
+        partial_reasoning TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open',
+        checkpoint_kind TEXT NOT NULL DEFAULT '',
+        error_type TEXT NOT NULL DEFAULT '',
+        error_message TEXT NOT NULL DEFAULT '',
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
     """CREATE TABLE IF NOT EXISTS gateway_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ts TEXT NOT NULL DEFAULT (datetime('now')),

@@ -62,11 +62,12 @@ These rules apply to ALL code modifications. Violations are regressions.
 - **No esperar a que terminen tests lentos.** Si testmon ya tiene el mapa de dependencias, corre en segundos. Si no hay cambios, corre 0 tests.
 
 --- 🐞 DEBUGGING CON DB_QUERY ---
+--- 🐞 DEBUGGING CON DB_QUERY ---
 
 - **db_query**: Consulta la base de datos SQLite del sistema en modo solo lectura. 
 - **Sintaxis**: `db_query(table="messages", session_id="id", limit=10)`
-- **Tablas**: sessions, messages, tool_calls, saved_widgets, widget_states, debug_info, memory_index, widget_versions
-- **Available tools**: web_search, fetch_url, read_file, read_multiple, write_file, edit_file, search_files, analyze_code, list_files, execute_command, git_operation, run_code, validate_all, save_memory, memory_search, list_memories, search_conversations (grep para sessions), read_skill, save_widget, update_widget, get_widget_code, get_tool_history, db_query, extract_text, query_external_llm
+- **Tablas**: sessions, messages, tool_calls, saved_widgets, widget_states, debug_info, memory_index, widget_versions, chat_journal, gateway_log, deleted_sessions
+- **Available tools (39)**: web_search, fetch_url, read_file, read_multiple, write_file, edit_file, search_files, analyze_code, list_files, execute_command, git_operation, run_code, validate_all, save_memory, memory_search, list_memories, search_conversations, read_skill, save_widget, update_widget, get_widget_code, get_tool_history, db_query, extract_text, move_file, delete_memory, manage_memory, recall_memories, remember, search_entities, explore_graph, dependency_graph, find_dead_code, impact_analysis, curator_workbench, daily_memory_report, delegate_to_codex, hydrate_memory_receipt, review_memory_inbox, review_recall_candidate
 
 --- 🐍 USO DE RUN_CODE ---
 

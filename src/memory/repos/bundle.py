@@ -13,6 +13,7 @@ from src.memory.repos.protocols import (
     MessageRepositoryProtocol,
     SavedWidgetRepositoryProtocol,
     SessionRepositoryProtocol,
+    StreamCheckpointRepositoryProtocol,
     ToolCallRepositoryProtocol,
     WidgetStateRepositoryProtocol,
 )
@@ -36,6 +37,7 @@ class Repositories:
     saved_widgets: SavedWidgetRepositoryProtocol
     memory_index: MemoryIndexRepositoryProtocol
     memory_receipts: MemoryReceiptRepositoryProtocol | None = None
+    stream_checkpoints: StreamCheckpointRepositoryProtocol | None = None
     _memory: MemoryRepositories | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -89,6 +91,7 @@ def get_repos(conn=None) -> Repositories:
     from src.memory.repos.memory_receipt_repository import MemoryReceiptRepository
     from src.memory.repos.saved_widget_repository import SavedWidgetRepository
     from src.memory.repos.session_repository import SessionRepository
+    from src.memory.repos.stream_checkpoint_repository import StreamCheckpointRepository
     from src.memory.repos.tool_call_repository import ToolCallRepository
     from src.memory.repos.widget_state_repository import WidgetStateRepository
 
@@ -101,5 +104,6 @@ def get_repos(conn=None) -> Repositories:
         saved_widgets=SavedWidgetRepository(conn=conn),
         memory_index=MemoryIndexRepository(conn=conn),
         memory_receipts=MemoryReceiptRepository(conn=conn),
+        stream_checkpoints=StreamCheckpointRepository(conn=conn),
     )
     return repos

@@ -733,6 +733,23 @@ class TestEntityRepository:
         assert result == []
 
     @pytest.mark.anyio
+    async def test_explore_graph_does_not_repeat_visited_entity_as_its_own_neighbor(
+        self, entity_repo
+    ):
+        await entity_repo.upsert_entity("e1", "Mauro", "persona", timestamp="2024-01-01")
+        await entity_repo.upsert_entity("e2", "K-Chat", "proyecto", timestamp="2024-01-01")
+        await entity_repo.upsert_entity("e3", "SQLite", "tecnologia", timestamp="2024-01-01")
+        await entity_repo.upsert_relation("e1", "e2", "DESARROLLA", 1.0, "2024-01-01")
+        await entity_repo.upsert_relation("e2", "e3", "USA", 1.0, "2024-01-01")
+
+        result = await entity_repo.explore_graph("e1", depth=2)
+
+        assert [(row["name"], row["depth"]) for row in result] == [
+            ("K-Chat", 1),
+            ("SQLite", 2),
+        ]
+
+    @pytest.mark.anyio
     async def test_explore_graph_returns_raw_non_entity_nodes(self, entity_repo):
         await entity_repo.upsert_relation(
             "inbox:i1",

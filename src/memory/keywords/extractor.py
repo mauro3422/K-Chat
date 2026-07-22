@@ -68,6 +68,10 @@ _STOPWORDS: set[str] = {
     "user", "assistant", "continue", "dale", "sigo", "si", "no",
 }
 
+# Public immutable view shared by corpus-level analyzers. Keeping one source of
+# truth prevents the keyword and PMI pipelines from drifting apart.
+STOPWORDS = frozenset(_STOPWORDS)
+
 # Minimum word length to consider
 _MIN_WORD_LEN = 3
 # Maximum word length

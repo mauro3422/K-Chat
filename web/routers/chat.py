@@ -1,6 +1,7 @@
 import logging
 import os
 import uuid
+import json
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Response, UploadFile, File as FastAPIFile, Form
@@ -15,7 +16,10 @@ from web.services.chat_stream import build_stream_generator
 from web.services.chat_stream_contract import StreamGeneratorDeps
 from web.services.protocols import MessagePersisterProtocol, StreamGeneratorProtocol
 from web.services.session_stream_locks import SessionStreamLockManager
-from web.services.stream_retry_handler import StreamRetryHandler
+from web.services.stream_retry_handler import (
+    StreamRetryHandler,
+    build_continuation_instruction,
+)
 from web.services.stream_contract import serialize_stream_event
 
 router = APIRouter()
@@ -99,6 +103,10 @@ async def chat(
     request: Request,
     background_tasks: BackgroundTasks,
     message: str = Form(...),
+    resume: bool = Form(False),
+    retry_error_type: str = Form(""),
+    retry_error_message: str = Form(""),
+    retry_count: int = Form(0),
     model: str | None = Query(None),
     files: list[UploadFile] = FastAPIFile(default=[]),
 ) -> Response:
@@ -143,16 +151,71 @@ async def chat(
             session_id,
             origin_node_id=_resolve_origin_node_id(),
         )
+        checkpoint = None
+        checkpoint_repo = getattr(repos, "stream_checkpoints", None)
+        if resume is True and checkpoint_repo is not None:
+            checkpoint = await checkpoint_repo.get(session_id)
+
         try:
-            history = await rebuild_history(session_id, model, messages_repo=repos.messages)
+            if checkpoint:
+                history = json.loads(checkpoint.get("history_json") or "[]")
+            else:
+                history = await rebuild_history(
+                    session_id,
+                    model,
+                    messages_repo=repos.messages,
+                )
         except Exception as e:
             logger.error("Error rebuilding history for %s: %s", session_id, e)
             raise HTTPException(500, "Error loading history")
 
-        try:
-            await repos.messages.save_record(MessageRecord(session_id=session_id, role="user", content=full_message, model=model))
-        except Exception as e:
-            logger.error("Error saving user message for %s: %s", session_id, e)
+        original_message = full_message
+        stream_message = full_message
+        initial_phases: list[dict[str, Any]] = []
+        if checkpoint:
+            original_message = checkpoint.get("original_message") or full_message
+            partial_content = checkpoint.get("partial_content") or ""
+            partial_reasoning = checkpoint.get("partial_reasoning") or ""
+            if partial_content or partial_reasoning:
+                partial = {
+                    "role": "assistant",
+                    "content": partial_content or None,
+                }
+                if partial_reasoning:
+                    partial["reasoning_content"] = partial_reasoning
+                history.append(partial)
+            retry_error_type = (
+                retry_error_type
+                or checkpoint.get("error_type")
+                or "unknown"
+            )
+            retry_error_message = (
+                retry_error_message
+                or checkpoint.get("error_message")
+                or ""
+            )
+            retry_count = max(
+                retry_count,
+                int(checkpoint.get("retry_count") or 0) + 1,
+            )
+            stream_message = build_continuation_instruction(
+                retry_error_type,
+                retry_error_message,
+            )
+            orchestrator_deps.is_continuation = True
+            initial_phases = json.loads(checkpoint.get("phases_json") or "[]")
+        else:
+            try:
+                await repos.messages.save_record(
+                    MessageRecord(
+                        session_id=session_id,
+                        role="user",
+                        content=full_message,
+                        model=model,
+                    )
+                )
+            except Exception as e:
+                logger.error("Error saving user message for %s: %s", session_id, e)
 
         from web.services.message_persister import save_assistant_message
 
@@ -176,7 +239,7 @@ async def chat(
 
         generate = build_stream_generator(
             session_id,
-            full_message,
+            stream_message,
             history,
             model,
             background_tasks,
@@ -185,6 +248,11 @@ async def chat(
                 save_fn=_wrapped_save,
                 rename_fn=_rename_and_publish,
                 session_artifact_coordinator=request.app.state.session_artifact_coordinator,
+                original_message=original_message,
+                retry_error_type=retry_error_type,
+                retry_error_message=retry_error_message,
+                retry_count=retry_count,
+                initial_phases=initial_phases,
             ),
             orchestrator_deps=orchestrator_deps,
         )

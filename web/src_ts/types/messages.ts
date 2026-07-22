@@ -2,6 +2,13 @@ export interface PhaseData {
   memory?: string;
   reasoning?: string;
   content?: string;
+  retry?: {
+    attempt: number;
+    max_retries: number;
+    error_type?: string;
+    error_message?: string;
+    status?: 'waiting' | 'active' | 'completed' | 'failed';
+  };
 }
 
 export interface MessageData {

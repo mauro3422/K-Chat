@@ -47,6 +47,7 @@ describe('LanStatusPanel', () => {
           node: { node_id: 'node-a', role: 'primary', memory_is_fresh: false },
           bridge: { peer_urls: [] },
           cluster: { peer_count: 0, reachable_peers: 0, unreachable_peers: 0, states: [] },
+          health: { sync: { memory_is_fresh: false } },
         }),
     });
     const apiClient = {

@@ -133,8 +133,10 @@ class SessionRepository(_BaseRepository):
                 repos.widget_states,
                 repos.saved_widgets,
                 repos.memory_index,
+                repos.stream_checkpoints,
             ):
-                await repo.delete_by_session(session_id, conn)
+                if repo is not None:
+                    await repo.delete_by_session(session_id, conn)
             await self.delete(session_id, cursor=conn)
 
     # ── Snapshot helper ────────────────────────────────────────────────────

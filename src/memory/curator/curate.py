@@ -423,8 +423,11 @@ async def curate_sessions(
     conn = sqlite3.connect(sessions_db)
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     sessions = conn.execute(
-        "SELECT session_id, name FROM sessions "
-        "WHERE created_at >= ? ORDER BY created_at DESC LIMIT 3",
+        "SELECT s.session_id, s.name FROM sessions s "
+        "JOIN messages m ON m.session_id = s.session_id "
+        "GROUP BY s.session_id, s.name "
+        "HAVING MAX(m.created_at) >= ? "
+        "ORDER BY MAX(m.created_at) DESC LIMIT 3",
         (cutoff,),
     ).fetchall()
     conn.close()

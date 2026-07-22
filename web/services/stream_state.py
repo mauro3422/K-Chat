@@ -16,6 +16,7 @@ class StreamState:
     dirty: bool = False
     last_persisted_at: float = field(default_factory=time.monotonic)
     save_interval: float = 10.0  # persist partial content every 10s (was 30s)
+    checkpoint_count: int = 0
 
     def append(self, kind: str, token: str) -> None:
         if kind == "reasoning":
@@ -25,14 +26,22 @@ class StreamState:
             self.full_content += token
             self.dirty = True
 
-    def reset_on_tool_call(self) -> None:
+    def close_phase(self) -> None:
         self.full_content = ""
         self.full_reasoning = ""
         self.persisted = False
         self.dirty = False
+        self.checkpoint_count += 1
+
+    def reset_on_tool_call(self) -> None:
+        """Backward-compatible alias; phase resets now happen after tool results."""
+        self.close_phase()
 
     def has_output(self) -> bool:
         return bool(self.full_content or self.full_reasoning)
+
+    def has_progress(self) -> bool:
+        return self.has_output() or self.checkpoint_count > 0
 
     def should_persist(self, now: float) -> bool:
         return self.has_output() and self.dirty and (now - self.last_persisted_at > self.save_interval)

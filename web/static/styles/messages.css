@@ -276,6 +276,79 @@
   border-color: #58a6ff;
 }
 
+.retry-checkpoint {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 8px;
+  padding: 9px 11px;
+  border: 1px solid rgba(230, 168, 23, 0.35);
+  border-left: 3px solid #e6a817;
+  border-radius: 7px;
+  background: linear-gradient(90deg, rgba(230, 168, 23, 0.12), rgba(230, 168, 23, 0.035));
+  color: var(--text-primary);
+}
+
+.retry-checkpoint__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.retry-checkpoint__badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border: 1px solid rgba(230, 168, 23, 0.4);
+  border-radius: 999px;
+  color: #f0c75e;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.retry-checkpoint__status {
+  color: #e6a817;
+  font-size: 11px;
+}
+
+.retry-checkpoint__detail {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retry-checkpoint--active {
+  box-shadow: 0 0 0 1px rgba(230, 168, 23, 0.12), 0 0 14px rgba(230, 168, 23, 0.08);
+}
+
+.retry-checkpoint--active .retry-checkpoint__status::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #e6a817;
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+.retry-checkpoint--completed {
+  border-color: rgba(76, 175, 80, 0.35);
+  border-left-color: #4caf50;
+  background: linear-gradient(90deg, rgba(76, 175, 80, 0.1), rgba(76, 175, 80, 0.025));
+}
+
+.retry-checkpoint--completed .retry-checkpoint__status {
+  color: #75c878;
+}
+
+.retry-checkpoint--failed {
+  opacity: 0.7;
+}
+
 .cooldown-countdown {
   font-weight: 700;
   font-size: 13px;

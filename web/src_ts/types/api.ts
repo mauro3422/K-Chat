@@ -19,8 +19,8 @@ export interface ISessionContext {
 }
 
 export interface IChatApi {
-  chatStream(sessionId: string, message: string, model: string, controller: AbortController): Promise<Response>;
-  chatStreamWithFiles(sessionId: string, message: string, model: string, controller: AbortController, files: File[]): Promise<Response>;
+  chatStream(sessionId: string, message: string, model: string, controller: AbortController, retry?: RetryRequest): Promise<Response>;
+  chatStreamWithFiles(sessionId: string, message: string, model: string, controller: AbortController, files: File[], retry?: RetryRequest): Promise<Response>;
   loadMessages(sessionId: string): Promise<Response>;
   deleteMessage(sessionId: string, messageId: string): Promise<Response>;
 }
@@ -57,6 +57,13 @@ export interface IDebugApi {
   loadBackendLogs(): Promise<Response>;
   loadSystemLogs(): Promise<Response>;
   sendClientLogs(entries: ClientLogEntry[]): Promise<Response>;
+}
+
+export interface RetryRequest {
+  resume: boolean;
+  errorType?: string;
+  errorMessage?: string;
+  retryCount?: number;
 }
 
 export interface IApiClient extends IChatApi, ISessionApi, IWidgetApi, IDebugApi {}

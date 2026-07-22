@@ -137,7 +137,7 @@ def _normalize_session_channel(row: Mapping[str, Any]) -> str:
 
 
 async def get_sessions_for_summary_date(db_path: str, date_str: str) -> list[dict[str, Any]]:
-    """Return session rows for a target date, with best-effort channel metadata."""
+    """Return sessions active on a target date, with channel metadata."""
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
@@ -147,7 +147,12 @@ async def get_sessions_for_summary_date(db_path: str, date_str: str) -> list[dic
             if optional in table_columns:
                 columns += f", {optional}"
         cursor = await db.execute(
-            f"SELECT {columns} FROM sessions WHERE date(created_at) = ? ORDER BY created_at",
+            f"SELECT {', '.join(f's.{part.strip()}' for part in columns.split(','))} "
+            "FROM sessions s "
+            "JOIN messages m ON m.session_id = s.session_id "
+            "WHERE date(m.created_at) = ? "
+            f"GROUP BY {', '.join(f's.{part.strip()}' for part in columns.split(','))} "
+            "ORDER BY MIN(m.created_at)",
             (date_str,),
         )
         sessions = []
@@ -162,15 +167,22 @@ async def get_session_messages_for_summary(
     db_path: str,
     session_id: str,
     limit: int = 500,
+    date_str: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Return messages for a session as dictionaries."""
+    """Return session messages, optionally restricted to one activity date."""
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
+        date_filter = " AND date(created_at) = ?" if date_str else ""
+        params: tuple[Any, ...] = (
+            (session_id, date_str, limit)
+            if date_str
+            else (session_id, limit)
+        )
         cursor = await db.execute(
             "SELECT id, role, content, created_at FROM messages "
-            "WHERE session_id = ? ORDER BY id ASC LIMIT ?",
-            (session_id, limit),
+            f"WHERE session_id = ?{date_filter} ORDER BY id ASC LIMIT ?",
+            params,
         )
         return [dict(row) for row in await cursor.fetchall()]
 
@@ -618,7 +630,11 @@ async def generate_session_summaries(
         session_id = str(session.get("session_id") or "")
         if _is_test_session_id(session_id):
             continue
-        messages = await get_session_messages_for_summary(db_path, session_id)
+        messages = await get_session_messages_for_summary(
+            db_path,
+            session_id,
+            date_str=date_str,
+        )
         if len(messages) < 2:
             continue
         all_sessions_data.append((session, messages))
@@ -704,6 +720,7 @@ def load_session_summary_previews(
     session_ids: Iterable[str],
     root: str | Path | None = None,
     line_limit: int = 8,
+    target: date | str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Load existing summary previews for a set of session IDs.
 
@@ -712,11 +729,16 @@ def load_session_summary_previews(
 
     base = Path(root) if root is not None else _project_root()
     previews: dict[str, dict[str, Any]] = {}
-    candidates_dir = base / "memory"
+    candidates_dir = (
+        memory_paths.date_dir(target=target, root=base)
+        if target is not None
+        else base / "memory"
+    )
     if not candidates_dir.exists():
         return previews
     wanted = set(session_ids)
-    for path in sorted(candidates_dir.glob("*/*/*/session--*.md")):
+    pattern = "session--*.md" if target is not None else "*/*/*/session--*.md"
+    for path in sorted(candidates_dir.glob(pattern)):
         text = path.read_text(encoding="utf-8")
         metadata = _extract_metadata(text)
         session_id = str(metadata.get("session_id") or path.stem)
