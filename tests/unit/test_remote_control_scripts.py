@@ -179,6 +179,50 @@ def test_remote_client_resolves_explicit_aliases_but_not_unknown_single_profile(
     assert "Unknown node 'primary'" in str(exc.value)
 
 
+def test_remote_client_rediscoveres_moved_ipv4_node_by_expected_identity(monkeypatch, tmp_path) -> None:
+    module = load_remote_client_module()
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("fake", encoding="utf-8")
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.38",
+        user="maurol",
+        repo="/home/maurol/dev/K-Chat",
+        identity_file=str(identity),
+        service_url="http://192.168.1.38:8000",
+        expected_node_id="pc-secundaria",
+    )
+
+    monkeypatch.setattr(
+        module,
+        "_host_node_state",
+        lambda _profile, host, *, timeout: {"node_id": "pc-secundaria"} if host == "192.168.1.39" else None,
+    )
+
+    resolved = module.discover_profile_host(profile, workers=8)
+
+    assert resolved.host == "192.168.1.39"
+    assert resolved.service_url == "http://192.168.1.39:8000"
+    assert profile.host == "192.168.1.38"
+
+
+def test_remote_client_does_not_rediscover_without_an_expected_identity(monkeypatch, tmp_path) -> None:
+    module = load_remote_client_module()
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("fake", encoding="utf-8")
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.38",
+        user="maurol",
+        repo="/home/maurol/dev/K-Chat",
+        identity_file=str(identity),
+    )
+
+    monkeypatch.setattr(module, "_host_node_state", lambda *_args, **_kwargs: pytest.fail("must not scan without identity"))
+
+    assert module.discover_profile_host(profile) is profile
+
+
 def test_lan_doctor_report_can_emit_json(monkeypatch, capsys, tmp_path) -> None:
     module = load_remote_client_module()
     identity = tmp_path / "id_ed25519"
@@ -326,6 +370,35 @@ def test_remote_node_state_detects_profile_identity_mismatch(monkeypatch, tmp_pa
     assert check.ok is False
     assert "expected node_id=pc-secundaria" in check.detail
     assert "expected role=secondary" in check.detail
+
+
+def test_remote_node_state_accepts_temporary_promotion_for_expected_preferred_role(monkeypatch, tmp_path) -> None:
+    module = load_remote_client_module()
+    identity = tmp_path / "id_ed25519"
+    identity.write_text("fake", encoding="utf-8")
+    profile = module.NodeProfile(
+        name="linux",
+        host="192.168.1.40",
+        user="maurol",
+        repo="/home/maurol/dev/K-Chat",
+        identity_file=str(identity),
+        expected_role="secondary",
+    )
+
+    monkeypatch.setattr(
+        module,
+        "_http_json",
+        lambda _profile, _path, timeout=8: {
+            "node_id": "pc-secundaria",
+            "role": "primary",
+            "preferred_role": "secondary",
+            "healthy": True,
+        },
+    )
+
+    check = module._http_check(profile, "node_state", "/api/node/state")
+
+    assert check.ok is True
 
 
 def test_remote_chat_wraps_codex_delegation_by_default() -> None:

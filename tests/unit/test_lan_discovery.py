@@ -5,6 +5,7 @@ import socket
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from src.coordination.lan_addressing import find_unique_ipv4_host
 from src.coordination.lan_discovery import LanDiscovery, normalize_lan_peer_url
 
 
@@ -97,3 +98,8 @@ def test_peer_url_normalization_accepts_only_literal_lan_http_urls() -> None:
     assert normalize_lan_peer_url("http://example.com:8000") is None
     assert normalize_lan_peer_url("http://8.8.8.8:8000") is None
     assert normalize_lan_peer_url("not-a-url") is None
+
+
+def test_ipv4_discovery_returns_only_a_unique_match() -> None:
+    assert find_unique_ipv4_host("192.168.1.38", lambda host: host == "192.168.1.39", workers=8) == "192.168.1.39"
+    assert find_unique_ipv4_host("192.168.1.38", lambda host: host.endswith((".39", ".40")), workers=8) is None

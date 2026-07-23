@@ -33,6 +33,17 @@ KAIROS_LINUX_IDENTITY
 KAIROS_LINUX_BASE_URL
 ```
 
+Cuando el perfil tiene `expectedNodeId` o `expectedRole`, el cliente verifica
+primero la IP configurada y, si ya no corresponde, busca solamente dentro de
+esa subred `/24` el único nodo cuya identidad coincida. La IP resuelta queda
+solo en memoria: no sobrescribe el archivo ni las variables. Usá `--host` para
+un override puntual o `--no-discover-host` para desactivar la búsqueda.
+
+Las direcciones LAN se resuelven por una política central: la URL propia se
+deriva de la interfaz activa si una IP privada configurada ya no coincide, y un
+peer descubierto por multicast reemplaza las IPs estáticas como destino activo.
+Las IPs configuradas quedan solo como bootstrap mientras no haya descubrimiento.
+
 Las comprobaciones LAN que leen memoria o mutan coordinación requieren:
 
 ```text

@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 
-from web.routers.pages import router, get_available_model_ids
+from web.routers.pages import _request_web_base_url, router, get_available_model_ids
 from web.routers.pages import get_available_models
 
 
@@ -57,6 +57,17 @@ async def test_get_available_model_ids_fallback_on_error(mock_registry, mock_ver
     mock_registry.return_value.get_all_models.return_value = ["model-a"]
     result = get_available_model_ids()
     assert result == ["model-a", "deepseek-v4-flash"]
+
+
+def test_web_base_url_replaces_a_stale_private_address(monkeypatch) -> None:
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(config=SimpleNamespace(web_base_url="http://192.168.1.38:8000", host="0.0.0.0", port=8000))
+        )
+    )
+    monkeypatch.setattr("web.routers.pages.detect_lan_ip", lambda: "192.168.1.39")
+
+    assert _request_web_base_url(request) == "http://192.168.1.39:8000"
 
 
 class TestPageEndpoints:

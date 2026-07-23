@@ -18,7 +18,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.lan_auth_client import build_json_request, signer_from_environment
+from src.coordination.lan_addressing import find_unique_ipv4_host, replace_url_host
 
 
 CODEX_DELEGATION_GUIDE = """\
@@ -180,6 +181,54 @@ def require_profile(profiles: dict[str, NodeProfile], name: str) -> NodeProfile:
     if not Path(profile.identity_file).exists():
         raise SystemExit(f"Identity file not found for node '{profile.name}': {profile.identity_file}")
     return profile
+
+
+def _base_url_for_host(profile: NodeProfile, host: str) -> str:
+    """Keep a configured scheme/port while replacing only an IPv4 host."""
+    return replace_url_host(profile.service_url, host)
+
+
+def profile_with_host(profile: NodeProfile, host: str) -> NodeProfile:
+    """Return an in-memory target override without rewriting local node config."""
+    clean_host = host.strip()
+    if not clean_host:
+        raise ValueError("host override cannot be empty")
+    return replace(profile, host=clean_host, service_url=_base_url_for_host(profile, clean_host))
+
+
+def _profile_matches_node_state(profile: NodeProfile, data: dict[str, Any]) -> bool:
+    if profile.expected_node_id:
+        return data.get("node_id") == profile.expected_node_id
+    if profile.expected_role:
+        return data.get("role") == profile.expected_role or data.get("preferred_role") == profile.expected_role
+    return False
+
+
+def _host_node_state(profile: NodeProfile, host: str, *, timeout: float) -> dict[str, Any] | None:
+    try:
+        return _http_json_url(_base_url_for_host(profile, host) + "/api/node/state", timeout=timeout)
+    except Exception:
+        return None
+
+
+def discover_profile_host(profile: NodeProfile, *, timeout: float = 0.6, workers: int = 48) -> NodeProfile:
+    """Find a moved LAN node only when its configured identity uniquely matches.
+
+    Discovery is deliberately in-memory: a DHCP lease never rewrites user
+    configuration. SSH still authenticates with the configured key afterwards.
+    """
+    if not (profile.expected_node_id or profile.expected_role):
+        return profile
+    current_state = _host_node_state(profile, profile.host, timeout=timeout)
+    if current_state is not None and _profile_matches_node_state(profile, current_state):
+        return profile
+
+    def probe(host: str) -> str | None:
+        state = _host_node_state(profile, host, timeout=timeout)
+        return state is not None and _profile_matches_node_state(profile, state)
+
+    discovered = find_unique_ipv4_host(profile.host, probe, workers=workers)
+    return profile_with_host(profile, discovered) if discovered else profile
 
 
 def bash_quote(value: str) -> str:
@@ -349,7 +398,11 @@ def _node_identity_errors(profile: NodeProfile, data: dict[str, Any]) -> list[st
     errors: list[str] = []
     if profile.expected_node_id and data.get("node_id") != profile.expected_node_id:
         errors.append(f"expected node_id={profile.expected_node_id} got {data.get('node_id')}")
-    if profile.expected_role and data.get("role") != profile.expected_role:
+    if (
+        profile.expected_role
+        and data.get("role") != profile.expected_role
+        and data.get("preferred_role") != profile.expected_role
+    ):
         errors.append(f"expected role={profile.expected_role} got {data.get('role')}")
     return errors
 
@@ -911,6 +964,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--node", default=os.environ.get("KAIROS_REMOTE_NODE", "linux"))
     parser.add_argument("--config", default=os.environ.get("KAIROS_REMOTE_NODES_CONFIG", str(default_config_path())))
+    parser.add_argument("--host", default="", help="override the node host for this invocation only")
+    parser.add_argument(
+        "--no-discover-host",
+        action="store_true",
+        help="disable the safe LAN rediscovery used after a configured IPv4 host stops matching",
+    )
     parser.add_argument("--primary-url", default=os.environ.get("KAIROS_LAN_PRIMARY_URL", "http://127.0.0.1:8000"))
     parser.add_argument("--secondary-url", default=os.environ.get("KAIROS_LAN_SECONDARY_URL", ""))
     parser.add_argument("--loopback", action="store_true", default=os.environ.get("KAIROS_LAN_SMOKE_LOOPBACK", "").lower() in {"1", "true", "yes", "on"})
@@ -945,6 +1004,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         return action_lan_doctor(profile, primary_url=args.primary_url, secondary_url=args.secondary_url, json_output=args.json, loopback=True)
     profile = require_profile(profiles, args.node)
+    configured_host = profile.host
+    if args.host:
+        profile = profile_with_host(profile, args.host)
+    elif not args.no_discover_host:
+        profile = discover_profile_host(profile)
+    if profile.host != configured_host:
+        print(
+            f"Resolved node '{profile.name}' from {configured_host} to {profile.host} by expected identity.",
+            file=sys.stderr,
+        )
     if args.action == "doctor":
         return action_doctor(profile, json_output=args.json)
     if args.action == "memory-preflight":

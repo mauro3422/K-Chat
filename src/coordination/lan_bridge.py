@@ -19,6 +19,7 @@ from src.coordination.lan_auth import (
     is_sensitive_lan_request,
     request_path,
 )
+from src.coordination.lan_addressing import active_peer_urls, resolve_advertised_base_url
 from src.coordination.lan_discovery import detect_lan_ip
 from src.coordination.memory_write_queue import get_memory_write_queue, replay_pending_memory_writes
 from src.coordination.node_state import NodeCoordinator
@@ -85,7 +86,11 @@ class NodeLanBridge:
 
     @property
     def peer_urls(self) -> list[str]:
-        return list(dict.fromkeys([*self._static_peer_urls, *self._discovered_peer_urls]))
+        return active_peer_urls(
+            self._static_peer_urls,
+            self._discovered_peer_urls,
+            discovery_enabled=bool(getattr(self._config, "lan_discovery_enabled", True)),
+        )
 
     def register_discovered_peer(self, peer_url: str, seen_at: float | None = None) -> None:
         normalized = peer_url.strip().rstrip("/")
@@ -101,13 +106,12 @@ class NodeLanBridge:
 
     @property
     def base_url(self) -> str:
-        configured = str(getattr(self._config, "node_base_url", "") or "").strip().rstrip("/")
-        if configured:
-            return configured
-        host = (self._config.host or "127.0.0.1").strip() or "127.0.0.1"
-        if host in {"0.0.0.0", "::", "[::]"}:
-            host = self._lan_ip_resolver()
-        return f"http://{host}:{self._config.port}"
+        return resolve_advertised_base_url(
+            str(getattr(self._config, "node_base_url", "") or ""),
+            str(getattr(self._config, "host", "") or ""),
+            int(getattr(self._config, "port", 8000)),
+            lan_ip_resolver=self._lan_ip_resolver,
+        )
 
     @property
     def interval(self) -> float:

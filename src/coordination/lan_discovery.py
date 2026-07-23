@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import json
 import logging
 import socket
 import time
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlsplit
 
 from src.config_loader import Config
+from src.coordination.lan_addressing import is_lan_address, normalize_lan_peer_url
 
 logger = logging.getLogger(__name__)
 
@@ -37,27 +36,6 @@ def detect_lan_ip() -> str:
     except OSError:
         pass
     return "127.0.0.1"
-
-
-def _is_lan_address(address: str) -> bool:
-    try:
-        ip = ipaddress.ip_address(address)
-    except ValueError:
-        return False
-    return bool(ip.is_private or ip.is_link_local or ip.is_loopback)
-
-
-def normalize_lan_peer_url(raw_url: str) -> str | None:
-    """Return a canonical HTTP URL only when it targets a literal LAN address."""
-    try:
-        parsed = urlsplit(raw_url.strip())
-        host = parsed.hostname or ""
-        port = parsed.port
-    except (TypeError, ValueError):
-        return None
-    if parsed.scheme != "http" or not _is_lan_address(host) or port is None:
-        return None
-    return f"http://{host}:{port}"
 
 
 class LanDiscovery:
@@ -103,7 +81,7 @@ class LanDiscovery:
 
     def handle_datagram(self, data: bytes, source_address: str, *, now: float | None = None) -> str | None:
         """Validate one announcement and register its source as a peer."""
-        if not _is_lan_address(source_address):
+        if not is_lan_address(source_address):
             return None
         try:
             payload: Any = json.loads(data.decode("utf-8"))

@@ -13,6 +13,8 @@ from src.api.llm_client import (
     get_model_registry,
     get_rate_limit_store,
 )
+from src.coordination.lan_addressing import resolve_advertised_base_url
+from src.coordination.lan_discovery import detect_lan_ip
 from web.routers._node_helpers import _request_repos
 from web.routers._request_repos import is_unconfigured_mock
 from web.services.diagnostics_snapshot import build_diagnostics_snapshot
@@ -39,7 +41,12 @@ def _request_web_base_url(request: Request | None = None) -> str:
     cfg = getattr(state, "config", None) if state is not None else None
     web_base_url = str(getattr(cfg, "web_base_url", "") or "").rstrip("/") if cfg is not None else ""
     if web_base_url:
-        return web_base_url
+        return resolve_advertised_base_url(
+            web_base_url,
+            str(getattr(cfg, "host", "") or ""),
+            int(getattr(cfg, "port", 8000) or 8000),
+            lan_ip_resolver=detect_lan_ip,
+        )
     try:
         return str(request.base_url).rstrip("/")
     except Exception:
